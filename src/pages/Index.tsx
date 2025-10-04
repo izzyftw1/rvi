@@ -163,6 +163,12 @@ const Index = () => {
                 <span className="text-sm">Genealogy</span>
               </Button>
             </div>
+            <div className="grid grid-cols-1 gap-3 mt-3">
+              <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
+                <BarChart3 className="h-6 w-6" />
+                <span className="text-sm font-bold">📊 Reports & Analytics</span>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

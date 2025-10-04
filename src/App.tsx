@@ -18,6 +18,7 @@ import Quality from "./pages/Quality";
 import Packing from "./pages/Packing";
 import Dispatch from "./pages/Dispatch";
 import Genealogy from "./pages/Genealogy";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
           <Route path="/packing" element={<Packing />} />
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/genealogy" element={<Genealogy />} />
+          <Route path="/reports" element={<Reports />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

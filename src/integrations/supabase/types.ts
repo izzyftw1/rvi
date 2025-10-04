@@ -47,6 +47,56 @@ export type Database = {
         }
         Relationships: []
       }
+      capa: {
+        Row: {
+          action_type: string
+          assigned_to: string | null
+          capa_id: string
+          completion_date: string | null
+          created_at: string
+          due_date: string
+          effectiveness_verified: boolean | null
+          id: string
+          incident_id: string | null
+          issue_description: string
+          status: string
+        }
+        Insert: {
+          action_type: string
+          assigned_to?: string | null
+          capa_id: string
+          completion_date?: string | null
+          created_at?: string
+          due_date: string
+          effectiveness_verified?: boolean | null
+          id?: string
+          incident_id?: string | null
+          issue_description: string
+          status?: string
+        }
+        Update: {
+          action_type?: string
+          assigned_to?: string | null
+          capa_id?: string
+          completion_date?: string | null
+          created_at?: string
+          due_date?: string
+          effectiveness_verified?: boolean | null
+          id?: string
+          incident_id?: string | null
+          issue_description?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "capa_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "she_incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cartons: {
         Row: {
           built_at: string
@@ -115,6 +165,50 @@ export type Database = {
         }
         Relationships: []
       }
+      environmental_metrics: {
+        Row: {
+          created_at: string
+          department_id: string | null
+          emissions_co2_kg: number | null
+          energy_kwh: number | null
+          id: string
+          metric_date: string
+          recycled_waste_kg: number | null
+          waste_kg: number | null
+          water_liters: number | null
+        }
+        Insert: {
+          created_at?: string
+          department_id?: string | null
+          emissions_co2_kg?: number | null
+          energy_kwh?: number | null
+          id?: string
+          metric_date: string
+          recycled_waste_kg?: number | null
+          waste_kg?: number | null
+          water_liters?: number | null
+        }
+        Update: {
+          created_at?: string
+          department_id?: string | null
+          emissions_co2_kg?: number | null
+          energy_kwh?: number | null
+          id?: string
+          metric_date?: string
+          recycled_waste_kg?: number | null
+          waste_kg?: number | null
+          water_liters?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "environmental_metrics_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       laser_marking: {
         Row: {
           carton_id: string | null
@@ -146,6 +240,47 @@ export type Database = {
             columns: ["carton_id"]
             isOneToOne: false
             referencedRelation: "cartons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      logistics_costs: {
+        Row: {
+          cost_amount: number
+          cost_per_kg: number | null
+          created_at: string
+          currency: string | null
+          id: string
+          lane: string
+          mode: string
+          shipment_id: string
+        }
+        Insert: {
+          cost_amount: number
+          cost_per_kg?: number | null
+          created_at?: string
+          currency?: string | null
+          id?: string
+          lane: string
+          mode: string
+          shipment_id: string
+        }
+        Update: {
+          cost_amount?: number
+          cost_per_kg?: number | null
+          created_at?: string
+          currency?: string | null
+          id?: string
+          lane?: string
+          mode?: string
+          shipment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "logistics_costs_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
             referencedColumns: ["id"]
           },
         ]
@@ -187,6 +322,44 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_costs: {
+        Row: {
+          cost_per_kg: number
+          created_at: string
+          currency: string | null
+          id: string
+          lme_copper_price: number | null
+          lot_id: string
+          total_cost: number
+        }
+        Insert: {
+          cost_per_kg: number
+          created_at?: string
+          currency?: string | null
+          id?: string
+          lme_copper_price?: number | null
+          lot_id: string
+          total_cost: number
+        }
+        Update: {
+          cost_per_kg?: number
+          created_at?: string
+          currency?: string | null
+          id?: string
+          lme_copper_price?: number | null
+          lot_id?: string
+          total_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_costs_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "material_lots"
             referencedColumns: ["id"]
           },
         ]
@@ -252,6 +425,120 @@ export type Database = {
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      non_consumable_usage: {
+        Row: {
+          created_at: string
+          department_id: string | null
+          id: string
+          item_id: string
+          quantity_used: number
+          usage_date: string
+          used_by: string | null
+          wo_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          item_id: string
+          quantity_used: number
+          usage_date?: string
+          used_by?: string | null
+          wo_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          item_id?: string
+          quantity_used?: number
+          usage_date?: string
+          used_by?: string | null
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "non_consumable_usage_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "non_consumable_usage_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "non_consumables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "non_consumable_usage_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      non_consumables: {
+        Row: {
+          category: string
+          created_at: string
+          department_id: string | null
+          id: string
+          item_id: string
+          item_name: string
+          last_purchased: string | null
+          max_stock_level: number | null
+          quantity: number
+          reorder_level: number | null
+          supplier: string | null
+          unit: string
+          unit_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          item_id: string
+          item_name: string
+          last_purchased?: string | null
+          max_stock_level?: number | null
+          quantity?: number
+          reorder_level?: number | null
+          supplier?: string | null
+          unit: string
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          item_id?: string
+          item_name?: string
+          last_purchased?: string | null
+          max_stock_level?: number | null
+          quantity?: number
+          reorder_level?: number | null
+          supplier?: string | null
+          unit?: string
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "non_consumables_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
         ]
@@ -342,6 +629,93 @@ export type Database = {
           pallet_id?: string
         }
         Relationships: []
+      }
+      ppe_inventory: {
+        Row: {
+          category: string
+          created_at: string
+          expiry_date: string | null
+          id: string
+          issue_date: string | null
+          issued_to: string | null
+          item_name: string
+          ppe_id: string
+          quantity: number | null
+          status: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          issue_date?: string | null
+          issued_to?: string | null
+          item_name: string
+          ppe_id: string
+          quantity?: number | null
+          status?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          issue_date?: string | null
+          issued_to?: string | null
+          item_name?: string
+          ppe_id?: string
+          quantity?: number | null
+          status?: string
+        }
+        Relationships: []
+      }
+      processing_costs: {
+        Row: {
+          cost_amount: number
+          cost_type: string
+          created_at: string
+          currency: string | null
+          department_id: string | null
+          description: string | null
+          id: string
+          wo_id: string | null
+        }
+        Insert: {
+          cost_amount: number
+          cost_type: string
+          created_at?: string
+          currency?: string | null
+          department_id?: string | null
+          description?: string | null
+          id?: string
+          wo_id?: string | null
+        }
+        Update: {
+          cost_amount?: number
+          cost_type?: string
+          created_at?: string
+          currency?: string | null
+          department_id?: string | null
+          description?: string | null
+          id?: string
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processing_costs_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "processing_costs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -658,6 +1032,68 @@ export type Database = {
           },
         ]
       }
+      she_incidents: {
+        Row: {
+          closed_at: string | null
+          corrective_actions: string | null
+          created_at: string
+          department_id: string | null
+          description: string
+          id: string
+          incident_date: string
+          incident_id: string
+          incident_type: string
+          injured_person: string | null
+          lost_time_hours: number | null
+          reported_by: string | null
+          root_cause: string | null
+          severity: string
+          status: string
+        }
+        Insert: {
+          closed_at?: string | null
+          corrective_actions?: string | null
+          created_at?: string
+          department_id?: string | null
+          description: string
+          id?: string
+          incident_date?: string
+          incident_id: string
+          incident_type: string
+          injured_person?: string | null
+          lost_time_hours?: number | null
+          reported_by?: string | null
+          root_cause?: string | null
+          severity: string
+          status?: string
+        }
+        Update: {
+          closed_at?: string | null
+          corrective_actions?: string | null
+          created_at?: string
+          department_id?: string | null
+          description?: string
+          id?: string
+          incident_date?: string
+          incident_id?: string
+          incident_type?: string
+          injured_person?: string | null
+          lost_time_hours?: number | null
+          reported_by?: string | null
+          root_cause?: string | null
+          severity?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "she_incidents_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipment_pallets: {
         Row: {
           pallet_id: string
@@ -721,6 +1157,39 @@ export type Database = {
           packing_list_file?: string | null
           ship_date?: string
           ship_id?: string
+        }
+        Relationships: []
+      }
+      training_records: {
+        Row: {
+          created_at: string
+          expiry_date: string | null
+          id: string
+          status: string
+          trainer: string | null
+          training_date: string
+          training_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          status?: string
+          trainer?: string | null
+          training_date: string
+          training_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          status?: string
+          trainer?: string | null
+          training_date?: string
+          training_type?: string
+          user_id?: string
         }
         Relationships: []
       }
