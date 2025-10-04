@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Truck, FileText, Download } from "lucide-react";
+import { ArrowLeft, Truck, FileText, Download, ClipboardCheck } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 
 export default function Dispatch() {
@@ -25,7 +25,19 @@ export default function Dispatch() {
   const loadShipments = async () => {
     const { data } = await supabase
       .from("shipments")
-      .select("*, shipment_pallets(pallets(pallet_id))")
+      .select(`
+        *,
+        shipment_pallets(
+          pallets(
+            pallet_id,
+            pallet_cartons(
+              cartons(
+                work_orders(id, wo_id)
+              )
+            )
+          )
+        )
+      `)
       .order("created_at", { ascending: false });
     
     if (data) setShipments(data);
@@ -225,10 +237,23 @@ export default function Dispatch() {
                       title="Shipment"
                       size={100}
                     />
-                    <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
-                      <Download className="h-4 w-4 mr-2" />
-                      Docs
-                    </Button>
+                    <div className="flex flex-col gap-1">
+                      <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Docs
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => {
+                          const woId = shipment.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id;
+                          if (woId) navigate(`/dispatch-qc-report/${woId}`);
+                        }}
+                      >
+                        <ClipboardCheck className="h-4 w-4 mr-2" />
+                        QC Report
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>

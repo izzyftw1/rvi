@@ -165,6 +165,75 @@ export type Database = {
         }
         Relationships: []
       }
+      dimension_tolerances: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dimension_a_max: number | null
+          dimension_a_min: number | null
+          dimension_b_max: number | null
+          dimension_b_min: number | null
+          dimension_c_max: number | null
+          dimension_c_min: number | null
+          dimension_d_max: number | null
+          dimension_d_min: number | null
+          dimension_e_max: number | null
+          dimension_e_min: number | null
+          dimension_f_max: number | null
+          dimension_f_min: number | null
+          dimension_g_max: number | null
+          dimension_g_min: number | null
+          id: string
+          item_code: string
+          revision: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dimension_a_max?: number | null
+          dimension_a_min?: number | null
+          dimension_b_max?: number | null
+          dimension_b_min?: number | null
+          dimension_c_max?: number | null
+          dimension_c_min?: number | null
+          dimension_d_max?: number | null
+          dimension_d_min?: number | null
+          dimension_e_max?: number | null
+          dimension_e_min?: number | null
+          dimension_f_max?: number | null
+          dimension_f_min?: number | null
+          dimension_g_max?: number | null
+          dimension_g_min?: number | null
+          id?: string
+          item_code: string
+          revision?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dimension_a_max?: number | null
+          dimension_a_min?: number | null
+          dimension_b_max?: number | null
+          dimension_b_min?: number | null
+          dimension_c_max?: number | null
+          dimension_c_min?: number | null
+          dimension_d_max?: number | null
+          dimension_d_min?: number | null
+          dimension_e_max?: number | null
+          dimension_e_min?: number | null
+          dimension_f_max?: number | null
+          dimension_f_min?: number | null
+          dimension_g_max?: number | null
+          dimension_g_min?: number | null
+          id?: string
+          item_code?: string
+          revision?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       environmental_metrics: {
         Row: {
           created_at: string
@@ -205,6 +274,78 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hourly_qc_checks: {
+        Row: {
+          check_datetime: string
+          created_at: string
+          dimension_a: number | null
+          dimension_b: number | null
+          dimension_c: number | null
+          dimension_d: number | null
+          dimension_e: number | null
+          dimension_f: number | null
+          dimension_g: number | null
+          id: string
+          machine_id: string
+          operator_id: string | null
+          out_of_tolerance_dimensions: string[] | null
+          remarks: string | null
+          status: string
+          wo_id: string
+        }
+        Insert: {
+          check_datetime?: string
+          created_at?: string
+          dimension_a?: number | null
+          dimension_b?: number | null
+          dimension_c?: number | null
+          dimension_d?: number | null
+          dimension_e?: number | null
+          dimension_f?: number | null
+          dimension_g?: number | null
+          id?: string
+          machine_id: string
+          operator_id?: string | null
+          out_of_tolerance_dimensions?: string[] | null
+          remarks?: string | null
+          status?: string
+          wo_id: string
+        }
+        Update: {
+          check_datetime?: string
+          created_at?: string
+          dimension_a?: number | null
+          dimension_b?: number | null
+          dimension_c?: number | null
+          dimension_d?: number | null
+          dimension_e?: number | null
+          dimension_f?: number | null
+          dimension_g?: number | null
+          id?: string
+          machine_id?: string
+          operator_id?: string | null
+          out_of_tolerance_dimensions?: string[] | null
+          remarks?: string | null
+          status?: string
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hourly_qc_checks_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hourly_qc_checks_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]

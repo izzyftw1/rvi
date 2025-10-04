@@ -163,10 +163,18 @@ const Index = () => {
                 <span className="text-sm">Genealogy</span>
               </Button>
             </div>
-            <div className="grid grid-cols-1 gap-3 mt-3">
+            <div className="grid grid-cols-3 gap-3 mt-3">
               <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
-                <span className="text-sm font-bold">📊 Reports & Analytics</span>
+                <span className="text-sm font-bold">📊 Reports</span>
+              </Button>
+              <Button onClick={() => navigate("/tolerance-setup")} variant="outline" className="h-auto py-4 flex-col gap-2">
+                <ClipboardCheck className="h-6 w-6" />
+                <span className="text-sm">Tolerances</span>
+              </Button>
+              <Button onClick={() => navigate("/hourly-qc")} variant="outline" className="h-auto py-4 flex-col gap-2">
+                <ClipboardCheck className="h-6 w-6" />
+                <span className="text-sm">Hourly QC</span>
               </Button>
             </div>
           </CardContent>

@@ -19,6 +19,9 @@ import Packing from "./pages/Packing";
 import Dispatch from "./pages/Dispatch";
 import Genealogy from "./pages/Genealogy";
 import Reports from "./pages/Reports";
+import ToleranceSetup from "./pages/ToleranceSetup";
+import HourlyQC from "./pages/HourlyQC";
+import DispatchQCReport from "./pages/DispatchQCReport";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +49,9 @@ const App = () => (
           <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/genealogy" element={<Genealogy />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/tolerance-setup" element={<ToleranceSetup />} />
+          <Route path="/hourly-qc" element={<HourlyQC />} />
+          <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
