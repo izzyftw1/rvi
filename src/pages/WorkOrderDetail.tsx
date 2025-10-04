@@ -61,14 +61,47 @@ const WorkOrderDetail = () => {
 
       setQcRecords(qcData || []);
 
-      // Load hourly QC records
-      const { data: hourlyQcData } = await supabase
+      // Load hourly QC records (fetch base rows first)
+      const { data: hourlyChecks, error: hourlyErr } = await supabase
         .from("hourly_qc_checks")
-        .select("*, machines(machine_id, name), profiles(full_name)")
+        .select("*")
         .eq("wo_id", id)
         .order("check_datetime", { ascending: false });
 
-      setHourlyQcRecords(hourlyQcData || []);
+      if (hourlyErr || !hourlyChecks) {
+        setHourlyQcRecords([]);
+      } else {
+        // Enrich with machine and operator names without relying on FKs
+        const { data: allMachines } = await supabase
+          .from("machines")
+          .select("id, machine_id, name");
+        const machinesMap: Record<string, { machine_id: string; name: string }> = {};
+        (allMachines || []).forEach((m: any) => {
+          machinesMap[m.id] = { machine_id: m.machine_id, name: m.name };
+        });
+
+        const operatorIds = Array.from(
+          new Set((hourlyChecks || []).map((c: any) => c.operator_id).filter(Boolean))
+        );
+        let profilesMap: Record<string, { full_name: string }> = {};
+        if (operatorIds.length > 0) {
+          const { data: profileRows } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", operatorIds as string[]);
+          (profileRows || []).forEach((p: any) => {
+            profilesMap[p.id] = { full_name: p.full_name };
+          });
+        }
+
+        const enriched = (hourlyChecks || []).map((c: any) => ({
+          ...c,
+          machines: c.machine_id ? machinesMap[c.machine_id] : undefined,
+          profiles: c.operator_id ? profilesMap[c.operator_id] : undefined,
+        }));
+
+        setHourlyQcRecords(enriched);
+      }
 
       // Load scan events
       const { data: eventsData } = await supabase
