@@ -115,6 +115,41 @@ export type Database = {
         }
         Relationships: []
       }
+      laser_marking: {
+        Row: {
+          carton_id: string | null
+          id: string
+          marked_at: string | null
+          marked_by: string | null
+          marking_details: Json
+          station: string | null
+        }
+        Insert: {
+          carton_id?: string | null
+          id?: string
+          marked_at?: string | null
+          marked_by?: string | null
+          marking_details: Json
+          station?: string | null
+        }
+        Update: {
+          carton_id?: string | null
+          id?: string
+          marked_at?: string | null
+          marked_by?: string | null
+          marking_details?: Json
+          station?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "laser_marking_carton_id_fkey"
+            columns: ["carton_id"]
+            isOneToOne: false
+            referencedRelation: "cartons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       machines: {
         Row: {
           created_at: string
@@ -167,6 +202,8 @@ export type Database = {
           lot_id: string
           mtc_file: string | null
           net_weight: number
+          po_id: string | null
+          qc_status: string | null
           received_by: string | null
           received_date_time: string
           status: Database["public"]["Enums"]["material_status"]
@@ -183,6 +220,8 @@ export type Database = {
           lot_id: string
           mtc_file?: string | null
           net_weight: number
+          po_id?: string | null
+          qc_status?: string | null
           received_by?: string | null
           received_date_time?: string
           status?: Database["public"]["Enums"]["material_status"]
@@ -199,11 +238,57 @@ export type Database = {
           lot_id?: string
           mtc_file?: string | null
           net_weight?: number
+          po_id?: string | null
+          qc_status?: string | null
           received_by?: string | null
           received_date_time?: string
           status?: Database["public"]["Enums"]["material_status"]
           supplier?: string
           updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_lots_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          message: string
+          read: boolean | null
+          title: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          message: string
+          read?: boolean | null
+          title: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          message?: string
+          read?: boolean | null
+          title?: string
+          type?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -293,6 +378,62 @@ export type Database = {
           },
         ]
       }
+      purchase_orders: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          created_by: string | null
+          expected_delivery: string | null
+          id: string
+          material_spec: Json
+          po_id: string
+          quantity_kg: number
+          so_id: string | null
+          status: string
+          supplier: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expected_delivery?: string | null
+          id?: string
+          material_spec: Json
+          po_id: string
+          quantity_kg: number
+          so_id?: string | null
+          status?: string
+          supplier: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expected_delivery?: string | null
+          id?: string
+          material_spec?: Json
+          po_id?: string
+          quantity_kg?: number
+          so_id?: string | null
+          status?: string
+          supplier?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qc_records: {
         Row: {
           approved_by: string | null
@@ -360,6 +501,7 @@ export type Database = {
         Row: {
           actual_end: string | null
           actual_start: string | null
+          consumed_qty: number | null
           created_at: string
           department_id: string | null
           id: string
@@ -374,6 +516,7 @@ export type Database = {
         Insert: {
           actual_end?: string | null
           actual_start?: string | null
+          consumed_qty?: number | null
           created_at?: string
           department_id?: string | null
           id?: string
@@ -388,6 +531,7 @@ export type Database = {
         Update: {
           actual_end?: string | null
           actual_start?: string | null
+          consumed_qty?: number | null
           created_at?: string
           department_id?: string | null
           id?: string
@@ -415,6 +559,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sales_orders: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          created_by: string | null
+          customer: string
+          id: string
+          items: Json
+          po_date: string
+          po_number: string
+          so_id: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          customer: string
+          id?: string
+          items: Json
+          po_date: string
+          po_number: string
+          so_id: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          customer?: string
+          id?: string
+          items?: Json
+          po_date?: string
+          po_number?: string
+          so_id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       scan_events: {
         Row: {
@@ -606,13 +795,16 @@ export type Database = {
           bom: Json | null
           created_at: string
           customer: string
+          dispatch_allowed: boolean | null
           due_date: string
           id: string
           item_code: string
           priority: number | null
+          production_allowed: boolean | null
           quantity: number
           revision: string | null
           sales_order: string | null
+          so_id: string | null
           status: Database["public"]["Enums"]["wo_status"]
           updated_at: string
           wo_id: string
@@ -621,13 +813,16 @@ export type Database = {
           bom?: Json | null
           created_at?: string
           customer: string
+          dispatch_allowed?: boolean | null
           due_date: string
           id?: string
           item_code: string
           priority?: number | null
+          production_allowed?: boolean | null
           quantity: number
           revision?: string | null
           sales_order?: string | null
+          so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
           wo_id: string
@@ -636,18 +831,29 @@ export type Database = {
           bom?: Json | null
           created_at?: string
           customer?: string
+          dispatch_allowed?: boolean | null
           due_date?: string
           id?: string
           item_code?: string
           priority?: number | null
+          production_allowed?: boolean | null
           quantity?: number
           revision?: string | null
           sales_order?: string | null
+          so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
           wo_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -660,6 +866,17 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      notify_users: {
+        Args: {
+          _entity_id?: string
+          _entity_type?: string
+          _message: string
+          _title: string
+          _type: string
+          _user_ids: string[]
+        }
+        Returns: undefined
       }
     }
     Enums: {

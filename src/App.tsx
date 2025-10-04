@@ -6,12 +6,16 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Scan from "./pages/Scan";
+import Sales from "./pages/Sales";
+import Purchase from "./pages/Purchase";
 import MaterialInwards from "./pages/MaterialInwards";
+import QCIncoming from "./pages/QCIncoming";
 import WorkOrders from "./pages/WorkOrders";
 import NewWorkOrder from "./pages/NewWorkOrder";
 import WorkOrderDetail from "./pages/WorkOrderDetail";
 import Quality from "./pages/Quality";
 import Packing from "./pages/Packing";
+import Genealogy from "./pages/Genealogy";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,12 +30,16 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/scan" element={<Scan />} />
+          <Route path="/sales" element={<Sales />} />
+          <Route path="/purchase" element={<Purchase />} />
           <Route path="/materials/inwards" element={<MaterialInwards />} />
+          <Route path="/qc/incoming" element={<QCIncoming />} />
           <Route path="/work-orders" element={<WorkOrders />} />
           <Route path="/work-orders/new" element={<NewWorkOrder />} />
           <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
           <Route path="/quality" element={<Quality />} />
           <Route path="/packing" element={<Packing />} />
+          <Route path="/genealogy" element={<Genealogy />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

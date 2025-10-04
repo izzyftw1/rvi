@@ -13,7 +13,8 @@ import {
   LogOut,
   BarChart3,
   Box,
-  ClipboardCheck
+  ClipboardCheck,
+  FileText
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,31 +118,39 @@ const Index = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Button onClick={() => navigate("/scan")} className="h-auto py-4 flex-col gap-2">
-                <QrCode className="h-6 w-6" />
-                <span className="text-sm">Scan</span>
+              <Button onClick={() => navigate("/sales")} className="h-auto py-4 flex-col gap-2">
+                <FileText className="h-6 w-6" />
+                <span className="text-sm">Sales</span>
               </Button>
-              <Button onClick={() => navigate("/work-orders")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Search className="h-6 w-6" />
-                <span className="text-sm">Work Orders</span>
+              <Button onClick={() => navigate("/purchase")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <Truck className="h-6 w-6" />
+                <span className="text-sm">Purchase</span>
               </Button>
               <Button onClick={() => navigate("/materials/inwards")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <Box className="h-6 w-6" />
-                <span className="text-sm">Material Inwards</span>
+                <span className="text-sm">Stores</span>
+              </Button>
+              <Button onClick={() => navigate("/qc/incoming")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <ClipboardCheck className="h-6 w-6" />
+                <span className="text-sm">QC In</span>
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+              <Button onClick={() => navigate("/work-orders")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <Search className="h-6 w-6" />
+                <span className="text-sm">Production</span>
               </Button>
               <Button onClick={() => navigate("/quality")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <ClipboardCheck className="h-6 w-6" />
-                <span className="text-sm">Quality</span>
+                <span className="text-sm">QC Batch</span>
               </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mt-3">
               <Button onClick={() => navigate("/packing")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <Package className="h-6 w-6" />
                 <span className="text-sm">Packing</span>
               </Button>
-              <Button variant="secondary" className="h-auto py-4 flex-col gap-2">
+              <Button onClick={() => navigate("/genealogy")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
-                <span className="text-sm">Reports</span>
+                <span className="text-sm">Genealogy</span>
               </Button>
             </div>
           </CardContent>

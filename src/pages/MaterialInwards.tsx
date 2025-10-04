@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Upload, Printer } from "lucide-react";
 
@@ -12,6 +13,7 @@ const MaterialInwards = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
   
   const [formData, setFormData] = useState({
     lot_id: "",
@@ -24,29 +26,41 @@ const MaterialInwards = () => {
     mtc_file: null as File | null,
   });
 
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [selectedPO, setSelectedPO] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    
+    const loadPurchaseOrders = async () => {
+      const { data } = await supabase
+        .from("purchase_orders")
+        .select("*")
+        .eq("status", "approved");
+      if (data) setPurchaseOrders(data);
+    };
+    loadPurchaseOrders();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Upload MTC if provided
-      let mtc_file_url = null;
+      let mtcFileUrl = "";
+      
       if (formData.mtc_file) {
         const fileExt = formData.mtc_file.name.split('.').pop();
-        const fileName = `${user?.id}/${Date.now()}.${fileExt}`;
-        
+        const fileName = `material_lots/${formData.lot_id}/mtc_${Date.now()}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
-          .from('documents')
+          .from("documents")
           .upload(fileName, formData.mtc_file);
-
+        
         if (uploadError) throw uploadError;
-        mtc_file_url = fileName;
+        mtcFileUrl = fileName;
       }
 
-      // Create material lot
-      const { error: insertError } = await supabase
+      const { data: lotData, error: lotError } = await supabase
         .from("material_lots")
         .insert({
           lot_id: formData.lot_id,
@@ -56,43 +70,58 @@ const MaterialInwards = () => {
           gross_weight: parseFloat(formData.gross_weight),
           net_weight: parseFloat(formData.net_weight),
           bin_location: formData.bin_location,
-          mtc_file: mtc_file_url,
+          mtc_file: mtcFileUrl,
           received_by: user?.id,
-          status: "received",
-        });
+          po_id: selectedPO || null,
+          qc_status: "pending"
+        })
+        .select()
+        .single();
 
-      if (insertError) throw insertError;
+      if (lotError) throw lotError;
 
-      // Record scan event
       await supabase.from("scan_events").insert({
         entity_type: "material_lot",
         entity_id: formData.lot_id,
-        to_stage: "Stores",
+        to_stage: "received",
+        quantity: parseFloat(formData.net_weight),
         owner_id: user?.id,
+        remarks: `Received from ${formData.supplier}`
       });
 
-      toast({
-        title: "Material received",
-        description: `Lot ${formData.lot_id} created successfully`,
-      });
+      // Mark PO as received
+      if (selectedPO) {
+        await supabase
+          .from("purchase_orders")
+          .update({ status: "received" })
+          .eq("id", selectedPO);
+      }
 
-      // Reset form
+      // Notify QC team
+      const qcUsers = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "quality");
+      
+      if (qcUsers.data) {
+        await supabase.rpc("notify_users", {
+          _user_ids: qcUsers.data.map(u => u.user_id),
+          _type: "material_received",
+          _title: "New Material for Incoming QC",
+          _message: `Lot ${formData.lot_id} requires incoming inspection`,
+          _entity_type: "material_lot",
+          _entity_id: lotData.id
+        });
+      }
+
+      toast({ description: "Material received successfully. QC team notified." });
       setFormData({
-        lot_id: "",
-        heat_no: "",
-        alloy: "",
-        supplier: "",
-        gross_weight: "",
-        net_weight: "",
-        bin_location: "",
-        mtc_file: null,
+        lot_id: "", heat_no: "", alloy: "", supplier: "",
+        gross_weight: "", net_weight: "", bin_location: "", mtc_file: null
       });
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to receive material",
-        description: error.message,
-      });
+      setSelectedPO("");
+    } catch (error) {
+      toast({ variant: "destructive", description: "Failed to receive material" });
     } finally {
       setLoading(false);
     }
