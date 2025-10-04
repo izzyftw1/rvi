@@ -252,8 +252,12 @@ export type Database = {
           operation: Database["public"]["Enums"]["operation_letter"]
           operator_id: string | null
           out_of_tolerance_dimensions: string[] | null
+          plating_status: string | null
+          plating_thickness_status: string | null
           remarks: string | null
           status: string
+          thread_status: string | null
+          visual_status: string | null
           wo_id: string
         }
         Insert: {
@@ -265,8 +269,12 @@ export type Database = {
           operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
+          plating_status?: string | null
+          plating_thickness_status?: string | null
           remarks?: string | null
           status?: string
+          thread_status?: string | null
+          visual_status?: string | null
           wo_id: string
         }
         Update: {
@@ -278,8 +286,12 @@ export type Database = {
           operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
+          plating_status?: string | null
+          plating_thickness_status?: string | null
           remarks?: string | null
           status?: string
+          thread_status?: string | null
+          visual_status?: string | null
           wo_id?: string
         }
         Relationships: [

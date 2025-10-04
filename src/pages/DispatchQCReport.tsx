@@ -57,6 +57,13 @@ const DispatchQCReport = () => {
       operations.forEach((op) => {
         const opChecks = checks.filter(c => c.operation === op);
         const opDimensionStats: any = {};
+        
+        // Calculate binary QC stats
+        const threadOK = opChecks.filter(c => c.thread_status === "OK").length;
+        const visualOK = opChecks.filter(c => c.visual_status === "OK").length;
+        const platingOK = opChecks.filter(c => c.plating_status === "OK").length;
+        const platingThicknessOK = opChecks.filter(c => c.plating_thickness_status === "OK").length;
+        const totalOp = opChecks.length;
 
         // Get all unique dimension numbers from all checks
         const allDimNums = new Set<string>();
@@ -91,6 +98,12 @@ const DispatchQCReport = () => {
           totalChecks: opChecks.length,
           passedChecks: opChecks.filter((c) => c.status === "pass").length,
           failedChecks: opChecks.filter((c) => c.status === "fail").length,
+          binaryChecks: {
+            thread: { ok: threadOK, notOk: totalOp - threadOK, okPercent: ((threadOK / totalOp) * 100).toFixed(1) },
+            visual: { ok: visualOK, notOk: totalOp - visualOK, okPercent: ((visualOK / totalOp) * 100).toFixed(1) },
+            plating: { ok: platingOK, notOk: totalOp - platingOK, okPercent: ((platingOK / totalOp) * 100).toFixed(1) },
+            platingThickness: { ok: platingThicknessOK, notOk: totalOp - platingThicknessOK, okPercent: ((platingThicknessOK / totalOp) * 100).toFixed(1) },
+          },
         };
       });
 
@@ -153,6 +166,34 @@ const DispatchQCReport = () => {
         theme: 'grid',
         styles: { fontSize: 9 },
         headStyles: { fillColor: [66, 139, 202] },
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 10;
+
+      // Add binary QC summary table
+      if (yPos > 220) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(10);
+      doc.text(`Binary QC Checks - Operation ${op}`, 14, yPos);
+      yPos += 5;
+
+      const binaryData = [
+        ['Thread', opStats.binaryChecks.thread.okPercent + '%', opStats.binaryChecks.thread.ok, opStats.binaryChecks.thread.notOk],
+        ['Visual', opStats.binaryChecks.visual.okPercent + '%', opStats.binaryChecks.visual.ok, opStats.binaryChecks.visual.notOk],
+        ['Plating', opStats.binaryChecks.plating.okPercent + '%', opStats.binaryChecks.plating.ok, opStats.binaryChecks.plating.notOk],
+        ['Plating Thickness', opStats.binaryChecks.platingThickness.okPercent + '%', opStats.binaryChecks.platingThickness.ok, opStats.binaryChecks.platingThickness.notOk],
+      ];
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Check Type', '% OK', 'OK Count', 'Not OK Count']],
+        body: binaryData,
+        theme: 'grid',
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [34, 139, 34] },
       });
 
       yPos = (doc as any).lastAutoTable.finalY + 10;
@@ -321,29 +362,72 @@ const DispatchQCReport = () => {
                 Total: {opStats.totalChecks} | Passed: {opStats.passedChecks} | Failed: {opStats.failedChecks}
               </div>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Dimension</TableHead>
-                    <TableHead className="text-right">Min</TableHead>
-                    <TableHead className="text-right">Max</TableHead>
-                    <TableHead className="text-right">Average</TableHead>
-                    <TableHead className="text-right">Samples</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => (
-                    <TableRow key={dim}>
-                      <TableCell className="font-medium">Dimension {dim}</TableCell>
-                      <TableCell className="text-right">{stats.min.toFixed(3)}</TableCell>
-                      <TableCell className="text-right">{stats.max.toFixed(3)}</TableCell>
-                      <TableCell className="text-right">{stats.avg.toFixed(3)}</TableCell>
-                      <TableCell className="text-right">{stats.count}</TableCell>
+            <CardContent className="space-y-6">
+              <div>
+                <h3 className="font-semibold mb-3">Dimensional Data</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dimension</TableHead>
+                      <TableHead className="text-right">Min</TableHead>
+                      <TableHead className="text-right">Max</TableHead>
+                      <TableHead className="text-right">Average</TableHead>
+                      <TableHead className="text-right">Samples</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => (
+                      <TableRow key={dim}>
+                        <TableCell className="font-medium">Dimension {dim}</TableCell>
+                        <TableCell className="text-right">{stats.min.toFixed(3)}</TableCell>
+                        <TableCell className="text-right">{stats.max.toFixed(3)}</TableCell>
+                        <TableCell className="text-right">{stats.avg.toFixed(3)}</TableCell>
+                        <TableCell className="text-right">{stats.count}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div>
+                <h3 className="font-semibold mb-3">Binary QC Checks Summary</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Check Type</TableHead>
+                      <TableHead className="text-right">% OK</TableHead>
+                      <TableHead className="text-right">OK Count</TableHead>
+                      <TableHead className="text-right">Not OK Count</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">Thread</TableCell>
+                      <TableCell className="text-right">{opStats.binaryChecks.thread.okPercent}%</TableCell>
+                      <TableCell className="text-right text-green-600">{opStats.binaryChecks.thread.ok}</TableCell>
+                      <TableCell className="text-right text-red-600">{opStats.binaryChecks.thread.notOk}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Visual</TableCell>
+                      <TableCell className="text-right">{opStats.binaryChecks.visual.okPercent}%</TableCell>
+                      <TableCell className="text-right text-green-600">{opStats.binaryChecks.visual.ok}</TableCell>
+                      <TableCell className="text-right text-red-600">{opStats.binaryChecks.visual.notOk}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Plating</TableCell>
+                      <TableCell className="text-right">{opStats.binaryChecks.plating.okPercent}%</TableCell>
+                      <TableCell className="text-right text-green-600">{opStats.binaryChecks.plating.ok}</TableCell>
+                      <TableCell className="text-right text-red-600">{opStats.binaryChecks.plating.notOk}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">Plating Thickness</TableCell>
+                      <TableCell className="text-right">{opStats.binaryChecks.platingThickness.okPercent}%</TableCell>
+                      <TableCell className="text-right text-green-600">{opStats.binaryChecks.platingThickness.ok}</TableCell>
+                      <TableCell className="text-right text-red-600">{opStats.binaryChecks.platingThickness.notOk}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         ))}

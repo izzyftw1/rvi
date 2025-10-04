@@ -20,6 +20,10 @@ const HourlyQC = () => {
   const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [remarks, setRemarks] = useState("");
   const [qcResults, setQcResults] = useState<any>(null);
+  const [threadStatus, setThreadStatus] = useState<string>("");
+  const [visualStatus, setVisualStatus] = useState<string>("");
+  const [platingStatus, setPlatingStatus] = useState<string>("");
+  const [platingThicknessStatus, setPlatingThicknessStatus] = useState<string>("");
 
   useEffect(() => {
     loadData();
@@ -105,6 +109,11 @@ const HourlyQC = () => {
         return;
       }
 
+      if (!threadStatus || !visualStatus || !platingStatus || !platingThicknessStatus) {
+        toast.error("Please select OK/Not OK for all binary QC checks (Thread, Visual, Plating, Plating Thickness)");
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       
       const outOfToleranceDimensions: string[] = [];
@@ -131,6 +140,10 @@ const HourlyQC = () => {
         status: status,
         out_of_tolerance_dimensions: outOfToleranceDimensions,
         remarks: remarks || null,
+        thread_status: threadStatus,
+        visual_status: visualStatus,
+        plating_status: platingStatus,
+        plating_thickness_status: platingThicknessStatus,
       });
 
       if (error) throw error;
@@ -149,6 +162,10 @@ const HourlyQC = () => {
       });
       setMeasurements(initMeasurements);
       setRemarks("");
+      setThreadStatus("");
+      setVisualStatus("");
+      setPlatingStatus("");
+      setPlatingThicknessStatus("");
     } catch (error: any) {
       toast.error("Failed to submit QC check: " + error.message);
     }
@@ -267,6 +284,63 @@ const HourlyQC = () => {
                         </div>
                       );
                     })}
+                </div>
+
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="font-semibold mb-4">Binary QC Checks (Required)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="thread">Thread</Label>
+                      <Select value={threadStatus} onValueChange={setThreadStatus}>
+                        <SelectTrigger className={!threadStatus ? "border-yellow-500" : ""}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="OK">OK</SelectItem>
+                          <SelectItem value="Not OK">Not OK</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="visual">Visual</Label>
+                      <Select value={visualStatus} onValueChange={setVisualStatus}>
+                        <SelectTrigger className={!visualStatus ? "border-yellow-500" : ""}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="OK">OK</SelectItem>
+                          <SelectItem value="Not OK">Not OK</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="plating">Plating</Label>
+                      <Select value={platingStatus} onValueChange={setPlatingStatus}>
+                        <SelectTrigger className={!platingStatus ? "border-yellow-500" : ""}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="OK">OK</SelectItem>
+                          <SelectItem value="Not OK">Not OK</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="platingThickness">Plating Thickness</Label>
+                      <Select value={platingThicknessStatus} onValueChange={setPlatingThicknessStatus}>
+                        <SelectTrigger className={!platingThicknessStatus ? "border-yellow-500" : ""}>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="OK">OK</SelectItem>
+                          <SelectItem value="Not OK">Not OK</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
 
                 <div>

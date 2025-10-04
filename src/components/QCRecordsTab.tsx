@@ -16,6 +16,10 @@ interface QCRecord {
   status: string;
   out_of_tolerance_dimensions: string[] | null;
   remarks: string | null;
+  thread_status: string | null;
+  visual_status: string | null;
+  plating_status: string | null;
+  plating_thickness_status: string | null;
   machines?: { machine_id: string; name: string };
   profiles?: { full_name: string };
 }
@@ -54,6 +58,10 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
       "Machine",
       "Operator",
       "Dimensions",
+      "Thread",
+      "Visual",
+      "Plating",
+      "Plating Thickness",
       "Status",
       "Out of Tolerance",
       "Remarks",
@@ -72,6 +80,10 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
         record.machines?.machine_id || "",
         record.profiles?.full_name || "",
         dimValues,
+        record.thread_status || "",
+        record.visual_status || "",
+        record.plating_status || "",
+        record.plating_thickness_status || "",
         record.status || "",
         record.out_of_tolerance_dimensions?.join(", ") || "",
         record.remarks || "",
@@ -226,6 +238,33 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
                     </p>
                   </div>
                 )}
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                  <div className={`p-2 rounded text-center text-xs ${
+                    record.thread_status === "OK" ? "bg-green-100 border border-green-300" : "bg-red-100 border border-red-300"
+                  }`}>
+                    <div className="font-medium">Thread</div>
+                    <div className="font-bold">{record.thread_status || "—"}</div>
+                  </div>
+                  <div className={`p-2 rounded text-center text-xs ${
+                    record.visual_status === "OK" ? "bg-green-100 border border-green-300" : "bg-red-100 border border-red-300"
+                  }`}>
+                    <div className="font-medium">Visual</div>
+                    <div className="font-bold">{record.visual_status || "—"}</div>
+                  </div>
+                  <div className={`p-2 rounded text-center text-xs ${
+                    record.plating_status === "OK" ? "bg-green-100 border border-green-300" : "bg-red-100 border border-red-300"
+                  }`}>
+                    <div className="font-medium">Plating</div>
+                    <div className="font-bold">{record.plating_status || "—"}</div>
+                  </div>
+                  <div className={`p-2 rounded text-center text-xs ${
+                    record.plating_thickness_status === "OK" ? "bg-green-100 border border-green-300" : "bg-red-100 border border-red-300"
+                  }`}>
+                    <div className="font-medium">Plating Thickness</div>
+                    <div className="font-bold">{record.plating_thickness_status || "—"}</div>
+                  </div>
+                </div>
 
                 {record.remarks && (
                   <div className="mt-2 p-2 bg-secondary/50 rounded">
