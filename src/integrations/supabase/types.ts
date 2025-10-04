@@ -185,6 +185,7 @@ export type Database = {
           dimension_g_min: number | null
           id: string
           item_code: string
+          operation_no: number
           revision: string | null
           updated_at: string
         }
@@ -207,6 +208,7 @@ export type Database = {
           dimension_g_min?: number | null
           id?: string
           item_code: string
+          operation_no?: number
           revision?: string | null
           updated_at?: string
         }
@@ -229,6 +231,7 @@ export type Database = {
           dimension_g_min?: number | null
           id?: string
           item_code?: string
+          operation_no?: number
           revision?: string | null
           updated_at?: string
         }
@@ -292,6 +295,7 @@ export type Database = {
           id: string
           item_code: string | null
           machine_id: string
+          operation_no: number
           operator_id: string | null
           out_of_tolerance_dimensions: string[] | null
           remarks: string | null
@@ -311,6 +315,7 @@ export type Database = {
           id?: string
           item_code?: string | null
           machine_id: string
+          operation_no?: number
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
           remarks?: string | null
@@ -330,6 +335,7 @@ export type Database = {
           id?: string
           item_code?: string | null
           machine_id?: string
+          operation_no?: number
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
           remarks?: string | null

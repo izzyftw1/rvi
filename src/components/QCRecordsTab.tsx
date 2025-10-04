@@ -12,6 +12,7 @@ interface QCRecord {
   item_code: string;
   machine_id: string;
   operator_id: string;
+  operation_no: number;
   dimension_a: number | null;
   dimension_b: number | null;
   dimension_c: number | null;
@@ -34,6 +35,7 @@ interface QCRecordsTabProps {
 export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
   const [machineFilter, setMachineFilter] = useState<string>("all");
   const [operatorFilter, setOperatorFilter] = useState<string>("all");
+  const [operationFilter, setOperationFilter] = useState<string>("all");
 
   const uniqueMachines = Array.from(
     new Set(records.map((r) => r.machines?.machine_id).filter(Boolean))
@@ -41,16 +43,19 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
   const uniqueOperators = Array.from(
     new Set(records.map((r) => r.profiles?.full_name).filter(Boolean))
   );
+  const uniqueOperations = Array.from(new Set(records.map((r) => r.operation_no))).sort((a, b) => a - b);
 
   const filteredRecords = records.filter((record) => {
     const machineMatch = machineFilter === "all" || record.machines?.machine_id === machineFilter;
     const operatorMatch = operatorFilter === "all" || record.profiles?.full_name === operatorFilter;
-    return machineMatch && operatorMatch;
+    const operationMatch = operationFilter === "all" || record.operation_no.toString() === operationFilter;
+    return machineMatch && operatorMatch && operationMatch;
   });
 
   const exportToExcel = () => {
     const headers = [
       "Timestamp",
+      "Operation",
       "Item Code",
       "Machine",
       "Operator",
@@ -68,6 +73,7 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
 
     const rows = filteredRecords.map((record) => [
       new Date(record.check_datetime).toLocaleString(),
+      record.operation_no,
       record.item_code || "",
       record.machines?.machine_id || "",
       record.profiles?.full_name || "",
@@ -114,8 +120,8 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
             </Button>
           </div>
         </div>
-        <div className="flex gap-4 mt-4">
-          <div className="flex-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <div>
             <Select value={machineFilter} onValueChange={setMachineFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by Machine" />
@@ -130,7 +136,7 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex-1">
+          <div>
             <Select value={operatorFilter} onValueChange={setOperatorFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by Operator" />
@@ -140,6 +146,21 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
                 {uniqueOperators.map((operator) => (
                   <SelectItem key={operator} value={operator!}>
                     {operator}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Select value={operationFilter} onValueChange={setOperationFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by Operation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Operations</SelectItem>
+                {uniqueOperations.map((op) => (
+                  <SelectItem key={op} value={op.toString()}>
+                    Operation {op}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -162,7 +183,9 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium">{new Date(record.check_datetime).toLocaleString()}</p>
+                      <p className="font-medium">
+                        {new Date(record.check_datetime).toLocaleString()} - Operation {record.operation_no}
+                      </p>
                       <Badge variant={record.status === "pass" ? "default" : "destructive"}>
                         {record.status.toUpperCase()}
                       </Badge>

@@ -16,6 +16,7 @@ const HourlyQC = () => {
   const [machines, setMachines] = useState<any[]>([]);
   const [selectedWO, setSelectedWO] = useState("");
   const [selectedMachine, setSelectedMachine] = useState("");
+  const [operationNo, setOperationNo] = useState("1");
   const [tolerances, setTolerances] = useState<any>(null);
   const [measurements, setMeasurements] = useState({
     dimension_a: "",
@@ -35,10 +36,10 @@ const HourlyQC = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedWO) {
+    if (selectedWO && operationNo) {
       loadTolerances();
     }
-  }, [selectedWO]);
+  }, [selectedWO, operationNo]);
 
   const loadData = async () => {
     try {
@@ -73,13 +74,14 @@ const HourlyQC = () => {
         .from("dimension_tolerances")
         .select("*")
         .eq("item_code", wo.item_code)
+        .eq("operation_no", parseInt(operationNo))
         .maybeSingle();
 
       if (error) throw error;
       setTolerances(data);
 
       if (!data) {
-        toast.warning("No tolerances defined for this item code");
+        toast.warning(`No tolerances defined for Operation ${operationNo}`);
       }
     } catch (error: any) {
       toast.error("Failed to load tolerances: " + error.message);
@@ -133,6 +135,7 @@ const HourlyQC = () => {
         item_code: wo?.item_code,
         machine_id: selectedMachine,
         operator_id: user?.id,
+        operation_no: parseInt(operationNo),
         dimension_a: measurements.dimension_a ? parseFloat(measurements.dimension_a) : null,
         dimension_b: measurements.dimension_b ? parseFloat(measurements.dimension_b) : null,
         dimension_c: measurements.dimension_c ? parseFloat(measurements.dimension_c) : null,
@@ -191,10 +194,10 @@ const HourlyQC = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Select Work Order & Machine</CardTitle>
+            <CardTitle>Select Work Order, Operation & Machine</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label>Work Order</Label>
                 <Select value={selectedWO} onValueChange={setSelectedWO}>
@@ -205,6 +208,21 @@ const HourlyQC = () => {
                     {workOrders.map((wo) => (
                       <SelectItem key={wo.id} value={wo.id}>
                         {wo.wo_id} - {wo.item_code} ({wo.customer})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Operation Number</Label>
+                <Select value={operationNo} onValueChange={setOperationNo}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Operation" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {Array.from({ length: 100 }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        Operation {num}
                       </SelectItem>
                     ))}
                   </SelectContent>

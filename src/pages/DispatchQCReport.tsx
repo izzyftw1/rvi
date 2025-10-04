@@ -46,28 +46,43 @@ const DispatchQCReport = () => {
         return;
       }
 
-      // Calculate min, max, avg for each dimension
+      // Group checks by operation number and calculate stats per operation
       const dimensions = ["a", "b", "c", "d", "e", "f", "g"];
-      const dimensionStats: any = {};
+      const operationStats: any = {};
 
-      dimensions.forEach((dim) => {
-        const values = checks
-          .map((c) => c[`dimension_${dim}`])
-          .filter((v) => v !== null && v !== undefined);
+      // Get unique operation numbers
+      const operations = Array.from(new Set(checks.map(c => c.operation_no))).sort((a, b) => a - b);
 
-        if (values.length > 0) {
-          dimensionStats[dim.toUpperCase()] = {
-            min: Math.min(...values),
-            max: Math.max(...values),
-            avg: values.reduce((a, b) => a + b, 0) / values.length,
-            count: values.length,
-          };
-        }
+      operations.forEach((opNo) => {
+        const opChecks = checks.filter(c => c.operation_no === opNo);
+        const opDimensionStats: any = {};
+
+        dimensions.forEach((dim) => {
+          const values = opChecks
+            .map((c) => c[`dimension_${dim}`])
+            .filter((v) => v !== null && v !== undefined);
+
+          if (values.length > 0) {
+            opDimensionStats[dim.toUpperCase()] = {
+              min: Math.min(...values),
+              max: Math.max(...values),
+              avg: values.reduce((a, b) => a + b, 0) / values.length,
+              count: values.length,
+            };
+          }
+        });
+
+        operationStats[opNo] = {
+          dimensions: opDimensionStats,
+          totalChecks: opChecks.length,
+          passedChecks: opChecks.filter((c) => c.status === "pass").length,
+          failedChecks: opChecks.filter((c) => c.status === "fail").length,
+        };
       });
 
       setQcData({
         checks,
-        dimensionStats,
+        operationStats,
         totalChecks: checks.length,
         passedChecks: checks.filter((c) => c.status === "pass").length,
         failedChecks: checks.filter((c) => c.status === "fail").length,
@@ -177,35 +192,40 @@ const DispatchQCReport = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Dimensional Analysis (A-G)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Dimension</TableHead>
-                  <TableHead className="text-right">Min</TableHead>
-                  <TableHead className="text-right">Max</TableHead>
-                  <TableHead className="text-right">Average</TableHead>
-                  <TableHead className="text-right">Samples</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.entries(qcData.dimensionStats).map(([dim, stats]: [string, any]) => (
-                  <TableRow key={dim}>
-                    <TableCell className="font-medium">Dimension {dim}</TableCell>
-                    <TableCell className="text-right">{stats.min.toFixed(3)}</TableCell>
-                    <TableCell className="text-right">{stats.max.toFixed(3)}</TableCell>
-                    <TableCell className="text-right">{stats.avg.toFixed(3)}</TableCell>
-                    <TableCell className="text-right">{stats.count}</TableCell>
+        {Object.entries(qcData.operationStats).map(([opNo, opStats]: [string, any]) => (
+          <Card key={opNo}>
+            <CardHeader>
+              <CardTitle>Operation {opNo} - Dimensional Analysis (A-G)</CardTitle>
+              <div className="text-sm text-muted-foreground">
+                Total: {opStats.totalChecks} | Passed: {opStats.passedChecks} | Failed: {opStats.failedChecks}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Dimension</TableHead>
+                    <TableHead className="text-right">Min</TableHead>
+                    <TableHead className="text-right">Max</TableHead>
+                    <TableHead className="text-right">Average</TableHead>
+                    <TableHead className="text-right">Samples</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => (
+                    <TableRow key={dim}>
+                      <TableCell className="font-medium">Dimension {dim}</TableCell>
+                      <TableCell className="text-right">{stats.min.toFixed(3)}</TableCell>
+                      <TableCell className="text-right">{stats.max.toFixed(3)}</TableCell>
+                      <TableCell className="text-right">{stats.avg.toFixed(3)}</TableCell>
+                      <TableCell className="text-right">{stats.count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        ))}
 
         <Card>
           <CardHeader>
@@ -247,7 +267,7 @@ const DispatchQCReport = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-medium">
-                        {new Date(check.check_datetime).toLocaleString()}
+                        {new Date(check.check_datetime).toLocaleString()} - Operation {check.operation_no}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Status: {check.status === "pass" ? "PASS" : "FAIL"}

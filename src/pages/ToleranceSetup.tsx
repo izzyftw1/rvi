@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Edit2, Save, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -16,6 +17,7 @@ const ToleranceSetup = () => {
   const [formData, setFormData] = useState({
     item_code: "",
     revision: "",
+    operation_no: "1",
     dimension_a_min: "",
     dimension_a_max: "",
     dimension_b_min: "",
@@ -57,6 +59,7 @@ const ToleranceSetup = () => {
       const payload = {
         item_code: formData.item_code,
         revision: formData.revision || null,
+        operation_no: parseInt(formData.operation_no),
         dimension_a_min: formData.dimension_a_min ? parseFloat(formData.dimension_a_min) : null,
         dimension_a_max: formData.dimension_a_max ? parseFloat(formData.dimension_a_max) : null,
         dimension_b_min: formData.dimension_b_min ? parseFloat(formData.dimension_b_min) : null,
@@ -100,6 +103,7 @@ const ToleranceSetup = () => {
     setFormData({
       item_code: tolerance.item_code,
       revision: tolerance.revision || "",
+      operation_no: tolerance.operation_no?.toString() || "1",
       dimension_a_min: tolerance.dimension_a_min || "",
       dimension_a_max: tolerance.dimension_a_max || "",
       dimension_b_min: tolerance.dimension_b_min || "",
@@ -122,6 +126,7 @@ const ToleranceSetup = () => {
     setFormData({
       item_code: "",
       revision: "",
+      operation_no: "1",
       dimension_a_min: "",
       dimension_a_max: "",
       dimension_b_min: "",
@@ -159,7 +164,7 @@ const ToleranceSetup = () => {
             <CardTitle>{editingId ? "Edit Tolerance" : "Add New Tolerance"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label>Item Code</Label>
                 <Input
@@ -175,6 +180,21 @@ const ToleranceSetup = () => {
                   onChange={(e) => setFormData({ ...formData, revision: e.target.value })}
                   placeholder="Optional"
                 />
+              </div>
+              <div>
+                <Label>Operation Number</Label>
+                <Select value={formData.operation_no} onValueChange={(val) => setFormData({ ...formData, operation_no: val })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {Array.from({ length: 100 }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        Operation {num}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -260,6 +280,7 @@ const ToleranceSetup = () => {
                       <div className="font-medium">
                         {tol.item_code}
                         {tol.revision && ` (Rev: ${tol.revision})`}
+                        {" - Operation " + tol.operation_no}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         {dimensions
