@@ -29,6 +29,7 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
   const [machineFilter, setMachineFilter] = useState<string>("all");
   const [operatorFilter, setOperatorFilter] = useState<string>("all");
   const [operationFilter, setOperationFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const uniqueMachines = Array.from(
     new Set(records.map((r) => r.machines?.machine_id).filter(Boolean))
@@ -42,7 +43,8 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
     const machineMatch = machineFilter === "all" || record.machines?.machine_id === machineFilter;
     const operatorMatch = operatorFilter === "all" || record.profiles?.full_name === operatorFilter;
     const operationMatch = operationFilter === "all" || record.operation === operationFilter;
-    return machineMatch && operatorMatch && operationMatch;
+    const statusMatch = statusFilter === "all" || record.status === statusFilter;
+    return machineMatch && operatorMatch && operationMatch && statusMatch;
   });
 
   const exportToExcel = () => {
@@ -107,7 +109,7 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
             </Button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
           <div>
             <Select value={machineFilter} onValueChange={setMachineFilter}>
               <SelectTrigger>
@@ -150,6 +152,18 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
                     Operation {op}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pass">Pass Only</SelectItem>
+                <SelectItem value="fail">Fail Only</SelectItem>
               </SelectContent>
             </Select>
           </div>
