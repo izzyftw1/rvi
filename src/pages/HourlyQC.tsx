@@ -51,7 +51,6 @@ const HourlyQC = () => {
         supabase
           .from("machines")
           .select("*")
-          .eq("status", "available")
           .order("machine_id"),
       ]);
 
@@ -202,7 +201,7 @@ const HourlyQC = () => {
                   <SelectContent>
                     {workOrders.map((wo) => (
                       <SelectItem key={wo.id} value={wo.id}>
-                        {wo.wo_id} - {wo.item_code}
+                        {wo.wo_id} - {wo.item_code} ({wo.customer})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -214,7 +213,7 @@ const HourlyQC = () => {
                   <SelectTrigger>
                     <SelectValue placeholder="Select Machine" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-60">
                     {machines.map((machine) => (
                       <SelectItem key={machine.id} value={machine.id}>
                         {machine.machine_id} - {machine.name}
