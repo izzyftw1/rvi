@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ArrowLeft, Download, FileText } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const DispatchQCReport = () => {
   const { woId } = useParams();
@@ -95,11 +97,118 @@ const DispatchQCReport = () => {
   };
 
   const exportToPDF = () => {
-    toast.info("PDF export functionality coming soon");
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(18);
+    doc.text("Final Dispatch QC Report", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Customer: ${workOrder.customer}`, 14, 30);
+    doc.text(`Work Order: ${workOrder.wo_id}`, 14, 36);
+    doc.text(`Part Number: ${workOrder.item_code}`, 14, 42);
+    doc.text(`Quantity: ${workOrder.quantity} pcs`, 14, 48);
+    doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 14, 54);
+    doc.text(`Total Checks: ${qcData.totalChecks} | Passed: ${qcData.passedChecks} | Failed: ${qcData.failedChecks}`, 14, 60);
+
+    let yPos = 70;
+
+    // For each operation
+    Object.entries(qcData.operationStats).forEach(([opNo, opStats]: [string, any]) => {
+      // Check if we need a new page
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.text(`Operation ${opNo}`, 14, yPos);
+      yPos += 5;
+
+      // Create table data
+      const tableData = Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => [
+        `Dimension ${dim}`,
+        stats.min.toFixed(3),
+        stats.max.toFixed(3),
+        stats.avg.toFixed(3),
+        stats.count.toString(),
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Dimension', 'Min', 'Max', 'Average', 'Samples']],
+        body: tableData,
+        theme: 'grid',
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [66, 139, 202] },
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 10;
+    });
+
+    // Signature section
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(12);
+    doc.text("QC Supervisor Sign-Off", 14, yPos);
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.text("Signature: _______________________", 14, yPos);
+    doc.text("Name: _______________________", 14, yPos + 10);
+    doc.text("Date: _______________________", 14, yPos + 20);
+
+    doc.save(`Dispatch_QC_Report_${workOrder.wo_id}_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success("PDF report generated successfully");
   };
 
   const exportToExcel = () => {
-    toast.info("Excel export functionality coming soon");
+    const headers = [
+      "Operation",
+      "Dimension",
+      "Min",
+      "Max",
+      "Average",
+      "Samples",
+    ];
+
+    const rows: string[][] = [];
+    
+    Object.entries(qcData.operationStats).forEach(([opNo, opStats]: [string, any]) => {
+      Object.entries(opStats.dimensions).forEach(([dim, stats]: [string, any]) => {
+        rows.push([
+          `Operation ${opNo}`,
+          `Dimension ${dim}`,
+          stats.min.toFixed(3),
+          stats.max.toFixed(3),
+          stats.avg.toFixed(3),
+          stats.count.toString(),
+        ]);
+      });
+    });
+
+    const csvContent = [
+      `Final Dispatch QC Report - ${workOrder.wo_id}`,
+      `Customer: ${workOrder.customer}`,
+      `Part Number: ${workOrder.item_code}`,
+      `Quantity: ${workOrder.quantity} pcs`,
+      `Report Date: ${new Date().toLocaleDateString()}`,
+      `Total Checks: ${qcData.totalChecks} | Passed: ${qcData.passedChecks} | Failed: ${qcData.failedChecks}`,
+      "",
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Dispatch_QC_Report_${workOrder.wo_id}_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast.success("Excel report exported successfully");
   };
 
   if (loading) {

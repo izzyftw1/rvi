@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QCRecordsTab } from "@/components/QCRecordsTab";
-import { CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, FileText } from "lucide-react";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -110,6 +110,12 @@ const WorkOrderDetail = () => {
               {wo.customer} • {wo.item_code}
             </p>
           </div>
+          {hourlyQcRecords.length > 0 && (
+            <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
+              <FileText className="h-4 w-4 mr-2" />
+              Final QC Report
+            </Button>
+          )}
         </div>
 
         {/* Summary */}

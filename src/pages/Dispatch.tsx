@@ -185,12 +185,24 @@ export default function Dispatch() {
                 <div className="space-y-2">
                   {palletData.pallet_cartons?.map((pc: any) => (
                     <div key={pc.cartons.carton_id} className="text-sm border-l-4 border-primary pl-3">
-                      <p><strong>Carton:</strong> {pc.cartons.carton_id}</p>
-                      <p><strong>WO:</strong> {pc.cartons.work_orders.wo_id}</p>
-                      <p><strong>Heat Nos:</strong> {pc.cartons.heat_nos.join(", ")}</p>
-                      <p className={pc.cartons.work_orders.dispatch_allowed ? "text-green-600" : "text-red-600"}>
-                        {pc.cartons.work_orders.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p><strong>Carton:</strong> {pc.cartons.carton_id}</p>
+                          <p><strong>WO:</strong> {pc.cartons.work_orders.wo_id}</p>
+                          <p><strong>Heat Nos:</strong> {pc.cartons.heat_nos.join(", ")}</p>
+                          <p className={pc.cartons.work_orders.dispatch_allowed ? "text-green-600" : "text-red-600"}>
+                            {pc.cartons.work_orders.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/dispatch-qc-report/${pc.cartons.work_orders.id}`)}
+                        >
+                          <ClipboardCheck className="h-4 w-4 mr-1" />
+                          QC Report
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
