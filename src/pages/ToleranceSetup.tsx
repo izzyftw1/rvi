@@ -20,6 +20,7 @@ interface DimensionTolerance {
 const ToleranceSetup = () => {
   const navigate = useNavigate();
   const [tolerances, setTolerances] = useState<any[]>([]);
+  const [itemCodes, setItemCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -33,6 +34,7 @@ const ToleranceSetup = () => {
   
   useEffect(() => {
     loadTolerances();
+    loadItemCodes();
   }, []);
 
   useEffect(() => {
@@ -58,6 +60,23 @@ const ToleranceSetup = () => {
       toast.error("Failed to load tolerances: " + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadItemCodes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("work_orders")
+        .select("item_code")
+        .order("item_code", { ascending: true });
+
+      if (error) throw error;
+      
+      // Get unique item codes
+      const unique = Array.from(new Set(data?.map(wo => wo.item_code) || []));
+      setItemCodes(unique);
+    } catch (error: any) {
+      toast.error("Failed to load item codes: " + error.message);
     }
   };
 
@@ -178,13 +197,21 @@ const ToleranceSetup = () => {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="item_code">Item Code *</Label>
-                <Input
-                  id="item_code"
+                <Select
                   value={formData.item_code}
-                  onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
-                  placeholder="e.g., PART-001"
-                  required
-                />
+                  onValueChange={(value) => setFormData({ ...formData, item_code: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select item code" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {itemCodes.map((code) => (
+                      <SelectItem key={code} value={code}>
+                        {code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="revision">Revision</Label>
