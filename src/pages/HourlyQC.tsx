@@ -1,205 +1,177 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { ArrowLeft, Save, AlertTriangle } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+
+const OPERATIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const;
 
 const HourlyQC = () => {
-  const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
-  const [selectedWO, setSelectedWO] = useState("");
-  const [selectedMachine, setSelectedMachine] = useState("");
-  const [operationNo, setOperationNo] = useState("1");
+  const [selectedWO, setSelectedWO] = useState<string>("");
+  const [selectedMachine, setSelectedMachine] = useState<string>("");
+  const [operation, setOperation] = useState<string>("A");
   const [tolerances, setTolerances] = useState<any>(null);
-  const [measurements, setMeasurements] = useState({
-    dimension_a: "",
-    dimension_b: "",
-    dimension_c: "",
-    dimension_d: "",
-    dimension_e: "",
-    dimension_f: "",
-    dimension_g: "",
-  });
+  const [measurements, setMeasurements] = useState<Record<string, string>>({});
   const [remarks, setRemarks] = useState("");
-  const [results, setResults] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [qcResults, setQcResults] = useState<any>(null);
 
   useEffect(() => {
     loadData();
   }, []);
 
   useEffect(() => {
-    if (selectedWO && operationNo) {
-      loadTolerances();
+    if (selectedWO && operation) {
+      loadTolerances(selectedWO, operation);
     }
-  }, [selectedWO, operationNo]);
+  }, [selectedWO, operation]);
 
   const loadData = async () => {
     try {
-      const [woRes, machineRes] = await Promise.all([
-        supabase
-          .from("work_orders")
-          .select("*")
-          .in("status", ["in_progress", "pending"])
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("machines")
-          .select("*")
-          .order("machine_id"),
-      ]);
+      const { data: wos, error: woError } = await supabase
+        .from("work_orders")
+        .select("*")
+        .in("status", ["in_progress", "pending"])
+        .order("created_at", { ascending: false });
 
-      if (woRes.error) throw woRes.error;
-      if (machineRes.error) throw machineRes.error;
+      if (woError) throw woError;
+      setWorkOrders(wos || []);
 
-      setWorkOrders(woRes.data || []);
-      setMachines(machineRes.data || []);
+      const { data: machinesData, error: machinesError } = await supabase
+        .from("machines")
+        .select("*")
+        .eq("status", "available");
+
+      if (machinesError) throw machinesError;
+      setMachines(machinesData || []);
     } catch (error: any) {
       toast.error("Failed to load data: " + error.message);
     }
   };
 
-  const loadTolerances = async () => {
+  const loadTolerances = async (woId: string, op: string) => {
     try {
-      const wo = workOrders.find((w) => w.id === selectedWO);
+      const wo = workOrders.find((w) => w.id === woId);
       if (!wo) return;
 
       const { data, error } = await supabase
         .from("dimension_tolerances")
         .select("*")
         .eq("item_code", wo.item_code)
-        .eq("operation_no", parseInt(operationNo))
+        .eq("operation", op as any)
         .maybeSingle();
 
       if (error) throw error;
-      setTolerances(data);
-
-      if (!data) {
-        toast.warning(`No tolerances defined for Operation ${operationNo}`);
+      
+      if (data && data.dimensions) {
+        setTolerances(data);
+        const initMeasurements: Record<string, string> = {};
+        Object.keys(data.dimensions as any).forEach((dimNum) => {
+          initMeasurements[dimNum] = "";
+        });
+        setMeasurements(initMeasurements);
+      } else {
+        setTolerances(null);
+        setMeasurements({});
+        toast.warning(`No tolerances defined for ${wo.item_code} Operation ${op}`);
       }
     } catch (error: any) {
       toast.error("Failed to load tolerances: " + error.message);
     }
   };
 
-  const checkTolerance = (dimension: string, value: number) => {
-    if (!tolerances) return "unknown";
-
-    const dimLower = dimension.toLowerCase();
-    const min = tolerances[`dimension_${dimLower}_min`];
-    const max = tolerances[`dimension_${dimLower}_max`];
-
-    if (min !== null && value < min) return "fail";
-    if (max !== null && value > max) return "fail";
-    return "pass";
+  const checkTolerance = (dimNum: string, value: number): boolean => {
+    if (!tolerances || !tolerances.dimensions) return true;
+    const dims = tolerances.dimensions as any;
+    if (!dims[dimNum]) return true;
+    const { min, max } = dims[dimNum];
+    return value >= min && value <= max;
   };
 
   const handleSubmit = async () => {
-    if (!selectedWO || !selectedMachine) {
-      toast.error("Please select Work Order and Machine");
-      return;
-    }
-
-    setLoading(true);
     try {
-      const dimensionResults: any = {};
-      const outOfTolerance: string[] = [];
-      let overallStatus = "pass";
+      if (!selectedWO || !selectedMachine || !operation) {
+        toast.error("Please select WO, Machine, and Operation");
+        return;
+      }
 
-      ["a", "b", "c", "d", "e", "f", "g"].forEach((dim) => {
-        const value = measurements[`dimension_${dim}` as keyof typeof measurements];
-        if (value) {
-          const numValue = parseFloat(value);
-          const result = checkTolerance(dim, numValue);
-          dimensionResults[dim] = { value: numValue, result };
+      if (!tolerances) {
+        toast.error("No tolerances defined for this part and operation");
+        return;
+      }
 
-          if (result === "fail") {
-            overallStatus = "fail";
-            outOfTolerance.push(dim.toUpperCase());
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const outOfToleranceDimensions: string[] = [];
+      const dimensionValues: Record<string, number> = {};
+
+      Object.entries(measurements).forEach(([dimNum, valueStr]) => {
+        if (valueStr && valueStr.trim() !== "") {
+          const value = parseFloat(valueStr);
+          dimensionValues[dimNum] = value;
+          if (!checkTolerance(dimNum, value)) {
+            outOfToleranceDimensions.push(dimNum);
           }
         }
       });
 
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const wo = workOrders.find((w) => w.id === selectedWO);
+      const status = outOfToleranceDimensions.length === 0 ? "pass" : "fail";
 
       const { error } = await supabase.from("hourly_qc_checks").insert({
         wo_id: selectedWO,
-        item_code: wo?.item_code,
         machine_id: selectedMachine,
         operator_id: user?.id,
-        operation_no: parseInt(operationNo),
-        dimension_a: measurements.dimension_a ? parseFloat(measurements.dimension_a) : null,
-        dimension_b: measurements.dimension_b ? parseFloat(measurements.dimension_b) : null,
-        dimension_c: measurements.dimension_c ? parseFloat(measurements.dimension_c) : null,
-        dimension_d: measurements.dimension_d ? parseFloat(measurements.dimension_d) : null,
-        dimension_e: measurements.dimension_e ? parseFloat(measurements.dimension_e) : null,
-        dimension_f: measurements.dimension_f ? parseFloat(measurements.dimension_f) : null,
-        dimension_g: measurements.dimension_g ? parseFloat(measurements.dimension_g) : null,
-        status: overallStatus,
-        out_of_tolerance_dimensions: outOfTolerance,
+        operation: operation as any,
+        dimensions: dimensionValues as any,
+        status: status,
+        out_of_tolerance_dimensions: outOfToleranceDimensions,
         remarks: remarks || null,
       });
 
       if (error) throw error;
 
-      setResults({ dimensionResults, overallStatus, outOfTolerance });
-
-      if (overallStatus === "fail") {
-        toast.error(`QC Check FAILED - Out of tolerance: ${outOfTolerance.join(", ")}`);
-      } else {
-        toast.success("QC Check PASSED - All dimensions within tolerance");
-      }
-
-      // Reset form
-      setMeasurements({
-        dimension_a: "",
-        dimension_b: "",
-        dimension_c: "",
-        dimension_d: "",
-        dimension_e: "",
-        dimension_f: "",
-        dimension_g: "",
+      setQcResults({
+        status,
+        outOfToleranceDimensions,
+        measurements: dimensionValues,
       });
-      setRemarks("");
+
+      toast.success(`QC Check ${status === "pass" ? "PASSED" : "FAILED"}`);
       
+      const initMeasurements: Record<string, string> = {};
+      Object.keys(tolerances.dimensions as any).forEach((dimNum) => {
+        initMeasurements[dimNum] = "";
+      });
+      setMeasurements(initMeasurements);
+      setRemarks("");
     } catch (error: any) {
-      toast.error("Failed to save QC check: " + error.message);
-    } finally {
-      setLoading(false);
+      toast.error("Failed to submit QC check: " + error.message);
     }
   };
 
-  const dimensions = ["A", "B", "C", "D", "E", "F", "G"];
+  const selectedWOData = workOrders.find((wo) => wo.id === selectedWO);
 
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Hourly Dimensional QC Check</h1>
-            <p className="text-sm text-muted-foreground">Enter measured values for dimensions A-G</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold">Hourly Dimensional QC</h1>
+          <p className="text-muted-foreground">Record hourly quality control measurements</p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Select Work Order, Operation & Machine</CardTitle>
+            <CardTitle>QC Entry Form</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Work Order</Label>
+                <Label htmlFor="wo">Work Order</Label>
                 <Select value={selectedWO} onValueChange={setSelectedWO}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select WO" />
@@ -207,128 +179,145 @@ const HourlyQC = () => {
                   <SelectContent>
                     {workOrders.map((wo) => (
                       <SelectItem key={wo.id} value={wo.id}>
-                        {wo.wo_id} - {wo.item_code} ({wo.customer})
+                        {wo.wo_id} - {wo.item_code}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
               <div>
-                <Label>Operation Number</Label>
-                <Select value={operationNo} onValueChange={setOperationNo}>
+                <Label htmlFor="operation">Operation</Label>
+                <Select value={operation} onValueChange={setOperation}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Operation" />
+                    <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {Array.from({ length: 100 }, (_, i) => i + 1).map((num) => (
-                      <SelectItem key={num} value={num.toString()}>
-                        Operation {num}
+                  <SelectContent>
+                    {OPERATIONS.map((op) => (
+                      <SelectItem key={op} value={op}>
+                        Operation {op}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
               <div>
-                <Label>Machine</Label>
+                <Label htmlFor="machine">Machine</Label>
                 <Select value={selectedMachine} onValueChange={setSelectedMachine}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select Machine" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60">
+                  <SelectContent>
                     {machines.map((machine) => (
                       <SelectItem key={machine.id} value={machine.id}>
-                        {machine.machine_id} - {machine.name}
+                        {machine.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {selectedWO && tolerances && (
+              <div className="space-y-4">
+                <div className="p-3 bg-muted rounded">
+                  <div className="text-sm font-medium">Part: {selectedWOData?.item_code}</div>
+                  <div className="text-sm text-muted-foreground">
+                    Operation {operation} • {Object.keys(tolerances.dimensions as any || {}).length} dimensions
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto p-4 border rounded">
+                  {Object.entries((tolerances.dimensions as any) || {})
+                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                    .map(([dimNum, dimData]: [string, any]) => {
+                      const valueStr = measurements[dimNum] || "";
+                      const value = valueStr ? parseFloat(valueStr) : 0;
+                      const isInTolerance = valueStr ? checkTolerance(dimNum, value) : true;
+                      
+                      return (
+                        <div key={dimNum} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor={`dim_${dimNum}`}>Dimension {dimNum}</Label>
+                            <span className="text-xs text-muted-foreground">
+                              {dimData.min.toFixed(3)} - {dimData.max.toFixed(3)}
+                            </span>
+                          </div>
+                          <Input
+                            id={`dim_${dimNum}`}
+                            type="number"
+                            step="0.001"
+                            value={valueStr}
+                            onChange={(e) =>
+                              setMeasurements({
+                                ...measurements,
+                                [dimNum]: e.target.value,
+                              })
+                            }
+                            className={
+                              valueStr && !isInTolerance
+                                ? "border-red-500 bg-red-50"
+                                : valueStr && isInTolerance
+                                ? "border-green-500 bg-green-50"
+                                : ""
+                            }
+                            placeholder="Enter value"
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+
+                <div>
+                  <Label htmlFor="remarks">Remarks</Label>
+                  <Textarea
+                    id="remarks"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Any observations or issues..."
+                    rows={3}
+                  />
+                </div>
+
+                <Button onClick={handleSubmit} className="w-full" size="lg">
+                  Submit QC Check
+                </Button>
+              </div>
+            )}
+
+            {selectedWO && !tolerances && (
+              <div className="text-center py-8 text-muted-foreground">
+                No tolerances defined for this part and operation.
+                <br />
+                Please set up tolerances first.
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {selectedWO && (
-          <Card>
+        {qcResults && (
+          <Card className={qcResults.status === "pass" ? "border-green-500" : "border-red-500"}>
             <CardHeader>
-              <CardTitle>Dimension Measurements</CardTitle>
-              {!tolerances && (
-                <div className="flex items-center gap-2 text-sm text-yellow-600">
-                  <AlertTriangle className="h-4 w-4" />
-                  No tolerances defined - measurements will be recorded without validation
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {dimensions.map((dim) => {
-                  const dimLower = dim.toLowerCase();
-                  const measurementKey = `dimension_${dimLower}` as keyof typeof measurements;
-                  
-                  return (
-                    <div key={dim}>
-                      <Label>Dimension {dim}</Label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        value={measurements[measurementKey]}
-                        onChange={(e) =>
-                          setMeasurements({
-                            ...measurements,
-                            [measurementKey]: e.target.value,
-                          })
-                        }
-                        placeholder="Enter value"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div>
-                <Label>Remarks (Optional)</Label>
-                <Textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Any additional notes..."
-                  rows={3}
-                />
-              </div>
-
-              <Button onClick={handleSubmit} disabled={loading}>
-                <Save className="h-4 w-4 mr-2" />
-                {loading ? "Submitting..." : "Submit QC Check"}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {results && (
-          <Card className={results.overallStatus === "pass" ? "border-green-500" : "border-red-500"}>
-            <CardHeader>
-              <CardTitle className={results.overallStatus === "pass" ? "text-green-600" : "text-red-600"}>
-                {results.overallStatus === "pass" ? "✓ QC Check PASSED" : "✗ QC Check FAILED"}
+              <CardTitle className={qcResults.status === "pass" ? "text-green-600" : "text-red-600"}>
+                QC Result: {qcResults.status === "pass" ? "PASS" : "FAIL"}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {results.overallStatus === "fail" && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
-                  <div className="font-medium text-red-700">Out of Tolerance:</div>
-                  <div className="text-red-600">{results.outOfTolerance.join(", ")}</div>
+              {qcResults.outOfToleranceDimensions.length > 0 && (
+                <div className="space-y-2">
+                  <div className="font-medium text-red-600">
+                    Out of Tolerance Dimensions:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {qcResults.outOfToleranceDimensions.map((dim: string) => (
+                      <span key={dim} className="px-2 py-1 bg-red-100 text-red-700 rounded text-sm">
+                        Dimension {dim}: {qcResults.measurements[dim]?.toFixed(3)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {Object.entries(results.dimensionResults).map(([dim, data]: [string, any]) => (
-                  <div
-                    key={dim}
-                    className={`p-2 rounded text-center ${
-                      data.result === "pass" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    <div className="font-medium">{dim.toUpperCase()}</div>
-                    <div className="text-sm">{data.value}</div>
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
         )}

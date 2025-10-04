@@ -9,17 +9,10 @@ import { toast } from "sonner";
 interface QCRecord {
   id: string;
   check_datetime: string;
-  item_code: string;
   machine_id: string;
   operator_id: string;
-  operation_no: number;
-  dimension_a: number | null;
-  dimension_b: number | null;
-  dimension_c: number | null;
-  dimension_d: number | null;
-  dimension_e: number | null;
-  dimension_f: number | null;
-  dimension_g: number | null;
+  operation: string;
+  dimensions: any;
   status: string;
   out_of_tolerance_dimensions: string[] | null;
   remarks: string | null;
@@ -43,12 +36,12 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
   const uniqueOperators = Array.from(
     new Set(records.map((r) => r.profiles?.full_name).filter(Boolean))
   );
-  const uniqueOperations = Array.from(new Set(records.map((r) => r.operation_no))).sort((a, b) => a - b);
+  const uniqueOperations = Array.from(new Set(records.map((r) => r.operation))).sort();
 
   const filteredRecords = records.filter((record) => {
     const machineMatch = machineFilter === "all" || record.machines?.machine_id === machineFilter;
     const operatorMatch = operatorFilter === "all" || record.profiles?.full_name === operatorFilter;
-    const operationMatch = operationFilter === "all" || record.operation_no.toString() === operationFilter;
+    const operationMatch = operationFilter === "all" || record.operation === operationFilter;
     return machineMatch && operatorMatch && operationMatch;
   });
 
@@ -56,38 +49,32 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
     const headers = [
       "Timestamp",
       "Operation",
-      "Item Code",
       "Machine",
       "Operator",
-      "Dim A",
-      "Dim B",
-      "Dim C",
-      "Dim D",
-      "Dim E",
-      "Dim F",
-      "Dim G",
+      "Dimensions",
       "Status",
       "Out of Tolerance",
       "Remarks",
     ];
 
-    const rows = filteredRecords.map((record) => [
-      new Date(record.check_datetime).toLocaleString(),
-      record.operation_no,
-      record.item_code || "",
-      record.machines?.machine_id || "",
-      record.profiles?.full_name || "",
-      record.dimension_a?.toString() || "",
-      record.dimension_b?.toString() || "",
-      record.dimension_c?.toString() || "",
-      record.dimension_d?.toString() || "",
-      record.dimension_e?.toString() || "",
-      record.dimension_f?.toString() || "",
-      record.dimension_g?.toString() || "",
-      record.status || "",
-      record.out_of_tolerance_dimensions?.join(", ") || "",
-      record.remarks || "",
-    ]);
+    const rows = filteredRecords.map((record) => {
+      const dims = record.dimensions || {};
+      const dimValues = Object.entries(dims)
+        .sort(([a], [b]) => parseInt(a) - parseInt(b))
+        .map(([, val]) => val?.toString() || "")
+        .join(",");
+      
+      return [
+        new Date(record.check_datetime).toLocaleString(),
+        record.operation,
+        record.machines?.machine_id || "",
+        record.profiles?.full_name || "",
+        dimValues,
+        record.status || "",
+        record.out_of_tolerance_dimensions?.join(", ") || "",
+        record.remarks || "",
+      ];
+    });
 
     const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
@@ -159,7 +146,7 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
               <SelectContent>
                 <SelectItem value="all">All Operations</SelectItem>
                 {uniqueOperations.map((op) => (
-                  <SelectItem key={op} value={op.toString()}>
+                  <SelectItem key={op} value={op}>
                     Operation {op}
                   </SelectItem>
                 ))}
@@ -184,7 +171,7 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-medium">
-                        {new Date(record.check_datetime).toLocaleString()} - Operation {record.operation_no}
+                        {new Date(record.check_datetime).toLocaleString()} - Operation {record.operation}
                       </p>
                       <Badge variant={record.status === "pass" ? "default" : "destructive"}>
                         {record.status.toUpperCase()}
@@ -194,34 +181,34 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
                       {record.machines?.machine_id} ({record.machines?.name}) • Operator:{" "}
                       {record.profiles?.full_name}
                     </p>
-                    <p className="text-xs text-muted-foreground">Item: {record.item_code}</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-7 gap-2 mb-3">
-                {["a", "b", "c", "d", "e", "f", "g"].map((dim) => {
-                    const value = record[`dimension_${dim}` as keyof QCRecord] as number | null;
-                    const isOutOfTolerance = record.out_of_tolerance_dimensions?.includes(dim.toUpperCase());
-                    return (
-                      <div
-                        key={dim}
-                        className={`p-2 rounded text-center ${
-                          isOutOfTolerance
-                            ? "bg-red-100 border border-red-300"
-                            : "bg-green-100 border border-green-300"
-                        }`}
-                      >
-                        <div className="text-xs font-medium">{dim.toUpperCase()}</div>
-                        <div className="text-sm font-bold">{value !== null ? value : "—"}</div>
-                      </div>
-                    );
-                  })}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 mb-3">
+                  {Object.entries(record.dimensions || {})
+                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                    .map(([dimNum, value]: [string, any]) => {
+                      const isOutOfTolerance = record.out_of_tolerance_dimensions?.includes(dimNum);
+                      return (
+                        <div
+                          key={dimNum}
+                          className={`p-2 rounded text-center ${
+                            isOutOfTolerance
+                              ? "bg-red-100 border border-red-300"
+                              : "bg-green-100 border border-green-300"
+                          }`}
+                        >
+                          <div className="text-xs font-medium">{dimNum}</div>
+                          <div className="text-sm font-bold">{value !== null ? value : "—"}</div>
+                        </div>
+                      );
+                    })}
                 </div>
 
                 {record.out_of_tolerance_dimensions && record.out_of_tolerance_dimensions.length > 0 && (
                   <div className="mb-2 p-2 bg-red-100 border border-red-200 rounded">
                     <p className="text-xs font-medium text-red-700">
-                      Out of Tolerance: {record.out_of_tolerance_dimensions.join(", ")}
+                      Out of Tolerance: Dimensions {record.out_of_tolerance_dimensions.join(", ")}
                     </p>
                   </div>
                 )}

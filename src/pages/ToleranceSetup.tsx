@@ -98,7 +98,7 @@ const ToleranceSetup = () => {
         item_code: formData.item_code,
         revision: formData.revision || null,
         operation: formData.operation,
-        dimensions: dimensions,
+        dimensions: dimensions as any,
       };
 
       let error;

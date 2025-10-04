@@ -48,33 +48,45 @@ const DispatchQCReport = () => {
         return;
       }
 
-      // Group checks by operation number and calculate stats per operation
-      const dimensions = ["a", "b", "c", "d", "e", "f", "g"];
+      // Group checks by operation and calculate stats per operation
       const operationStats: any = {};
 
-      // Get unique operation numbers
-      const operations = Array.from(new Set(checks.map(c => c.operation_no))).sort((a, b) => a - b);
+      // Get unique operations
+      const operations = Array.from(new Set(checks.map(c => c.operation))).sort();
 
-      operations.forEach((opNo) => {
-        const opChecks = checks.filter(c => c.operation_no === opNo);
+      operations.forEach((op) => {
+        const opChecks = checks.filter(c => c.operation === op);
         const opDimensionStats: any = {};
 
-        dimensions.forEach((dim) => {
+        // Get all unique dimension numbers from all checks
+        const allDimNums = new Set<string>();
+        opChecks.forEach(check => {
+          const dims = check.dimensions as any;
+          if (dims) {
+            Object.keys(dims).forEach(dimNum => allDimNums.add(dimNum));
+          }
+        });
+
+        // Calculate stats for each dimension
+        allDimNums.forEach((dimNum) => {
           const values = opChecks
-            .map((c) => c[`dimension_${dim}`])
+            .map((c) => {
+              const dims = c.dimensions as any;
+              return dims ? dims[dimNum] : null;
+            })
             .filter((v) => v !== null && v !== undefined);
 
           if (values.length > 0) {
-            opDimensionStats[dim.toUpperCase()] = {
+            opDimensionStats[dimNum] = {
               min: Math.min(...values),
               max: Math.max(...values),
-              avg: values.reduce((a, b) => a + b, 0) / values.length,
+              avg: values.reduce((a: number, b: number) => a + b, 0) / values.length,
               count: values.length,
             };
           }
         });
 
-        operationStats[opNo] = {
+        operationStats[op] = {
           dimensions: opDimensionStats,
           totalChecks: opChecks.length,
           passedChecks: opChecks.filter((c) => c.status === "pass").length,
@@ -114,7 +126,7 @@ const DispatchQCReport = () => {
     let yPos = 70;
 
     // For each operation
-    Object.entries(qcData.operationStats).forEach(([opNo, opStats]: [string, any]) => {
+    Object.entries(qcData.operationStats).forEach(([op, opStats]: [string, any]) => {
       // Check if we need a new page
       if (yPos > 250) {
         doc.addPage();
@@ -122,7 +134,7 @@ const DispatchQCReport = () => {
       }
 
       doc.setFontSize(12);
-      doc.text(`Operation ${opNo}`, 14, yPos);
+      doc.text(`Operation ${op}`, 14, yPos);
       yPos += 5;
 
       // Create table data
@@ -176,10 +188,10 @@ const DispatchQCReport = () => {
 
     const rows: string[][] = [];
     
-    Object.entries(qcData.operationStats).forEach(([opNo, opStats]: [string, any]) => {
+    Object.entries(qcData.operationStats).forEach(([op, opStats]: [string, any]) => {
       Object.entries(opStats.dimensions).forEach(([dim, stats]: [string, any]) => {
         rows.push([
-          `Operation ${opNo}`,
+          `Operation ${op}`,
           `Dimension ${dim}`,
           stats.min.toFixed(3),
           stats.max.toFixed(3),
@@ -301,10 +313,10 @@ const DispatchQCReport = () => {
           </CardContent>
         </Card>
 
-        {Object.entries(qcData.operationStats).map(([opNo, opStats]: [string, any]) => (
-          <Card key={opNo}>
+        {Object.entries(qcData.operationStats).map(([op, opStats]: [string, any]) => (
+          <Card key={op}>
             <CardHeader>
-              <CardTitle>Operation {opNo} - Dimensional Analysis (A-G)</CardTitle>
+              <CardTitle>Operation {op} - Dimensional Analysis</CardTitle>
               <div className="text-sm text-muted-foreground">
                 Total: {opStats.totalChecks} | Passed: {opStats.passedChecks} | Failed: {opStats.failedChecks}
               </div>
@@ -376,7 +388,7 @@ const DispatchQCReport = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-medium">
-                        {new Date(check.check_datetime).toLocaleString()} - Operation {check.operation_no}
+                        {new Date(check.check_datetime).toLocaleString()} - Operation {check.operation}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Status: {check.status === "pass" ? "PASS" : "FAIL"}
