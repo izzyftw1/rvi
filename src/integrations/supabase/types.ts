@@ -115,6 +115,47 @@ export type Database = {
         }
         Relationships: []
       }
+      machines: {
+        Row: {
+          created_at: string
+          department_id: string | null
+          id: string
+          location: string | null
+          machine_id: string
+          name: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          location?: string | null
+          machine_id: string
+          name: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          location?: string | null
+          machine_id?: string
+          name?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machines_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_lots: {
         Row: {
           alloy: string
