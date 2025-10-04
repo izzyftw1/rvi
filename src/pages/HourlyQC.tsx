@@ -126,8 +126,11 @@ const HourlyQC = () => {
 
       const { data: { user } } = await supabase.auth.getUser();
 
+      const wo = workOrders.find((w) => w.id === selectedWO);
+
       const { error } = await supabase.from("hourly_qc_checks").insert({
         wo_id: selectedWO,
+        item_code: wo?.item_code,
         machine_id: selectedMachine,
         operator_id: user?.id,
         dimension_a: measurements.dimension_a ? parseFloat(measurements.dimension_a) : null,

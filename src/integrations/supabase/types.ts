@@ -290,6 +290,7 @@ export type Database = {
           dimension_f: number | null
           dimension_g: number | null
           id: string
+          item_code: string | null
           machine_id: string
           operator_id: string | null
           out_of_tolerance_dimensions: string[] | null
@@ -308,6 +309,7 @@ export type Database = {
           dimension_f?: number | null
           dimension_g?: number | null
           id?: string
+          item_code?: string | null
           machine_id: string
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
@@ -326,6 +328,7 @@ export type Database = {
           dimension_f?: number | null
           dimension_g?: number | null
           id?: string
+          item_code?: string | null
           machine_id?: string
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null

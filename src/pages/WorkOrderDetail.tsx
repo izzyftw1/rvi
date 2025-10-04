@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
+import { QCRecordsTab } from "@/components/QCRecordsTab";
 import { CheckCircle2, Clock, AlertCircle } from "lucide-react";
 
 const WorkOrderDetail = () => {
@@ -15,6 +16,7 @@ const WorkOrderDetail = () => {
   const [routingSteps, setRoutingSteps] = useState<any[]>([]);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
   const [qcRecords, setQcRecords] = useState<any[]>([]);
+  const [hourlyQcRecords, setHourlyQcRecords] = useState<any[]>([]);
   const [scanEvents, setScanEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -58,6 +60,15 @@ const WorkOrderDetail = () => {
         .order("created_at", { ascending: false });
 
       setQcRecords(qcData || []);
+
+      // Load hourly QC records
+      const { data: hourlyQcData } = await supabase
+        .from("hourly_qc_checks")
+        .select("*, machines(machine_id, name), profiles(full_name)")
+        .eq("wo_id", id)
+        .order("check_datetime", { ascending: false });
+
+      setHourlyQcRecords(hourlyQcData || []);
 
       // Load scan events
       const { data: eventsData } = await supabase
@@ -134,10 +145,11 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="routing" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="routing">Routing</TabsTrigger>
             <TabsTrigger value="materials">Materials</TabsTrigger>
             <TabsTrigger value="qc">QC Records</TabsTrigger>
+            <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
             <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
           </TabsList>
 
@@ -293,6 +305,10 @@ const WorkOrderDetail = () => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="hourly-qc" className="space-y-4">
+            <QCRecordsTab records={hourlyQcRecords} woId={wo.wo_id} />
           </TabsContent>
 
           <TabsContent value="genealogy" className="space-y-4">
