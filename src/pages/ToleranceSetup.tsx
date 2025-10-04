@@ -1,41 +1,48 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Edit2, Save, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+
+const OPERATIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const;
+
+interface DimensionTolerance {
+  min: number;
+  max: number;
+  label: string;
+}
 
 const ToleranceSetup = () => {
   const navigate = useNavigate();
   const [tolerances, setTolerances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
   const [formData, setFormData] = useState({
     item_code: "",
     revision: "",
-    operation_no: "1",
-    dimension_a_min: "",
-    dimension_a_max: "",
-    dimension_b_min: "",
-    dimension_b_max: "",
-    dimension_c_min: "",
-    dimension_c_max: "",
-    dimension_d_min: "",
-    dimension_d_max: "",
-    dimension_e_min: "",
-    dimension_e_max: "",
-    dimension_f_min: "",
-    dimension_f_max: "",
-    dimension_g_min: "",
-    dimension_g_max: "",
+    operation: "A" as typeof OPERATIONS[number],
   });
 
+  const [dimensions, setDimensions] = useState<Record<number, DimensionTolerance>>({});
+  
   useEffect(() => {
     loadTolerances();
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(dimensions).length === 0) {
+      const initial: Record<number, DimensionTolerance> = {};
+      for (let i = 1; i <= 20; i++) {
+        initial[i] = { min: 0, max: 0, label: `Dimension ${i}` };
+      }
+      setDimensions(initial);
+    }
   }, []);
 
   const loadTolerances = async () => {
@@ -43,7 +50,7 @@ const ToleranceSetup = () => {
       const { data, error } = await supabase
         .from("dimension_tolerances")
         .select("*")
-        .order("item_code");
+        .order("item_code", { ascending: true });
 
       if (error) throw error;
       setTolerances(data || []);
@@ -54,47 +61,65 @@ const ToleranceSetup = () => {
     }
   };
 
+  const addMoreDimensions = () => {
+    const currentCount = Object.keys(dimensions).length;
+    if (currentCount >= 100) {
+      toast.error("Maximum 100 dimensions allowed");
+      return;
+    }
+    const toAdd = Math.min(10, 100 - currentCount);
+    const newDimensions = { ...dimensions };
+    for (let i = 1; i <= toAdd; i++) {
+      const dimNum = currentCount + i;
+      newDimensions[dimNum] = { min: 0, max: 0, label: `Dimension ${dimNum}` };
+    }
+    setDimensions(newDimensions);
+    toast.success(`Added ${toAdd} more dimensions`);
+  };
+
+  const removeDimension = (dimNum: number) => {
+    if (Object.keys(dimensions).length <= 1) {
+      toast.error("At least one dimension is required");
+      return;
+    }
+    const newDimensions = { ...dimensions };
+    delete newDimensions[dimNum];
+    setDimensions(newDimensions);
+  };
+
   const handleSave = async () => {
     try {
+      if (!formData.item_code) {
+        toast.error("Item code is required");
+        return;
+      }
+
       const payload = {
         item_code: formData.item_code,
         revision: formData.revision || null,
-        operation_no: parseInt(formData.operation_no),
-        dimension_a_min: formData.dimension_a_min ? parseFloat(formData.dimension_a_min) : null,
-        dimension_a_max: formData.dimension_a_max ? parseFloat(formData.dimension_a_max) : null,
-        dimension_b_min: formData.dimension_b_min ? parseFloat(formData.dimension_b_min) : null,
-        dimension_b_max: formData.dimension_b_max ? parseFloat(formData.dimension_b_max) : null,
-        dimension_c_min: formData.dimension_c_min ? parseFloat(formData.dimension_c_min) : null,
-        dimension_c_max: formData.dimension_c_max ? parseFloat(formData.dimension_c_max) : null,
-        dimension_d_min: formData.dimension_d_min ? parseFloat(formData.dimension_d_min) : null,
-        dimension_d_max: formData.dimension_d_max ? parseFloat(formData.dimension_d_max) : null,
-        dimension_e_min: formData.dimension_e_min ? parseFloat(formData.dimension_e_min) : null,
-        dimension_e_max: formData.dimension_e_max ? parseFloat(formData.dimension_e_max) : null,
-        dimension_f_min: formData.dimension_f_min ? parseFloat(formData.dimension_f_min) : null,
-        dimension_f_max: formData.dimension_f_max ? parseFloat(formData.dimension_f_max) : null,
-        dimension_g_min: formData.dimension_g_min ? parseFloat(formData.dimension_g_min) : null,
-        dimension_g_max: formData.dimension_g_max ? parseFloat(formData.dimension_g_max) : null,
+        operation: formData.operation,
+        dimensions: dimensions,
       };
 
+      let error;
       if (editingId) {
-        const { error } = await supabase
+        ({ error } = await supabase
           .from("dimension_tolerances")
           .update(payload)
-          .eq("id", editingId);
-        if (error) throw error;
-        toast.success("Tolerance updated successfully");
+          .eq("id", editingId));
       } else {
-        const { error } = await supabase
+        ({ error } = await supabase
           .from("dimension_tolerances")
-          .insert(payload);
-        if (error) throw error;
-        toast.success("Tolerance created successfully");
+          .insert([payload]));
       }
 
+      if (error) throw error;
+
+      toast.success(editingId ? "Tolerance updated successfully" : "Tolerance created successfully");
       resetForm();
       loadTolerances();
     } catch (error: any) {
-      toast.error("Failed to save: " + error.message);
+      toast.error("Failed to save tolerance: " + error.message);
     }
   };
 
@@ -103,22 +128,9 @@ const ToleranceSetup = () => {
     setFormData({
       item_code: tolerance.item_code,
       revision: tolerance.revision || "",
-      operation_no: tolerance.operation_no?.toString() || "1",
-      dimension_a_min: tolerance.dimension_a_min || "",
-      dimension_a_max: tolerance.dimension_a_max || "",
-      dimension_b_min: tolerance.dimension_b_min || "",
-      dimension_b_max: tolerance.dimension_b_max || "",
-      dimension_c_min: tolerance.dimension_c_min || "",
-      dimension_c_max: tolerance.dimension_c_max || "",
-      dimension_d_min: tolerance.dimension_d_min || "",
-      dimension_d_max: tolerance.dimension_d_max || "",
-      dimension_e_min: tolerance.dimension_e_min || "",
-      dimension_e_max: tolerance.dimension_e_max || "",
-      dimension_f_min: tolerance.dimension_f_min || "",
-      dimension_f_max: tolerance.dimension_f_max || "",
-      dimension_g_min: tolerance.dimension_g_min || "",
-      dimension_g_max: tolerance.dimension_g_max || "",
+      operation: tolerance.operation,
     });
+    setDimensions(tolerance.dimensions || {});
   };
 
   const resetForm = () => {
@@ -126,25 +138,24 @@ const ToleranceSetup = () => {
     setFormData({
       item_code: "",
       revision: "",
-      operation_no: "1",
-      dimension_a_min: "",
-      dimension_a_max: "",
-      dimension_b_min: "",
-      dimension_b_max: "",
-      dimension_c_min: "",
-      dimension_c_max: "",
-      dimension_d_min: "",
-      dimension_d_max: "",
-      dimension_e_min: "",
-      dimension_e_max: "",
-      dimension_f_min: "",
-      dimension_f_max: "",
-      dimension_g_min: "",
-      dimension_g_max: "",
+      operation: "A",
     });
+    const initial: Record<number, DimensionTolerance> = {};
+    for (let i = 1; i <= 20; i++) {
+      initial[i] = { min: 0, max: 0, label: `Dimension ${i}` };
+    }
+    setDimensions(initial);
   };
 
-  const dimensions = ["A", "B", "C", "D", "E", "F", "G"];
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -154,8 +165,8 @@ const ToleranceSetup = () => {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Dimension Tolerance Setup</h1>
-            <p className="text-sm text-muted-foreground">Manager/QC Supervisor Only</p>
+            <h1 className="text-2xl font-bold">Tolerance Setup</h1>
+            <p className="text-sm text-muted-foreground">Define dimensional tolerances per part and operation (Manager/QC Supervisor only)</p>
           </div>
         </div>
 
@@ -163,34 +174,40 @@ const ToleranceSetup = () => {
           <CardHeader>
             <CardTitle>{editingId ? "Edit Tolerance" : "Add New Tolerance"}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Item Code</Label>
+                <Label htmlFor="item_code">Item Code *</Label>
                 <Input
+                  id="item_code"
                   value={formData.item_code}
                   onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
-                  placeholder="Enter item code"
+                  placeholder="e.g., PART-001"
+                  required
                 />
               </div>
               <div>
-                <Label>Revision</Label>
+                <Label htmlFor="revision">Revision</Label>
                 <Input
+                  id="revision"
                   value={formData.revision}
                   onChange={(e) => setFormData({ ...formData, revision: e.target.value })}
-                  placeholder="Optional"
+                  placeholder="e.g., A"
                 />
               </div>
               <div>
-                <Label>Operation Number</Label>
-                <Select value={formData.operation_no} onValueChange={(val) => setFormData({ ...formData, operation_no: val })}>
+                <Label htmlFor="operation">Operation *</Label>
+                <Select
+                  value={formData.operation}
+                  onValueChange={(value) => setFormData({ ...formData, operation: value as typeof OPERATIONS[number] })}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {Array.from({ length: 100 }, (_, i) => i + 1).map((num) => (
-                      <SelectItem key={num} value={num.toString()}>
-                        Operation {num}
+                  <SelectContent>
+                    {OPERATIONS.map((op) => (
+                      <SelectItem key={op} value={op}>
+                        Operation {op}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -198,60 +215,84 @@ const ToleranceSetup = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {dimensions.map((dim) => {
-                const dimLower = dim.toLowerCase();
-                return (
-                  <Card key={dim}>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">Dimension {dim}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">
+                  Dimension Tolerances ({Object.keys(dimensions).length}/100)
+                </h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addMoreDimensions}
+                  disabled={Object.keys(dimensions).length >= 100}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add More (+10)
+                </Button>
+              </div>
+              
+              <div className="max-h-96 overflow-y-auto space-y-3 border rounded-lg p-4">
+                {Object.entries(dimensions)
+                  .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                  .map(([dimNum, dimData]) => (
+                    <div key={dimNum} className="grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end p-3 bg-muted/50 rounded">
+                      <div className="font-medium text-sm pt-6">
+                        {dimNum}
+                      </div>
                       <div>
-                        <Label className="text-xs">Min</Label>
+                        <Label htmlFor={`dim_${dimNum}_min`} className="text-xs">Min</Label>
                         <Input
+                          id={`dim_${dimNum}_min`}
                           type="number"
                           step="0.001"
-                          value={formData[`dimension_${dimLower}_min` as keyof typeof formData]}
+                          value={dimData.min}
                           onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              [`dimension_${dimLower}_min`]: e.target.value,
+                            setDimensions({
+                              ...dimensions,
+                              [dimNum]: { ...dimData, min: parseFloat(e.target.value) || 0 },
                             })
                           }
-                          placeholder="Min value"
+                          placeholder="Min"
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Max</Label>
+                        <Label htmlFor={`dim_${dimNum}_max`} className="text-xs">Max</Label>
                         <Input
+                          id={`dim_${dimNum}_max`}
                           type="number"
                           step="0.001"
-                          value={formData[`dimension_${dimLower}_max` as keyof typeof formData]}
+                          value={dimData.max}
                           onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              [`dimension_${dimLower}_max`]: e.target.value,
+                            setDimensions({
+                              ...dimensions,
+                              [dimNum]: { ...dimData, max: parseFloat(e.target.value) || 0 },
                             })
                           }
-                          placeholder="Max value"
+                          placeholder="Max"
                         />
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeDimension(parseInt(dimNum))}
+                        disabled={Object.keys(dimensions).length <= 1}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+              </div>
             </div>
 
             <div className="flex gap-2">
               <Button onClick={handleSave}>
-                <Save className="h-4 w-4 mr-2" />
-                {editingId ? "Update" : "Create"}
+                {editingId ? "Update Tolerance" : "Save Tolerance"}
               </Button>
               {editingId && (
                 <Button variant="outline" onClick={resetForm}>
-                  <X className="h-4 w-4 mr-2" />
-                  Cancel
+                  Cancel Edit
                 </Button>
               )}
             </div>
@@ -263,42 +304,31 @@ const ToleranceSetup = () => {
             <CardTitle>Existing Tolerances</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : tolerances.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No tolerances defined yet
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {tolerances.map((tol) => (
-                  <div
-                    key={tol.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {tol.item_code}
-                        {tol.revision && ` (Rev: ${tol.revision})`}
-                        {" - Operation " + tol.operation_no}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {dimensions
-                          .filter((dim) => {
-                            const dimLower = dim.toLowerCase();
-                            return tol[`dimension_${dimLower}_min`] || tol[`dimension_${dimLower}_max`];
-                          })
-                          .map((dim) => `${dim}`)
-                          .join(", ")}
-                      </div>
+            <div className="space-y-4">
+              {tolerances.map((tolerance) => (
+                <div
+                  key={tolerance.id}
+                  className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/50"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium">
+                      {tolerance.item_code} {tolerance.revision && `(Rev ${tolerance.revision})`}
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(tol)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
+                    <div className="text-sm text-muted-foreground">
+                      Operation {tolerance.operation} • {Object.keys(tolerance.dimensions || {}).length} dimensions
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+                  <Button variant="outline" size="sm" onClick={() => handleEdit(tolerance)}>
+                    Edit
+                  </Button>
+                </div>
+              ))}
+              {tolerances.length === 0 && (
+                <div className="text-center text-muted-foreground py-8">
+                  No tolerances defined yet
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

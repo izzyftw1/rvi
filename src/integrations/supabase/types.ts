@@ -169,69 +169,30 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
-          dimension_a_max: number | null
-          dimension_a_min: number | null
-          dimension_b_max: number | null
-          dimension_b_min: number | null
-          dimension_c_max: number | null
-          dimension_c_min: number | null
-          dimension_d_max: number | null
-          dimension_d_min: number | null
-          dimension_e_max: number | null
-          dimension_e_min: number | null
-          dimension_f_max: number | null
-          dimension_f_min: number | null
-          dimension_g_max: number | null
-          dimension_g_min: number | null
+          dimensions: Json
           id: string
           item_code: string
-          operation_no: number
+          operation: Database["public"]["Enums"]["operation_letter"]
           revision: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           created_by?: string | null
-          dimension_a_max?: number | null
-          dimension_a_min?: number | null
-          dimension_b_max?: number | null
-          dimension_b_min?: number | null
-          dimension_c_max?: number | null
-          dimension_c_min?: number | null
-          dimension_d_max?: number | null
-          dimension_d_min?: number | null
-          dimension_e_max?: number | null
-          dimension_e_min?: number | null
-          dimension_f_max?: number | null
-          dimension_f_min?: number | null
-          dimension_g_max?: number | null
-          dimension_g_min?: number | null
+          dimensions?: Json
           id?: string
           item_code: string
-          operation_no?: number
+          operation?: Database["public"]["Enums"]["operation_letter"]
           revision?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           created_by?: string | null
-          dimension_a_max?: number | null
-          dimension_a_min?: number | null
-          dimension_b_max?: number | null
-          dimension_b_min?: number | null
-          dimension_c_max?: number | null
-          dimension_c_min?: number | null
-          dimension_d_max?: number | null
-          dimension_d_min?: number | null
-          dimension_e_max?: number | null
-          dimension_e_min?: number | null
-          dimension_f_max?: number | null
-          dimension_f_min?: number | null
-          dimension_g_max?: number | null
-          dimension_g_min?: number | null
+          dimensions?: Json
           id?: string
           item_code?: string
-          operation_no?: number
+          operation?: Database["public"]["Enums"]["operation_letter"]
           revision?: string | null
           updated_at?: string
         }
@@ -285,17 +246,10 @@ export type Database = {
         Row: {
           check_datetime: string
           created_at: string
-          dimension_a: number | null
-          dimension_b: number | null
-          dimension_c: number | null
-          dimension_d: number | null
-          dimension_e: number | null
-          dimension_f: number | null
-          dimension_g: number | null
+          dimensions: Json
           id: string
-          item_code: string | null
           machine_id: string
-          operation_no: number
+          operation: Database["public"]["Enums"]["operation_letter"]
           operator_id: string | null
           out_of_tolerance_dimensions: string[] | null
           remarks: string | null
@@ -305,17 +259,10 @@ export type Database = {
         Insert: {
           check_datetime?: string
           created_at?: string
-          dimension_a?: number | null
-          dimension_b?: number | null
-          dimension_c?: number | null
-          dimension_d?: number | null
-          dimension_e?: number | null
-          dimension_f?: number | null
-          dimension_g?: number | null
+          dimensions?: Json
           id?: string
-          item_code?: string | null
           machine_id: string
-          operation_no?: number
+          operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
           remarks?: string | null
@@ -325,17 +272,10 @@ export type Database = {
         Update: {
           check_datetime?: string
           created_at?: string
-          dimension_a?: number | null
-          dimension_b?: number | null
-          dimension_c?: number | null
-          dimension_d?: number | null
-          dimension_e?: number | null
-          dimension_f?: number | null
-          dimension_g?: number | null
+          dimensions?: Json
           id?: string
-          item_code?: string | null
           machine_id?: string
-          operation_no?: number
+          operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
           remarks?: string | null
@@ -1525,6 +1465,17 @@ export type Database = {
         | "design"
         | "packing"
       material_status: "received" | "issued" | "in_use" | "consumed"
+      operation_letter:
+        | "A"
+        | "B"
+        | "C"
+        | "D"
+        | "E"
+        | "F"
+        | "G"
+        | "H"
+        | "I"
+        | "J"
       qc_result: "pass" | "fail" | "rework"
       qc_type: "first_piece" | "in_process" | "final"
       wo_status:
@@ -1689,6 +1640,7 @@ export const Constants = {
         "packing",
       ],
       material_status: ["received", "issued", "in_use", "consumed"],
+      operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       qc_result: ["pass", "fail", "rework"],
       qc_type: ["first_piece", "in_process", "final"],
       wo_status: [
