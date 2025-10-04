@@ -7,11 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { QRCodeDisplay } from "@/components/QRCodeDisplay";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const NewWorkOrder = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [createdWO, setCreatedWO] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     wo_id: "",
@@ -29,7 +33,7 @@ const NewWorkOrder = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("work_orders").insert({
+      const { data: woData, error } = await supabase.from("work_orders").insert({
         wo_id: formData.wo_id,
         customer: formData.customer,
         item_code: formData.item_code,
@@ -39,7 +43,7 @@ const NewWorkOrder = () => {
         priority: parseInt(formData.priority),
         sales_order: formData.sales_order || null,
         status: "pending",
-      });
+      }).select().single();
 
       if (error) throw error;
 
@@ -48,7 +52,10 @@ const NewWorkOrder = () => {
         description: `WO ${formData.wo_id} created successfully`,
       });
 
-      navigate("/work-orders");
+      setCreatedWO(woData);
+      setShowQR(true);
+      
+      setTimeout(() => navigate("/work-orders"), 3000);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -182,6 +189,24 @@ const NewWorkOrder = () => {
           </CardContent>
         </Card>
       </div>
+      
+      <Dialog open={showQR} onOpenChange={setShowQR}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Work Order Created!</DialogTitle>
+          </DialogHeader>
+          {createdWO && (
+            <div className="flex justify-center">
+              <QRCodeDisplay 
+                value={createdWO.wo_id}
+                title="Work Order Traveler"
+                entityInfo={`${createdWO.customer} | ${createdWO.item_code} | ${createdWO.quantity} pcs`}
+                size={250}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

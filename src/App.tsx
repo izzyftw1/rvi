@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Scan from "./pages/Scan";
+import ScanConsole from "./pages/ScanConsole";
 import Sales from "./pages/Sales";
 import Purchase from "./pages/Purchase";
 import MaterialInwards from "./pages/MaterialInwards";
@@ -15,6 +16,7 @@ import NewWorkOrder from "./pages/NewWorkOrder";
 import WorkOrderDetail from "./pages/WorkOrderDetail";
 import Quality from "./pages/Quality";
 import Packing from "./pages/Packing";
+import Dispatch from "./pages/Dispatch";
 import Genealogy from "./pages/Genealogy";
 import NotFound from "./pages/NotFound";
 
@@ -30,6 +32,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/scan" element={<Scan />} />
+          <Route path="/scan-console" element={<ScanConsole />} />
           <Route path="/sales" element={<Sales />} />
           <Route path="/purchase" element={<Purchase />} />
           <Route path="/materials/inwards" element={<MaterialInwards />} />
@@ -39,6 +42,7 @@ const App = () => (
           <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
           <Route path="/quality" element={<Quality />} />
           <Route path="/packing" element={<Packing />} />
+          <Route path="/dispatch" element={<Dispatch />} />
           <Route path="/genealogy" element={<Genealogy />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

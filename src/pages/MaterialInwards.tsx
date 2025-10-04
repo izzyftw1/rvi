@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Upload, Printer } from "lucide-react";
+import { QRCodeDisplay } from "@/components/QRCodeDisplay";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const MaterialInwards = () => {
   const navigate = useNavigate();
@@ -115,6 +117,11 @@ const MaterialInwards = () => {
       }
 
       toast({ description: "Material received successfully. QC team notified." });
+      
+      // Show QR code
+      const qrDialog = document.getElementById(`qr-trigger-${lotData.lot_id}`);
+      if (qrDialog) (qrDialog as HTMLButtonElement).click();
+      
       setFormData({
         lot_id: "", heat_no: "", alloy: "", supplier: "",
         gross_weight: "", net_weight: "", bin_location: "", mtc_file: null
@@ -126,6 +133,14 @@ const MaterialInwards = () => {
       setLoading(false);
     }
   };
+
+  const [lastCreatedLot, setLastCreatedLot] = useState<any>(null);
+
+  useEffect(() => {
+    if (lastCreatedLot) {
+      toast({ description: "Material received successfully. QC team notified." });
+    }
+  }, [lastCreatedLot]);
 
   const handlePrintLabel = () => {
     toast({

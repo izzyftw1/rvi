@@ -118,7 +118,11 @@ const Index = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Button onClick={() => navigate("/sales")} className="h-auto py-4 flex-col gap-2">
+              <Button onClick={() => navigate("/scan-console")} className="h-auto py-4 flex-col gap-2 bg-primary">
+                <QrCode className="h-6 w-6" />
+                <span className="text-sm font-bold">📱 SCAN</span>
+              </Button>
+              <Button onClick={() => navigate("/sales")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <FileText className="h-6 w-6" />
                 <span className="text-sm">Sales</span>
               </Button>
@@ -130,12 +134,12 @@ const Index = () => {
                 <Box className="h-6 w-6" />
                 <span className="text-sm">Stores</span>
               </Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
               <Button onClick={() => navigate("/qc/incoming")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <ClipboardCheck className="h-6 w-6" />
                 <span className="text-sm">QC In</span>
               </Button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
               <Button onClick={() => navigate("/work-orders")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <Search className="h-6 w-6" />
                 <span className="text-sm">Production</span>
@@ -147,6 +151,12 @@ const Index = () => {
               <Button onClick={() => navigate("/packing")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <Package className="h-6 w-6" />
                 <span className="text-sm">Packing</span>
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Button onClick={() => navigate("/dispatch")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <Truck className="h-6 w-6" />
+                <span className="text-sm">Dispatch</span>
               </Button>
               <Button onClick={() => navigate("/genealogy")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
