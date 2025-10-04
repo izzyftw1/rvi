@@ -14,6 +14,7 @@ const DispatchQCReport = () => {
   const navigate = useNavigate();
   const [workOrder, setWorkOrder] = useState<any>(null);
   const [qcData, setQcData] = useState<any>(null);
+  const [tolerances, setTolerances] = useState<any>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,6 +48,23 @@ const DispatchQCReport = () => {
         setLoading(false);
         return;
       }
+
+      // Load tolerances for this item_code
+      const { data: toleranceData, error: toleranceError } = await supabase
+        .from("dimension_tolerances")
+        .select("*")
+        .eq("item_code", woData.item_code);
+
+      if (toleranceError) {
+        console.error("Error loading tolerances:", toleranceError);
+      }
+
+      // Build a map of tolerances by operation
+      const toleranceMap: any = {};
+      (toleranceData || []).forEach((tol: any) => {
+        toleranceMap[tol.operation] = tol.dimensions || {};
+      });
+      setTolerances(toleranceMap);
 
       // Group checks by operation and calculate stats per operation
       const operationStats: any = {};
@@ -138,6 +156,13 @@ const DispatchQCReport = () => {
 
     let yPos = 70;
 
+    // Helper function to check if value is within tolerance
+    const checkTolerance = (op: string, dim: string, value: number): boolean => {
+      if (!tolerances[op] || !tolerances[op][dim]) return true;
+      const { min, max } = tolerances[op][dim];
+      return value >= min && value <= max;
+    };
+
     // For each operation
     Object.entries(qcData.operationStats).forEach(([op, opStats]: [string, any]) => {
       // Check if we need a new page
@@ -150,7 +175,7 @@ const DispatchQCReport = () => {
       doc.text(`Operation ${op}`, 14, yPos);
       yPos += 5;
 
-      // Create table data
+      // Create table data with color coding
       const tableData = Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => [
         `Dimension ${dim}`,
         stats.min.toFixed(3),
@@ -166,6 +191,23 @@ const DispatchQCReport = () => {
         theme: 'grid',
         styles: { fontSize: 9 },
         headStyles: { fillColor: [66, 139, 202] },
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index > 0 && data.column.index < 4) {
+            const rowIndex = data.row.index;
+            const dimEntries = Object.entries(opStats.dimensions);
+            if (rowIndex < dimEntries.length) {
+              const [dim, stats] = dimEntries[rowIndex] as [string, any];
+              let value: number;
+              if (data.column.index === 1) value = stats.min;
+              else if (data.column.index === 2) value = stats.max;
+              else value = stats.avg;
+              
+              const inTolerance = checkTolerance(op, dim, value);
+              data.cell.styles.textColor = inTolerance ? [0, 128, 0] : [220, 38, 38];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
       });
 
       yPos = (doc as any).lastAutoTable.finalY + 10;
@@ -229,14 +271,24 @@ const DispatchQCReport = () => {
 
     const rows: string[][] = [];
     
+    // Helper to check tolerance for Excel export (text indicator)
+    const getTolerance = (op: string, dim: string, value: number): string => {
+      if (!tolerances[op] || !tolerances[op][dim]) return "";
+      const { min, max } = tolerances[op][dim];
+      return value >= min && value <= max ? "✓" : "✗";
+    };
+
     Object.entries(qcData.operationStats).forEach(([op, opStats]: [string, any]) => {
       Object.entries(opStats.dimensions).forEach(([dim, stats]: [string, any]) => {
+        const minStatus = getTolerance(op, dim, stats.min);
+        const maxStatus = getTolerance(op, dim, stats.max);
+        const avgStatus = getTolerance(op, dim, stats.avg);
         rows.push([
           `Operation ${op}`,
           `Dimension ${dim}`,
-          stats.min.toFixed(3),
-          stats.max.toFixed(3),
-          stats.avg.toFixed(3),
+          `${stats.min.toFixed(3)} ${minStatus}`,
+          `${stats.max.toFixed(3)} ${maxStatus}`,
+          `${stats.avg.toFixed(3)} ${avgStatus}`,
           stats.count.toString(),
         ]);
       });
@@ -273,6 +325,13 @@ const DispatchQCReport = () => {
       </div>
     );
   }
+
+  // Helper function to check if value is within tolerance
+  const checkTolerance = (op: string, dim: string, value: number): boolean => {
+    if (!tolerances[op] || !tolerances[op][dim]) return true;
+    const { min, max } = tolerances[op][dim];
+    return value >= min && value <= max;
+  };
 
   if (!workOrder || !qcData) {
     return (
@@ -376,15 +435,27 @@ const DispatchQCReport = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => (
-                      <TableRow key={dim}>
-                        <TableCell className="font-medium">Dimension {dim}</TableCell>
-                        <TableCell className="text-right">{stats.min.toFixed(3)}</TableCell>
-                        <TableCell className="text-right">{stats.max.toFixed(3)}</TableCell>
-                        <TableCell className="text-right">{stats.avg.toFixed(3)}</TableCell>
-                        <TableCell className="text-right">{stats.count}</TableCell>
-                      </TableRow>
-                    ))}
+                    {Object.entries(opStats.dimensions).map(([dim, stats]: [string, any]) => {
+                      const minInTolerance = checkTolerance(op, dim, stats.min);
+                      const maxInTolerance = checkTolerance(op, dim, stats.max);
+                      const avgInTolerance = checkTolerance(op, dim, stats.avg);
+                      
+                      return (
+                        <TableRow key={dim}>
+                          <TableCell className="font-medium">Dimension {dim}</TableCell>
+                          <TableCell className={`text-right font-bold ${minInTolerance ? "text-green-600" : "text-red-600"}`}>
+                            {stats.min.toFixed(3)}
+                          </TableCell>
+                          <TableCell className={`text-right font-bold ${maxInTolerance ? "text-green-600" : "text-red-600"}`}>
+                            {stats.max.toFixed(3)}
+                          </TableCell>
+                          <TableCell className={`text-right font-bold ${avgInTolerance ? "text-green-600" : "text-red-600"}`}>
+                            {stats.avg.toFixed(3)}
+                          </TableCell>
+                          <TableCell className="text-right">{stats.count}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
