@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 const WorkOrders = () => {
   const navigate = useNavigate();
@@ -41,8 +42,9 @@ const WorkOrders = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background">
+      <NavigationHeader />
+      <div className="max-w-6xl mx-auto p-4 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Work Orders</h1>
