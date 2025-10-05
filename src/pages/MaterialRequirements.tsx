@@ -182,8 +182,11 @@ export default function MaterialRequirements() {
       // Add inventory data from material lots
       const inventoryBySize = new Map<number, { gross: number; net: number; lastLot: any }>();
       
+      console.log('[MaterialReq] Processing', materialLots.length, 'material lots');
+      
       for (const lot of materialLots as any[]) {
         const size = Number(lot.material_size_mm);
+        console.log('[MaterialReq] Lot', lot.lot_id, 'size:', size, 'gross:', lot.gross_weight, 'net:', lot.net_weight);
         if (!size) continue;
 
         if (!inventoryBySize.has(size)) {
