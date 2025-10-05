@@ -10,7 +10,7 @@ import { QCRecordsTab } from "@/components/QCRecordsTab";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 
 const WorkOrderDetail = () => {
@@ -25,6 +25,7 @@ const WorkOrderDetail = () => {
   const [scanEvents, setScanEvents] = useState<any[]>([]);
   const [stageHistory, setStageHistory] = useState<any[]>([]);
   const [designFiles, setDesignFiles] = useState<any[]>([]);
+  const [genealogyLog, setGenealogyLog] = useState<any[]>([]);
   const [uploadingDesign, setUploadingDesign] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showStageDialog, setShowStageDialog] = useState(false);
@@ -138,6 +139,37 @@ const WorkOrderDetail = () => {
         .order("uploaded_at", { ascending: false });
 
       setDesignFiles(designData || []);
+
+      // Load genealogy log (comprehensive action log)
+      const { data: genealogyData } = await supabase
+        .from("wo_actions_log")
+        .select("*")
+        .eq("wo_id", id)
+        .order("created_at", { ascending: true });
+
+      // Enrich with user names
+      const userIds = Array.from(
+        new Set(genealogyData?.map(log => log.performed_by).filter(Boolean) || [])
+      );
+      
+      let usersMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", userIds as string[]);
+        
+        profiles?.forEach(p => {
+          usersMap[p.id] = p.full_name;
+        });
+      }
+
+      const enrichedGenealogy = (genealogyData || []).map(log => ({
+        ...log,
+        performer_name: log.performed_by ? usersMap[log.performed_by] : "System"
+      }));
+
+      setGenealogyLog(enrichedGenealogy);
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -260,6 +292,69 @@ const WorkOrderDetail = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const exportGenealogyPDF = () => {
+    const { jsPDF } = require('jspdf');
+    require('jspdf-autotable');
+    
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(18);
+    doc.text(`Work Order Genealogy: ${wo?.wo_id}`, 14, 20);
+    
+    doc.setFontSize(11);
+    doc.text(`Customer: ${wo?.customer}`, 14, 30);
+    doc.text(`Item: ${wo?.item_code}`, 14, 36);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 42);
+    
+    // Prepare table data
+    const tableData = genealogyLog.map(log => [
+      new Date(log.created_at).toLocaleString(),
+      log.department,
+      log.action_type.replace(/_/g, ' ').toUpperCase(),
+      log.performer_name,
+      JSON.stringify(log.action_details, null, 2).substring(0, 100)
+    ]);
+    
+    doc.autoTable({
+      head: [['Time', 'Department', 'Action', 'Performed By', 'Details']],
+      body: tableData,
+      startY: 50,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] }
+    });
+    
+    doc.save(`WO_Genealogy_${wo?.wo_id}_${new Date().toISOString().split('T')[0]}.pdf`);
+    
+    toast({
+      title: "Success",
+      description: "Genealogy exported as PDF",
+    });
+  };
+
+  const exportGenealogyExcel = () => {
+    const XLSX = require('xlsx');
+    
+    const data = genealogyLog.map(log => ({
+      'Timestamp': new Date(log.created_at).toLocaleString(),
+      'Department': log.department,
+      'Action Type': log.action_type.replace(/_/g, ' ').toUpperCase(),
+      'Performed By': log.performer_name,
+      'Action Details': JSON.stringify(log.action_details, null, 2)
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Genealogy');
+    
+    XLSX.writeFile(wb, `WO_Genealogy_${wo?.wo_id}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    
+    toast({
+      title: "Success",
+      description: "Genealogy exported as Excel",
+    });
   };
 
   if (loading) {
@@ -628,48 +723,145 @@ const WorkOrderDetail = () => {
           <TabsContent value="genealogy" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Traceability & Genealogy</CardTitle>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Complete Work Order Genealogy</CardTitle>
+                  <div className="flex gap-2">
+                    <Button onClick={exportGenealogyPDF} variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export PDF
+                    </Button>
+                    <Button onClick={exportGenealogyExcel} variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Excel
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Comprehensive timeline of all actions from Goods In to Dispatch
+                </p>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {/* Material Traceability */}
-                  <div>
-                    <h4 className="font-medium mb-2">Material Trace</h4>
-                    {materialIssues.map((issue: any) => (
-                      <div key={issue.id} className="ml-4 border-l-2 border-primary pl-4 py-2">
-                        <p className="text-sm">
-                          <span className="font-medium">Lot:</span> {issue.material_lots?.lot_id}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Heat No: {issue.material_lots?.heat_no}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Scan History */}
-                  <div>
-                    <h4 className="font-medium mb-2">Movement History</h4>
-                    <div className="space-y-2">
-                      {scanEvents.map((event: any) => (
-                        <div
-                          key={event.id}
-                          className="flex items-center justify-between text-sm p-2 bg-secondary rounded"
-                        >
-                          <div>
-                            <p className="font-medium">→ {event.to_stage}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {event.profiles?.full_name || "Unknown"}
-                            </p>
+                {genealogyLog.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    No genealogy records yet
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Timeline visualization */}
+                    <div className="relative">
+                      {genealogyLog.map((log, index) => (
+                        <div key={log.id} className="relative flex gap-4 pb-8">
+                          {index < genealogyLog.length - 1 && (
+                            <div className="absolute left-4 top-8 bottom-0 w-0.5 bg-border" />
+                          )}
+                          
+                          <div className="relative">
+                            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold z-10">
+                              {index + 1}
+                            </div>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(event.scan_date_time).toLocaleString()}
-                          </p>
+
+                          <div className="flex-1 bg-secondary rounded-lg p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge className="bg-primary">{log.department}</Badge>
+                                  <span className="text-sm font-semibold">
+                                    {log.action_type.replace(/_/g, ' ').toUpperCase()}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(log.created_at).toLocaleString()}
+                                </p>
+                              </div>
+                              <Badge variant="outline">{log.performer_name}</Badge>
+                            </div>
+
+                            <div className="mt-3 space-y-1">
+                              {log.action_type === 'material_issued' && (
+                                <>
+                                  <p className="text-sm"><span className="font-medium">Lot:</span> {log.action_details.lot_id}</p>
+                                  <p className="text-sm"><span className="font-medium">Heat No:</span> {log.action_details.heat_no}</p>
+                                  <p className="text-sm"><span className="font-medium">Alloy:</span> {log.action_details.alloy}</p>
+                                  <p className="text-sm"><span className="font-medium">Quantity:</span> {log.action_details.quantity_kg} {log.action_details.uom}</p>
+                                </>
+                              )}
+
+                              {(log.action_type === 'qc_incoming' || log.action_type === 'qc_in_process' || log.action_type === 'qc_final') && (
+                                <>
+                                  <p className="text-sm"><span className="font-medium">QC ID:</span> {log.action_details.qc_id}</p>
+                                  <p className="text-sm">
+                                    <span className="font-medium">Result:</span>{' '}
+                                    <Badge variant={log.action_details.result === 'pass' ? 'default' : 'destructive'}>
+                                      {log.action_details.result?.toUpperCase()}
+                                    </Badge>
+                                  </p>
+                                  {log.action_details.remarks && (
+                                    <p className="text-sm"><span className="font-medium">Remarks:</span> {log.action_details.remarks}</p>
+                                  )}
+                                </>
+                              )}
+
+                              {log.action_type === 'hourly_qc_check' && (
+                                <>
+                                  <p className="text-sm"><span className="font-medium">Machine:</span> {log.action_details.machine_id} - {log.action_details.machine_name}</p>
+                                  <p className="text-sm"><span className="font-medium">Operation:</span> {log.action_details.operation}</p>
+                                  <p className="text-sm">
+                                    <span className="font-medium">Status:</span>{' '}
+                                    <Badge variant={log.action_details.status === 'pass' ? 'default' : 'destructive'}>
+                                      {log.action_details.status?.toUpperCase()}
+                                    </Badge>
+                                  </p>
+                                </>
+                              )}
+
+                              {log.action_type === 'carton_built' && (
+                                <>
+                                  <p className="text-sm"><span className="font-medium">Carton ID:</span> {log.action_details.carton_id}</p>
+                                  <p className="text-sm"><span className="font-medium">Quantity:</span> {log.action_details.quantity} pcs</p>
+                                  <p className="text-sm"><span className="font-medium">Weight:</span> {log.action_details.gross_weight} kg (Gross) / {log.action_details.net_weight} kg (Net)</p>
+                                </>
+                              )}
+
+                              {log.action_type === 'design_uploaded' && (
+                                <>
+                                  <p className="text-sm"><span className="font-medium">File:</span> {log.action_details.file_name}</p>
+                                  <p className="text-sm"><span className="font-medium">Version:</span> v{log.action_details.version}</p>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
+
+                    <div className="mt-6 pt-6 border-t">
+                      <h4 className="font-medium mb-3">Summary</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-3 bg-secondary rounded-lg">
+                          <p className="text-xs text-muted-foreground">Total Actions</p>
+                          <p className="text-2xl font-bold">{genealogyLog.length}</p>
+                        </div>
+                        <div className="p-3 bg-secondary rounded-lg">
+                          <p className="text-xs text-muted-foreground">Departments</p>
+                          <p className="text-2xl font-bold">{new Set(genealogyLog.map(l => l.department)).size}</p>
+                        </div>
+                        <div className="p-3 bg-secondary rounded-lg">
+                          <p className="text-xs text-muted-foreground">First Action</p>
+                          <p className="text-sm font-medium">
+                            {genealogyLog[0] ? new Date(genealogyLog[0].created_at).toLocaleDateString() : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-secondary rounded-lg">
+                          <p className="text-xs text-muted-foreground">Last Action</p>
+                          <p className="text-sm font-medium">
+                            {genealogyLog[genealogyLog.length - 1] ? new Date(genealogyLog[genealogyLog.length - 1].created_at).toLocaleDateString() : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

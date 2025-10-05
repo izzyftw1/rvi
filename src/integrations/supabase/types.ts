@@ -1437,6 +1437,50 @@ export type Database = {
         }
         Relationships: []
       }
+      wo_actions_log: {
+        Row: {
+          action_details: Json
+          action_type: string
+          created_at: string
+          department: string
+          entity_reference: string | null
+          id: string
+          performed_by: string | null
+          reference_type: string | null
+          wo_id: string
+        }
+        Insert: {
+          action_details?: Json
+          action_type: string
+          created_at?: string
+          department: string
+          entity_reference?: string | null
+          id?: string
+          performed_by?: string | null
+          reference_type?: string | null
+          wo_id: string
+        }
+        Update: {
+          action_details?: Json
+          action_type?: string
+          created_at?: string
+          department?: string
+          entity_reference?: string | null
+          id?: string
+          performed_by?: string | null
+          reference_type?: string | null
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_actions_log_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wo_material_issues: {
         Row: {
           id: string
