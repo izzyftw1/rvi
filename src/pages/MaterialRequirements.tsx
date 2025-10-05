@@ -35,6 +35,7 @@ export default function MaterialRequirements() {
   const [filterDueDate, setFilterDueDate] = useState("");
   const [customers, setCustomers] = useState<string[]>([]);
   const [session, setSession] = useState<any>(null);
+  const [debug, setDebug] = useState<{ approved: number; grouped: number; error: string }>({ approved: 0, grouped: 0, error: "" });
 
   useEffect(() => {
     // Check authentication
@@ -145,6 +146,7 @@ export default function MaterialRequirements() {
       }));
 
       setRequirements(requirementsArray);
+      setDebug({ approved: salesOrders.length, grouped: requirementsArray.length, error: "" });
     } catch (err: any) {
       toast({ variant: "destructive", description: `Failed to load dashboard: ${err?.message || err}` });
     } finally {
@@ -284,7 +286,14 @@ export default function MaterialRequirements() {
         </div>
       </div>
 
-      <h1 className="text-3xl font-bold mb-6">Raw Material Requirements Dashboard</h1>
+      <h1 className="text-3xl font-bold mb-2">Raw Material Requirements Dashboard</h1>
+      {debug.error ? (
+        <div className="mb-4 text-sm text-destructive">Error: {debug.error}</div>
+      ) : (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Approved orders: {debug.approved} • Groups: {debug.grouped}
+        </p>
+      )}
 
       <Card className="mb-6">
         <CardHeader>
