@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Home, ArrowLeft, LogOut, Factory, Wrench } from "lucide-react";
+import { Home, ArrowLeft, LogOut, Factory, Wrench, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 
@@ -12,6 +12,7 @@ interface NavigationHeaderProps {
 export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -29,6 +30,14 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
       if (data) {
         setProfile(data);
       }
+
+      // Check if user has admin role
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id);
+      
+      setIsAdmin(roles?.some(r => r.role === 'admin') || false);
     }
   };
 
@@ -102,15 +111,18 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
               Maintenance
             </Button>
 
-            {/* Admin Panel Link - Only visible to admins */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate("/admin")}
-              className="hover:bg-primary/10"
-            >
-              Admin
-            </Button>
+            {/* Admin Panel Link for Admin Users */}
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/admin")}
+                className="hover:bg-primary/10"
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Admin
+              </Button>
+            )}
 
             {/* User Info and Logout */}
           <div className="flex items-center gap-4">
