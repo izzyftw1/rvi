@@ -198,7 +198,7 @@ export default function MaterialRequirements() {
           inv.lastLot = lot;
         }
 
-        // Add to grouped if size exists in requirements
+        // Add to grouped if size exists in inventory but not in requirements
         if (!grouped.has(size)) {
           grouped.set(size, {
             material_size_mm: size,
@@ -217,17 +217,19 @@ export default function MaterialRequirements() {
         }
       }
 
-      // Merge inventory into requirements
+      // Merge inventory into requirements - SYNC BY GROSS WEIGHT
       for (const [size, req] of grouped.entries()) {
         const inv = inventoryBySize.get(size);
         if (inv) {
           req.inventory_gross_kg = inv.gross;
           req.inventory_net_kg = inv.net;
-          req.surplus_deficit_kg = inv.net - req.total_net_weight_kg;
+          // Calculate surplus/deficit based on GROSS WEIGHT
+          req.surplus_deficit_kg = inv.gross - req.total_gross_weight_kg;
           req.last_gi_reference = inv.lastLot.lot_id;
           req.last_gi_date = new Date(inv.lastLot.received_date_time).toLocaleDateString();
         } else {
-          req.surplus_deficit_kg = -req.total_net_weight_kg;
+          // No inventory - deficit equals requirement
+          req.surplus_deficit_kg = -req.total_gross_weight_kg;
         }
       }
 
@@ -293,10 +295,15 @@ export default function MaterialRequirements() {
   const exportToExcel = async () => {
     const data = filteredRequirements.map(req => ({
       "Raw Material Size (mm)": req.material_size_mm,
-      "Total Pcs": req.total_pcs,
-      "Total Gross Weight (kg)": req.total_gross_weight_kg.toFixed(2),
-      "Total Net Weight (kg)": req.total_net_weight_kg.toFixed(2),
+      "Requirement Gross (kg)": req.total_gross_weight_kg.toFixed(2),
+      "Requirement Net (kg)": req.total_net_weight_kg.toFixed(2),
+      "Requirement (pcs)": req.total_pcs,
+      "Inventory Gross (kg)": req.inventory_gross_kg.toFixed(2),
+      "Inventory Net (kg)": req.inventory_net_kg.toFixed(2),
+      "Surplus/Deficit (kg)": req.surplus_deficit_kg.toFixed(2),
       "Linked Sales Orders": req.linked_sales_orders.map(so => so.so_id).join(", "),
+      "Last GI Reference": req.last_gi_reference || "N/A",
+      "Last GI Date": req.last_gi_date || "N/A",
       "Status": req.status
     }));
 
@@ -318,15 +325,16 @@ export default function MaterialRequirements() {
     
     const tableData = filteredRequirements.map(req => [
       req.material_size_mm.toString(),
-      req.total_pcs.toString(),
-      req.total_gross_weight_kg.toFixed(2),
-      req.total_net_weight_kg.toFixed(2),
+      `${req.total_gross_weight_kg.toFixed(2)} kg (${req.total_pcs} pcs)`,
+      `${req.inventory_gross_kg.toFixed(2)} kg`,
+      `${req.surplus_deficit_kg >= 0 ? '+' : ''}${req.surplus_deficit_kg.toFixed(2)} kg`,
       req.linked_sales_orders.map(so => so.so_id).join(", "),
-      req.status
+      req.last_gi_reference || "N/A",
+      req.status === "covered" ? "Covered" : "Shortfall"
     ]);
 
     (doc as any).autoTable({
-      head: [["Size (mm)", "Total Pcs", "Gross Wt (kg)", "Net Wt (kg)", "Sales Orders", "Status"]],
+      head: [["Size (mm)", "Requirement", "Inventory", "Surplus/Deficit", "Sales Orders", "Last GI", "Status"]],
       body: tableData,
       startY: 30,
     });
@@ -535,14 +543,14 @@ export default function MaterialRequirements() {
                     <TableCell className="font-bold">{req.material_size_mm}</TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        <div className="font-medium">{req.total_net_weight_kg.toFixed(2)} kg</div>
-                        <div className="text-xs text-muted-foreground">{req.total_pcs} pcs</div>
+                        <div className="font-medium">{req.total_gross_weight_kg.toFixed(2)} kg</div>
+                        <div className="text-xs text-muted-foreground">{req.total_pcs} pcs • {req.total_net_weight_kg.toFixed(2)} kg net</div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        <div className="font-medium">{req.inventory_net_kg.toFixed(2)} kg</div>
-                        <div className="text-xs text-muted-foreground">{req.inventory_gross_kg.toFixed(2)} kg gross</div>
+                        <div className="font-medium">{req.inventory_gross_kg.toFixed(2)} kg</div>
+                        <div className="text-xs text-muted-foreground">{req.inventory_net_kg.toFixed(2)} kg net</div>
                       </div>
                     </TableCell>
                     <TableCell>

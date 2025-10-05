@@ -22,6 +22,7 @@ const MaterialInwards = () => {
     heat_no: "",
     alloy: "",
     supplier: "",
+    material_size_mm: "",
     gross_weight: "",
     net_weight: "",
     bin_location: "",
@@ -69,6 +70,7 @@ const MaterialInwards = () => {
           heat_no: formData.heat_no,
           alloy: formData.alloy,
           supplier: formData.supplier,
+          material_size_mm: formData.material_size_mm ? parseFloat(formData.material_size_mm) : null,
           gross_weight: parseFloat(formData.gross_weight),
           net_weight: parseFloat(formData.net_weight),
           bin_location: formData.bin_location,
@@ -124,7 +126,7 @@ const MaterialInwards = () => {
       
       setFormData({
         lot_id: "", heat_no: "", alloy: "", supplier: "",
-        gross_weight: "", net_weight: "", bin_location: "", mtc_file: null
+        material_size_mm: "", gross_weight: "", net_weight: "", bin_location: "", mtc_file: null
       });
       setSelectedPO("");
     } catch (error) {
@@ -219,6 +221,20 @@ const MaterialInwards = () => {
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="material_size_mm">Material Rod/Forging Size (mm) *</Label>
+                <Input
+                  id="material_size_mm"
+                  type="number"
+                  step="0.1"
+                  value={formData.material_size_mm}
+                  onChange={(e) => setFormData({ ...formData, material_size_mm: e.target.value })}
+                  placeholder="12.7"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">Enter the diameter/size of the material rod or forging</p>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
