@@ -259,7 +259,7 @@ const MaterialInwards = () => {
             ← Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Material Inwards</h1>
+            <h1 className="text-2xl font-bold">Goods In - Material Inwards</h1>
             <p className="text-sm text-muted-foreground">Receive new material lots</p>
           </div>
         </div>

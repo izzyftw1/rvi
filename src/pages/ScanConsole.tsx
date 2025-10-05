@@ -112,7 +112,7 @@ export default function ScanConsole() {
     const actions: string[] = [];
     
     if (entityType === "material_lot" && userRoles.includes("stores")) {
-      actions.push("issue_to_wo");
+      actions.push("issue_to_wo"); // Goods In can issue material to WO
     }
     
     if (entityType === "material_lot" && userRoles.includes("quality")) {

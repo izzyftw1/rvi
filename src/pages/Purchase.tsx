@@ -96,7 +96,7 @@ export default function Purchase() {
       toast({ description: "Purchase order approved" });
       loadData();
       
-      // Notify stores team
+      // Notify Goods In team
       const storesUsers = await supabase
         .from("user_roles")
         .select("user_id")

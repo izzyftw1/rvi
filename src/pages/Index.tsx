@@ -287,7 +287,7 @@ const Index = () => {
               </Button>
               <Button onClick={() => navigate("/materials/inwards")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <Box className="h-6 w-6" />
-                <span className="text-sm">Stores</span>
+                <span className="text-sm">Goods In</span>
               </Button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
@@ -355,7 +355,7 @@ const Index = () => {
           <h2 className="text-2xl font-bold mb-4">Live Floor Status</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <DepartmentCard
-              title="Stores"
+              title="Goods In"
               icon={Package}
               wipPcs={floorStats.stores.wipPcs}
               wipKg={floorStats.stores.wipKg}
