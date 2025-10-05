@@ -1043,8 +1043,11 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           customer: string
+          gross_weight_per_pc_grams: number | null
           id: string
           items: Json
+          material_rod_forging_size_mm: number | null
+          net_weight_per_pc_grams: number | null
           po_date: string
           po_number: string
           so_id: string
@@ -1057,8 +1060,11 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           customer: string
+          gross_weight_per_pc_grams?: number | null
           id?: string
           items: Json
+          material_rod_forging_size_mm?: number | null
+          net_weight_per_pc_grams?: number | null
           po_date: string
           po_number: string
           so_id: string
@@ -1071,8 +1077,11 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           customer?: string
+          gross_weight_per_pc_grams?: number | null
           id?: string
           items?: Json
+          material_rod_forging_size_mm?: number | null
+          net_weight_per_pc_grams?: number | null
           po_date?: string
           po_number?: string
           so_id?: string
