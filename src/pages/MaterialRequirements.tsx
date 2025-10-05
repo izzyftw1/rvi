@@ -344,10 +344,10 @@ export default function MaterialRequirements() {
   };
 
   const filteredRequirements = requirements.filter(req => {
-    if (filterSize && req.material_size_mm.toString() !== filterSize) {
+    if (filterSize && filterSize !== "all" && req.material_size_mm.toString() !== filterSize) {
       return false;
     }
-    if (filterCustomer && !req.linked_sales_orders.some(so => so.customer === filterCustomer)) {
+    if (filterCustomer && filterCustomer !== "all" && !req.linked_sales_orders.some(so => so.customer === filterCustomer)) {
       return false;
     }
     if (filterStatus !== "all") {
@@ -443,8 +443,8 @@ export default function MaterialRequirements() {
                   <SelectValue placeholder="All Sizes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Sizes</SelectItem>
-                  {[...new Set(requirements.map(r => r.material_size_mm))].map(size => (
+                  <SelectItem value="all">All Sizes</SelectItem>
+                  {[...new Set(requirements.map(r => r.material_size_mm))].filter(Boolean).map(size => (
                     <SelectItem key={size} value={size.toString()}>{size} mm</SelectItem>
                   ))}
                 </SelectContent>
@@ -458,8 +458,8 @@ export default function MaterialRequirements() {
                   <SelectValue placeholder="All Customers" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Customers</SelectItem>
-                  {customers.map(customer => (
+                  <SelectItem value="all">All Customers</SelectItem>
+                  {customers.filter(c => c && c.trim()).map(customer => (
                     <SelectItem key={customer} value={customer}>{customer}</SelectItem>
                   ))}
                 </SelectContent>
@@ -473,8 +473,8 @@ export default function MaterialRequirements() {
                   <SelectValue placeholder="All Suppliers" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Suppliers</SelectItem>
-                  {suppliers.map(supplier => (
+                  <SelectItem value="all">All Suppliers</SelectItem>
+                  {suppliers.filter(s => s && s.trim()).map(supplier => (
                     <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
                   ))}
                 </SelectContent>
