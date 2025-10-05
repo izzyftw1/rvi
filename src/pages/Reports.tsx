@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, BarChart3, TrendingUp, Package, Shield, DollarSign, FileText, Activity } from "lucide-react";
+import { BarChart3, TrendingUp, Package, Shield, DollarSign, FileText, Activity } from "lucide-react";
 import TraceabilityReports from "@/components/reports/TraceabilityReports";
 import ProductionReports from "@/components/reports/ProductionReports";
 import QualityReports from "@/components/reports/QualityReports";
 import InventoryReports from "@/components/reports/InventoryReports";
+import { NavigationHeader } from "@/components/NavigationHeader";
 import PackingReports from "@/components/reports/PackingReports";
 import SHEReports from "@/components/reports/SHEReports";
 import FinanceReports from "@/components/reports/FinanceReports";
@@ -17,17 +18,10 @@ const Reports = () => {
   const [activeTab, setActiveTab] = useState("traceability");
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Reports & Analytics</h1>
-            <p className="text-muted-foreground">Comprehensive insights across all workflows</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Reports & Analytics" subtitle="Comprehensive insights across all workflows" />
+      
+      <div className="max-w-7xl mx-auto p-4 md:p-8">
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-7 lg:w-auto">

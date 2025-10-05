@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 const OPERATIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const;
 
@@ -177,17 +178,10 @@ const ToleranceSetup = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Tolerance Setup</h1>
-            <p className="text-sm text-muted-foreground">Define dimensional tolerances per part and operation (Manager/QC Supervisor only)</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Tolerance Setup" subtitle="Define dimensional tolerances per part and operation" />
+      
+      <div className="max-w-6xl mx-auto p-4 space-y-6">
 
         <Card>
           <CardHeader>

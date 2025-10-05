@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Check } from "lucide-react";
+import { Check } from "lucide-react";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 export default function Purchase() {
   const navigate = useNavigate();
@@ -116,13 +117,10 @@ export default function Purchase() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <Button variant="ghost" onClick={() => navigate("/")} className="mb-4">
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Dashboard
-      </Button>
-
-      <h1 className="text-3xl font-bold mb-6">Purchase Orders</h1>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Purchase Orders" subtitle="Create and manage purchase orders" />
+      
+      <div className="p-6">
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
@@ -324,6 +322,7 @@ export default function Purchase() {
             </Card>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );

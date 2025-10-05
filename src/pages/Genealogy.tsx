@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 export default function Genealogy() {
   const navigate = useNavigate();
@@ -122,13 +123,10 @@ export default function Genealogy() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <Button variant="ghost" onClick={() => navigate("/")} className="mb-4">
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back
-      </Button>
-
-      <h1 className="text-3xl font-bold mb-6">Genealogy & Traceability</h1>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Genealogy & Traceability" subtitle="Track materials and products throughout the production chain" />
+      
+      <div className="p-6">
 
       <Card className="mb-6">
         <CardHeader>
@@ -322,6 +320,7 @@ export default function Genealogy() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
+import { NavigationHeader } from "@/components/NavigationHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { workOrderSchema } from "@/lib/validationSchemas";
 
@@ -81,17 +82,10 @@ const NewWorkOrder = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={() => navigate("/work-orders")}>
-            ← Back
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">New Work Order</h1>
-            <p className="text-sm text-muted-foreground">Create a new production order</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="New Work Order" subtitle="Create a new production order" />
+      
+      <div className="max-w-3xl mx-auto p-4 space-y-6">
 
         <Card>
           <CardHeader>

@@ -183,25 +183,9 @@ export default function DepartmentDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
+      <NavigationHeader title={`${departmentName} Department`} subtitle="Live Department Status" />
       
       <main className="container mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary rounded-lg">
-              <Icon className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold capitalize">{departmentName}</h1>
-              <p className="text-sm text-muted-foreground">Live Department Status</p>
-            </div>
-          </div>
-        </div>
-
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <Card>

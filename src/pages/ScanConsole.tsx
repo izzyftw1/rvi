@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, ArrowLeft, Package, FileText, Box, Truck } from "lucide-react";
+import { Camera, Package, FileText, Box, Truck } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 export default function ScanConsole() {
   const navigate = useNavigate();
@@ -390,13 +391,10 @@ export default function ScanConsole() {
   const actions = getAvailableActions();
 
   return (
-    <div className="min-h-screen bg-background p-4 pb-20">
-      <Button variant="ghost" onClick={() => navigate("/")} className="mb-4">
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back
-      </Button>
-
-      <h1 className="text-2xl font-bold mb-6">Scan Console</h1>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Scan Console" subtitle="Scan QR codes to track and manage entities" />
+      
+      <div className="p-4 pb-20">
 
       {/* Scan Input */}
       <Card className="mb-6">
@@ -613,6 +611,7 @@ export default function ScanConsole() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }

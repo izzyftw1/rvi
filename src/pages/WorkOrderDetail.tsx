@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QCRecordsTab } from "@/components/QCRecordsTab";
-import { CheckCircle2, Clock, AlertCircle, FileText } from "lucide-react";
+import { CheckCircle2, Clock, FileText } from "lucide-react";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -127,13 +128,12 @@ const WorkOrderDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background">
+      <NavigationHeader />
+      
+      <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={() => navigate("/work-orders")}>
-            ← Back
-          </Button>
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{wo.wo_id}</h1>

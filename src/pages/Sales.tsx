@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Check, X, Eye, Edit } from "lucide-react";
+import { Check, X, Eye, Edit } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 export default function Sales() {
   const navigate = useNavigate();
@@ -173,13 +174,10 @@ export default function Sales() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <Button variant="ghost" onClick={() => navigate("/")} className="mb-4">
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Dashboard
-      </Button>
-
-      <h1 className="text-3xl font-bold mb-6">Sales Orders</h1>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Sales Orders" subtitle="Create and manage sales orders" />
+      
+      <div className="p-6">
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -469,6 +467,7 @@ export default function Sales() {
           )}
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

@@ -7,8 +7,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, ShoppingCart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 interface MaterialRequirement {
   material_size_mm: number;
@@ -460,13 +461,11 @@ export default function MaterialRequirements() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="flex items-center justify-between mb-6">
-        <Button variant="ghost" onClick={() => navigate("/")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
-        <div className="flex gap-2">
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Raw Material Requirements Dashboard" subtitle="Material planning and procurement tracking" />
+      
+      <div className="p-6">
+        <div className="flex justify-end gap-2 mb-6">
           <Button onClick={exportToExcel} variant="outline">
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Export Excel

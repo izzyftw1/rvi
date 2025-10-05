@@ -12,6 +12,7 @@ import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { materialLotSchema } from "@/lib/validationSchemas";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 const MaterialInwards = () => {
   const navigate = useNavigate();
@@ -252,17 +253,10 @@ const MaterialInwards = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={() => navigate("/")}>
-            ← Back
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Goods In - Material Inwards</h1>
-            <p className="text-sm text-muted-foreground">Receive new material lots</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Goods In - Material Inwards" subtitle="Receive new material lots" />
+      
+      <div className="max-w-3xl mx-auto p-4 space-y-6">
 
         <Card>
           <CardHeader>

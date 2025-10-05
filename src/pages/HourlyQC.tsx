@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { NavigationHeader } from "@/components/NavigationHeader";
 
 const OPERATIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const;
 
@@ -174,12 +175,10 @@ const HourlyQC = () => {
   const selectedWOData = workOrders.find((wo) => wo.id === selectedWO);
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Hourly Dimensional QC</h1>
-          <p className="text-muted-foreground">Record hourly quality control measurements</p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Hourly Dimensional QC" subtitle="Record hourly quality control measurements" />
+      
+      <div className="max-w-4xl mx-auto p-4 space-y-6">
 
         <Card>
           <CardHeader>
