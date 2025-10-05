@@ -35,6 +35,7 @@ export default function MaterialRequirements() {
   const [filterDueDate, setFilterDueDate] = useState("");
   const [customers, setCustomers] = useState<string[]>([]);
   const [session, setSession] = useState<any>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [debug, setDebug] = useState<{ approved: number; grouped: number; error: string }>({ approved: 0, grouped: 0, error: "" });
 
   useEffect(() => {
@@ -46,13 +47,17 @@ export default function MaterialRequirements() {
       } else {
         setLoading(false);
       }
+      setSessionChecked(true);
     });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setSessionChecked(true);
       if (session) {
         setLoading(true);
         loadRequirements();
+      } else {
+        setLoading(false);
       }
     });
     
@@ -73,7 +78,7 @@ export default function MaterialRequirements() {
       .subscribe();
 
     return () => {
-      authListener?.subscription.unsubscribe();
+      subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, []);
@@ -236,7 +241,7 @@ export default function MaterialRequirements() {
     return true;
   });
 
-  if (!session) {
+  if (sessionChecked && !session) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <Card className="max-w-md w-full">
