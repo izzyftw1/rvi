@@ -16,7 +16,8 @@ import {
   Box,
   ClipboardCheck,
   FileText,
-  Boxes
+  Boxes,
+  Shield
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [floorStats, setFloorStats] = useState({
     stores: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
     production: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
@@ -54,6 +56,7 @@ const Index = () => {
       if (session) {
         setUser(session.user);
         loadProfile(session.user.id);
+        loadIsAdmin(session.user.id);
         loadLiveData();
       } else {
         navigate("/auth");
@@ -66,6 +69,7 @@ const Index = () => {
       if (session) {
         setUser(session.user);
         loadProfile(session.user.id);
+        loadIsAdmin(session.user.id);
         loadLiveData();
       } else {
         navigate("/auth");
@@ -119,6 +123,14 @@ const Index = () => {
     if (data) {
       setProfile(data);
     }
+  };
+
+  const loadIsAdmin = async (userId: string) => {
+    const { data: roles } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId);
+    setIsAdmin(roles?.some((r: any) => r.role === 'admin') || false);
   };
 
   const loadLiveData = async () => {
@@ -283,6 +295,12 @@ const Index = () => {
                 <p className="text-sm font-medium">{profile?.full_name}</p>
                 <p className="text-xs text-muted-foreground capitalize">{profile?.role?.replace('_', ' ')}</p>
               </div>
+              {isAdmin && (
+                <Button variant="ghost" onClick={() => navigate("/admin")} className="hidden sm:inline-flex">
+                  <Shield className="h-5 w-5 mr-2" />
+                  Admin
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={handleLogout}>
                 <LogOut className="h-5 w-5" />
               </Button>
