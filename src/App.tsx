@@ -22,6 +22,7 @@ import Reports from "./pages/Reports";
 import ToleranceSetup from "./pages/ToleranceSetup";
 import HourlyQC from "./pages/HourlyQC";
 import DispatchQCReport from "./pages/DispatchQCReport";
+import DepartmentDetail from "./pages/DepartmentDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -52,6 +53,7 @@ const App = () => (
           <Route path="/tolerance-setup" element={<ToleranceSetup />} />
           <Route path="/hourly-qc" element={<HourlyQC />} />
           <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
+          <Route path="/department/:departmentName" element={<DepartmentDetail />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

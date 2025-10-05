@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DepartmentCard } from "@/components/DepartmentCard";
 import { 
@@ -24,6 +25,20 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [floorStats, setFloorStats] = useState({
+    stores: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+    production: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+    quality: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+    packing: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+    jobWork: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+    dispatch: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+  });
+  const [todayStats, setTodayStats] = useState({
+    woDueToday: 0,
+    lateItems: 0,
+    blockedSteps: 0,
+    readyToShip: 0
+  });
 
   useEffect(() => {
     // Check for existing session
@@ -31,6 +46,7 @@ const Index = () => {
       if (session) {
         setUser(session.user);
         loadProfile(session.user.id);
+        loadLiveData();
       } else {
         navigate("/auth");
       }
@@ -42,12 +58,47 @@ const Index = () => {
       if (session) {
         setUser(session.user);
         loadProfile(session.user.id);
+        loadLiveData();
       } else {
         navigate("/auth");
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Set up real-time subscriptions for live updates
+    const channel = supabase
+      .channel('floor-status-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'routing_steps'
+        },
+        () => {
+          loadLiveData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'work_orders'
+        },
+        () => {
+          loadLiveData();
+        }
+      )
+      .subscribe();
+
+    // Refresh data every 30 seconds
+    const interval = setInterval(loadLiveData, 30000);
+
+    return () => {
+      subscription.unsubscribe();
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, [navigate]);
 
   const loadProfile = async (userId: string) => {
@@ -59,6 +110,109 @@ const Index = () => {
     
     if (data) {
       setProfile(data);
+    }
+  };
+
+  const loadLiveData = async () => {
+    try {
+      // Get all departments
+      const { data: departments } = await supabase
+        .from('departments')
+        .select('id, name, type');
+
+      if (!departments) return;
+
+      const newFloorStats = { ...floorStats };
+      
+      for (const dept of departments) {
+        const { data: steps } = await supabase
+          .from('routing_steps')
+          .select(`
+            consumed_qty,
+            actual_start,
+            work_orders (
+              quantity
+            )
+          `)
+          .eq('department_id', dept.id)
+          .in('status', ['in_progress', 'pending', 'waiting']);
+
+        if (steps) {
+          const totalPcs = steps.reduce((sum, step: any) => {
+            return sum + (step.work_orders?.quantity || 0);
+          }, 0);
+
+          const avgWait = steps.length > 0
+            ? steps.reduce((sum, step: any) => {
+              if (step.actual_start) {
+                const hours = (Date.now() - new Date(step.actual_start).getTime()) / (1000 * 60 * 60);
+                return sum + hours;
+              }
+              return sum;
+            }, 0) / steps.length
+            : 0;
+
+          const alerts = steps.filter((step: any) => {
+            if (step.actual_start) {
+              const hours = (Date.now() - new Date(step.actual_start).getTime()) / (1000 * 60 * 60);
+              return hours > 24;
+            }
+            return false;
+          }).length;
+
+          const deptKey = dept.name.toLowerCase().replace(/\s+/g, '');
+          if (deptKey.includes('store')) {
+            newFloorStats.stores = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
+          } else if (deptKey.includes('production')) {
+            newFloorStats.production = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
+          } else if (deptKey.includes('quality')) {
+            newFloorStats.quality = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
+          } else if (deptKey.includes('packing')) {
+            newFloorStats.packing = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
+          } else if (deptKey.includes('job')) {
+            newFloorStats.jobWork = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
+          } else if (deptKey.includes('dispatch')) {
+            newFloorStats.dispatch = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
+          }
+        }
+      }
+
+      setFloorStats(newFloorStats);
+
+      // Get today's stats
+      const today = new Date().toISOString().split('T')[0];
+      
+      const { data: wosDueToday } = await supabase
+        .from('work_orders')
+        .select('id', { count: 'exact' })
+        .eq('due_date', today);
+
+      const { data: lateWos } = await supabase
+        .from('work_orders')
+        .select('id', { count: 'exact' })
+        .lt('due_date', today)
+        .neq('status', 'completed');
+
+      const { data: readyShip } = await supabase
+        .from('work_orders')
+        .select('id', { count: 'exact' })
+        .eq('dispatch_allowed', true)
+        .neq('status', 'completed');
+
+      const { data: blocked } = await supabase
+        .from('routing_steps')
+        .select('id', { count: 'exact' })
+        .eq('status', 'waiting');
+
+      setTodayStats({
+        woDueToday: wosDueToday?.length || 0,
+        lateItems: lateWos?.length || 0,
+        readyToShip: readyShip?.length || 0,
+        blockedSteps: blocked?.length || 0
+      });
+
+    } catch (error) {
+      console.error('Error loading live data:', error);
     }
   };
 
@@ -198,46 +352,56 @@ const Index = () => {
             <DepartmentCard
               title="Stores"
               icon={Package}
-              wipPcs={145}
-              wipKg={2340.5}
-              avgWaitTime="4.2h"
-              alerts={2}
+              wipPcs={floorStats.stores.wipPcs}
+              wipKg={floorStats.stores.wipKg}
+              avgWaitTime={`${floorStats.stores.avgWaitTime.toFixed(1)}h`}
+              alerts={floorStats.stores.alerts}
+              onClick={() => navigate("/department/stores")}
             />
             <DepartmentCard
               title="Production"
               icon={Factory}
-              wipPcs={89}
-              wipKg={1567.3}
-              avgWaitTime="6.8h"
-              alerts={1}
+              wipPcs={floorStats.production.wipPcs}
+              wipKg={floorStats.production.wipKg}
+              avgWaitTime={`${floorStats.production.avgWaitTime.toFixed(1)}h`}
+              alerts={floorStats.production.alerts}
+              onClick={() => navigate("/department/production")}
             />
             <DepartmentCard
               title="Quality Control"
               icon={CheckCircle2}
-              wipPcs={34}
-              wipKg={589.2}
-              avgWaitTime="2.1h"
+              wipPcs={floorStats.quality.wipPcs}
+              wipKg={floorStats.quality.wipKg}
+              avgWaitTime={`${floorStats.quality.avgWaitTime.toFixed(1)}h`}
+              alerts={floorStats.quality.alerts}
+              onClick={() => navigate("/department/quality")}
             />
             <DepartmentCard
               title="Packing"
               icon={Box}
-              wipPcs={67}
-              wipKg={1123.8}
-              avgWaitTime="3.5h"
+              wipPcs={floorStats.packing.wipPcs}
+              wipKg={floorStats.packing.wipKg}
+              avgWaitTime={`${floorStats.packing.avgWaitTime.toFixed(1)}h`}
+              alerts={floorStats.packing.alerts}
+              onClick={() => navigate("/department/packing")}
             />
             <DepartmentCard
               title="Job Work"
               icon={Truck}
-              wipPcs={23}
-              wipKg={456.7}
-              avgWaitTime="12.3h"
+              wipPcs={floorStats.jobWork.wipPcs}
+              wipKg={floorStats.jobWork.wipKg}
+              avgWaitTime={`${floorStats.jobWork.avgWaitTime.toFixed(1)}h`}
+              alerts={floorStats.jobWork.alerts}
+              onClick={() => navigate("/department/job-work")}
             />
             <DepartmentCard
               title="Dispatch"
               icon={Truck}
-              wipPcs={15}
-              wipKg={298.4}
-              avgWaitTime="1.2h"
+              wipPcs={floorStats.dispatch.wipPcs}
+              wipKg={floorStats.dispatch.wipKg}
+              avgWaitTime={`${floorStats.dispatch.avgWaitTime.toFixed(1)}h`}
+              alerts={floorStats.dispatch.alerts}
+              onClick={() => navigate("/department/dispatch")}
             />
           </div>
         </div>
@@ -253,19 +417,19 @@ const Index = () => {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-primary">12</p>
+                <p className="text-3xl font-bold text-primary">{todayStats.woDueToday}</p>
                 <p className="text-sm text-muted-foreground">WOs Due Today</p>
               </div>
               <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-danger">3</p>
+                <p className="text-3xl font-bold text-destructive">{todayStats.lateItems}</p>
                 <p className="text-sm text-muted-foreground">Late Items</p>
               </div>
               <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-warning">5</p>
+                <p className="text-3xl font-bold text-yellow-500">{todayStats.blockedSteps}</p>
                 <p className="text-sm text-muted-foreground">Blocked Steps</p>
               </div>
               <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-success">8</p>
+                <p className="text-3xl font-bold text-green-500">{todayStats.readyToShip}</p>
                 <p className="text-sm text-muted-foreground">Ready to Ship</p>
               </div>
             </div>
