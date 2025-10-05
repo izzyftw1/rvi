@@ -79,10 +79,12 @@ export default function QCIncoming() {
 
       if (qcError) throw qcError;
 
-      // Update material lot QC status
+      // Update material lot QC status - material remains "received" but qc_status controls availability
       await supabase
         .from("material_lots")
-        .update({ qc_status: formData.result })
+        .update({ 
+          qc_status: formData.result
+        })
         .eq("id", selectedLot.id);
 
       if (formData.result === "pass") {

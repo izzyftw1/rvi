@@ -147,13 +147,14 @@ const MaterialInwards = () => {
 
       if (lotError) throw lotError;
 
+      // Create scan event for material receipt with QC status
       await supabase.from("scan_events").insert({
         entity_type: "material_lot",
         entity_id: formData.lot_id,
-        to_stage: "received",
+        to_stage: "received_pending_qc",
         quantity: parseFloat(formData.net_weight),
         owner_id: user?.id,
-        remarks: `Received from ${formData.supplier}`
+        remarks: `Received from ${formData.supplier}. QC Status: Pending`
       });
 
       // Mark PO as received

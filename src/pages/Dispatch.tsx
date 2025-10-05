@@ -63,14 +63,15 @@ export default function Dispatch() {
       setPalletData(data);
       
       // Check if all WOs are dispatch allowed
-      const allAllowed = data.pallet_cartons?.every((pc: any) => 
-        pc.cartons.work_orders.dispatch_allowed
-      );
+      const allWOs = data.pallet_cartons?.map((pc: any) => pc.cartons.work_orders) || [];
+      const allAllowed = allWOs.every((wo: any) => wo.dispatch_allowed);
       
       if (!allAllowed) {
+        // Check which WOs are missing QC approval
+        const missingQC = allWOs.filter((wo: any) => !wo.dispatch_allowed).map((wo: any) => wo.wo_id);
         toast({ 
           variant: "destructive", 
-          description: "⚠️ QC Final not passed for all work orders. Dispatch blocked." 
+          description: `⚠️ Pre-Dispatch QC Summary not approved for: ${missingQC.join(", ")}. Dispatch blocked.` 
         });
       }
     } else {
@@ -87,9 +88,13 @@ export default function Dispatch() {
     );
 
     if (!allAllowed) {
+      const missingQC = palletData.pallet_cartons
+        ?.map((pc: any) => pc.cartons.work_orders)
+        .filter((wo: any) => !wo.dispatch_allowed)
+        .map((wo: any) => wo.wo_id) || [];
       toast({ 
         variant: "destructive", 
-        description: "Cannot dispatch: Final QC not passed" 
+        description: `Cannot dispatch: Pre-Dispatch QC Summary not approved for ${missingQC.join(", ")}` 
       });
       return;
     }
