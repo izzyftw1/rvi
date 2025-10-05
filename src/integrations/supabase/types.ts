@@ -531,6 +531,30 @@ export type Database = {
           },
         ]
       }
+      material_requirements: {
+        Row: {
+          created_at: string | null
+          id: string
+          material_size_mm: number
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          material_size_mm: number
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          material_size_mm?: number
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       non_consumable_usage: {
         Row: {
           created_at: string

@@ -15,7 +15,8 @@ import {
   BarChart3,
   Box,
   ClipboardCheck,
-  FileText
+  FileText,
+  Boxes
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -317,7 +318,11 @@ const Index = () => {
                 <span className="text-sm">Genealogy</span>
               </Button>
             </div>
-            <div className="grid grid-cols-3 gap-3 mt-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+              <Button onClick={() => navigate("/material-requirements")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <Boxes className="h-6 w-6" />
+                <span className="text-sm">Material Req</span>
+              </Button>
               <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
                 <span className="text-sm font-bold">📊 Reports</span>
