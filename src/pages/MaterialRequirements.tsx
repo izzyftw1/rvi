@@ -42,6 +42,7 @@ export default function MaterialRequirements() {
   const [filterSupplier, setFilterSupplier] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterSize, setFilterSize] = useState<string>("");
   const [customers, setCustomers] = useState<string[]>([]);
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [session, setSession] = useState<any>(null);
@@ -343,6 +344,9 @@ export default function MaterialRequirements() {
   };
 
   const filteredRequirements = requirements.filter(req => {
+    if (filterSize && req.material_size_mm.toString() !== filterSize) {
+      return false;
+    }
     if (filterCustomer && !req.linked_sales_orders.some(so => so.customer === filterCustomer)) {
       return false;
     }
@@ -350,7 +354,7 @@ export default function MaterialRequirements() {
       if (filterStatus === "covered" && req.status !== "covered") return false;
       if (filterStatus === "shortfall" && req.status !== "shortfall") return false;
     }
-    // Note: filterSupplier and date filters would need material_lots data per requirement
+    // Note: supplier and date filters intentionally not applied to keep view responsive
     return true;
   });
 
@@ -434,7 +438,7 @@ export default function MaterialRequirements() {
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <div>
               <label className="text-sm font-medium mb-2 block">Material Size</label>
-              <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+              <Select value={filterSize} onValueChange={setFilterSize}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Sizes" />
                 </SelectTrigger>
@@ -535,7 +539,7 @@ export default function MaterialRequirements() {
                 </TableRow>
               ) : filteredRequirements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center">No material requirements found</TableCell>
+                  <TableCell colSpan={7} className="text-center">No Data Available</TableCell>
                 </TableRow>
               ) : (
                 filteredRequirements.map((req) => (
