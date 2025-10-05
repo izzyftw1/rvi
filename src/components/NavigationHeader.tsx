@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Home, ArrowLeft, LogOut, Factory, Wrench, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
+import rvLogo from "@/assets/rv-logo.jpg";
 
 interface NavigationHeaderProps {
   title?: string;
@@ -89,13 +90,11 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
               </div>
             ) : (
               <div className="flex items-center gap-2 ml-4 border-l pl-4">
-                <div className="p-1.5 bg-primary rounded-lg">
-                  <Factory className="h-5 w-5 text-primary-foreground" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold">RV Industries</h1>
-                  <p className="text-xs text-muted-foreground">Manufacturing Traceability</p>
-                </div>
+                <img 
+                  src={rvLogo} 
+                  alt="RV Industries Logo" 
+                  className="h-12 object-contain"
+                />
               </div>
             )}
           </div>
