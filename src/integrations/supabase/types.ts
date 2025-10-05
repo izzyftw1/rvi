@@ -475,6 +475,7 @@ export type Database = {
           heat_no: string
           id: string
           lot_id: string
+          material_size_mm: number | null
           mtc_file: string | null
           net_weight: number
           po_id: string | null
@@ -493,6 +494,7 @@ export type Database = {
           heat_no: string
           id?: string
           lot_id: string
+          material_size_mm?: number | null
           mtc_file?: string | null
           net_weight: number
           po_id?: string | null
@@ -511,6 +513,7 @@ export type Database = {
           heat_no?: string
           id?: string
           lot_id?: string
+          material_size_mm?: number | null
           mtc_file?: string | null
           net_weight?: number
           po_id?: string | null

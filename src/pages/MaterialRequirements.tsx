@@ -15,6 +15,12 @@ interface MaterialRequirement {
   total_pcs: number;
   total_gross_weight_kg: number;
   total_net_weight_kg: number;
+  inventory_pcs: number;
+  inventory_gross_kg: number;
+  inventory_net_kg: number;
+  surplus_deficit_kg: number;
+  last_gi_reference: string | null;
+  last_gi_date: string | null;
   linked_sales_orders: Array<{
     so_id: string;
     customer: string;
@@ -33,10 +39,14 @@ export default function MaterialRequirements() {
   const [filterCustomer, setFilterCustomer] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterDueDate, setFilterDueDate] = useState("");
+  const [filterSupplier, setFilterSupplier] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
   const [customers, setCustomers] = useState<string[]>([]);
+  const [suppliers, setSuppliers] = useState<string[]>([]);
   const [session, setSession] = useState<any>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [debug, setDebug] = useState<{ approved: number; grouped: number; error: string }>({ approved: 0, grouped: 0, error: "" });
+  const [debug, setDebug] = useState<{ approved: number; grouped: number; inventory: number; error: string }>({ approved: 0, grouped: 0, inventory: 0, error: "" });
 
   useEffect(() => {
     // Auth: set up listener FIRST, then check existing session
@@ -65,7 +75,7 @@ export default function MaterialRequirements() {
       }
     });
     
-    // Set up realtime subscription
+    // Set up realtime subscriptions for both sales_orders and material_lots
     const channel = supabase
       .channel('material-requirements-updates')
       .on(
@@ -76,7 +86,18 @@ export default function MaterialRequirements() {
           table: 'sales_orders'
         },
         () => {
-          loadRequirements();
+          setTimeout(() => loadRequirements(), 0);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'material_lots'
+        },
+        () => {
+          setTimeout(() => loadRequirements(), 0);
         }
       )
       .subscribe();
@@ -91,7 +112,7 @@ export default function MaterialRequirements() {
     setLoading(true);
 
     try {
-      // Fetch all sales orders
+      // Fetch all approved sales orders
       const { data: salesOrdersRaw, error } = await supabase
         .from("sales_orders")
         .select("*")
@@ -101,11 +122,24 @@ export default function MaterialRequirements() {
 
       const salesOrders = salesOrdersRaw ?? [];
 
-      // Extract unique customers
-      const uniqueCustomers = [...new Set(salesOrders.map((so: any) => so.customer).filter(Boolean))];
-      setCustomers(uniqueCustomers);
+      // Fetch all material lots with inventory
+      const { data: materialLotsRaw, error: lotsError } = await supabase
+        .from("material_lots")
+        .select("*")
+        .in("status", ["received", "in_use"])
+        .eq("qc_status", "approved");
 
-      // Group by material size
+      if (lotsError) throw lotsError;
+
+      const materialLots = materialLotsRaw ?? [];
+
+      // Extract unique customers and suppliers
+      const uniqueCustomers = [...new Set(salesOrders.map((so: any) => so.customer).filter(Boolean))];
+      const uniqueSuppliers = [...new Set(materialLots.map((lot: any) => lot.supplier).filter(Boolean))];
+      setCustomers(uniqueCustomers);
+      setSuppliers(uniqueSuppliers);
+
+      // Group requirements by material size
       const grouped = new Map<number, MaterialRequirement>();
 
       for (const so of salesOrders as any[]) {
@@ -121,6 +155,12 @@ export default function MaterialRequirements() {
             total_pcs: 0,
             total_gross_weight_kg: 0,
             total_net_weight_kg: 0,
+            inventory_pcs: 0,
+            inventory_gross_kg: 0,
+            inventory_net_kg: 0,
+            surplus_deficit_kg: 0,
+            last_gi_reference: null,
+            last_gi_date: null,
             linked_sales_orders: [],
             status: "not_ordered"
           });
@@ -138,6 +178,59 @@ export default function MaterialRequirements() {
         });
       }
 
+      // Add inventory data from material lots
+      const inventoryBySize = new Map<number, { gross: number; net: number; lastLot: any }>();
+      
+      for (const lot of materialLots as any[]) {
+        const size = Number(lot.material_size_mm);
+        if (!size) continue;
+
+        if (!inventoryBySize.has(size)) {
+          inventoryBySize.set(size, { gross: 0, net: 0, lastLot: lot });
+        }
+
+        const inv = inventoryBySize.get(size)!;
+        inv.gross += Number(lot.gross_weight || 0);
+        inv.net += Number(lot.net_weight || 0);
+        
+        // Track most recent lot
+        if (new Date(lot.received_date_time) > new Date(inv.lastLot.received_date_time)) {
+          inv.lastLot = lot;
+        }
+
+        // Add to grouped if size exists in requirements
+        if (!grouped.has(size)) {
+          grouped.set(size, {
+            material_size_mm: size,
+            total_pcs: 0,
+            total_gross_weight_kg: 0,
+            total_net_weight_kg: 0,
+            inventory_pcs: 0,
+            inventory_gross_kg: 0,
+            inventory_net_kg: 0,
+            surplus_deficit_kg: 0,
+            last_gi_reference: null,
+            last_gi_date: null,
+            linked_sales_orders: [],
+            status: "not_ordered"
+          });
+        }
+      }
+
+      // Merge inventory into requirements
+      for (const [size, req] of grouped.entries()) {
+        const inv = inventoryBySize.get(size);
+        if (inv) {
+          req.inventory_gross_kg = inv.gross;
+          req.inventory_net_kg = inv.net;
+          req.surplus_deficit_kg = inv.net - req.total_net_weight_kg;
+          req.last_gi_reference = inv.lastLot.lot_id;
+          req.last_gi_date = new Date(inv.lastLot.received_date_time).toLocaleDateString();
+        } else {
+          req.surplus_deficit_kg = -req.total_net_weight_kg;
+        }
+      }
+
       // Fetch statuses from material_requirements table
       const { data: statusData, error: statusErr } = await supabase
         .from("material_requirements")
@@ -147,16 +240,22 @@ export default function MaterialRequirements() {
 
       const statusMap = new Map((statusData ?? []).map((s: any) => [Number(s.material_size_mm), { status: s.status, id: s.id }]));
 
-      // Apply statuses
+      // Apply statuses and calculate final status
       const requirementsArray = Array.from(grouped.values()).map((req) => ({
         ...req,
-        status: statusMap.get(req.material_size_mm)?.status || "not_ordered",
+        status: req.surplus_deficit_kg >= 0 ? "covered" : "shortfall",
         requirement_id: statusMap.get(req.material_size_mm)?.id
       }));
 
       setRequirements(requirementsArray);
-      setDebug({ approved: salesOrders.length, grouped: requirementsArray.length, error: "" });
+      setDebug({ 
+        approved: salesOrders.length, 
+        grouped: requirementsArray.length,
+        inventory: materialLots.length,
+        error: "" 
+      });
     } catch (err: any) {
+      setDebug({ approved: 0, grouped: 0, inventory: 0, error: err?.message || String(err) });
       toast({ variant: "destructive", description: `Failed to load dashboard: ${err?.message || err}` });
     } finally {
       setLoading(false);
@@ -239,9 +338,11 @@ export default function MaterialRequirements() {
     if (filterCustomer && !req.linked_sales_orders.some(so => so.customer === filterCustomer)) {
       return false;
     }
-    if (filterStatus !== "all" && req.status !== filterStatus) {
-      return false;
+    if (filterStatus !== "all") {
+      if (filterStatus === "covered" && req.status !== "covered") return false;
+      if (filterStatus === "shortfall" && req.status !== "shortfall") return false;
     }
+    // Note: filterSupplier and date filters would need material_lots data per requirement
     return true;
   });
 
@@ -313,7 +414,7 @@ export default function MaterialRequirements() {
         <div className="mb-4 text-sm text-destructive">Error: {debug.error}</div>
       ) : (
         <p className="mb-4 text-sm text-muted-foreground">
-          Approved orders: {debug.approved} • Groups: {debug.grouped}
+          Approved orders: {debug.approved} • Groups: {debug.grouped} • Inventory lots: {debug.inventory}
         </p>
       )}
 
@@ -322,7 +423,22 @@ export default function MaterialRequirements() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Material Size</label>
+              <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Sizes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Sizes</SelectItem>
+                  {[...new Set(requirements.map(r => r.material_size_mm))].map(size => (
+                    <SelectItem key={size} value={size.toString()}>{size} mm</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <label className="text-sm font-medium mb-2 block">Customer</label>
               <Select value={filterCustomer} onValueChange={setFilterCustomer}>
@@ -339,6 +455,21 @@ export default function MaterialRequirements() {
             </div>
 
             <div>
+              <label className="text-sm font-medium mb-2 block">Supplier</label>
+              <Select value={filterSupplier} onValueChange={setFilterSupplier}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Suppliers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Suppliers</SelectItem>
+                  {suppliers.map(supplier => (
+                    <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <label className="text-sm font-medium mb-2 block">Status</label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger>
@@ -346,19 +477,30 @@ export default function MaterialRequirements() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="not_ordered">Not Ordered</SelectItem>
-                  <SelectItem value="ordered">Ordered</SelectItem>
+                  <SelectItem value="covered">✓ Covered</SelectItem>
+                  <SelectItem value="shortfall">⚠ Shortfall</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <label className="text-sm font-medium mb-2 block">Due Date</label>
-              <Input
-                type="date"
-                value={filterDueDate}
-                onChange={(e) => setFilterDueDate(e.target.value)}
-              />
+              <label className="text-sm font-medium mb-2 block">Date Range</label>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={filterDateFrom}
+                  onChange={(e) => setFilterDateFrom(e.target.value)}
+                  placeholder="From"
+                  className="text-xs"
+                />
+                <Input
+                  type="date"
+                  value={filterDateTo}
+                  onChange={(e) => setFilterDateTo(e.target.value)}
+                  placeholder="To"
+                  className="text-xs"
+                />
+              </div>
             </div>
           </div>
         </CardContent>
@@ -369,13 +511,13 @@ export default function MaterialRequirements() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Raw Material Size (mm)</TableHead>
-                <TableHead>Total Pcs</TableHead>
-                <TableHead>Total Gross Weight (kg)</TableHead>
-                <TableHead>Total Net Weight (kg)</TableHead>
+                <TableHead>Size (mm)</TableHead>
+                <TableHead>Requirement</TableHead>
+                <TableHead>Inventory Available</TableHead>
+                <TableHead>Surplus/Deficit</TableHead>
                 <TableHead>Linked Sales Orders</TableHead>
+                <TableHead>Last GI Ref</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -389,38 +531,53 @@ export default function MaterialRequirements() {
                 </TableRow>
               ) : (
                 filteredRequirements.map((req) => (
-                  <TableRow key={req.material_size_mm}>
-                    <TableCell className="font-medium">{req.material_size_mm}</TableCell>
-                    <TableCell>{req.total_pcs}</TableCell>
-                    <TableCell>{req.total_gross_weight_kg.toFixed(2)}</TableCell>
-                    <TableCell>{req.total_net_weight_kg.toFixed(2)}</TableCell>
+                  <TableRow key={req.material_size_mm} className={req.status === "shortfall" ? "bg-destructive/5" : "bg-green-50/50 dark:bg-green-950/20"}>
+                    <TableCell className="font-bold">{req.material_size_mm}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div className="font-medium">{req.total_net_weight_kg.toFixed(2)} kg</div>
+                        <div className="text-xs text-muted-foreground">{req.total_pcs} pcs</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div className="font-medium">{req.inventory_net_kg.toFixed(2)} kg</div>
+                        <div className="text-xs text-muted-foreground">{req.inventory_gross_kg.toFixed(2)} kg gross</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className={`text-sm font-bold ${req.surplus_deficit_kg >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
+                        {req.surplus_deficit_kg >= 0 ? '+' : ''}{req.surplus_deficit_kg.toFixed(2)} kg
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {req.linked_sales_orders.map((so) => (
                           <Badge key={so.id} variant="outline" className="text-xs">
-                            {so.so_id} ({so.pcs} pcs)
+                            {so.so_id}
                           </Badge>
                         ))}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={req.status === "ordered" ? "default" : "secondary"}>
-                        {req.status === "ordered" ? "Ordered" : "Not Ordered"}
-                      </Badge>
+                      <div className="text-xs">
+                        {req.last_gi_reference ? (
+                          <>
+                            <div className="font-medium">{req.last_gi_reference}</div>
+                            <div className="text-muted-foreground">{req.last_gi_date}</div>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">No GI</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={req.status}
-                        onValueChange={(value) => updateStatus(req.material_size_mm, value, req.requirement_id)}
+                      <Badge 
+                        variant={req.status === "covered" ? "default" : "destructive"}
+                        className={req.status === "covered" ? "bg-green-600 hover:bg-green-700" : ""}
                       >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="not_ordered">Not Ordered</SelectItem>
-                          <SelectItem value="ordered">Ordered</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        {req.status === "covered" ? "✓ Covered" : "⚠ Shortfall"}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))
