@@ -31,7 +31,7 @@ interface MaterialRequirement {
 export default function MaterialRequirements() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [requirements, setRequirements] = useState<MaterialRequirement[]>([]);
   const [filterCustomer, setFilterCustomer] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -39,11 +39,18 @@ export default function MaterialRequirements() {
   const [customers, setCustomers] = useState<string[]>([]);
 
   useEffect(() => {
-    loadRequirements();
+    // Check authentication
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      loadRequirements();
+    });
     
     // Set up realtime subscription
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel('material-requirements-updates')
       .on(
         'postgres_changes',
         {
@@ -60,7 +67,7 @@ export default function MaterialRequirements() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [navigate]);
 
   const loadRequirements = async () => {
     setLoading(true);
@@ -209,6 +216,19 @@ export default function MaterialRequirements() {
     }
     return true;
   });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+          </div>
+          <p className="mt-4 text-muted-foreground">Loading material requirements...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-6">
