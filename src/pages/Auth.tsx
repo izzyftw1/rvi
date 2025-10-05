@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Factory } from "lucide-react";
+import rvLogo from "@/assets/rv-logo.jpg";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -129,11 +129,12 @@ const Auth = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary rounded-xl">
-              <Factory className="h-8 w-8 text-primary-foreground" />
-            </div>
+            <img 
+              src={rvLogo} 
+              alt="RV Industries Logo" 
+              className="h-24 object-contain"
+            />
           </div>
-          <CardTitle className="text-2xl">RV Industries</CardTitle>
           <CardDescription>Manufacturing Plant Traceability System</CardDescription>
         </CardHeader>
         <CardContent>
