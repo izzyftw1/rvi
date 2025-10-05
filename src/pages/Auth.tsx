@@ -35,6 +35,14 @@ const Auth = () => {
 
       if (error) throw error;
 
+      // Update last login time
+      if (data.user) {
+        await supabase
+          .from("profiles")
+          .update({ last_login: new Date().toISOString() })
+          .eq("id", data.user.id);
+      }
+
       toast({
         title: "Login successful",
         description: "Welcome back to RV Industries!",

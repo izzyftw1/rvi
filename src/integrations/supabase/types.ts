@@ -943,6 +943,8 @@ export type Database = {
           department_id: string | null
           full_name: string
           id: string
+          is_active: boolean | null
+          last_login: string | null
           updated_at: string
         }
         Insert: {
@@ -950,6 +952,8 @@ export type Database = {
           department_id?: string | null
           full_name: string
           id: string
+          is_active?: boolean | null
+          last_login?: string | null
           updated_at?: string
         }
         Update: {
@@ -957,6 +961,8 @@ export type Database = {
           department_id?: string | null
           full_name?: string
           id?: string
+          is_active?: boolean | null
+          last_login?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1087,6 +1093,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      role_permissions: {
+        Row: {
+          can_approve: boolean | null
+          can_create: boolean | null
+          can_delete: boolean | null
+          can_edit: boolean | null
+          can_export: boolean | null
+          can_view: boolean | null
+          created_at: string | null
+          id: string
+          module: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          can_approve?: boolean | null
+          can_create?: boolean | null
+          can_delete?: boolean | null
+          can_edit?: boolean | null
+          can_export?: boolean | null
+          can_view?: boolean | null
+          created_at?: string | null
+          id?: string
+          module: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          can_approve?: boolean | null
+          can_create?: boolean | null
+          can_delete?: boolean | null
+          can_edit?: boolean | null
+          can_export?: boolean | null
+          can_view?: boolean | null
+          created_at?: string | null
+          id?: string
+          module?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
       }
       routing_steps: {
         Row: {
@@ -1419,6 +1464,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_audit_log: {
+        Row: {
+          action_details: Json | null
+          action_type: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip_address: string | null
+          module: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action_details?: Json | null
+          action_type: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          module: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action_details?: Json | null
+          action_type?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          module?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -1646,6 +1730,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      has_permission: {
+        Args: { _action: string; _module: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

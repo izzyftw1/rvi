@@ -26,6 +26,7 @@ import DepartmentDetail from "./pages/DepartmentDetail";
 import MaterialRequirements from "./pages/MaterialRequirements";
 import StageDetailView from "./pages/StageDetailView";
 import Maintenance from "./pages/Maintenance";
+import Admin from "./pages/Admin";
 
 
 const App = () => (
@@ -57,6 +58,7 @@ const App = () => (
         <Route path="/material-requirements" element={<MaterialRequirements />} />
         <Route path="/stage/:stage" element={<StageDetailView />} />
         <Route path="/maintenance" element={<Maintenance />} />
+        <Route path="/admin" element={<Admin />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

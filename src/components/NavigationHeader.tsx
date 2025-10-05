@@ -102,6 +102,16 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
               Maintenance
             </Button>
 
+            {/* Admin Panel Link - Only visible to admins */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/admin")}
+              className="hover:bg-primary/10"
+            >
+              Admin
+            </Button>
+
             {/* User Info and Logout */}
           <div className="flex items-center gap-4">
             {profile && (
