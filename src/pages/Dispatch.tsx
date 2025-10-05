@@ -142,22 +142,148 @@ export default function Dispatch() {
     }
   };
 
-  const generateDocuments = (shipment: any) => {
-    // Auto-generate COO, Packing List, Invoice
-    const docs = {
-      coo: `Certificate of Origin for ${shipment.ship_id}`,
-      packingList: `Packing List: ${shipment.ship_id}`,
-      invoice: `Invoice: ${shipment.ship_id}, Customer: ${shipment.customer}`
-    };
+  const generateDocuments = async (shipment: any) => {
+    setLoading(true);
     
-    const blob = new Blob([JSON.stringify(docs, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${shipment.ship_id}-documents.json`;
-    a.click();
-    
-    toast({ description: "Documents downloaded" });
+    try {
+      // Fetch full shipment data with all related information
+      const { data: fullShipment } = await supabase
+        .from("shipments")
+        .select(`
+          *,
+          shipment_pallets(
+            pallets(
+              pallet_id,
+              pallet_cartons(
+                cartons(
+                  carton_id,
+                  quantity,
+                  net_weight,
+                  gross_weight,
+                  heat_nos,
+                  work_orders(
+                    wo_id,
+                    customer,
+                    item_code,
+                    sales_orders(
+                      so_id,
+                      po_number,
+                      po_date,
+                      items
+                    )
+                  )
+                )
+              )
+            )
+          )
+        `)
+        .eq("id", shipment.id)
+        .single();
+
+      if (!fullShipment) {
+        toast({ variant: "destructive", description: "Shipment data not found" });
+        return;
+      }
+
+      // Extract data for document generation
+      const pallets = fullShipment.shipment_pallets || [];
+      const allCartons = pallets.flatMap((sp: any) => 
+        sp.pallets?.pallet_cartons?.map((pc: any) => pc.cartons) || []
+      );
+      
+      const firstCarton = allCartons[0];
+      const salesOrder = firstCarton?.work_orders?.sales_orders;
+      
+      // Generate invoice number and date
+      const invoiceNo = fullShipment.ship_id.replace('SHIP-', 'EXPRV');
+      const currentDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+      
+      // Prepare invoice data
+      const invoiceData = {
+        invoiceNo,
+        date: currentDate,
+        piNo: salesOrder?.so_id || 'N/A',
+        piDate: salesOrder?.po_date ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-') : currentDate,
+        consignee: {
+          name: fullShipment.customer,
+          address: 'UNIT B-380, COURTNEY PARK, DRIVE E\nMISSISSAUGA, ON L5T 2S5\nCANADA'
+        },
+        notifyParty: {
+          name: fullShipment.customer,
+          address: 'UNIT 104 - 2945, 190TH STREET\nSURREY, BC V3Z 0W5\nCANADA'
+        },
+        portOfLoading: 'JNPT',
+        portOfDischarge: 'TORONTO',
+        finalDestination: 'TORONTO - CANADA',
+        paymentTerms: '30% ADVANCE & BALANCE AGAINST COPY OF BL',
+        marks: 'GRVL',
+        kindOfPackages: `${allCartons.length} BOXES IN ${pallets.length} PALLET${pallets.length > 1 ? 'S' : ''}`,
+        grossWeight: allCartons.reduce((sum: number, c: any) => sum + (c.gross_weight || 0), 0),
+        lineItems: allCartons.map((carton: any, idx: number) => ({
+          srNo: idx + 1,
+          description: `${carton.work_orders?.item_code || 'ITEM'}`,
+          hsCode: 'CETH-74153390',
+          quantity: carton.quantity || 0,
+          rate: 4.0,
+          total: (carton.quantity || 0) * 4.0
+        })),
+        advance: 6000,
+        currency: 'USD'
+      };
+
+      // Prepare packing list data
+      const packingListData = {
+        invoiceNo,
+        date: currentDate,
+        piNo: salesOrder?.so_id || 'N/A',
+        piDate: salesOrder?.po_date ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-') : currentDate,
+        consignee: invoiceData.consignee,
+        notifyParty: invoiceData.notifyParty,
+        portOfLoading: 'JNPT',
+        portOfDischarge: 'TORONTO',
+        finalDestination: 'TORONTO - CANADA',
+        paymentTerms: '30% ADVANCE & BALANCE AGAINST COPY OF BL',
+        vessel: 'BY SEA',
+        marks: 'GRVL',
+        description: 'NUTS/SCREW/WASHERS MADE OF BRASS (CETH-74153390)',
+        kindOfPackages: invoiceData.kindOfPackages,
+        lineItems: pallets.map((pallet: any, idx: number) => {
+          const palletCartons = pallet.pallets?.pallet_cartons || [];
+          const totalPcs = palletCartons.reduce((sum: number, pc: any) => 
+            sum + (pc.cartons?.quantity || 0), 0);
+          const totalWeight = palletCartons.reduce((sum: number, pc: any) => 
+            sum + (pc.cartons?.gross_weight || 0), 0);
+          const firstCarton = palletCartons[0]?.cartons;
+          
+          return {
+            palletNo: (idx + 1).toString(),
+            boxNos: palletCartons.map((pc: any, i: number) => i + 1).join(', '),
+            totalBoxes: palletCartons.length,
+            pcsPerBox: firstCarton ? Math.round(firstCarton.quantity / palletCartons.length) : 0,
+            totalPcs,
+            itemName: firstCarton?.work_orders?.item_code || 'ITEM',
+            grossWeight: totalWeight
+          };
+        })
+      };
+
+      // Generate PDFs
+      const { generateCommercialInvoice, generatePackingList } = await import('@/lib/documentGenerator');
+      
+      const invoicePdf = generateCommercialInvoice(invoiceData);
+      const packingListPdf = generatePackingList(packingListData);
+      
+      // Download both documents
+      invoicePdf.save(`${invoiceNo}-Commercial-Invoice.pdf`);
+      packingListPdf.save(`${invoiceNo}-Packing-List.pdf`);
+      
+      toast({ description: "✅ Commercial Invoice & Packing List generated successfully" });
+    } catch (error: any) {
+      console.error('Document generation error:', error);
+      toast({ variant: "destructive", description: "Failed to generate documents: " + error.message });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
