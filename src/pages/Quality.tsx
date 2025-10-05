@@ -107,12 +107,18 @@ const Quality = () => {
 
       if (insertError) throw insertError;
 
-      // If pass, update WO status
+      // If pass, update WO status and stage
       if (formData.result === "pass" && formData.qc_type === "final") {
         await supabase
           .from("work_orders")
           .update({ status: "qc" as any })
           .eq("id", wo.id);
+        
+        // Update WO stage to packing
+        await supabase.rpc("update_wo_stage", {
+          _wo_id: wo.id,
+          _new_stage: "packing"
+        });
       }
 
       toast({

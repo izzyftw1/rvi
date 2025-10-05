@@ -1398,6 +1398,7 @@ export type Database = {
         Row: {
           bom: Json | null
           created_at: string
+          current_stage: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
           dispatch_allowed: boolean | null
           due_date: string
@@ -1416,6 +1417,7 @@ export type Database = {
         Insert: {
           bom?: Json | null
           created_at?: string
+          current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
           dispatch_allowed?: boolean | null
           due_date: string
@@ -1434,6 +1436,7 @@ export type Database = {
         Update: {
           bom?: Json | null
           created_at?: string
+          current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string
           dispatch_allowed?: boolean | null
           due_date?: string
@@ -1482,6 +1485,13 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_wo_stage: {
+        Args: {
+          _new_stage: Database["public"]["Enums"]["wo_stage"]
+          _wo_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role:
@@ -1524,6 +1534,7 @@ export type Database = {
         | "J"
       qc_result: "pass" | "fail" | "rework"
       qc_type: "first_piece" | "in_process" | "final"
+      wo_stage: "goods_in" | "production" | "qc" | "packing" | "dispatch"
       wo_status:
         | "pending"
         | "in_progress"
@@ -1690,6 +1701,7 @@ export const Constants = {
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       qc_result: ["pass", "fail", "rework"],
       qc_type: ["first_piece", "in_process", "final"],
+      wo_stage: ["goods_in", "production", "qc", "packing", "dispatch"],
       wo_status: [
         "pending",
         "in_progress",

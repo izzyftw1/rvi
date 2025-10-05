@@ -400,6 +400,28 @@ const WorkOrderDetail = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={showStageDialog} onOpenChange={setShowStageDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Work Order Stage</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Select onValueChange={handleStageUpdate} defaultValue={wo?.current_stage}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="goods_in">Goods In</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="qc">QC</SelectItem>
+                <SelectItem value="packing">Packing</SelectItem>
+                <SelectItem value="dispatch">Dispatch</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
