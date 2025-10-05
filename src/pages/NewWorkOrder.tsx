@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { workOrderSchema } from "@/lib/validationSchemas";
 
 const NewWorkOrder = () => {
   const navigate = useNavigate();
@@ -33,6 +34,18 @@ const NewWorkOrder = () => {
     setLoading(true);
 
     try {
+      // Validate input data
+      const validationResult = workOrderSchema.safeParse(formData);
+      if (!validationResult.success) {
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: validationResult.error.errors[0].message,
+        });
+        setLoading(false);
+        return;
+      }
+
       const { data: woData, error } = await supabase.from("work_orders").insert({
         wo_id: formData.wo_id,
         customer: formData.customer,

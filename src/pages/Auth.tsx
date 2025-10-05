@@ -78,16 +78,17 @@ const Auth = () => {
       if (authError) throw authError;
 
       if (authData.user) {
+        // Only insert into profiles (without role column - removed for security)
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{
             id: authData.user.id,
             full_name: fullName,
-            role: role as any,
           }]);
 
         if (profileError) throw profileError;
 
+        // Insert role into user_roles table (the secure way to store roles)
         const { error: roleError } = await supabase
           .from('user_roles')
           .insert([{

@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Package, Upload, Printer } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { materialLotSchema } from "@/lib/validationSchemas";
 
 const MaterialInwards = () => {
   const navigate = useNavigate();
@@ -50,11 +51,25 @@ const MaterialInwards = () => {
     setLoading(true);
 
     try {
+      // Validate input data
+      const validationResult = materialLotSchema.safeParse(formData);
+      if (!validationResult.success) {
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: validationResult.error.errors[0].message,
+        });
+        setLoading(false);
+        return;
+      }
+
       let mtcFileUrl = "";
       
       if (formData.mtc_file) {
-        const fileExt = formData.mtc_file.name.split('.').pop();
-        const fileName = `material_lots/${formData.lot_id}/mtc_${Date.now()}.${fileExt}`;
+        // Sanitize file name to prevent path traversal attacks
+        const fileExt = formData.mtc_file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf';
+        const sanitizedLotId = formData.lot_id.replace(/[^A-Z0-9-]/gi, '');
+        const fileName = `material_lots/${sanitizedLotId}/mtc_${Date.now()}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from("documents")
           .upload(fileName, formData.mtc_file);

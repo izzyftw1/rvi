@@ -852,7 +852,6 @@ export type Database = {
           department_id: string | null
           full_name: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
           updated_at: string
         }
         Insert: {
@@ -860,7 +859,6 @@ export type Database = {
           department_id?: string | null
           full_name: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
           updated_at?: string
         }
         Update: {
@@ -868,7 +866,6 @@ export type Database = {
           department_id?: string | null
           full_name?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string
         }
         Relationships: [
