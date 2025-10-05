@@ -24,6 +24,7 @@ import Sales from "./pages/Sales";
 import NotFound from "./pages/NotFound";
 import DepartmentDetail from "./pages/DepartmentDetail";
 import MaterialRequirements from "./pages/MaterialRequirements";
+import StageDetailView from "./pages/StageDetailView";
 
 
 const App = () => (
@@ -53,6 +54,7 @@ const App = () => (
         <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
         <Route path="/department/:departmentName" element={<DepartmentDetail />} />
         <Route path="/material-requirements" element={<MaterialRequirements />} />
+        <Route path="/stage/:stage" element={<StageDetailView />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

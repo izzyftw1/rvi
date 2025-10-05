@@ -23,6 +23,7 @@ const WorkOrderDetail = () => {
   const [qcRecords, setQcRecords] = useState<any[]>([]);
   const [hourlyQcRecords, setHourlyQcRecords] = useState<any[]>([]);
   const [scanEvents, setScanEvents] = useState<any[]>([]);
+  const [stageHistory, setStageHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showStageDialog, setShowStageDialog] = useState(false);
 
@@ -117,6 +118,15 @@ const WorkOrderDetail = () => {
         .order("scan_date_time", { ascending: false });
 
       setScanEvents(eventsData || []);
+
+      // Load stage history
+      const { data: historyData } = await supabase
+        .from("wo_stage_history")
+        .select("*, profiles(full_name)")
+        .eq("wo_id", id)
+        .order("changed_at", { ascending: false });
+
+      setStageHistory(historyData || []);
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -224,8 +234,9 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="routing" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="routing">Routing</TabsTrigger>
+            <TabsTrigger value="stage-history">Stage History</TabsTrigger>
             <TabsTrigger value="materials">Materials</TabsTrigger>
             <TabsTrigger value="qc">QC Records</TabsTrigger>
             <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
@@ -282,6 +293,71 @@ const WorkOrderDetail = () => {
                             <p className="text-xs text-muted-foreground mt-2">
                               Started: {new Date(step.actual_start).toLocaleString()}
                             </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="stage-history" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Stage Transition History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {stageHistory.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    No stage history recorded
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {stageHistory.map((history, index) => (
+                      <div
+                        key={history.id}
+                        className={`p-4 rounded-lg border ${
+                          index === 0 ? 'border-primary bg-primary/5' : 'bg-secondary'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              {history.from_stage && (
+                                <>
+                                  <Badge variant="outline">
+                                    {history.from_stage.replace('_', ' ').toUpperCase()}
+                                  </Badge>
+                                  <span className="text-muted-foreground">→</span>
+                                </>
+                              )}
+                              <Badge className="bg-primary">
+                                {history.to_stage.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              {history.is_override && (
+                                <Badge variant="destructive" className="text-xs">
+                                  OVERRIDE
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Changed by: {history.profiles?.full_name || 'System'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(history.changed_at).toLocaleString()}
+                            </p>
+                            {history.reason && (
+                              <p className="text-sm mt-2 italic">
+                                Reason: {history.reason}
+                              </p>
+                            )}
+                          </div>
+                          {index === 0 && (
+                            <Badge variant="secondary" className="text-xs">
+                              CURRENT
+                            </Badge>
                           )}
                         </div>
                       </div>

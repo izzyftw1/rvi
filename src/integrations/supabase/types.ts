@@ -1394,6 +1394,50 @@ export type Database = {
           },
         ]
       }
+      wo_stage_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          created_at: string
+          from_stage: Database["public"]["Enums"]["wo_stage"] | null
+          id: string
+          is_override: boolean | null
+          reason: string | null
+          to_stage: Database["public"]["Enums"]["wo_stage"]
+          wo_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          created_at?: string
+          from_stage?: Database["public"]["Enums"]["wo_stage"] | null
+          id?: string
+          is_override?: boolean | null
+          reason?: string | null
+          to_stage: Database["public"]["Enums"]["wo_stage"]
+          wo_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          created_at?: string
+          from_stage?: Database["public"]["Enums"]["wo_stage"] | null
+          id?: string
+          is_override?: boolean | null
+          reason?: string | null
+          to_stage?: Database["public"]["Enums"]["wo_stage"]
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_stage_history_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           bom: Json | null

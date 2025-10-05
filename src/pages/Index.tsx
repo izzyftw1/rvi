@@ -34,6 +34,13 @@ const Index = () => {
     jobWork: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
     dispatch: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
   });
+  const [stageCounts, setStageCounts] = useState({
+    goods_in: 0,
+    production: 0,
+    qc: 0,
+    packing: 0,
+    dispatch: 0,
+  });
   const [todayStats, setTodayStats] = useState({
     woDueToday: 0,
     lateItems: 0,
@@ -212,6 +219,29 @@ const Index = () => {
         blockedSteps: blocked?.length || 0
       });
 
+      // Get stage counts
+      const { data: wos } = await supabase
+        .from("work_orders")
+        .select("current_stage");
+
+      if (wos) {
+        const counts = {
+          goods_in: 0,
+          production: 0,
+          qc: 0,
+          packing: 0,
+          dispatch: 0,
+        };
+
+        wos.forEach((wo) => {
+          if (wo.current_stage) {
+            counts[wo.current_stage as keyof typeof counts]++;
+          }
+        });
+
+        setStageCounts(counts);
+      }
+
     } catch (error) {
       console.error('Error loading live data:', error);
     }
@@ -353,6 +383,64 @@ const Index = () => {
         {/* Live Floor Map */}
         <div className="mb-6">
           <h2 className="text-2xl font-bold mb-4">Live Floor Status</h2>
+          
+          {/* Stage Counts with Drill-down */}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle>Work Orders by Stage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-5 gap-4">
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => navigate("/stage/goods_in")}
+                >
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-primary">{stageCounts.goods_in}</p>
+                    <p className="text-sm text-muted-foreground">Goods In</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => navigate("/stage/production")}
+                >
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-primary">{stageCounts.production}</p>
+                    <p className="text-sm text-muted-foreground">Production</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => navigate("/stage/qc")}
+                >
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-primary">{stageCounts.qc}</p>
+                    <p className="text-sm text-muted-foreground">QC</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => navigate("/stage/packing")}
+                >
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-primary">{stageCounts.packing}</p>
+                    <p className="text-sm text-muted-foreground">Packing</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => navigate("/stage/dispatch")}
+                >
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-primary">{stageCounts.dispatch}</p>
+                    <p className="text-sm text-muted-foreground">Dispatch</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Department Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <DepartmentCard
               title="Goods In"
