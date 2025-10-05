@@ -37,15 +37,25 @@ export default function MaterialRequirements() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterDueDate, setFilterDueDate] = useState("");
   const [customers, setCustomers] = useState<string[]>([]);
+  const [session, setSession] = useState<any>(null);
 
   useEffect(() => {
     // Check authentication
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/auth");
-        return;
+      setSession(session);
+      if (session) {
+        loadRequirements();
+      } else {
+        setLoading(false);
       }
-      loadRequirements();
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        setLoading(true);
+        loadRequirements();
+      }
     });
     
     // Set up realtime subscription
@@ -65,9 +75,10 @@ export default function MaterialRequirements() {
       .subscribe();
 
     return () => {
+      authListener?.subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [navigate]);
+  }, []);
 
   const loadRequirements = async () => {
     setLoading(true);
@@ -216,6 +227,24 @@ export default function MaterialRequirements() {
     }
     return true;
   });
+
+  if (!session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle>Login Required</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Please log in to view the Raw Material Requirements dashboard.
+            </p>
+            <Button onClick={() => navigate('/auth')}>Go to Login</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
