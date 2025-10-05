@@ -1461,6 +1461,7 @@ export type Database = {
         | "packing"
         | "accounts"
         | "sales"
+        | "admin"
       department_type:
         | "hr"
         | "stores"
@@ -1634,6 +1635,7 @@ export const Constants = {
         "packing",
         "accounts",
         "sales",
+        "admin",
       ],
       department_type: [
         "hr",
