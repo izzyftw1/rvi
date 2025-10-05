@@ -9,9 +9,6 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Download, FileSpreadsheet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
-import * as XLSX from "xlsx";
 
 interface MaterialRequirement {
   material_size_mm: number;
@@ -178,7 +175,7 @@ export default function MaterialRequirements() {
     loadRequirements();
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const data = filteredRequirements.map(req => ({
       "Raw Material Size (mm)": req.material_size_mm,
       "Total Pcs": req.total_pcs,
@@ -188,13 +185,17 @@ export default function MaterialRequirements() {
       "Status": req.status
     }));
 
+    const XLSX = await import("xlsx");
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Material Requirements");
     XLSX.writeFile(wb, "material_requirements.xlsx");
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
+    const { default: jsPDF } = await import("jspdf");
+    await import("jspdf-autotable");
+
     const doc = new jsPDF();
     
     doc.setFontSize(18);
