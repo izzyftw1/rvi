@@ -12,15 +12,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle } from "lucide-react";
+import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle, Edit, Trash2 } from "lucide-react";
 
 export default function Admin() {
   const [users, setUsers] = useState<any[]>([]);
+  const [userRoles, setUserRoles] = useState<Record<string, any[]>>({});
   const [departments, setDepartments] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [permissions, setPermissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState({
+    id: "",
+    full_name: "",
+    department_id: "",
+  });
   const [newUser, setNewUser] = useState({
     email: "",
     full_name: "",
@@ -49,7 +58,7 @@ export default function Admin() {
 
   const loadData = async () => {
     try {
-      setLoading(false);
+      setLoading(true);
       
       const { data: deptData } = await supabase.from("departments").select("*").order("name");
       setDepartments(deptData || []);
@@ -59,6 +68,17 @@ export default function Admin() {
 
       const { data: profilesData } = await supabase.from("profiles").select("*, departments(name)");
       setUsers(profilesData || []);
+
+      // Load roles for all users
+      const { data: rolesData } = await supabase.from("user_roles").select("*");
+      const rolesByUser: Record<string, any[]> = {};
+      rolesData?.forEach((role) => {
+        if (!rolesByUser[role.user_id]) {
+          rolesByUser[role.user_id] = [];
+        }
+        rolesByUser[role.user_id].push(role);
+      });
+      setUserRoles(rolesByUser);
 
       const { data: logsData } = await supabase
         .from("user_audit_log")
@@ -88,6 +108,69 @@ export default function Admin() {
 
       if (error) throw error;
       toast({ title: "Success", description: `User ${!currentStatus ? "activated" : "deactivated"}` });
+      loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleEditUser = (user: any) => {
+    setEditingUser({
+      id: user.id,
+      full_name: user.full_name,
+      department_id: user.department_id || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: editingUser.full_name,
+          department_id: editingUser.department_id || null,
+        })
+        .eq("id", editingUser.id);
+
+      if (error) throw error;
+      toast({ title: "Success", description: "User updated successfully" });
+      setEditDialogOpen(false);
+      loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleManageRoles = (user: any) => {
+    setSelectedUser(user);
+    setRolesDialogOpen(true);
+  };
+
+  const handleAddRole = async (role: string) => {
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .insert([{ user_id: selectedUser.id, role: role as any }]);
+
+      if (error) throw error;
+      toast({ title: "Success", description: `${role} role added` });
+      loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleRemoveRole = async (roleId: string) => {
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("id", roleId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: "Role removed" });
       loadData();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -144,6 +227,7 @@ export default function Admin() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Department</TableHead>
+                      <TableHead>Roles</TableHead>
                       <TableHead>Last Login</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
@@ -154,6 +238,15 @@ export default function Admin() {
                       <TableRow key={user.id}>
                         <TableCell>{user.full_name}</TableCell>
                         <TableCell>{user.departments?.name || "—"}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {userRoles[user.id]?.map((role) => (
+                              <Badge key={role.id} variant="secondary" className="text-xs">
+                                {role.role}
+                              </Badge>
+                            )) || <span className="text-muted-foreground text-sm">No roles</span>}
+                          </div>
+                        </TableCell>
                         <TableCell>{user.last_login ? format(new Date(user.last_login), "PPp") : "Never"}</TableCell>
                         <TableCell>
                           {user.is_active ? (
@@ -163,9 +256,17 @@ export default function Admin() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Button size="sm" variant={user.is_active ? "destructive" : "default"} onClick={() => handleToggleUserStatus(user.id, user.is_active)}>
-                            {user.is_active ? "Deactivate" : "Activate"}
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditUser(user)}>
+                              <Edit className="h-3 w-3 mr-1" />Edit
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => handleManageRoles(user)}>
+                              <Shield className="h-3 w-3 mr-1" />Roles
+                            </Button>
+                            <Button size="sm" variant={user.is_active ? "destructive" : "default"} onClick={() => handleToggleUserStatus(user.id, user.is_active)}>
+                              {user.is_active ? "Deactivate" : "Activate"}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -237,6 +338,76 @@ export default function Admin() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Edit User Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Edit User</DialogTitle></DialogHeader>
+            <form onSubmit={handleSaveUser} className="space-y-4">
+              <div>
+                <Label>Full Name</Label>
+                <Input value={editingUser.full_name} onChange={(e) => setEditingUser({ ...editingUser, full_name: e.target.value })} required />
+              </div>
+              <div>
+                <Label>Department</Label>
+                <Select value={editingUser.department_id} onValueChange={(value) => setEditingUser({ ...editingUser, department_id: value })}>
+                  <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" className="w-full">Save Changes</Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Roles Dialog */}
+        <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Manage Roles for {selectedUser?.full_name}</DialogTitle></DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Current Roles</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {userRoles[selectedUser?.id]?.map((role) => (
+                    <Badge key={role.id} variant="secondary" className="flex items-center gap-1">
+                      {role.role}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRole(role.id)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <XCircle className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )) || <p className="text-sm text-muted-foreground">No roles assigned</p>}
+                </div>
+              </div>
+              <div>
+                <Label>Add Role</Label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {roles.map((role) => {
+                    const hasRole = userRoles[selectedUser?.id]?.some((r) => r.role === role.value);
+                    return (
+                      <Button
+                        key={role.value}
+                        size="sm"
+                        variant={hasRole ? "secondary" : "outline"}
+                        disabled={hasRole}
+                        onClick={() => handleAddRole(role.value)}
+                      >
+                        {role.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
