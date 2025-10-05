@@ -24,6 +24,8 @@ const WorkOrderDetail = () => {
   const [hourlyQcRecords, setHourlyQcRecords] = useState<any[]>([]);
   const [scanEvents, setScanEvents] = useState<any[]>([]);
   const [stageHistory, setStageHistory] = useState<any[]>([]);
+  const [designFiles, setDesignFiles] = useState<any[]>([]);
+  const [uploadingDesign, setUploadingDesign] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showStageDialog, setShowStageDialog] = useState(false);
 
@@ -127,6 +129,15 @@ const WorkOrderDetail = () => {
         .order("changed_at", { ascending: false });
 
       setStageHistory(historyData || []);
+
+      // Load design files
+      const { data: designData } = await supabase
+        .from("design_files")
+        .select("*")
+        .eq("wo_id", id)
+        .order("uploaded_at", { ascending: false });
+
+      setDesignFiles(designData || []);
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -155,6 +166,98 @@ const WorkOrderDetail = () => {
         variant: "destructive",
         title: "Failed to update stage",
         description: error.message,
+      });
+    }
+  };
+
+  const handleDesignUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !wo) return;
+
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    if (!['pdf', 'dxf', 'step'].includes(fileExtension || '')) {
+      toast({
+        title: "Invalid file type",
+        description: "Only PDF, DXF, and STEP files are allowed",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setUploadingDesign(true);
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const maxVersion = designFiles.length > 0 
+        ? Math.max(...designFiles.map(f => f.version))
+        : 0;
+      const nextVersion = maxVersion + 1;
+
+      const filePath = `${wo.id}/${nextVersion}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('design-files')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      await supabase
+        .from('design_files')
+        .update({ is_latest: false })
+        .eq('wo_id', wo.id);
+
+      const { error: dbError } = await supabase
+        .from('design_files')
+        .insert({
+          wo_id: wo.id,
+          file_path: filePath,
+          file_name: file.name,
+          file_type: fileExtension || 'pdf',
+          version: nextVersion,
+          uploaded_by: user?.id,
+          is_latest: true,
+        });
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success",
+        description: `Design file v${nextVersion} uploaded successfully`,
+      });
+
+      loadWorkOrderData();
+    } catch (error: any) {
+      toast({
+        title: "Error uploading design",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingDesign(false);
+      e.target.value = '';
+    }
+  };
+
+  const downloadDesignFile = async (filePath: string, fileName: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('design-files')
+        .download(filePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast({
+        title: "Error downloading file",
+        description: error.message,
+        variant: "destructive",
       });
     }
   };
@@ -234,14 +337,15 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="routing" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="routing">Routing</TabsTrigger>
-            <TabsTrigger value="stage-history">Stage History</TabsTrigger>
-            <TabsTrigger value="materials">Materials</TabsTrigger>
-            <TabsTrigger value="qc">QC Records</TabsTrigger>
-            <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
-            <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
-          </TabsList>
+            <TabsList className="grid w-full grid-cols-7">
+              <TabsTrigger value="routing">Routing</TabsTrigger>
+              <TabsTrigger value="stage-history">Stage History</TabsTrigger>
+              <TabsTrigger value="design">Design Files</TabsTrigger>
+              <TabsTrigger value="materials">Materials</TabsTrigger>
+              <TabsTrigger value="qc">QC Records</TabsTrigger>
+              <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
+              <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
+            </TabsList>
 
           <TabsContent value="routing" className="space-y-4">
             <Card>
@@ -360,6 +464,61 @@ const WorkOrderDetail = () => {
                             </Badge>
                           )}
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="design">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Design Files</CardTitle>
+                  <div>
+                    <input
+                      type="file"
+                      id="design-upload"
+                      accept=".pdf,.dxf,.step"
+                      onChange={handleDesignUpload}
+                      className="hidden"
+                      disabled={uploadingDesign}
+                    />
+                    <Button
+                      onClick={() => document.getElementById('design-upload')?.click()}
+                      disabled={uploadingDesign}
+                    >
+                      {uploadingDesign ? "Uploading..." : "Upload Design"}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {designFiles.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No design files uploaded</p>
+                ) : (
+                  <div className="space-y-3">
+                    {designFiles.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">v{file.version} - {file.file_name}</p>
+                            {file.is_latest && <Badge>Latest</Badge>}
+                          </div>
+                          <p className="text-sm text-muted-foreground uppercase">{file.file_type}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(file.uploaded_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadDesignFile(file.file_path, file.file_name)}
+                        >
+                          Download
+                        </Button>
                       </div>
                     ))}
                   </div>

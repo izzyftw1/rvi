@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Home, ArrowLeft, LogOut, Factory } from "lucide-react";
+import { Home, ArrowLeft, LogOut, Factory, Wrench } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 
@@ -91,7 +91,18 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
             )}
           </div>
           
-          {/* User Info and Logout */}
+            {/* Quick Access Maintenance */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/maintenance")}
+              className="hover:bg-primary/10"
+            >
+              <Wrench className="h-4 w-4 mr-2" />
+              Maintenance
+            </Button>
+
+            {/* User Info and Logout */}
           <div className="flex items-center gap-4">
             {profile && (
               <div className="text-right hidden sm:block">

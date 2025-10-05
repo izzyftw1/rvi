@@ -165,6 +165,56 @@ export type Database = {
         }
         Relationships: []
       }
+      design_files: {
+        Row: {
+          change_notes: string | null
+          created_at: string | null
+          file_name: string
+          file_path: string
+          file_type: string
+          id: string
+          is_latest: boolean | null
+          uploaded_at: string | null
+          uploaded_by: string | null
+          version: number
+          wo_id: string
+        }
+        Insert: {
+          change_notes?: string | null
+          created_at?: string | null
+          file_name: string
+          file_path: string
+          file_type: string
+          id?: string
+          is_latest?: boolean | null
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+          version?: number
+          wo_id: string
+        }
+        Update: {
+          change_notes?: string | null
+          created_at?: string | null
+          file_name?: string
+          file_path?: string
+          file_type?: string
+          id?: string
+          is_latest?: boolean | null
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+          version?: number
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_files_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dimension_tolerances: {
         Row: {
           created_at: string
@@ -424,6 +474,47 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maintenance_logs: {
+        Row: {
+          created_at: string | null
+          downtime_reason: string
+          end_time: string | null
+          id: string
+          logged_by: string | null
+          machine_id: string
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          downtime_reason: string
+          end_time?: string | null
+          id?: string
+          logged_by?: string | null
+          machine_id: string
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          downtime_reason?: string
+          end_time?: string | null
+          id?: string
+          logged_by?: string | null
+          machine_id?: string
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
             referencedColumns: ["id"]
           },
         ]
