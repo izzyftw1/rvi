@@ -39,18 +39,22 @@ export default function MaterialRequirements() {
   const [debug, setDebug] = useState<{ approved: number; grouped: number; error: string }>({ approved: 0, grouped: 0, error: "" });
 
   useEffect(() => {
-    // Check authentication
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        loadRequirements();
+    // Auth: set up listener FIRST, then check existing session
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setSessionChecked(true);
+      if (nextSession) {
+        setLoading(true);
+        // Defer data load to avoid doing async work inside the callback
+        setTimeout(() => {
+          loadRequirements();
+        }, 0);
       } else {
         setLoading(false);
       }
-      setSessionChecked(true);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setSessionChecked(true);
       if (session) {
@@ -255,6 +259,19 @@ export default function MaterialRequirements() {
             <Button onClick={() => navigate('/auth')}>Go to Login</Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (!sessionChecked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
+            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
+          </div>
+          <p className="mt-4 text-muted-foreground">Checking session...</p>
+        </div>
       </div>
     );
   }
