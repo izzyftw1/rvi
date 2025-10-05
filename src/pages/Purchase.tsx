@@ -124,7 +124,7 @@ export default function Purchase() {
 
       <h1 className="text-3xl font-bold mb-6">Purchase Orders</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Create Purchase Order</CardTitle>
@@ -183,6 +183,86 @@ export default function Purchase() {
             </form>
           </CardContent>
         </Card>
+
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Draft Purchase Orders</h2>
+          {loading ? (
+            <p>Loading...</p>
+          ) : (
+            purchaseOrders.filter(po => po.status === "draft").map((po) => (
+              <Card key={po.id}>
+                <CardContent className="pt-6">
+                  <div className="space-y-3">
+                    <p className="font-semibold">{po.po_id}</p>
+                    <p className="text-sm">Material Size: {po.material_spec.size_mm}mm</p>
+                    <p className="text-sm">Required: {po.quantity_kg} kg</p>
+                    {po.material_spec.linked_sos?.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Linked SOs: {po.material_spec.linked_sos.join(", ")}
+                      </p>
+                    )}
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Enter Supplier"
+                        onChange={(e) => {
+                          const updated = purchaseOrders.map(p => 
+                            p.id === po.id ? {...p, supplier: e.target.value} : p
+                          );
+                          setPurchaseOrders(updated);
+                        }}
+                      />
+                      <Input
+                        placeholder="Alloy Grade (e.g., SS316L)"
+                        onChange={(e) => {
+                          const updated = purchaseOrders.map(p => 
+                            p.id === po.id ? {...p, material_spec: {...p.material_spec, alloy: e.target.value}} : p
+                          );
+                          setPurchaseOrders(updated);
+                        }}
+                      />
+                      <Input
+                        type="date"
+                        placeholder="Expected Delivery"
+                        onChange={(e) => {
+                          const updated = purchaseOrders.map(p => 
+                            p.id === po.id ? {...p, expected_delivery: e.target.value} : p
+                          );
+                          setPurchaseOrders(updated);
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        className="w-full"
+                        onClick={async () => {
+                          if (!po.supplier || !po.material_spec.alloy || !po.expected_delivery) {
+                            toast({ variant: "destructive", description: "Please fill all fields" });
+                            return;
+                          }
+                          const { error } = await supabase
+                            .from("purchase_orders")
+                            .update({ 
+                              supplier: po.supplier,
+                              material_spec: po.material_spec,
+                              expected_delivery: po.expected_delivery,
+                              status: "pending" 
+                            })
+                            .eq("id", po.id);
+                          
+                          if (!error) {
+                            toast({ description: "Sent for approval" });
+                            loadData();
+                          }
+                        }}
+                      >
+                        Send for Approval
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
 
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Pending Approvals</h2>

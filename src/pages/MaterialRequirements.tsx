@@ -295,6 +295,61 @@ export default function MaterialRequirements() {
     loadRequirements();
   };
 
+  const handlePlaceOrder = async (materialSize: string, requiredQty: number, relatedSOs: string[]) => {
+    try {
+      // Generate PO ID
+      const { data: existingPOs } = await supabase
+        .from("purchase_orders")
+        .select("po_id")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      
+      const lastPONum = existingPOs?.[0]?.po_id?.match(/\d+$/)?.[0] || "0";
+      const newPONum = String(parseInt(lastPONum) + 1).padStart(3, '0');
+      const newPOId = `PO-${new Date().getFullYear()}-${newPONum}`;
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Create draft PO - link to first SO if available
+      const { data: soData } = await supabase
+        .from("sales_orders")
+        .select("id")
+        .eq("so_id", relatedSOs[0])
+        .maybeSingle();
+
+      const { error } = await supabase
+        .from("purchase_orders")
+        .insert({
+          po_id: newPOId,
+          so_id: soData?.id || null,
+          supplier: "", // To be filled by Purchase Manager
+          material_spec: {
+            size_mm: materialSize,
+            linked_sos: relatedSOs
+          },
+          quantity_kg: requiredQty,
+          status: "draft",
+          created_by: user?.id
+        });
+
+      if (error) throw error;
+
+      toast({ 
+        description: `Draft PO ${newPOId} created. Navigate to Purchase page to complete details.` 
+      });
+
+      // Navigate to Purchase page after a short delay
+      setTimeout(() => navigate("/purchase"), 1500);
+    } catch (error) {
+      console.error("Error creating draft PO:", error);
+      toast({ 
+        variant: "destructive", 
+        description: "Failed to create purchase order draft" 
+      });
+    }
+  };
+
   const exportToExcel = async () => {
     const data = filteredRequirements.map(req => ({
       "Raw Material Size (mm)": req.material_size_mm,
@@ -532,16 +587,17 @@ export default function MaterialRequirements() {
                 <TableHead>Linked Sales Orders</TableHead>
                 <TableHead>Last GI Ref</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center">Loading...</TableCell>
+                  <TableCell colSpan={8} className="text-center">Loading...</TableCell>
                 </TableRow>
               ) : filteredRequirements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center">No Data Available</TableCell>
+                  <TableCell colSpan={8} className="text-center">No Data Available</TableCell>
                 </TableRow>
               ) : (
                 filteredRequirements.map((req) => (
@@ -586,12 +642,26 @@ export default function MaterialRequirements() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge 
+                    <Badge 
                         variant={req.status === "covered" ? "default" : "destructive"}
                         className={req.status === "covered" ? "bg-green-600 hover:bg-green-700" : ""}
                       >
                         {req.status === "covered" ? "✓ Covered" : "⚠ Shortfall"}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {req.surplus_deficit_kg < 0 && (
+                        <Button 
+                          size="sm" 
+                          onClick={() => handlePlaceOrder(
+                            req.material_size_mm.toString(), 
+                            Math.abs(req.surplus_deficit_kg), 
+                            req.linked_sales_orders.map(so => so.so_id)
+                          )}
+                        >
+                          Place Order
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
