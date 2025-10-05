@@ -127,8 +127,7 @@ export default function MaterialRequirements() {
       const { data: materialLotsRaw, error: lotsError } = await supabase
         .from("material_lots")
         .select("*")
-        .in("status", ["received", "in_use"])
-        .eq("qc_status", "approved");
+        .in("status", ["received", "in_use"]);
 
       if (lotsError) throw lotsError;
 

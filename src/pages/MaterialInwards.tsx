@@ -11,6 +11,7 @@ import { Package, Upload, Printer } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { materialLotSchema } from "@/lib/validationSchemas";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const MaterialInwards = () => {
   const navigate = useNavigate();
@@ -33,6 +34,39 @@ const MaterialInwards = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [selectedPO, setSelectedPO] = useState("");
 
+  const [lots, setLots] = useState<any[]>([]);
+  const [lotsLoading, setLotsLoading] = useState(false);
+  const [lotsError, setLotsError] = useState<string>("");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [selectedLot, setSelectedLot] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    material_size_mm: "",
+    gross_weight: "",
+    net_weight: "",
+    bin_location: "",
+    supplier: "",
+  });
+
+  const loadLots = async () => {
+    setLotsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("material_lots")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      setLots(data ?? []);
+      setLotsError("");
+    } catch (e: any) {
+      setLots([]);
+      setLotsError(e?.message || String(e));
+    } finally {
+      setLotsLoading(false);
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
     
@@ -44,6 +78,20 @@ const MaterialInwards = () => {
       if (data) setPurchaseOrders(data);
     };
     loadPurchaseOrders();
+    loadLots();
+
+    const channel = supabase
+      .channel("material-lots-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "material_lots" },
+        () => loadLots()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -165,6 +213,41 @@ const MaterialInwards = () => {
       description: "QR code label for " + formData.lot_id,
     });
     // In production, this would trigger actual label printing
+  };
+
+  const openEdit = (lot: any) => {
+    setSelectedLot(lot);
+    setEditForm({
+      material_size_mm: lot.material_size_mm != null ? String(lot.material_size_mm) : "",
+      gross_weight: lot.gross_weight != null ? String(lot.gross_weight) : "",
+      net_weight: lot.net_weight != null ? String(lot.net_weight) : "",
+      bin_location: lot.bin_location ?? "",
+      supplier: lot.supplier ?? "",
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!selectedLot) return;
+    try {
+      const { error } = await supabase
+        .from("material_lots")
+        .update({
+          material_size_mm: editForm.material_size_mm ? parseFloat(editForm.material_size_mm) : null,
+          gross_weight: editForm.gross_weight ? parseFloat(editForm.gross_weight) : null,
+          net_weight: editForm.net_weight ? parseFloat(editForm.net_weight) : null,
+          bin_location: editForm.bin_location || null,
+          supplier: editForm.supplier || null,
+        })
+        .eq("id", selectedLot.id);
+      if (error) throw error;
+      toast({ description: "Lot updated" });
+      setEditOpen(false);
+      setSelectedLot(null);
+      loadLots();
+    } catch (e: any) {
+      toast({ variant: "destructive", description: e?.message || "Update failed" });
+    }
   };
 
   return (
@@ -315,6 +398,90 @@ const MaterialInwards = () => {
             </form>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Material Receipts</CardTitle>
+            <CardDescription>Last 50 lots received</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Lot ID</TableHead>
+                  <TableHead>Size (mm)</TableHead>
+                  <TableHead>Gross (kg)</TableHead>
+                  <TableHead>Net (kg)</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>QC</TableHead>
+                  <TableHead>Received</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lotsLoading ? (
+                  <TableRow><TableCell colSpan={9} className="text-center">Loading...</TableCell></TableRow>
+                ) : lotsError ? (
+                  <TableRow><TableCell colSpan={9} className="text-destructive">{lotsError}</TableCell></TableRow>
+                ) : lots.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center">No Data Available</TableCell></TableRow>
+                ) : (
+                  lots.map((lot) => (
+                    <TableRow key={lot.id}>
+                      <TableCell className="font-medium">{lot.lot_id}</TableCell>
+                      <TableCell>{lot.material_size_mm ?? 'N/A'}</TableCell>
+                      <TableCell>{Number(lot.gross_weight ?? 0).toFixed(2)}</TableCell>
+                      <TableCell>{Number(lot.net_weight ?? 0).toFixed(2)}</TableCell>
+                      <TableCell>{lot.supplier || 'unknown'}</TableCell>
+                      <TableCell>{lot.status}</TableCell>
+                      <TableCell>{lot.qc_status || 'pending'}</TableCell>
+                      <TableCell>{new Date(lot.received_date_time).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Lot {selectedLot?.lot_id}</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Size (mm)</Label>
+                <Input value={editForm.material_size_mm} onChange={(e)=>setEditForm({...editForm, material_size_mm: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Gross (kg)</Label>
+                <Input value={editForm.gross_weight} onChange={(e)=>setEditForm({...editForm, gross_weight: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Net (kg)</Label>
+                <Input value={editForm.net_weight} onChange={(e)=>setEditForm({...editForm, net_weight: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Bin Location</Label>
+                <Input value={editForm.bin_location} onChange={(e)=>setEditForm({...editForm, bin_location: e.target.value})} />
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label>Supplier</Label>
+                <Input value={editForm.supplier} onChange={(e)=>setEditForm({...editForm, supplier: e.target.value})} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button onClick={saveEdit}>Save</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </div>
   );
