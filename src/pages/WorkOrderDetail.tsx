@@ -7,12 +7,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QCRecordsTab } from "@/components/QCRecordsTab";
-import { CheckCircle2, Clock, FileText } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { CheckCircle2, Clock, FileText, Edit } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [wo, setWo] = useState<any>(null);
   const [routingSteps, setRoutingSteps] = useState<any[]>([]);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
@@ -20,6 +24,7 @@ const WorkOrderDetail = () => {
   const [hourlyQcRecords, setHourlyQcRecords] = useState<any[]>([]);
   const [scanEvents, setScanEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showStageDialog, setShowStageDialog] = useState(false);
 
   useEffect(() => {
     loadWorkOrderData();
@@ -119,6 +124,31 @@ const WorkOrderDetail = () => {
     }
   };
 
+  const handleStageUpdate = async (newStage: string) => {
+    try {
+      const { error } = await supabase
+        .from("work_orders")
+        .update({ current_stage: newStage as any })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Stage updated",
+        description: `Work order stage updated to ${newStage.replace('_', ' ').toUpperCase()}`,
+      });
+
+      setShowStageDialog(false);
+      loadWorkOrderData();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to update stage",
+        description: error.message,
+      });
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
@@ -133,7 +163,7 @@ const WorkOrderDetail = () => {
       
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{wo.wo_id}</h1>
@@ -143,12 +173,22 @@ const WorkOrderDetail = () => {
               {wo.customer} • {wo.item_code}
             </p>
           </div>
-          {hourlyQcRecords.length > 0 && (
-            <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
-              <FileText className="h-4 w-4 mr-2" />
-              Final QC Report
+          <div className="flex items-center gap-2">
+            {hourlyQcRecords.length > 0 && (
+              <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Final QC Report
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowStageDialog(true)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Stage: {wo.current_stage?.replace('_', ' ').toUpperCase() || 'N/A'}
             </Button>
-          )}
+          </div>
         </div>
 
         {/* Summary */}
@@ -399,29 +439,30 @@ const WorkOrderDetail = () => {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
 
-      <Dialog open={showStageDialog} onOpenChange={setShowStageDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update Work Order Stage</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Select onValueChange={handleStageUpdate} defaultValue={wo?.current_stage}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select stage" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="goods_in">Goods In</SelectItem>
-                <SelectItem value="production">Production</SelectItem>
-                <SelectItem value="qc">QC</SelectItem>
-                <SelectItem value="packing">Packing</SelectItem>
-                <SelectItem value="dispatch">Dispatch</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </DialogContent>
-      </Dialog>
+        {/* Stage Update Dialog */}
+        <Dialog open={showStageDialog} onOpenChange={setShowStageDialog}>
+          <DialogContent className="bg-background">
+            <DialogHeader>
+              <DialogTitle>Update Work Order Stage</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Select onValueChange={handleStageUpdate} defaultValue={wo?.current_stage}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Select stage" />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  <SelectItem value="goods_in">Goods In</SelectItem>
+                  <SelectItem value="production">Production</SelectItem>
+                  <SelectItem value="qc">QC</SelectItem>
+                  <SelectItem value="packing">Packing</SelectItem>
+                  <SelectItem value="dispatch">Dispatch</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 };
