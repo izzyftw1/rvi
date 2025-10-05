@@ -80,71 +80,76 @@ export default function MaterialRequirements() {
   const loadRequirements = async () => {
     setLoading(true);
 
-    // Fetch all sales orders
-    const { data: salesOrders, error } = await supabase
-      .from("sales_orders")
-      .select("*")
-      .eq("status", "approved");
+    try {
+      // Fetch all sales orders
+      const { data: salesOrdersRaw, error } = await supabase
+        .from("sales_orders")
+        .select("*")
+        .eq("status", "approved");
 
-    if (error) {
-      toast({ variant: "destructive", description: "Failed to load sales orders" });
-      setLoading(false);
-      return;
-    }
+      if (error) throw error;
 
-    // Extract unique customers
-    const uniqueCustomers = [...new Set(salesOrders.map(so => so.customer))];
-    setCustomers(uniqueCustomers);
+      const salesOrders = salesOrdersRaw ?? [];
 
-    // Group by material size
-    const grouped = new Map<number, MaterialRequirement>();
+      // Extract unique customers
+      const uniqueCustomers = [...new Set(salesOrders.map((so: any) => so.customer).filter(Boolean))];
+      setCustomers(uniqueCustomers);
 
-    for (const so of salesOrders) {
-      const size = so.material_rod_forging_size_mm;
-      if (!size) continue;
+      // Group by material size
+      const grouped = new Map<number, MaterialRequirement>();
 
-      const items = Array.isArray(so.items) ? so.items : [];
-      const totalPcs = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+      for (const so of salesOrders as any[]) {
+        const size = (so as any).material_rod_forging_size_mm;
+        if (!size) continue;
 
-      if (!grouped.has(size)) {
-        grouped.set(size, {
-          material_size_mm: size,
-          total_pcs: 0,
-          total_gross_weight_kg: 0,
-          total_net_weight_kg: 0,
-          linked_sales_orders: [],
-          status: "not_ordered"
+        const items = Array.isArray(so.items) ? so.items : [];
+        const totalPcs = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+
+        if (!grouped.has(size)) {
+          grouped.set(size, {
+            material_size_mm: Number(size),
+            total_pcs: 0,
+            total_gross_weight_kg: 0,
+            total_net_weight_kg: 0,
+            linked_sales_orders: [],
+            status: "not_ordered"
+          });
+        }
+
+        const req = grouped.get(size)!;
+        req.total_pcs += totalPcs;
+        req.total_gross_weight_kg += (totalPcs * Number(so.gross_weight_per_pc_grams || 0)) / 1000;
+        req.total_net_weight_kg += (totalPcs * Number(so.net_weight_per_pc_grams || 0)) / 1000;
+        req.linked_sales_orders.push({
+          so_id: so.so_id,
+          customer: so.customer,
+          pcs: totalPcs,
+          id: so.id
         });
       }
 
-      const req = grouped.get(size)!;
-      req.total_pcs += totalPcs;
-      req.total_gross_weight_kg += (totalPcs * (so.gross_weight_per_pc_grams || 0)) / 1000;
-      req.total_net_weight_kg += (totalPcs * (so.net_weight_per_pc_grams || 0)) / 1000;
-      req.linked_sales_orders.push({
-        so_id: so.so_id,
-        customer: so.customer,
-        pcs: totalPcs,
-        id: so.id
-      });
+      // Fetch statuses from material_requirements table
+      const { data: statusData, error: statusErr } = await supabase
+        .from("material_requirements")
+        .select("*");
+
+      if (statusErr) throw statusErr;
+
+      const statusMap = new Map((statusData ?? []).map((s: any) => [Number(s.material_size_mm), { status: s.status, id: s.id }]));
+
+      // Apply statuses
+      const requirementsArray = Array.from(grouped.values()).map((req) => ({
+        ...req,
+        status: statusMap.get(req.material_size_mm)?.status || "not_ordered",
+        requirement_id: statusMap.get(req.material_size_mm)?.id
+      }));
+
+      setRequirements(requirementsArray);
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Failed to load dashboard: ${err?.message || err}` });
+    } finally {
+      setLoading(false);
     }
-
-    // Fetch statuses from material_requirements table
-    const { data: statusData } = await supabase
-      .from("material_requirements")
-      .select("*");
-
-    const statusMap = new Map(statusData?.map(s => [s.material_size_mm, { status: s.status, id: s.id }]) || []);
-
-    // Apply statuses
-    const requirementsArray = Array.from(grouped.values()).map(req => ({
-      ...req,
-      status: statusMap.get(req.material_size_mm)?.status || "not_ordered",
-      requirement_id: statusMap.get(req.material_size_mm)?.id
-    }));
-
-    setRequirements(requirementsArray);
-    setLoading(false);
   };
 
   const updateStatus = async (materialSize: number, newStatus: string, requirementId?: string) => {
