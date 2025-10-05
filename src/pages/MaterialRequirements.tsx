@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Download, FileSpreadsheet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import "jspdf-autotable";
 import * as XLSX from "xlsx";
 
 interface MaterialRequirement {
@@ -191,7 +191,7 @@ export default function MaterialRequirements() {
       req.status
     ]);
 
-    autoTable(doc, {
+    (doc as any).autoTable({
       head: [["Size (mm)", "Total Pcs", "Gross Wt (kg)", "Net Wt (kg)", "Sales Orders", "Status"]],
       body: tableData,
       startY: 30,
