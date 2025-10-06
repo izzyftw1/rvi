@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
 import { useToast } from "@/hooks/use-toast";
-
 const WorkOrders = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
