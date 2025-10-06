@@ -32,7 +32,7 @@ export default function Sales() {
     material_rod_forging_size_mm: "",
     gross_weight_per_pc_grams: "",
     net_weight_per_pc_grams: "",
-    cycle_time_hours: ""
+    cycle_time_seconds: ""
   });
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [isNewItem, setIsNewItem] = useState(false);
@@ -111,7 +111,7 @@ export default function Sales() {
         material_rod_forging_size_mm: "",
         gross_weight_per_pc_grams: "",
         net_weight_per_pc_grams: "",
-        cycle_time_hours: ""
+        cycle_time_seconds: ""
       });
     } else {
       setIsNewItem(false);
@@ -123,7 +123,7 @@ export default function Sales() {
         material_rod_forging_size_mm: item?.material_size_mm?.toString() || "",
         gross_weight_per_pc_grams: item?.gross_weight_grams?.toString() || "",
         net_weight_per_pc_grams: item?.net_weight_grams?.toString() || "",
-        cycle_time_hours: item?.cycle_time_hours?.toString() || ""
+        cycle_time_seconds: item?.cycle_time_seconds?.toString() || ""
       });
     }
   };
@@ -153,7 +153,7 @@ export default function Sales() {
         material_rod_forging_size_mm: formData.material_rod_forging_size_mm ? parseFloat(formData.material_rod_forging_size_mm) : null,
         gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
         net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
-        cycle_time_hours: formData.cycle_time_hours ? parseFloat(formData.cycle_time_hours) : null
+        cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null
       });
 
     setLoading(false);
@@ -165,7 +165,7 @@ export default function Sales() {
       setFormData({ 
         so_id: "", customer: "", party_code: "", po_number: "", po_date: "", item_code: "", quantity: "", 
         alloy: "", due_date: "", material_rod_forging_size_mm: "", 
-        gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "", cycle_time_hours: "" 
+        gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "", cycle_time_seconds: "" 
       });
       setIsNewCustomer(false);
       setIsNewItem(false);
@@ -442,9 +442,9 @@ export default function Sales() {
               <Input
                 type="number"
                 step="0.01"
-                placeholder="Cycle Time (hours)"
-                value={formData.cycle_time_hours}
-                onChange={(e) => setFormData({...formData, cycle_time_hours: e.target.value})}
+                placeholder="Cycle Time (seconds)"
+                value={formData.cycle_time_seconds}
+                onChange={(e) => setFormData({...formData, cycle_time_seconds: e.target.value})}
                 disabled={!isNewItem && formData.item_code !== ""}
               />
               <Button type="submit" disabled={loading} className="w-full">

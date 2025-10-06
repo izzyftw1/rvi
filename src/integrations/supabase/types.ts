@@ -392,7 +392,7 @@ export type Database = {
         Row: {
           alloy: string | null
           created_at: string | null
-          cycle_time_hours: number | null
+          cycle_time_seconds: number | null
           gross_weight_grams: number | null
           id: string
           item_code: string
@@ -404,7 +404,7 @@ export type Database = {
         Insert: {
           alloy?: string | null
           created_at?: string | null
-          cycle_time_hours?: number | null
+          cycle_time_seconds?: number | null
           gross_weight_grams?: number | null
           id?: string
           item_code: string
@@ -416,7 +416,7 @@ export type Database = {
         Update: {
           alloy?: string | null
           created_at?: string | null
-          cycle_time_hours?: number | null
+          cycle_time_seconds?: number | null
           gross_weight_grams?: number | null
           id?: string
           item_code?: string
@@ -1269,7 +1269,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           customer: string
-          cycle_time_hours: number | null
+          cycle_time_seconds: number | null
           gross_weight_per_pc_grams: number | null
           id: string
           items: Json
@@ -1288,7 +1288,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           customer: string
-          cycle_time_hours?: number | null
+          cycle_time_seconds?: number | null
           gross_weight_per_pc_grams?: number | null
           id?: string
           items: Json
@@ -1307,7 +1307,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           customer?: string
-          cycle_time_hours?: number | null
+          cycle_time_seconds?: number | null
           gross_weight_per_pc_grams?: number | null
           id?: string
           items?: Json
