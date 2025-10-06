@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Home, ArrowLeft, LogOut, Factory, Wrench, Shield } from "lucide-react";
+import { Home, ArrowLeft, LogOut, Factory, Wrench, Shield, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import rvLogo from "@/assets/rv-logo.jpg";
@@ -109,6 +109,19 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
               <Wrench className="h-4 w-4 mr-2" />
               Maintenance
             </Button>
+
+            {/* Factory Calendar Link for Admin Users */}
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/factory-calendar")}
+                className="hover:bg-primary/10"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Calendar
+              </Button>
+            )}
 
             {/* Admin Panel Link for Admin Users */}
             {isAdmin && (

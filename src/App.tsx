@@ -30,6 +30,7 @@ import MaterialRequirements from "./pages/MaterialRequirements";
 import StageDetailView from "./pages/StageDetailView";
 import Maintenance from "./pages/Maintenance";
 import Admin from "./pages/Admin";
+import FactoryCalendar from "./pages/FactoryCalendar";
 
 
 const App = () => (
@@ -64,6 +65,7 @@ const App = () => (
         <Route path="/stage/:stage" element={<ProtectedRoute><StageDetailView /></ProtectedRoute>} />
         <Route path="/maintenance" element={<ProtectedRoute><Maintenance /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+        <Route path="/factory-calendar" element={<ProtectedRoute><FactoryCalendar /></ProtectedRoute>} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
