@@ -7,10 +7,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QCRecordsTab } from "@/components/QCRecordsTab";
+import { WorkOrderGenealogy } from "@/components/WorkOrderGenealogy";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 
 const WorkOrderDetail = () => {

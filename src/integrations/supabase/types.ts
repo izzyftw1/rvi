@@ -623,6 +623,57 @@ export type Database = {
           },
         ]
       }
+      material_issues: {
+        Row: {
+          created_at: string
+          id: string
+          issued_at: string
+          issued_by: string | null
+          lot_id: string
+          quantity_kg: number
+          quantity_pcs: number | null
+          uom: string
+          wo_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          lot_id: string
+          quantity_kg: number
+          quantity_pcs?: number | null
+          uom?: string
+          wo_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          lot_id?: string
+          quantity_kg?: number
+          quantity_pcs?: number | null
+          uom?: string
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_issues_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "material_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_issues_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_lots: {
         Row: {
           alloy: string
