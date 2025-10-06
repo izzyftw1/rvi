@@ -74,6 +74,13 @@ export default function Sales() {
     setLoading(false);
   };
 
+  const generatePartyCode = (customerName: string) => {
+    // Generate party code from customer name (first 3 letters + random number)
+    const prefix = customerName.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    return `${prefix}${randomNum}`;
+  };
+
   const handleCustomerChange = (value: string) => {
     if (value === "new_customer") {
       setIsNewCustomer(true);
@@ -87,6 +94,11 @@ export default function Sales() {
         party_code: customer?.party_code || ""
       });
     }
+  };
+
+  const handleNewCustomerNameChange = (name: string) => {
+    const partyCode = name.length >= 3 ? generatePartyCode(name) : "";
+    setFormData({ ...formData, customer: name, party_code: partyCode });
   };
 
   const handleItemCodeChange = (value: string) => {
@@ -301,7 +313,7 @@ export default function Sales() {
                     <Input
                       placeholder="Enter new customer name"
                       value={formData.customer}
-                      onChange={(e) => setFormData({...formData, customer: e.target.value})}
+                      onChange={(e) => handleNewCustomerNameChange(e.target.value)}
                       required
                     />
                     <Button 
@@ -316,9 +328,10 @@ export default function Sales() {
               </div>
 
               <Input
-                placeholder="Party Code (Unique Customer ID)"
+                placeholder="Party Code (Auto-generated)"
                 value={formData.party_code}
                 onChange={(e) => setFormData({...formData, party_code: e.target.value})}
+                disabled={!isNewCustomer}
               />
 
               <Input
