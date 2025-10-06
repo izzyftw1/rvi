@@ -17,9 +17,12 @@ export default function Sales() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     so_id: "",
     customer: "",
+    party_code: "",
     po_number: "",
     po_date: "",
     item_code: "",
@@ -28,8 +31,11 @@ export default function Sales() {
     due_date: "",
     material_rod_forging_size_mm: "",
     gross_weight_per_pc_grams: "",
-    net_weight_per_pc_grams: ""
+    net_weight_per_pc_grams: "",
+    cycle_time_hours: ""
   });
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [isNewItem, setIsNewItem] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -37,7 +43,25 @@ export default function Sales() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
     loadSalesOrders();
+    loadCustomers();
+    loadItems();
   }, []);
+
+  const loadCustomers = async () => {
+    const { data } = await supabase
+      .from("customer_master")
+      .select("*")
+      .order("last_used", { ascending: false });
+    if (data) setCustomers(data);
+  };
+
+  const loadItems = async () => {
+    const { data } = await supabase
+      .from("item_master")
+      .select("*")
+      .order("last_used", { ascending: false });
+    if (data) setItems(data);
+  };
 
   const loadSalesOrders = async () => {
     setLoading(true);
@@ -48,6 +72,48 @@ export default function Sales() {
     
     if (!error && data) setSalesOrders(data);
     setLoading(false);
+  };
+
+  const handleCustomerChange = (value: string) => {
+    if (value === "new_customer") {
+      setIsNewCustomer(true);
+      setFormData({ ...formData, customer: "", party_code: "" });
+    } else {
+      setIsNewCustomer(false);
+      const customer = customers.find(c => c.customer_name === value);
+      setFormData({ 
+        ...formData, 
+        customer: value,
+        party_code: customer?.party_code || ""
+      });
+    }
+  };
+
+  const handleItemCodeChange = (value: string) => {
+    if (value === "new_item") {
+      setIsNewItem(true);
+      setFormData({ 
+        ...formData, 
+        item_code: "", 
+        alloy: "", 
+        material_rod_forging_size_mm: "",
+        gross_weight_per_pc_grams: "",
+        net_weight_per_pc_grams: "",
+        cycle_time_hours: ""
+      });
+    } else {
+      setIsNewItem(false);
+      const item = items.find(i => i.item_code === value);
+      setFormData({
+        ...formData,
+        item_code: value,
+        alloy: item?.alloy || "",
+        material_rod_forging_size_mm: item?.material_size_mm?.toString() || "",
+        gross_weight_per_pc_grams: item?.gross_weight_grams?.toString() || "",
+        net_weight_per_pc_grams: item?.net_weight_grams?.toString() || "",
+        cycle_time_hours: item?.cycle_time_hours?.toString() || ""
+      });
+    }
   };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
@@ -66,6 +132,7 @@ export default function Sales() {
       .insert({
         so_id: formData.so_id,
         customer: formData.customer,
+        party_code: formData.party_code || null,
         po_number: formData.po_number,
         po_date: formData.po_date,
         items,
@@ -73,7 +140,8 @@ export default function Sales() {
         created_by: user?.id,
         material_rod_forging_size_mm: formData.material_rod_forging_size_mm ? parseFloat(formData.material_rod_forging_size_mm) : null,
         gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
-        net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null
+        net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
+        cycle_time_hours: formData.cycle_time_hours ? parseFloat(formData.cycle_time_hours) : null
       });
 
     setLoading(false);
@@ -83,11 +151,15 @@ export default function Sales() {
     } else {
       toast({ description: "Sales order created successfully" });
       setFormData({ 
-        so_id: "", customer: "", po_number: "", po_date: "", item_code: "", quantity: "", 
+        so_id: "", customer: "", party_code: "", po_number: "", po_date: "", item_code: "", quantity: "", 
         alloy: "", due_date: "", material_rod_forging_size_mm: "", 
-        gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "" 
+        gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "", cycle_time_hours: "" 
       });
+      setIsNewCustomer(false);
+      setIsNewItem(false);
       loadSalesOrders();
+      loadCustomers();
+      loadItems();
     }
   };
 
@@ -207,31 +279,100 @@ export default function Sales() {
                 onChange={(e) => setFormData({...formData, so_id: e.target.value})}
                 required
               />
+              
+              <div className="space-y-2">
+                <Label>Customer Name</Label>
+                {!isNewCustomer ? (
+                  <Select onValueChange={handleCustomerChange} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select customer or add new" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new_customer">+ Add New Customer</SelectItem>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.customer_name}>
+                          {customer.customer_name} {customer.party_code ? `(${customer.party_code})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter new customer name"
+                      value={formData.customer}
+                      onChange={(e) => setFormData({...formData, customer: e.target.value})}
+                      required
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setIsNewCustomer(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               <Input
-                placeholder="Customer Name"
-                value={formData.customer}
-                onChange={(e) => setFormData({...formData, customer: e.target.value})}
-                required
+                placeholder="Party Code (Unique Customer ID)"
+                value={formData.party_code}
+                onChange={(e) => setFormData({...formData, party_code: e.target.value})}
               />
+
               <Input
                 placeholder="Customer PO Number"
                 value={formData.po_number}
                 onChange={(e) => setFormData({...formData, po_number: e.target.value})}
                 required
               />
-              <Input
-                type="date"
-                placeholder="PO Date"
-                value={formData.po_date}
-                onChange={(e) => setFormData({...formData, po_date: e.target.value})}
-                required
-              />
-              <Input
-                placeholder="Item Code"
-                value={formData.item_code}
-                onChange={(e) => setFormData({...formData, item_code: e.target.value})}
-                required
-              />
+
+              <div className="space-y-2">
+                <Label>PO Date</Label>
+                <Input
+                  type="date"
+                  value={formData.po_date}
+                  onChange={(e) => setFormData({...formData, po_date: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Item Code</Label>
+                {!isNewItem ? (
+                  <Select onValueChange={handleItemCodeChange} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select item or add new" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new_item">+ Add New Item</SelectItem>
+                      {items.map((item) => (
+                        <SelectItem key={item.id} value={item.item_code}>
+                          {item.item_code} - {item.alloy}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter new item code"
+                      value={formData.item_code}
+                      onChange={(e) => setFormData({...formData, item_code: e.target.value})}
+                      required
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setIsNewItem(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               <Input
                 type="number"
                 placeholder="Quantity (pcs)"
@@ -239,39 +380,59 @@ export default function Sales() {
                 onChange={(e) => setFormData({...formData, quantity: e.target.value})}
                 required
               />
+
               <Input
                 placeholder="Alloy (e.g., SS316L)"
                 value={formData.alloy}
                 onChange={(e) => setFormData({...formData, alloy: e.target.value})}
                 required
+                disabled={!isNewItem && formData.item_code !== ""}
               />
-              <Input
-                type="date"
-                placeholder="Due Date"
-                value={formData.due_date}
-                onChange={(e) => setFormData({...formData, due_date: e.target.value})}
-                required
-              />
+
+              <div className="space-y-2">
+                <Label>Due Date</Label>
+                <Input
+                  type="date"
+                  value={formData.due_date}
+                  onChange={(e) => setFormData({...formData, due_date: e.target.value})}
+                  required
+                />
+              </div>
+
               <Input
                 type="number"
                 step="0.01"
                 placeholder="Material/Rod/Forging Size (mm)"
                 value={formData.material_rod_forging_size_mm}
                 onChange={(e) => setFormData({...formData, material_rod_forging_size_mm: e.target.value})}
+                disabled={!isNewItem && formData.item_code !== ""}
               />
+
               <Input
                 type="number"
                 step="0.01"
                 placeholder="Gross Weight per pc (grams)"
                 value={formData.gross_weight_per_pc_grams}
                 onChange={(e) => setFormData({...formData, gross_weight_per_pc_grams: e.target.value})}
+                disabled={!isNewItem && formData.item_code !== ""}
               />
+
               <Input
                 type="number"
                 step="0.01"
                 placeholder="Net Weight per pc (grams)"
                 value={formData.net_weight_per_pc_grams}
                 onChange={(e) => setFormData({...formData, net_weight_per_pc_grams: e.target.value})}
+                disabled={!isNewItem && formData.item_code !== ""}
+              />
+
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Cycle Time (hours)"
+                value={formData.cycle_time_hours}
+                onChange={(e) => setFormData({...formData, cycle_time_hours: e.target.value})}
+                disabled={!isNewItem && formData.item_code !== ""}
               />
               <Button type="submit" disabled={loading} className="w-full">
                 Create Sales Order

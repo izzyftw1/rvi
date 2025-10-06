@@ -144,6 +144,33 @@ export type Database = {
           },
         ]
       }
+      customer_master: {
+        Row: {
+          created_at: string | null
+          customer_name: string
+          id: string
+          last_used: string | null
+          party_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_name: string
+          id?: string
+          last_used?: string | null
+          party_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_name?: string
+          id?: string
+          last_used?: string | null
+          party_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       departments: {
         Row: {
           created_at: string
@@ -360,6 +387,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      item_master: {
+        Row: {
+          alloy: string | null
+          created_at: string | null
+          cycle_time_hours: number | null
+          gross_weight_grams: number | null
+          id: string
+          item_code: string
+          last_used: string | null
+          material_size_mm: number | null
+          net_weight_grams: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          alloy?: string | null
+          created_at?: string | null
+          cycle_time_hours?: number | null
+          gross_weight_grams?: number | null
+          id?: string
+          item_code: string
+          last_used?: string | null
+          material_size_mm?: number | null
+          net_weight_grams?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          alloy?: string | null
+          created_at?: string | null
+          cycle_time_hours?: number | null
+          gross_weight_grams?: number | null
+          id?: string
+          item_code?: string
+          last_used?: string | null
+          material_size_mm?: number | null
+          net_weight_grams?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       laser_marking: {
         Row: {
@@ -1203,11 +1269,13 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           customer: string
+          cycle_time_hours: number | null
           gross_weight_per_pc_grams: number | null
           id: string
           items: Json
           material_rod_forging_size_mm: number | null
           net_weight_per_pc_grams: number | null
+          party_code: string | null
           po_date: string
           po_number: string
           so_id: string
@@ -1220,11 +1288,13 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           customer: string
+          cycle_time_hours?: number | null
           gross_weight_per_pc_grams?: number | null
           id?: string
           items: Json
           material_rod_forging_size_mm?: number | null
           net_weight_per_pc_grams?: number | null
+          party_code?: string | null
           po_date: string
           po_number: string
           so_id: string
@@ -1237,11 +1307,13 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           customer?: string
+          cycle_time_hours?: number | null
           gross_weight_per_pc_grams?: number | null
           id?: string
           items?: Json
           material_rod_forging_size_mm?: number | null
           net_weight_per_pc_grams?: number | null
+          party_code?: string | null
           po_date?: string
           po_number?: string
           so_id?: string
