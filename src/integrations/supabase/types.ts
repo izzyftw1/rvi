@@ -319,6 +319,39 @@ export type Database = {
           },
         ]
       }
+      factory_calendar_exceptions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          exception_date: string
+          id: string
+          is_working: boolean
+          override_shift_end: string | null
+          override_shift_start: string | null
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          exception_date: string
+          id?: string
+          is_working?: boolean
+          override_shift_end?: string | null
+          override_shift_start?: string | null
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          exception_date?: string
+          id?: string
+          is_working?: boolean
+          override_shift_end?: string | null
+          override_shift_start?: string | null
+          reason?: string | null
+        }
+        Relationships: []
+      }
       factory_calendar_settings: {
         Row: {
           break_1_end: string | null
@@ -2042,6 +2075,10 @@ export type Database = {
       assign_initial_role: {
         Args: { _requested_role: string; _user_id: string }
         Returns: undefined
+      }
+      calculate_end_time: {
+        Args: { _hours_needed: number; _start_time: string }
+        Returns: string
       }
       calculate_required_machine_time: {
         Args: {

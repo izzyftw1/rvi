@@ -16,7 +16,7 @@ export const CompletionTimeDisplay = ({ startTime, hoursNeeded }: CompletionTime
   useEffect(() => {
     const calculateEndTime = async () => {
       try {
-        const { data, error } = await supabase.rpc('calculate_end_time' as any, {
+        const { data, error } = await supabase.rpc('calculate_end_time', {
           _start_time: startTime,
           _hours_needed: hoursNeeded
         });
