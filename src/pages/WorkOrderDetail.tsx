@@ -53,6 +53,7 @@ const WorkOrderDetail = () => {
           .select("*")
           .eq("id", woData.sales_order)
           .single();
+        setSalesOrder(soData || null);
         setSalesOrder(soData);
       }
 
@@ -390,6 +391,17 @@ const WorkOrderDetail = () => {
             </div>
             <p className="text-sm text-muted-foreground">
               {wo.customer} • {wo.item_code}
+              {salesOrder && (
+                <>
+                  {" • "}
+                  <button 
+                    onClick={() => navigate(`/sales`)}
+                    className="text-blue-600 hover:underline"
+                  >
+                    PO: {salesOrder.po_number}
+                  </button>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -434,15 +446,14 @@ const WorkOrderDetail = () => {
                 </Badge>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Sales Order / Customer PO</p>
+                <p className="text-sm text-muted-foreground">Customer PO / Sales Order</p>
                 {salesOrder ? (
-                  <div 
-                    className="cursor-pointer hover:underline" 
-                    onClick={() => navigate(`/sales`)}
+                  <button 
+                    onClick={() => navigate('/sales')}
+                    className="text-lg font-bold text-blue-600 hover:underline"
                   >
-                    <p className="text-lg font-bold text-blue-600">{salesOrder.so_id}</p>
-                    <p className="text-sm text-muted-foreground">PO: {salesOrder.po_number}</p>
-                  </div>
+                    {salesOrder.po_number}
+                  </button>
                 ) : (
                   <p className="text-lg font-bold">—</p>
                 )}
@@ -461,7 +472,7 @@ const WorkOrderDetail = () => {
               <TabsTrigger value="qc">QC Records</TabsTrigger>
               <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
               <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
-            </TabsList>
+          </TabsList>
 
           <TabsContent value="routing" className="space-y-4">
             <Card>
