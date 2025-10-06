@@ -37,6 +37,7 @@ export default function FactoryCalendar() {
   }, []);
 
   const seedDefaultSettings = async () => {
+    console.log('🌱 Seeding default settings...');
     const defaultSettings = [
       { day_name: 'monday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
       { day_name: 'tuesday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
@@ -47,30 +48,48 @@ export default function FactoryCalendar() {
       { day_name: 'sunday', working: false, day_shift_start: null, day_shift_end: null, night_shift_start: null, night_shift_end: null, break_1_start: null, break_1_end: null, break_2_start: null, break_2_end: null, overtime_allowed: false },
     ];
 
+    console.log('📝 Inserting default settings:', defaultSettings);
+
     const { error } = await supabase
       .from('factory_calendar_settings' as any)
       .insert(defaultSettings as any);
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Error seeding defaults:', error);
+      throw error;
+    }
+    
+    console.log('✅ Default settings seeded successfully');
   };
 
   const loadCalendarSettings = async () => {
     try {
+      console.log('🔍 Loading factory calendar settings...');
+      
       const { data: settings, error } = await supabase
         .from('factory_calendar_settings' as any)
         .select('*')
         .order('day_name');
 
-      if (error) throw error;
+      console.log('📊 Query result:', { settings, error });
+
+      if (error) {
+        console.error('❌ Query error:', error);
+        throw error;
+      }
 
       // If no settings exist, seed with defaults
       if (!settings || settings.length === 0) {
+        console.log('📦 No settings found, seeding defaults...');
         await seedDefaultSettings();
+        
         // Reload after seeding
         const { data: newSettings, error: reloadError } = await supabase
           .from('factory_calendar_settings' as any)
           .select('*')
           .order('day_name');
+        
+        console.log('📊 After seeding:', { newSettings, reloadError });
         
         if (reloadError) throw reloadError;
         
@@ -79,6 +98,7 @@ export default function FactoryCalendar() {
           newSettings.forEach((day: any) => {
             settingsMap[day.day_name] = day;
           });
+          console.log('✅ Settings loaded after seeding:', settingsMap);
           setDaySettings(settingsMap);
         }
       } else {
@@ -86,10 +106,11 @@ export default function FactoryCalendar() {
         settings.forEach((day: any) => {
           settingsMap[day.day_name] = day;
         });
+        console.log('✅ Settings loaded:', settingsMap);
         setDaySettings(settingsMap);
       }
     } catch (error) {
-      console.error('Error loading calendar settings:', error);
+      console.error('💥 Error loading calendar settings:', error);
       toast({
         title: 'Error',
         description: 'Failed to load calendar settings',
