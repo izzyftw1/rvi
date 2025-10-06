@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, CheckCircle2, Clock, Package, FlaskConical, Box, Truck } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { AlertCircle, CheckCircle, Clock, User, Package, FileText, Clipboard } from "lucide-react";
 import { format } from "date-fns";
 
 interface WorkOrderGenealogyProps {
-  woId: string;
+  workOrderId: string;
 }
 
 interface ActionLog {
@@ -15,15 +15,15 @@ interface ActionLog {
   action_type: string;
   department: string;
   performed_by: string;
-  action_details: any;
   created_at: string;
+  action_details: any;
   user_name?: string;
 }
 
-export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
+export const WorkOrderGenealogy = ({ workOrderId }: WorkOrderGenealogyProps) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<ActionLog[]>([]);
+  const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
   const [stageHistory, setStageHistory] = useState<any[]>([]);
 
   useEffect(() => {
@@ -31,11 +31,11 @@ export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
 
     // Subscribe to realtime updates
     const channel = supabase
-      .channel(`wo_genealogy_${woId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_actions_log', filter: `wo_id=eq.${woId}` }, () => {
+      .channel(`wo-genealogy-${workOrderId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_actions_log', filter: `wo_id=eq.${workOrderId}` }, () => {
         loadGenealogy();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_stage_history', filter: `wo_id=eq.${woId}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_stage_history', filter: `wo_id=eq.${workOrderId}` }, () => {
         loadGenealogy();
       })
       .subscribe();
@@ -43,63 +43,47 @@ export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [woId]);
+  }, [workOrderId]);
 
   const loadGenealogy = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Load action logs
+      // Fetch action logs
       const { data: logsData, error: logsError } = await supabase
         .from("wo_actions_log")
-        .select("*")
-        .eq("wo_id", woId)
-        .order("created_at", { ascending: false });
+        .select(`
+          *,
+          profiles:performed_by(full_name)
+        `)
+        .eq("wo_id", workOrderId)
+        .order("created_at", { ascending: true });
 
       if (logsError) throw logsError;
 
-      // Load stage history
-      const { data: historyData, error: historyError } = await supabase
+      // Fetch stage history
+      const { data: stageData, error: stageError } = await supabase
         .from("wo_stage_history")
-        .select("*")
-        .eq("wo_id", woId)
-        .order("changed_at", { ascending: false });
+        .select(`
+          *,
+          profiles:changed_by(full_name)
+        `)
+        .eq("wo_id", workOrderId)
+        .order("changed_at", { ascending: true });
 
-      if (historyError) throw historyError;
+      if (stageError) throw stageError;
 
-      // Get unique user IDs
-      const userIds = [
-        ...(logsData || []).map(log => log.performed_by).filter(Boolean),
-        ...(historyData || []).map(h => h.changed_by).filter(Boolean)
-      ];
-      const uniqueUserIds = [...new Set(userIds)];
-
-      // Fetch user profiles
-      let userMap = new Map<string, string>();
-      if (uniqueUserIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", uniqueUserIds);
-        
-        if (profiles) {
-          profiles.forEach(p => userMap.set(p.id, p.full_name));
-        }
-      }
-
-      setLogs((logsData || []).map(log => ({
+      const enrichedLogs = (logsData || []).map((log: any) => ({
         ...log,
-        user_name: log.performed_by ? userMap.get(log.performed_by) || "Unknown User" : "System"
-      })));
-      
-      setStageHistory((historyData || []).map(h => ({
-        ...h,
-        user_name: h.changed_by ? userMap.get(h.changed_by) || "Unknown User" : "System"
-      })));
+        user_name: log.profiles?.full_name || "Unknown User"
+      }));
+
+      setActionLogs(enrichedLogs);
+      setStageHistory(stageData || []);
     } catch (err: any) {
       console.error("Error loading genealogy:", err);
-      setError(err.message || "Failed to load workflow history");
+      setError(err.message || "Failed to load work order history");
     } finally {
       setLoading(false);
     }
@@ -108,49 +92,40 @@ export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
   const getActionIcon = (actionType: string) => {
     switch (actionType) {
       case "material_issued":
-        return <Package className="h-5 w-5 text-blue-500" />;
+        return <Package className="h-4 w-4" />;
       case "qc_incoming":
       case "qc_in_process":
       case "qc_final":
-        return <FlaskConical className="h-5 w-5 text-purple-500" />;
       case "hourly_qc_check":
-        return <Clock className="h-5 w-5 text-orange-500" />;
+        return <CheckCircle className="h-4 w-4" />;
       case "carton_built":
-        return <Box className="h-5 w-5 text-green-500" />;
+        return <Clipboard className="h-4 w-4" />;
       case "design_uploaded":
-        return <CheckCircle2 className="h-5 w-5 text-teal-500" />;
+        return <FileText className="h-4 w-4" />;
       default:
-        return <AlertCircle className="h-5 w-5 text-gray-500" />;
+        return <Clock className="h-4 w-4" />;
     }
+  };
+
+  const getActionColor = (actionType: string) => {
+    if (actionType.includes("qc")) return "text-green-600";
+    if (actionType.includes("material")) return "text-blue-600";
+    if (actionType.includes("carton")) return "text-purple-600";
+    return "text-gray-600";
   };
 
   const formatActionType = (type: string) => {
     return type
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (l) => l.toUpperCase());
-  };
-
-  const getDepartmentColor = (dept: string) => {
-    const colors: Record<string, string> = {
-      "Goods In": "bg-blue-100 text-blue-800 border-blue-300",
-      "Quality": "bg-purple-100 text-purple-800 border-purple-300",
-      "Production": "bg-orange-100 text-orange-800 border-orange-300",
-      "Packing": "bg-green-100 text-green-800 border-green-300",
-      "Design": "bg-teal-100 text-teal-800 border-teal-300",
-    };
-    return colors[dept] || "bg-gray-100 text-gray-800 border-gray-300";
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
 
   if (loading) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Workflow History</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
+        <CardContent className="py-12 text-center">
+          <p className="text-muted-foreground">Loading history...</p>
         </CardContent>
       </Card>
     );
@@ -162,7 +137,7 @@ export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
         <CardContent className="py-6">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-5 w-5" />
-            <p className="font-medium">Error loading workflow history</p>
+            <p className="font-medium">Error loading history</p>
           </div>
           <p className="text-sm text-muted-foreground mt-2">{error}</p>
         </CardContent>
@@ -170,41 +145,53 @@ export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Stage History */}
+  if (actionLogs.length === 0 && stageHistory.length === 0) {
+    return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            Stage Progression
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {stageHistory.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No stage changes recorded yet
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {stageHistory.map((stage) => (
-                <div key={stage.id} className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+        <CardContent className="py-12 text-center space-y-2">
+          <p className="text-lg font-medium">No History Yet</p>
+          <p className="text-sm text-muted-foreground">
+            Actions and stage changes will appear here
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Work Order Genealogy / History</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Stage History */}
+        {stageHistory.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-sm text-muted-foreground">Stage Transitions</h3>
+            <div className="space-y-2">
+              {stageHistory.map((stage: any) => (
+                <div key={stage.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                  <div className="mt-1">
+                    <Clock className="h-4 w-4 text-blue-600" />
+                  </div>
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className="capitalize">
                         {stage.from_stage?.replace(/_/g, " ") || "Start"}
                       </Badge>
                       <span className="text-muted-foreground">→</span>
                       <Badge className="capitalize">
-                        {stage.to_stage.replace(/_/g, " ")}
+                        {stage.to_stage?.replace(/_/g, " ")}
                       </Badge>
                       {stage.is_override && (
                         <Badge variant="destructive">Override</Badge>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Changed by {stage.user_name} •{" "}
-                      {format(new Date(stage.changed_at), "PPp")}
+                    <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                      <User className="h-3 w-3" />
+                      <span>{stage.profiles?.full_name || "System"}</span>
+                      <span>•</span>
+                      <span>{format(new Date(stage.changed_at), "PPp")}</span>
                     </div>
                     {stage.remarks && (
                       <p className="text-sm mt-1">{stage.remarks}</p>
@@ -213,66 +200,54 @@ export const WorkOrderGenealogy = ({ woId }: WorkOrderGenealogyProps) => {
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
 
-      {/* Detailed Action Log */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Detailed Activity Log
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {logs.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No activities recorded yet
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log.id} className="flex gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex-shrink-0 mt-1">
+        {stageHistory.length > 0 && actionLogs.length > 0 && <Separator />}
+
+        {/* Action Logs */}
+        {actionLogs.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-sm text-muted-foreground">Actions Log</h3>
+            <div className="space-y-2">
+              {actionLogs.map((log) => (
+                <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                  <div className={`mt-1 ${getActionColor(log.action_type)}`}>
                     {getActionIcon(log.action_type)}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">
-                        {formatActionType(log.action_type)}
-                      </span>
-                      <Badge variant="outline" className={getDepartmentColor(log.department)}>
-                        {log.department}
-                      </Badge>
+                      <span className="font-medium">{formatActionType(log.action_type)}</span>
+                      <Badge variant="outline">{log.department}</Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      By {log.user_name} •{" "}
-                      {format(new Date(log.created_at), "PPp")}
+                    <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                      <User className="h-3 w-3" />
+                      <span>{log.user_name}</span>
+                      <span>•</span>
+                      <span>{format(new Date(log.created_at), "PPp")}</span>
                     </div>
                     {log.action_details && Object.keys(log.action_details).length > 0 && (
-                      <div className="mt-2 p-2 bg-muted rounded text-xs space-y-1">
-                        {Object.entries(log.action_details).map(([key, value]) => (
-                          <div key={key} className="grid grid-cols-[120px,1fr] gap-2">
-                            <span className="text-muted-foreground capitalize">
-                              {key.replace(/_/g, " ")}:
-                            </span>
-                            <span className="font-mono break-all">
-                              {typeof value === "object"
-                                ? JSON.stringify(value)
-                                : String(value)}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="mt-2 text-sm space-y-1">
+                        {Object.entries(log.action_details).map(([key, value]) => {
+                          if (typeof value === "object") return null;
+                          return (
+                            <div key={key} className="flex gap-2">
+                              <span className="text-muted-foreground capitalize">
+                                {key.replace(/_/g, " ")}:
+                              </span>
+                              <span className="font-medium">{String(value)}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
