@@ -21,6 +21,7 @@ const NewWorkOrder = () => {
 
   const [formData, setFormData] = useState({
     wo_id: "",
+    display_id: "",
     customer: "",
     customer_po: "",
     item_code: "",
@@ -67,6 +68,7 @@ const NewWorkOrder = () => {
 
       const { data: woData, error } = await supabase.from("work_orders").insert({
         wo_id: formData.wo_id,
+        display_id: formData.display_id || `ISO-${formData.customer_po}`,
         customer: formData.customer,
         customer_po: formData.customer_po || null,
         item_code: formData.item_code,
@@ -82,7 +84,7 @@ const NewWorkOrder = () => {
 
       toast({
         title: "Work order created",
-        description: `WO ${formData.wo_id} created successfully`,
+        description: `WO ${woData.display_id || woData.wo_id} created successfully`,
       });
 
       setCreatedWO(woData);
@@ -239,7 +241,7 @@ const NewWorkOrder = () => {
               <QRCodeDisplay 
                 value={createdWO.wo_id}
                 title="Work Order Traveler"
-                entityInfo={`${createdWO.customer} | ${createdWO.item_code} | ${createdWO.quantity} pcs`}
+                entityInfo={`${createdWO.display_id || createdWO.wo_id} | ${createdWO.customer} | ${createdWO.item_code} | ${createdWO.quantity} pcs`}
                 size={250}
               />
             </div>

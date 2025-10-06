@@ -161,7 +161,7 @@ const WorkOrders = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="text-lg">
-                        {wo.wo_id || "—"}
+                        {wo.display_id || wo.wo_id || "—"}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
                         {wo.customer || "—"} • {wo.item_code || "—"}

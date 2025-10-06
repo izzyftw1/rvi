@@ -1788,6 +1788,7 @@ export type Database = {
           customer: string
           customer_po: string | null
           dispatch_allowed: boolean | null
+          display_id: string | null
           due_date: string
           gross_weight_per_pc: number | null
           id: string
@@ -1811,6 +1812,7 @@ export type Database = {
           customer: string
           customer_po?: string | null
           dispatch_allowed?: boolean | null
+          display_id?: string | null
           due_date: string
           gross_weight_per_pc?: number | null
           id?: string
@@ -1834,6 +1836,7 @@ export type Database = {
           customer?: string
           customer_po?: string | null
           dispatch_allowed?: boolean | null
+          display_id?: string | null
           due_date?: string
           gross_weight_per_pc?: number | null
           id?: string
