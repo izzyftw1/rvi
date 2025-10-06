@@ -20,7 +20,6 @@ export default function Sales() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [formData, setFormData] = useState({
-    so_id: "",
     customer: "",
     party_code: "",
     po_number: "",
@@ -39,6 +38,7 @@ export default function Sales() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [linkedWorkOrders, setLinkedWorkOrders] = useState<any[]>([]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -139,10 +139,13 @@ export default function Sales() {
       due_date: formData.due_date
     }];
 
+    // Generate SO ID from customer PO number
+    const so_id = `SO-${formData.po_number}`;
+
     const { error } = await supabase
       .from("sales_orders")
       .insert({
-        so_id: formData.so_id,
+        so_id: so_id,
         customer: formData.customer,
         party_code: formData.party_code || null,
         po_number: formData.po_number,
@@ -163,7 +166,7 @@ export default function Sales() {
     } else {
       toast({ description: "Sales order created successfully" });
       setFormData({ 
-        so_id: "", customer: "", party_code: "", po_number: "", po_date: "", item_code: "", quantity: "", 
+        customer: "", party_code: "", po_number: "", po_date: "", item_code: "", quantity: "", 
         alloy: "", due_date: "", material_rod_forging_size_mm: "", 
         gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "", cycle_time_seconds: "" 
       });
@@ -235,10 +238,17 @@ export default function Sales() {
     }
   };
 
-  const handleViewOrder = (order: any) => {
+  const handleViewOrder = async (order: any) => {
     setSelectedOrder(order);
     setIsEditMode(false);
     setIsViewDialogOpen(true);
+    
+    // Load linked work orders
+    const { data: wos } = await supabase
+      .from("work_orders")
+      .select("*")
+      .eq("sales_order", order.id);
+    setLinkedWorkOrders(wos || []);
   };
 
   const handleEditOrder = (order: any) => {
@@ -285,13 +295,6 @@ export default function Sales() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateOrder} className="space-y-4">
-              <Input
-                placeholder="SO ID (e.g., SO-2025-001)"
-                value={formData.so_id}
-                onChange={(e) => setFormData({...formData, so_id: e.target.value})}
-                required
-              />
-              
               <div className="space-y-2">
                 <Label>Customer Name</Label>
                 {!isNewCustomer ? (
@@ -641,6 +644,27 @@ export default function Sales() {
                   </Card>
                 ))}
               </div>
+
+              {linkedWorkOrders.length > 0 && (
+                <div>
+                  <Label>Linked Work Orders</Label>
+                  <div className="mt-2 space-y-2">
+                    {linkedWorkOrders.map((wo) => (
+                      <Card key={wo.id} className="cursor-pointer hover:bg-accent" onClick={() => navigate(`/work-orders/${wo.id}`)}>
+                        <CardContent className="pt-4">
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="font-semibold text-blue-600">{wo.wo_id}</p>
+                              <p className="text-sm text-muted-foreground">Status: {wo.status}</p>
+                            </div>
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {isEditMode && (
                 <div className="flex gap-2 justify-end">

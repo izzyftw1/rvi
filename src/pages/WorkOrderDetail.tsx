@@ -18,6 +18,7 @@ const WorkOrderDetail = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [wo, setWo] = useState<any>(null);
+  const [salesOrder, setSalesOrder] = useState<any>(null);
   const [routingSteps, setRoutingSteps] = useState<any[]>([]);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
   const [qcRecords, setQcRecords] = useState<any[]>([]);
@@ -44,6 +45,16 @@ const WorkOrderDetail = () => {
         .single();
 
       setWo(woData);
+
+      // Load sales order if linked
+      if (woData?.sales_order) {
+        const { data: soData } = await supabase
+          .from("sales_orders")
+          .select("*")
+          .eq("id", woData.sales_order)
+          .single();
+        setSalesOrder(soData);
+      }
 
       // Load routing steps
       const { data: stepsData } = await supabase
@@ -423,8 +434,18 @@ const WorkOrderDetail = () => {
                 </Badge>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Sales Order</p>
-                <p className="text-lg font-bold">{wo.sales_order || "—"}</p>
+                <p className="text-sm text-muted-foreground">Sales Order / Customer PO</p>
+                {salesOrder ? (
+                  <div 
+                    className="cursor-pointer hover:underline" 
+                    onClick={() => navigate(`/sales`)}
+                  >
+                    <p className="text-lg font-bold text-blue-600">{salesOrder.so_id}</p>
+                    <p className="text-sm text-muted-foreground">PO: {salesOrder.po_number}</p>
+                  </div>
+                ) : (
+                  <p className="text-lg font-bold">—</p>
+                )}
               </div>
             </div>
           </CardContent>
