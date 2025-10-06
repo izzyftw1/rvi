@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { QCRecordsTab } from "@/components/QCRecordsTab";
 import { WorkOrderGenealogy } from "@/components/WorkOrderGenealogy";
+import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 
 const WorkOrderDetail = () => {
@@ -31,6 +32,8 @@ const WorkOrderDetail = () => {
   const [uploadingDesign, setUploadingDesign] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showStageDialog, setShowStageDialog] = useState(false);
+  const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
+  const [machineAssignments, setMachineAssignments] = useState<any[]>([]);
 
   useEffect(() => {
     loadWorkOrderData();
@@ -183,6 +186,18 @@ const WorkOrderDetail = () => {
       }));
 
       setGenealogyLog(enrichedGenealogy);
+
+      // Load machine assignments
+      const { data: assignmentsData } = await supabase
+        .from("wo_machine_assignments")
+        .select(`
+          *,
+          machine:machines(machine_id, name)
+        `)
+        .eq("wo_id", id)
+        .order("scheduled_start", { ascending: true });
+
+      setMachineAssignments(assignmentsData || []);
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -406,6 +421,10 @@ const WorkOrderDetail = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button onClick={() => setShowAssignmentDialog(true)} variant="default">
+              <Cpu className="h-4 w-4 mr-2" />
+              Assign Machines
+            </Button>
             {hourlyQcRecords.length > 0 && (
               <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
                 <FileText className="h-4 w-4 mr-2" />
@@ -422,6 +441,37 @@ const WorkOrderDetail = () => {
             </Button>
           </div>
         </div>
+
+        {/* Machine Assignments */}
+        {machineAssignments.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Machine Assignments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {machineAssignments.map((assignment: any) => (
+                  <div key={assignment.id} className="flex items-center justify-between p-3 border rounded">
+                    <div>
+                      <p className="font-medium">
+                        {assignment.machine?.machine_id} - {assignment.machine?.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(assignment.scheduled_start).toLocaleString()} → {new Date(assignment.scheduled_end).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Qty: {assignment.quantity_allocated} pcs
+                      </p>
+                    </div>
+                    <Badge variant={assignment.status === 'running' ? 'default' : 'secondary'}>
+                      {assignment.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Summary */}
         <Card>
@@ -922,9 +972,21 @@ const WorkOrderDetail = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Machine Assignment Dialog */}
+        <MachineAssignmentDialog
+          open={showAssignmentDialog}
+          onOpenChange={setShowAssignmentDialog}
+          workOrder={wo}
+          onAssigned={() => {
+            loadWorkOrderData();
+            toast({ title: "Success", description: "Machines assigned to work order" });
+          }}
+        />
       </div>
     </div>
   );
 };
 
 export default WorkOrderDetail;
+

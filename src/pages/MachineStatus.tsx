@@ -6,10 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Calendar, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, differenceInMinutes } from "date-fns";
+import { GanttScheduler } from "@/components/GanttScheduler";
+import { MachineUtilizationDashboard } from "@/components/MachineUtilizationDashboard";
 
 const MachineStatus = () => {
   const navigate = useNavigate();
@@ -114,6 +117,14 @@ const MachineStatus = () => {
       />
 
       <div className="p-6 space-y-6">
+        <Tabs defaultValue="status" className="w-full">
+          <TabsList>
+            <TabsTrigger value="status">Live Status</TabsTrigger>
+            <TabsTrigger value="gantt">Gantt Scheduler</TabsTrigger>
+            <TabsTrigger value="metrics">Utilization Metrics</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="status" className="space-y-6 mt-6">
         {/* Filter Bar */}
         <Card>
           <CardContent className="pt-6">
@@ -271,6 +282,16 @@ const MachineStatus = () => {
             ))}
           </div>
         )}
+        </TabsContent>
+
+        <TabsContent value="gantt" className="mt-6">
+          <GanttScheduler />
+        </TabsContent>
+
+        <TabsContent value="metrics" className="mt-6">
+          <MachineUtilizationDashboard />
+        </TabsContent>
+      </Tabs>
       </div>
 
       {/* Schedule Dialog */}
