@@ -20,10 +20,9 @@ export const materialLotSchema = z.object({
     .min(1, "Supplier is required")
     .max(200, "Supplier name must be less than 200 characters"),
   material_size_mm: z.string()
-    .optional()
-    .refine((val) => !val || (!isNaN(parseFloat(val)) && parseFloat(val) > 0 && parseFloat(val) <= 5000), {
-      message: "Material size must be between 0 and 5000 mm"
-    }),
+    .trim()
+    .max(100, "Material size must be less than 100 characters")
+    .optional(),
   gross_weight: z.string()
     .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0 && parseFloat(val) <= 100000, {
       message: "Gross weight must be between 0 and 100,000 kg"

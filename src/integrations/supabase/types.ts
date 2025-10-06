@@ -397,7 +397,7 @@ export type Database = {
           id: string
           item_code: string
           last_used: string | null
-          material_size_mm: number | null
+          material_size_mm: string | null
           net_weight_grams: number | null
           updated_at: string | null
         }
@@ -409,7 +409,7 @@ export type Database = {
           id?: string
           item_code: string
           last_used?: string | null
-          material_size_mm?: number | null
+          material_size_mm?: string | null
           net_weight_grams?: number | null
           updated_at?: string | null
         }
@@ -421,7 +421,7 @@ export type Database = {
           id?: string
           item_code?: string
           last_used?: string | null
-          material_size_mm?: number | null
+          material_size_mm?: string | null
           net_weight_grams?: number | null
           updated_at?: string | null
         }
@@ -683,7 +683,7 @@ export type Database = {
           heat_no: string
           id: string
           lot_id: string
-          material_size_mm: number | null
+          material_size_mm: string | null
           mtc_file: string | null
           net_weight: number
           po_id: string | null
@@ -702,7 +702,7 @@ export type Database = {
           heat_no: string
           id?: string
           lot_id: string
-          material_size_mm?: number | null
+          material_size_mm?: string | null
           mtc_file?: string | null
           net_weight: number
           po_id?: string | null
@@ -721,7 +721,7 @@ export type Database = {
           heat_no?: string
           id?: string
           lot_id?: string
-          material_size_mm?: number | null
+          material_size_mm?: string | null
           mtc_file?: string | null
           net_weight?: number
           po_id?: string | null
@@ -1324,7 +1324,7 @@ export type Database = {
           gross_weight_per_pc_grams: number | null
           id: string
           items: Json
-          material_rod_forging_size_mm: number | null
+          material_rod_forging_size_mm: string | null
           net_weight_per_pc_grams: number | null
           party_code: string | null
           po_date: string
@@ -1343,7 +1343,7 @@ export type Database = {
           gross_weight_per_pc_grams?: number | null
           id?: string
           items: Json
-          material_rod_forging_size_mm?: number | null
+          material_rod_forging_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           party_code?: string | null
           po_date: string
@@ -1362,7 +1362,7 @@ export type Database = {
           gross_weight_per_pc_grams?: number | null
           id?: string
           items?: Json
-          material_rod_forging_size_mm?: number | null
+          material_rod_forging_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           party_code?: string | null
           po_date?: string
@@ -1793,7 +1793,7 @@ export type Database = {
           gross_weight_per_pc: number | null
           id: string
           item_code: string
-          material_size_mm: number | null
+          material_size_mm: string | null
           net_weight_per_pc: number | null
           priority: number | null
           production_allowed: boolean | null
@@ -1817,7 +1817,7 @@ export type Database = {
           gross_weight_per_pc?: number | null
           id?: string
           item_code: string
-          material_size_mm?: number | null
+          material_size_mm?: string | null
           net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
@@ -1841,7 +1841,7 @@ export type Database = {
           gross_weight_per_pc?: number | null
           id?: string
           item_code?: string
-          material_size_mm?: number | null
+          material_size_mm?: string | null
           net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null

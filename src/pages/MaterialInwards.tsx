@@ -138,7 +138,7 @@ const MaterialInwards = () => {
           heat_no: formData.heat_no,
           alloy: formData.alloy,
           supplier: formData.supplier,
-          material_size_mm: formData.material_size_mm ? parseFloat(formData.material_size_mm) : null,
+          material_size_mm: formData.material_size_mm || null,
           gross_weight: parseFloat(formData.gross_weight),
           net_weight: parseFloat(formData.net_weight),
           bin_location: formData.bin_location,
@@ -251,7 +251,7 @@ const MaterialInwards = () => {
       const { error } = await supabase
         .from("material_lots")
         .update({
-          material_size_mm: editForm.material_size_mm ? parseFloat(editForm.material_size_mm) : null,
+          material_size_mm: editForm.material_size_mm || null,
           gross_weight: editForm.gross_weight ? parseFloat(editForm.gross_weight) : null,
           net_weight: editForm.net_weight ? parseFloat(editForm.net_weight) : null,
           bin_location: editForm.bin_location || null,

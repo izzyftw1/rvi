@@ -145,7 +145,6 @@ export default function Sales() {
     const { error } = await supabase
       .from("sales_orders")
       .insert({
-        so_id: so_id,
         customer: formData.customer,
         party_code: formData.party_code || null,
         po_number: formData.po_number,
@@ -153,7 +152,7 @@ export default function Sales() {
         items,
         status: "pending",
         created_by: user?.id,
-        material_rod_forging_size_mm: formData.material_rod_forging_size_mm ? parseFloat(formData.material_rod_forging_size_mm) : null,
+        material_rod_forging_size_mm: formData.material_rod_forging_size_mm || null,
         gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
         net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
         cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null
