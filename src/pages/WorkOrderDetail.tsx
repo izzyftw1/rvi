@@ -452,7 +452,7 @@ const WorkOrderDetail = () => {
               <div className="space-y-2">
                 {machineAssignments.map((assignment: any) => (
                   <div key={assignment.id} className="flex items-center justify-between p-3 border rounded">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium">
                         {assignment.machine?.machine_id} - {assignment.machine?.name}
                       </p>
@@ -462,6 +462,16 @@ const WorkOrderDetail = () => {
                       <p className="text-xs text-muted-foreground">
                         Qty: {assignment.quantity_allocated} pcs
                       </p>
+                      {assignment.override_cycle_time_seconds && (
+                        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded">
+                          <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
+                            ⚠️ Cycle Time Overridden: {assignment.original_cycle_time_seconds}s → {assignment.override_cycle_time_seconds}s
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Applied: {new Date(assignment.override_applied_at).toLocaleString()}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <Badge variant={assignment.status === 'running' ? 'default' : 'secondary'}>
                       {assignment.status}
@@ -479,10 +489,25 @@ const WorkOrderDetail = () => {
             <CardTitle>Order Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-5 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Quantity</p>
                 <p className="text-lg font-bold">{wo.quantity} pcs</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Cycle Time</p>
+                {wo.cycle_time_seconds ? (
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg font-bold">{wo.cycle_time_seconds}s/pc</p>
+                    {machineAssignments.some(a => a.override_cycle_time_seconds) ? (
+                      <Badge variant="destructive">Overridden</Badge>
+                    ) : (
+                      <Badge variant="outline">Default</Badge>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-destructive font-semibold">Not defined</p>
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Due Date</p>

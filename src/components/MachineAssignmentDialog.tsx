@@ -28,9 +28,23 @@ export const MachineAssignmentDialog = ({
   const [startTime, setStartTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [overrideCycleTime, setOverrideCycleTime] = useState<string>("");
+  const [userRoles, setUserRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      setUser(user);
+      
+      // Load user roles to check for production manager
+      if (user) {
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id);
+        
+        setUserRoles(roles?.map(r => r.role) || []);
+      }
+    });
     loadMachines();
     
     // Set default start time to now
@@ -61,17 +75,25 @@ export const MachineAssignmentDialog = ({
     );
   };
 
+  const getEffectiveCycleTime = () => {
+    if (overrideCycleTime && parseFloat(overrideCycleTime) > 0) {
+      return parseFloat(overrideCycleTime);
+    }
+    return workOrder?.cycle_time_seconds ? parseFloat(workOrder.cycle_time_seconds) : null;
+  };
+
   const calculateEndTime = () => {
-    if (!workOrder?.cycle_time_seconds || !workOrder?.quantity || selectedMachines.length === 0) {
+    const effectiveCycleTime = getEffectiveCycleTime();
+    
+    if (!effectiveCycleTime || !workOrder?.quantity || selectedMachines.length === 0) {
       return null;
     }
 
-    const cycleTime = parseFloat(workOrder.cycle_time_seconds);
     const quantity = parseInt(workOrder.quantity);
     const numMachines = selectedMachines.length;
 
     // Calculate required time per machine in seconds
-    const requiredSeconds = (cycleTime * quantity) / numMachines;
+    const requiredSeconds = (effectiveCycleTime * quantity) / numMachines;
 
     const start = new Date(startTime);
     const end = new Date(start.getTime() + requiredSeconds * 1000);
@@ -80,6 +102,17 @@ export const MachineAssignmentDialog = ({
   };
 
   const handleAssign = async () => {
+    // Validate cycle time exists
+    const effectiveCycleTime = getEffectiveCycleTime();
+    if (!effectiveCycleTime) {
+      toast({
+        title: "Cycle time not defined",
+        description: "Cycle time is not defined in the Sales Order. Please update the Sales Order first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (selectedMachines.length === 0) {
       toast({
         title: "No machines selected",
@@ -107,6 +140,7 @@ export const MachineAssignmentDialog = ({
       }
 
       const quantityPerMachine = Math.ceil(workOrder.quantity / selectedMachines.length);
+      const isOverridden = !!overrideCycleTime && parseFloat(overrideCycleTime) > 0;
 
       // Create assignments for each selected machine
       const assignments = selectedMachines.map((machineId) => ({
@@ -117,6 +151,12 @@ export const MachineAssignmentDialog = ({
         scheduled_end: endTime.toISOString(),
         quantity_allocated: quantityPerMachine,
         status: "scheduled",
+        ...(isOverridden && {
+          override_cycle_time_seconds: parseFloat(overrideCycleTime),
+          override_applied_by: user?.id,
+          override_applied_at: new Date().toISOString(),
+          original_cycle_time_seconds: workOrder.cycle_time_seconds,
+        }),
       }));
 
       const { error } = await supabase
@@ -125,14 +165,30 @@ export const MachineAssignmentDialog = ({
 
       if (error) throw error;
 
+      // Log override if applied
+      if (isOverridden) {
+        await supabase.from("wo_actions_log").insert({
+          wo_id: workOrder.id,
+          action_type: "cycle_time_override",
+          department: "Production",
+          performed_by: user?.id,
+          action_details: {
+            original_cycle_time: workOrder.cycle_time_seconds,
+            override_cycle_time: parseFloat(overrideCycleTime),
+            machine_count: selectedMachines.length,
+          },
+        });
+      }
+
       toast({
         title: "Success",
-        description: `Work order assigned to ${selectedMachines.length} machine(s)`,
+        description: `Work order assigned to ${selectedMachines.length} machine(s)${isOverridden ? ' with overridden cycle time' : ''}`,
       });
 
       onAssigned?.();
       onOpenChange(false);
       setSelectedMachines([]);
+      setOverrideCycleTime("");
     } catch (error: any) {
       console.error("Error assigning machines:", error);
       toast({
@@ -149,6 +205,9 @@ export const MachineAssignmentDialog = ({
   const quantityPerMachine = selectedMachines.length > 0 
     ? Math.ceil(workOrder?.quantity / selectedMachines.length)
     : 0;
+  
+  const effectiveCycleTime = getEffectiveCycleTime();
+  const canOverride = userRoles.includes('production') || userRoles.includes('admin');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -175,22 +234,54 @@ export const MachineAssignmentDialog = ({
                 </div>
                 <div>
                   <span className="text-muted-foreground">Cycle Time:</span>{" "}
-                  {workOrder.cycle_time_seconds ? `${workOrder.cycle_time_seconds}s/pc` : "N/A"}
+                  {workOrder.cycle_time_seconds ? (
+                    <>
+                      {workOrder.cycle_time_seconds}s/pc
+                      <Badge variant="outline" className="ml-2">Default</Badge>
+                    </>
+                  ) : (
+                    <span className="text-destructive">Not defined - assignment blocked</span>
+                  )}
                 </div>
               </div>
 
-              {workOrder.cycle_time_seconds && (
+              {effectiveCycleTime && (
                 <div className="mt-3 p-3 bg-background rounded border">
                   <p className="text-sm font-medium mb-1">Calculation:</p>
                   <p className="text-xs text-muted-foreground">
-                    Total time needed: {((workOrder.cycle_time_seconds * workOrder.quantity) / 3600).toFixed(2)}h
+                    Using cycle time: {effectiveCycleTime}s/pc {overrideCycleTime && <Badge variant="destructive" className="ml-1">Overridden</Badge>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Total time needed: {((effectiveCycleTime * workOrder.quantity) / 3600).toFixed(2)}h
                     {selectedMachines.length > 0 && (
-                      <> → {((workOrder.cycle_time_seconds * workOrder.quantity) / (3600 * selectedMachines.length)).toFixed(2)}h per machine ({selectedMachines.length} machines)</>
+                      <> → {((effectiveCycleTime * workOrder.quantity) / (3600 * selectedMachines.length)).toFixed(2)}h per machine ({selectedMachines.length} machines)</>
                     )}
                   </p>
                 </div>
               )}
             </div>
+
+            {/* Override Cycle Time (Production Manager Only) */}
+            {canOverride && (
+              <div className="space-y-2 p-4 border-2 border-yellow-200 dark:border-yellow-800 rounded-lg bg-yellow-50 dark:bg-yellow-950">
+                <Label htmlFor="overrideCycleTime" className="flex items-center gap-2">
+                  Override Cycle Time (seconds/pc)
+                  <Badge variant="outline" className="bg-yellow-100 dark:bg-yellow-900">Production Manager Only</Badge>
+                </Label>
+                <Input
+                  id="overrideCycleTime"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder={workOrder?.cycle_time_seconds ? `Default: ${workOrder.cycle_time_seconds}s` : "Enter cycle time"}
+                  value={overrideCycleTime}
+                  onChange={(e) => setOverrideCycleTime(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave empty to use default cycle time. Override will be logged in genealogy.
+                </p>
+              </div>
+            )}
 
             {/* Start Time */}
             <div className="space-y-2">
@@ -267,9 +358,9 @@ export const MachineAssignmentDialog = ({
               </Button>
               <Button
                 onClick={handleAssign}
-                disabled={loading || selectedMachines.length === 0}
+                disabled={loading || selectedMachines.length === 0 || !effectiveCycleTime}
               >
-                Assign to {selectedMachines.length} Machine(s)
+                {!effectiveCycleTime ? "Cycle Time Required" : `Assign to ${selectedMachines.length} Machine(s)`}
               </Button>
             </div>
           </div>

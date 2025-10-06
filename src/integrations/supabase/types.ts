@@ -1727,6 +1727,10 @@ export type Database = {
           id: string
           machine_id: string
           notes: string | null
+          original_cycle_time_seconds: number | null
+          override_applied_at: string | null
+          override_applied_by: string | null
+          override_cycle_time_seconds: number | null
           priority: number | null
           quantity_allocated: number
           scheduled_end: string
@@ -1744,6 +1748,10 @@ export type Database = {
           id?: string
           machine_id: string
           notes?: string | null
+          original_cycle_time_seconds?: number | null
+          override_applied_at?: string | null
+          override_applied_by?: string | null
+          override_cycle_time_seconds?: number | null
           priority?: number | null
           quantity_allocated: number
           scheduled_end: string
@@ -1761,6 +1769,10 @@ export type Database = {
           id?: string
           machine_id?: string
           notes?: string | null
+          original_cycle_time_seconds?: number | null
+          override_applied_at?: string | null
+          override_applied_by?: string | null
+          override_cycle_time_seconds?: number | null
           priority?: number | null
           quantity_allocated?: number
           scheduled_end?: string
@@ -1775,6 +1787,13 @@ export type Database = {
             columns: ["machine_id"]
             isOneToOne: false
             referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_machine_assignments_override_applied_by_fkey"
+            columns: ["override_applied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
