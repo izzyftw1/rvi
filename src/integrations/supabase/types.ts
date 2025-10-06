@@ -506,7 +506,11 @@ export type Database = {
       machines: {
         Row: {
           created_at: string
+          current_job_start: string | null
+          current_operator_id: string | null
+          current_wo_id: string | null
           department_id: string | null
+          estimated_completion: string | null
           id: string
           location: string | null
           machine_id: string
@@ -516,7 +520,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_job_start?: string | null
+          current_operator_id?: string | null
+          current_wo_id?: string | null
           department_id?: string | null
+          estimated_completion?: string | null
           id?: string
           location?: string | null
           machine_id: string
@@ -526,7 +534,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_job_start?: string | null
+          current_operator_id?: string | null
+          current_wo_id?: string | null
           department_id?: string | null
+          estimated_completion?: string | null
           id?: string
           location?: string | null
           machine_id?: string
@@ -535,6 +547,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "machines_current_wo_id_fkey"
+            columns: ["current_wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "machines_department_id_fkey"
             columns: ["department_id"]
@@ -1688,6 +1707,75 @@ export type Database = {
           },
         ]
       }
+      wo_machine_assignments: {
+        Row: {
+          actual_end: string | null
+          actual_start: string | null
+          assigned_at: string
+          assigned_by: string | null
+          created_at: string
+          id: string
+          machine_id: string
+          notes: string | null
+          priority: number | null
+          quantity_allocated: number
+          scheduled_end: string
+          scheduled_start: string
+          status: string
+          updated_at: string
+          wo_id: string
+        }
+        Insert: {
+          actual_end?: string | null
+          actual_start?: string | null
+          assigned_at?: string
+          assigned_by?: string | null
+          created_at?: string
+          id?: string
+          machine_id: string
+          notes?: string | null
+          priority?: number | null
+          quantity_allocated: number
+          scheduled_end: string
+          scheduled_start: string
+          status?: string
+          updated_at?: string
+          wo_id: string
+        }
+        Update: {
+          actual_end?: string | null
+          actual_start?: string | null
+          assigned_at?: string
+          assigned_by?: string | null
+          created_at?: string
+          id?: string
+          machine_id?: string
+          notes?: string | null
+          priority?: number | null
+          quantity_allocated?: number
+          scheduled_end?: string
+          scheduled_start?: string
+          status?: string
+          updated_at?: string
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_machine_assignments_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_machine_assignments_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wo_material_issues: {
         Row: {
           id: string
@@ -1871,6 +1959,18 @@ export type Database = {
       assign_initial_role: {
         Args: { _requested_role: string; _user_id: string }
         Returns: undefined
+      }
+      calculate_required_machine_time: {
+        Args: {
+          _cycle_time_seconds: number
+          _num_machines?: number
+          _quantity: number
+        }
+        Returns: unknown
+      }
+      check_machine_availability: {
+        Args: { _end_time: string; _machine_id: string; _start_time: string }
+        Returns: boolean
       }
       has_permission: {
         Args: { _action: string; _module: string; _user_id: string }

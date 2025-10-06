@@ -384,10 +384,14 @@ const Index = () => {
                 <span className="text-sm">Hourly QC</span>
               </Button>
             </div>
-            <div className="mt-3">
-              <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="w-full h-auto py-4 flex items-center justify-center gap-2">
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Button onClick={() => navigate("/machine-status")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
                 <Activity className="h-6 w-6" />
-                <span className="text-sm font-bold">Live Floor Dashboard</span>
+                <span className="text-sm font-bold">Machine Status</span>
+              </Button>
+              <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
+                <Activity className="h-6 w-6" />
+                <span className="text-sm font-bold">Floor Dashboard</span>
               </Button>
             </div>
           </CardContent>

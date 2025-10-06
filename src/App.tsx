@@ -16,6 +16,7 @@ import Dispatch from "./pages/Dispatch";
 import DispatchQCReport from "./pages/DispatchQCReport";
 import Genealogy from "./pages/Genealogy";
 import FloorDashboard from "./pages/FloorDashboard";
+import MachineStatus from "./pages/MachineStatus";
 import Scan from "./pages/Scan";
 import ScanConsole from "./pages/ScanConsole";
 import Reports from "./pages/Reports";
@@ -53,6 +54,7 @@ const App = () => (
         <Route path="/dispatch" element={<ProtectedRoute><Dispatch /></ProtectedRoute>} />
           <Route path="/genealogy" element={<ProtectedRoute><Genealogy /></ProtectedRoute>} />
           <Route path="/floor-dashboard" element={<ProtectedRoute><FloorDashboard /></ProtectedRoute>} />
+          <Route path="/machine-status" element={<ProtectedRoute><MachineStatus /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/tolerance-setup" element={<ProtectedRoute><ToleranceSetup /></ProtectedRoute>} />
         <Route path="/hourly-qc" element={<ProtectedRoute><HourlyQC /></ProtectedRoute>} />
