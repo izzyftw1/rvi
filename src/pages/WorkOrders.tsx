@@ -165,6 +165,7 @@ const WorkOrders = () => {
                       </CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
                         {wo.customer || "—"} • {wo.item_code || "—"}
+                        {wo.customer_po && ` • PO: ${wo.customer_po}`}
                       </p>
                     </div>
                     <Badge variant={getStatusVariant(wo.status || "pending")}>

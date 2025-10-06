@@ -1786,6 +1786,7 @@ export type Database = {
           created_at: string
           current_stage: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
+          customer_po: string | null
           dispatch_allowed: boolean | null
           due_date: string
           gross_weight_per_pc: number | null
@@ -1808,6 +1809,7 @@ export type Database = {
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
+          customer_po?: string | null
           dispatch_allowed?: boolean | null
           due_date: string
           gross_weight_per_pc?: number | null
@@ -1830,6 +1832,7 @@ export type Database = {
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string
+          customer_po?: string | null
           dispatch_allowed?: boolean | null
           due_date?: string
           gross_weight_per_pc?: number | null

@@ -22,6 +22,7 @@ const NewWorkOrder = () => {
   const [formData, setFormData] = useState({
     wo_id: "",
     customer: "",
+    customer_po: "",
     item_code: "",
     revision: "",
     quantity: "",
@@ -50,6 +51,7 @@ const NewWorkOrder = () => {
       const { data: woData, error } = await supabase.from("work_orders").insert({
         wo_id: formData.wo_id,
         customer: formData.customer,
+        customer_po: formData.customer_po || null,
         item_code: formData.item_code,
         revision: formData.revision || null,
         quantity: parseInt(formData.quantity),
@@ -115,6 +117,16 @@ const NewWorkOrder = () => {
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="customer_po">Customer PO</Label>
+                <Input
+                  id="customer_po"
+                  value={formData.customer_po}
+                  onChange={(e) => setFormData({ ...formData, customer_po: e.target.value })}
+                  placeholder="Customer purchase order number"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
