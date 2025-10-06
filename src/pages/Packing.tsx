@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Box, Package, Printer } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { cartonSchema, palletSchema } from "@/lib/validationSchemas";
 
 const Packing = () => {
   const navigate = useNavigate();
@@ -75,6 +76,18 @@ const Packing = () => {
     setLoading(true);
 
     try {
+      // Validate carton data
+      const validationResult = cartonSchema.safeParse(cartonForm);
+      if (!validationResult.success) {
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: validationResult.error.errors[0].message,
+        });
+        setLoading(false);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
 
       // Extract heat numbers
@@ -123,6 +136,18 @@ const Packing = () => {
     setLoading(true);
 
     try {
+      // Validate pallet data
+      const validationResult = palletSchema.safeParse(palletForm);
+      if (!validationResult.success) {
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: validationResult.error.errors[0].message,
+        });
+        setLoading(false);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
 
       // Create pallet

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { passwordSchema } from "@/lib/validationSchemas";
 import rvLogo from "@/assets/rv-logo.jpg";
 
 const Auth = () => {
@@ -68,6 +69,17 @@ const Auth = () => {
         variant: "destructive",
         title: "Role required",
         description: "Please select your role",
+      });
+      return;
+    }
+
+    // Validate password
+    const passwordValidation = passwordSchema.safeParse(signupPassword);
+    if (!passwordValidation.success) {
+      toast({
+        variant: "destructive",
+        title: "Weak Password",
+        description: passwordValidation.error.errors[0].message,
       });
       return;
     }
@@ -204,8 +216,11 @@ const Auth = () => {
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
                     required
-                    minLength={6}
+                    minLength={12}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Must be 12+ characters with uppercase, lowercase, number, and special character
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>

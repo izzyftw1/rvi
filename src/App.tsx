@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import WorkOrders from "./pages/WorkOrders";
@@ -37,28 +38,28 @@ const App = () => (
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/scan" element={<Scan />} />
-        <Route path="/scan-console" element={<ScanConsole />} />
-        <Route path="/sales" element={<Sales />} />
-        <Route path="/purchase" element={<Purchase />} />
-        <Route path="/materials/inwards" element={<MaterialInwards />} />
-        <Route path="/qc/incoming" element={<QCIncoming />} />
-        <Route path="/work-orders" element={<WorkOrders />} />
-        <Route path="/work-orders/new" element={<NewWorkOrder />} />
-        <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
-        <Route path="/quality" element={<Quality />} />
-        <Route path="/packing" element={<Packing />} />
-        <Route path="/dispatch" element={<Dispatch />} />
-        <Route path="/genealogy" element={<Genealogy />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/tolerance-setup" element={<ToleranceSetup />} />
-        <Route path="/hourly-qc" element={<HourlyQC />} />
-        <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
-        <Route path="/department/:departmentName" element={<DepartmentDetail />} />
-        <Route path="/material-requirements" element={<MaterialRequirements />} />
-        <Route path="/stage/:stage" element={<StageDetailView />} />
-        <Route path="/maintenance" element={<Maintenance />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/scan" element={<ProtectedRoute><Scan /></ProtectedRoute>} />
+        <Route path="/scan-console" element={<ProtectedRoute><ScanConsole /></ProtectedRoute>} />
+        <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
+        <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
+        <Route path="/materials/inwards" element={<ProtectedRoute><MaterialInwards /></ProtectedRoute>} />
+        <Route path="/qc/incoming" element={<ProtectedRoute><QCIncoming /></ProtectedRoute>} />
+        <Route path="/work-orders" element={<ProtectedRoute><WorkOrders /></ProtectedRoute>} />
+        <Route path="/work-orders/new" element={<ProtectedRoute><NewWorkOrder /></ProtectedRoute>} />
+        <Route path="/work-orders/:id" element={<ProtectedRoute><WorkOrderDetail /></ProtectedRoute>} />
+        <Route path="/quality" element={<ProtectedRoute><Quality /></ProtectedRoute>} />
+        <Route path="/packing" element={<ProtectedRoute><Packing /></ProtectedRoute>} />
+        <Route path="/dispatch" element={<ProtectedRoute><Dispatch /></ProtectedRoute>} />
+        <Route path="/genealogy" element={<ProtectedRoute><Genealogy /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+        <Route path="/tolerance-setup" element={<ProtectedRoute><ToleranceSetup /></ProtectedRoute>} />
+        <Route path="/hourly-qc" element={<ProtectedRoute><HourlyQC /></ProtectedRoute>} />
+        <Route path="/dispatch-qc-report/:woId" element={<ProtectedRoute><DispatchQCReport /></ProtectedRoute>} />
+        <Route path="/department/:departmentName" element={<ProtectedRoute><DepartmentDetail /></ProtectedRoute>} />
+        <Route path="/material-requirements" element={<ProtectedRoute><MaterialRequirements /></ProtectedRoute>} />
+        <Route path="/stage/:stage" element={<ProtectedRoute><StageDetailView /></ProtectedRoute>} />
+        <Route path="/maintenance" element={<ProtectedRoute><Maintenance /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
