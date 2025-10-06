@@ -108,68 +108,95 @@ const WorkOrders = () => {
         </div>
 
         {loading ? (
-          <div className="text-center py-12">Loading...</div>
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">Loading work orders...</p>
+            </CardContent>
+          </Card>
+        ) : workOrders.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center space-y-2">
+              <p className="text-lg font-medium">No Work Orders Yet</p>
+              <p className="text-sm text-muted-foreground">
+                Work orders will appear here when sales orders are approved or create one manually
+              </p>
+              <Button 
+                onClick={() => navigate("/work-orders/new")}
+                className="mt-4"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create First Work Order
+              </Button>
+            </CardContent>
+          </Card>
         ) : filteredWOs.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No work orders found</p>
+              <p className="text-muted-foreground">No work orders match your search</p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4">
-            {filteredWOs.map((wo) => (
-              <Card
-                key={wo.id}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => navigate(`/work-orders/${wo.id}`)}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">{wo.wo_id || 'N/A'}</CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {wo.customer || 'Unknown'} • {wo.item_code || 'N/A'}
-                      </p>
-                    </div>
-                    <StatusBadge status={wo.status || 'pending'} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Quantity</p>
-                      <p className="font-medium">{wo.quantity || 0} pcs</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Due Date</p>
-                      <p className="font-medium">
-                        {wo.due_date ? new Date(wo.due_date).toLocaleDateString() : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Priority</p>
-                      <Badge variant={(wo.priority || 3) <= 2 ? "destructive" : "secondary"}>
-                        P{wo.priority || 3}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Sales Order</p>
-                      <p className="font-medium">{wo.sales_order || "—"}</p>
-                    </div>
-                    <div className="flex items-end">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={(e) => openView(wo, e)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Quick View
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {filteredWOs.map((wo) => {
+              try {
+                return (
+                  <Card
+                    key={wo.id || Math.random()}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => navigate(`/work-orders/${wo.id}`)}
+                  >
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{wo.wo_id || 'N/A'}</CardTitle>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {wo.customer || 'Unknown'} • {wo.item_code || 'N/A'}
+                          </p>
+                        </div>
+                        <StatusBadge status={wo.status || 'pending'} />
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Quantity</p>
+                          <p className="font-medium">{wo.quantity || 0} pcs</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Due Date</p>
+                          <p className="font-medium">
+                            {wo.due_date ? new Date(wo.due_date).toLocaleDateString() : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Priority</p>
+                          <Badge variant={(wo.priority || 3) <= 2 ? "destructive" : "secondary"}>
+                            P{wo.priority || 3}
+                          </Badge>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Sales Order</p>
+                          <p className="font-medium">{wo.sales_order || "—"}</p>
+                        </div>
+                        <div className="flex items-end">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={(e) => openView(wo, e)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Quick View
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              } catch (renderError) {
+                console.error("Error rendering work order card:", renderError, wo);
+                return null;
+              }
+            })}
           </div>
         )}
 
