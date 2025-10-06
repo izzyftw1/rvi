@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { QCRecordsTab } from "@/components/QCRecordsTab";
 import { WorkOrderGenealogy } from "@/components/WorkOrderGenealogy";
 import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu } from "lucide-react";
@@ -980,6 +980,7 @@ const WorkOrderDetail = () => {
           <DialogContent className="bg-background">
             <DialogHeader>
               <DialogTitle>Update Work Order Stage</DialogTitle>
+              <DialogDescription>Change the current production stage</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <Select onValueChange={handleStageUpdate} defaultValue={wo?.current_stage}>

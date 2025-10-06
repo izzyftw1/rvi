@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Package, Upload, Printer } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { materialLotSchema } from "@/lib/validationSchemas";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -487,6 +487,7 @@ const MaterialInwards = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Lot {selectedLot?.lot_id}</DialogTitle>
+              <DialogDescription>Update material lot information</DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

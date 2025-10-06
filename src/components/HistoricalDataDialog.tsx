@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer, Download, Edit, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -261,6 +261,12 @@ export const HistoricalDataDialog = ({
             <Eye className="h-5 w-5" />
             {type.replace("_", " ").toUpperCase()} Details - {getEntityId()}
           </DialogTitle>
+          <DialogDescription>
+            {type === "material_lot" && "View material lot information and traceability"}
+            {type === "carton" && "View carton packing details and contents"}
+            {type === "pallet" && "View pallet details and packed cartons"}
+            {type === "work_order" && "View work order production details"}
+          </DialogDescription>
         </DialogHeader>
         {renderDetails()}
       </DialogContent>

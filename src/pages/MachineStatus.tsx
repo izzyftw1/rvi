@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -299,6 +299,7 @@ const MachineStatus = () => {
             <DialogTitle>
               {selectedMachine?.machine_id} - {selectedMachine?.name} Schedule
             </DialogTitle>
+            <DialogDescription>View machine status and scheduled jobs</DialogDescription>
           </DialogHeader>
 
           {selectedMachine && (

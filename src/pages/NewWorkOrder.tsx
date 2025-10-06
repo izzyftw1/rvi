@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { NavigationHeader } from "@/components/NavigationHeader";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { workOrderSchema } from "@/lib/validationSchemas";
 
 const NewWorkOrder = () => {
@@ -207,6 +207,7 @@ const NewWorkOrder = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Work Order Created!</DialogTitle>
+            <DialogDescription>View and print work order QR code</DialogDescription>
           </DialogHeader>
           {createdWO && (
             <div className="flex justify-center">

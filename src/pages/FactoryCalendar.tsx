@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -618,6 +618,7 @@ export default function FactoryCalendar() {
             <DialogTitle>
               {selectedDate && format(selectedDate, 'PPP')}
             </DialogTitle>
+            <DialogDescription>Configure working days, shifts and holidays</DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4">

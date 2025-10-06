@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Wrench, Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 
 interface MaintenanceLog {
   id: string;
@@ -201,6 +201,7 @@ export default function Maintenance() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create Maintenance Log</DialogTitle>
+                <DialogDescription>Record machine downtime and maintenance activity</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

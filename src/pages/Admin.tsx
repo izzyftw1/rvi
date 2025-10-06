@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle, Edit, Trash2 } from "lucide-react";
@@ -209,7 +209,10 @@ export default function Admin() {
               <Button><UserPlus className="h-4 w-4 mr-2" />Create User</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Create New User</DialogTitle>
+                <DialogDescription>Add a new user to the system</DialogDescription>
+              </DialogHeader>
               <form onSubmit={handleCreateUser} className="space-y-4">
                 <div><Label>Full Name</Label><Input value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} required /></div>
                 <div><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} required /></div>
@@ -367,7 +370,10 @@ export default function Admin() {
         {/* Edit User Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Edit User</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+              <DialogDescription>Update user profile information</DialogDescription>
+            </DialogHeader>
             <form onSubmit={handleSaveUser} className="space-y-4">
               <div>
                 <Label>Full Name</Label>
@@ -392,7 +398,10 @@ export default function Admin() {
         {/* Manage Roles Dialog */}
         <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Manage Roles for {selectedUser?.full_name}</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Manage Roles for {selectedUser?.full_name}</DialogTitle>
+              <DialogDescription>Add or remove user roles and permissions</DialogDescription>
+            </DialogHeader>
             <div className="space-y-4">
               <div>
                 <Label>Current Roles</Label>
