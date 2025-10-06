@@ -18,7 +18,8 @@ import {
   ClipboardCheck,
   FileText,
   Boxes,
-  Shield
+  Shield,
+  Activity
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -381,6 +382,12 @@ const Index = () => {
               <Button onClick={() => navigate("/hourly-qc")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <ClipboardCheck className="h-6 w-6" />
                 <span className="text-sm">Hourly QC</span>
+              </Button>
+            </div>
+            <div className="mt-3">
+              <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="w-full h-auto py-4 flex items-center justify-center gap-2">
+                <Activity className="h-6 w-6" />
+                <span className="text-sm font-bold">Live Floor Dashboard</span>
               </Button>
             </div>
           </CardContent>

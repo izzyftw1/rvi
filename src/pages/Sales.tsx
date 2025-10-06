@@ -132,49 +132,66 @@ export default function Sales() {
     e.preventDefault();
     setLoading(true);
 
-    const items = [{
-      item_code: formData.item_code,
-      quantity: parseInt(formData.quantity),
-      alloy: formData.alloy,
-      due_date: formData.due_date
-    }];
+    try {
+      const items = [{
+        item_code: formData.item_code,
+        quantity: parseInt(formData.quantity),
+        alloy: formData.alloy,
+        due_date: formData.due_date
+      }];
 
-    // Generate SO ID from customer PO number
-    const so_id = `SO-${formData.po_number}`;
+      // Generate SO ID: SO-[YYYYMMDD]-[XXX]
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+      
+      const { count } = await supabase
+        .from("sales_orders")
+        .select("*", { count: 'exact', head: true })
+        .gte('created_at', new Date(today.setHours(0, 0, 0, 0)).toISOString())
+        .lte('created_at', new Date(today.setHours(23, 59, 59, 999)).toISOString());
+      
+      const sequence = String((count || 0) + 1).padStart(3, '0');
+      const so_id = `SO-${dateStr}-${sequence}`;
 
-    const { error } = await supabase
-      .from("sales_orders")
-      .insert([{
-        so_id: so_id,
-        customer: formData.customer,
-        party_code: formData.party_code || null,
-        po_number: formData.po_number,
-        po_date: formData.po_date,
-        items,
-        status: "pending",
-        created_by: user?.id,
-        material_rod_forging_size_mm: formData.material_rod_forging_size_mm || null,
-        gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
-        net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
-        cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null
-      }]);
+      const { error } = await supabase
+        .from("sales_orders")
+        .insert([{
+          so_id: so_id,
+          customer: formData.customer,
+          party_code: formData.party_code || null,
+          po_number: formData.po_number,
+          po_date: formData.po_date,
+          items,
+          status: "pending",
+          created_by: user?.id,
+          material_rod_forging_size_mm: formData.material_rod_forging_size_mm || null,
+          gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
+          net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
+          cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null
+        }]);
 
-    setLoading(false);
+      setLoading(false);
 
-    if (error) {
-      toast({ variant: "destructive", description: "Failed to create sales order" });
-    } else {
-      toast({ description: "Sales order created successfully" });
-      setFormData({ 
-        customer: "", party_code: "", po_number: "", po_date: "", item_code: "", quantity: "", 
-        alloy: "", due_date: "", material_rod_forging_size_mm: "", 
-        gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "", cycle_time_seconds: "" 
-      });
-      setIsNewCustomer(false);
-      setIsNewItem(false);
-      loadSalesOrders();
-      loadCustomers();
-      loadItems();
+      if (error) {
+        console.error("Create SO error:", error);
+        toast({ variant: "destructive", description: `Failed to create sales order: ${error.message}` });
+      } else {
+        toast({ description: `Sales order ${so_id} created. Approve it to auto-generate Work Orders.` });
+        setFormData({ 
+          customer: "", party_code: "", po_number: "", po_date: "", item_code: "", quantity: "", 
+          alloy: "", due_date: "", material_rod_forging_size_mm: "", 
+          gross_weight_per_pc_grams: "", net_weight_per_pc_grams: "", cycle_time_seconds: "" 
+        });
+        setIsNewCustomer(false);
+        setIsNewItem(false);
+        loadSalesOrders();
+        loadCustomers();
+        loadItems();
+      }
+    } catch (err: any) {
+      setLoading(false);
+      console.error("Unexpected error creating SO:", err);
+      toast({ variant: "destructive", description: `Unexpected error: ${err.message}` });
     }
   };
 
@@ -416,9 +433,7 @@ export default function Sales() {
               </div>
 
               <Input
-                type="number"
-                step="0.01"
-                placeholder="Material/Rod/Forging Size (mm)"
+                placeholder="Material Size/Type (e.g., Round 12mm, Hex 25mm)"
                 value={formData.material_rod_forging_size_mm}
                 onChange={(e) => setFormData({...formData, material_rod_forging_size_mm: e.target.value})}
                 disabled={!isNewItem && formData.item_code !== ""}
