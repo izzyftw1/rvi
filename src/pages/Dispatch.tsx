@@ -64,12 +64,15 @@ export default function Dispatch() {
       setPalletData(data);
       
       // Check if all WOs are dispatch allowed
-      const allWOs = data.pallet_cartons?.map((pc: any) => pc.cartons.work_orders) || [];
-      const allAllowed = allWOs.every((wo: any) => wo.dispatch_allowed);
+      const allWOs = data?.pallet_cartons?.map((pc: any) => pc?.cartons?.work_orders).filter(Boolean) || [];
+      const allAllowed = allWOs.every((wo: any) => wo?.dispatch_allowed === true);
       
       if (!allAllowed) {
         // Check which WOs are missing QC approval
-        const missingQC = allWOs.filter((wo: any) => !wo.dispatch_allowed).map((wo: any) => wo.wo_id);
+        const missingQC = allWOs
+          .filter((wo: any) => !wo?.dispatch_allowed)
+          .map((wo: any) => wo?.wo_id ?? "Unknown")
+          .filter(Boolean);
         toast({ 
           variant: "destructive", 
           description: `⚠️ Pre-Dispatch QC Summary not approved for: ${missingQC.join(", ")}. Dispatch blocked.` 
@@ -84,15 +87,17 @@ export default function Dispatch() {
     if (!palletData) return;
 
     // Verify dispatch allowed
-    const allAllowed = palletData.pallet_cartons?.every((pc: any) => 
-      pc.cartons.work_orders.dispatch_allowed
-    );
+    const allAllowed = palletData?.pallet_cartons?.every((pc: any) => 
+      pc?.cartons?.work_orders?.dispatch_allowed === true
+    ) ?? false;
 
     if (!allAllowed) {
-      const missingQC = palletData.pallet_cartons
-        ?.map((pc: any) => pc.cartons.work_orders)
-        .filter((wo: any) => !wo.dispatch_allowed)
-        .map((wo: any) => wo.wo_id) || [];
+      const missingQC = palletData?.pallet_cartons
+        ?.map((pc: any) => pc?.cartons?.work_orders)
+        .filter(Boolean)
+        .filter((wo: any) => !wo?.dispatch_allowed)
+        .map((wo: any) => wo?.wo_id ?? "Unknown")
+        .filter(Boolean) || [];
       toast({ 
         variant: "destructive", 
         description: `Cannot dispatch: Pre-Dispatch QC Summary not approved for ${missingQC.join(", ")}` 
@@ -103,7 +108,7 @@ export default function Dispatch() {
     setLoading(true);
 
     try {
-      const customer = palletData.pallet_cartons[0]?.cartons.work_orders.customer || "Customer";
+      const customer = palletData?.pallet_cartons?.[0]?.cartons?.work_orders?.customer ?? "N/A";
       
       const { data: shipment, error } = await supabase
         .from("shipments")
@@ -186,26 +191,26 @@ export default function Dispatch() {
       }
 
       // Extract data for document generation
-      const pallets = fullShipment.shipment_pallets || [];
+      const pallets = fullShipment?.shipment_pallets || [];
       const allCartons = pallets.flatMap((sp: any) => 
-        sp.pallets?.pallet_cartons?.map((pc: any) => pc.cartons) || []
+        sp?.pallets?.pallet_cartons?.map((pc: any) => pc?.cartons).filter(Boolean) || []
       );
       
       const firstCarton = allCartons[0];
       const salesOrder = firstCarton?.work_orders?.sales_orders;
       
       // Generate invoice number and date
-      const invoiceNo = fullShipment.ship_id.replace('SHIP-', 'EXPRV');
+      const invoiceNo = fullShipment?.ship_id?.replace('SHIP-', 'EXPRV') ?? 'EXPRV-UNKNOWN';
       const currentDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
       
       // Prepare invoice data
       const invoiceData = {
         invoiceNo,
         date: currentDate,
-        piNo: salesOrder?.so_id || 'N/A',
+        piNo: salesOrder?.so_id ?? 'N/A',
         piDate: salesOrder?.po_date ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-') : currentDate,
         consignee: {
-          name: fullShipment.customer,
+          name: fullShipment?.customer ?? "N/A",
           address: 'UNIT B-380, COURTNEY PARK, DRIVE E\nMISSISSAUGA, ON L5T 2S5\nCANADA'
         },
         notifyParty: {
@@ -218,14 +223,14 @@ export default function Dispatch() {
         paymentTerms: '30% ADVANCE & BALANCE AGAINST COPY OF BL',
         marks: 'GRVL',
         kindOfPackages: `${allCartons.length} BOXES IN ${pallets.length} PALLET${pallets.length > 1 ? 'S' : ''}`,
-        grossWeight: allCartons.reduce((sum: number, c: any) => sum + (c.gross_weight || 0), 0),
+        grossWeight: allCartons.reduce((sum: number, c: any) => sum + (Number(c?.gross_weight) || 0), 0),
         lineItems: allCartons.map((carton: any, idx: number) => ({
           srNo: idx + 1,
-          description: `${carton.work_orders?.item_code || 'ITEM'}`,
+          description: `${carton?.work_orders?.item_code ?? 'ITEM'}`,
           hsCode: 'CETH-74153390',
-          quantity: carton.quantity || 0,
+          quantity: carton?.quantity ?? 0,
           rate: 4.0,
-          total: (carton.quantity || 0) * 4.0
+          total: (carton?.quantity ?? 0) * 4.0
         })),
         advance: 6000,
         currency: 'USD'
@@ -311,30 +316,35 @@ export default function Dispatch() {
             {palletData && (
               <div className="space-y-4 border-t pt-4">
                 <h3 className="font-semibold">Pallet: {palletData.pallet_id}</h3>
-                <div className="space-y-2">
-                  {palletData.pallet_cartons?.map((pc: any) => (
-                    <div key={pc.cartons.carton_id} className="text-sm border-l-4 border-primary pl-3">
+              <div className="space-y-2">
+                {palletData?.pallet_cartons && palletData.pallet_cartons.length > 0 ? (
+                  palletData.pallet_cartons.map((pc: any) => (
+                    <div key={pc?.cartons?.carton_id ?? Math.random()} className="text-sm border-l-4 border-primary pl-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p><strong>Carton:</strong> {pc.cartons.carton_id}</p>
-                          <p><strong>WO:</strong> {pc.cartons.work_orders.wo_id}</p>
-                          <p><strong>Heat Nos:</strong> {pc.cartons.heat_nos.join(", ")}</p>
-                          <p className={pc.cartons.work_orders.dispatch_allowed ? "text-green-600" : "text-red-600"}>
-                            {pc.cartons.work_orders.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
+                          <p><strong>Carton:</strong> {pc?.cartons?.carton_id ?? "N/A"}</p>
+                          <p><strong>WO:</strong> {pc?.cartons?.work_orders?.wo_id ?? "N/A"}</p>
+                          <p><strong>Heat Nos:</strong> {pc?.cartons?.heat_nos?.join(", ") ?? "N/A"}</p>
+                          <p className={pc?.cartons?.work_orders?.dispatch_allowed ? "text-green-600" : "text-red-600"}>
+                            {pc?.cartons?.work_orders?.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
                           </p>
                         </div>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => navigate(`/dispatch-qc-report/${pc.cartons.work_orders.id}`)}
+                          onClick={() => navigate(`/dispatch-qc-report/${pc?.cartons?.work_orders?.id ?? ''}`)}
+                          disabled={!pc?.cartons?.work_orders?.id}
                         >
                           <ClipboardCheck className="h-4 w-4 mr-1" />
                           QC Report
                         </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No cartons in this pallet</p>
+                )}
+              </div>
 
                 <QRCodeDisplay 
                   value={palletData.pallet_id}
@@ -358,48 +368,60 @@ export default function Dispatch() {
 
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Recent Shipments</h2>
-          {shipments.map((shipment) => (
-            <Card key={shipment.id}>
-              <CardContent className="pt-6">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-1">
-                    <p className="font-semibold">{shipment.ship_id}</p>
-                    <p className="text-sm text-muted-foreground">{shipment.customer}</p>
-                    <p className="text-xs">
-                      {new Date(shipment.ship_date).toLocaleDateString()}
-                    </p>
-                    <p className="text-xs">
-                      Pallets: {shipment.shipment_pallets?.map((sp: any) => sp.pallets.pallet_id).join(", ")}
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <QRCodeDisplay 
-                      value={shipment.ship_id}
-                      title="Shipment"
-                      size={100}
-                    />
-                    <div className="flex flex-col gap-1">
-                      <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Docs
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => {
-                          const woId = shipment.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id;
-                          if (woId) navigate(`/dispatch-qc-report/${woId}`);
-                        }}
-                      >
-                        <ClipboardCheck className="h-4 w-4 mr-2" />
-                        QC Report
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+          {shipments.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center space-y-2">
+                <p className="text-lg font-medium">No Shipments Yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Shipments will appear here when pallets are dispatched
+                </p>
               </CardContent>
             </Card>
-          ))}
+          ) : (
+            shipments.map((shipment) => (
+              <Card key={shipment?.id ?? Math.random()}>
+                <CardContent className="pt-6">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <p className="font-semibold">{shipment?.ship_id ?? "N/A"}</p>
+                      <p className="text-sm text-muted-foreground">{shipment?.customer ?? "N/A"}</p>
+                      <p className="text-xs">
+                        {shipment?.ship_date ? new Date(shipment.ship_date).toLocaleDateString() : "—"}
+                      </p>
+                      <p className="text-xs">
+                        Pallets: {shipment?.shipment_pallets?.map((sp: any) => sp?.pallets?.pallet_id ?? "N/A").join(", ") || "N/A"}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <QRCodeDisplay 
+                        value={shipment?.ship_id ?? "N/A"}
+                        title="Shipment"
+                        size={100}
+                      />
+                      <div className="flex flex-col gap-1">
+                        <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Docs
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            const woId = shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id;
+                            if (woId) navigate(`/dispatch-qc-report/${woId}`);
+                          }}
+                          disabled={!shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id}
+                        >
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          QC Report
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
       </div>
       </div>

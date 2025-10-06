@@ -125,7 +125,7 @@ const Packing = () => {
       const { data: { user } } = await supabase.auth.getUser();
 
       // Extract heat numbers
-      const heatNos = materialIssues.map((issue: any) => issue.material_lots?.heat_no).filter(Boolean);
+      const heatNos = materialIssues.map((issue: any) => issue?.material_lots?.heat_no).filter(Boolean);
 
       const { error } = await supabase.from("cartons").insert({
         carton_id: cartonForm.carton_id,
@@ -293,7 +293,7 @@ const Packing = () => {
                     <div className="p-3 bg-secondary rounded-lg mb-4">
                       <p className="text-sm font-medium">Heat Numbers:</p>
                       <p className="text-sm text-muted-foreground">
-                        {materialIssues.map((i: any) => i.material_lots?.heat_no).join(", ") || "None"}
+                        {materialIssues.map((i: any) => i?.material_lots?.heat_no).filter(Boolean).join(", ") || "None"}
                       </p>
                     </div>
 
@@ -421,12 +421,12 @@ const Packing = () => {
                       <TableRow><TableCell colSpan={6} className="text-center">No cartons</TableCell></TableRow>
                     ) : (
                       cartons.map((carton) => (
-                        <TableRow key={carton.id}>
-                          <TableCell className="font-medium">{carton.carton_id}</TableCell>
-                          <TableCell>{carton.quantity}</TableCell>
-                          <TableCell>{Number(carton.net_weight).toFixed(3)}</TableCell>
-                          <TableCell>{Number(carton.gross_weight).toFixed(3)}</TableCell>
-                          <TableCell>{new Date(carton.built_at).toLocaleString()}</TableCell>
+                        <TableRow key={carton?.id ?? Math.random()}>
+                          <TableCell className="font-medium">{carton?.carton_id ?? "N/A"}</TableCell>
+                          <TableCell>{carton?.quantity ?? 0}</TableCell>
+                          <TableCell>{Number(carton?.net_weight ?? 0).toFixed(3)}</TableCell>
+                          <TableCell>{Number(carton?.gross_weight ?? 0).toFixed(3)}</TableCell>
+                          <TableCell>{carton?.built_at ? new Date(carton.built_at).toLocaleString() : "—"}</TableCell>
                           <TableCell>
                             <Button variant="outline" size="sm" onClick={() => openView(carton, "carton")}>
                               <Eye className="h-3 w-3" />
@@ -458,9 +458,9 @@ const Packing = () => {
                       <TableRow><TableCell colSpan={3} className="text-center">No pallets</TableCell></TableRow>
                     ) : (
                       pallets.map((pallet) => (
-                        <TableRow key={pallet.id}>
-                          <TableCell className="font-medium">{pallet.pallet_id}</TableCell>
-                          <TableCell>{new Date(pallet.built_at).toLocaleString()}</TableCell>
+                        <TableRow key={pallet?.id ?? Math.random()}>
+                          <TableCell className="font-medium">{pallet?.pallet_id ?? "N/A"}</TableCell>
+                          <TableCell>{pallet?.built_at ? new Date(pallet.built_at).toLocaleString() : "—"}</TableCell>
                           <TableCell>
                             <Button variant="outline" size="sm" onClick={() => openView(pallet, "pallet")}>
                               <Eye className="h-3 w-3" />

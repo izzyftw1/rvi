@@ -186,15 +186,21 @@ export default function Purchase() {
           <h2 className="text-xl font-semibold">Draft Purchase Orders</h2>
           {loading ? (
             <p>Loading...</p>
+          ) : purchaseOrders.filter(po => po?.status === "draft").length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                No draft purchase orders
+              </CardContent>
+            </Card>
           ) : (
-            purchaseOrders.filter(po => po.status === "draft").map((po) => (
-              <Card key={po.id}>
+            purchaseOrders.filter(po => po?.status === "draft").map((po) => (
+              <Card key={po?.id ?? Math.random()}>
                 <CardContent className="pt-6">
                   <div className="space-y-3">
-                    <p className="font-semibold">{po.po_id}</p>
-                    <p className="text-sm">Material Size: {po.material_spec.size_mm}mm</p>
-                    <p className="text-sm">Required: {po.quantity_kg} kg</p>
-                    {po.material_spec.linked_sos?.length > 0 && (
+                    <p className="font-semibold">{po?.po_id ?? "N/A"}</p>
+                    <p className="text-sm">Material Size: {po?.material_spec?.size_mm ?? "N/A"}mm</p>
+                    <p className="text-sm">Required: {po?.quantity_kg ?? 0} kg</p>
+                    {po?.material_spec?.linked_sos && po.material_spec.linked_sos.length > 0 && (
                       <p className="text-xs text-muted-foreground">
                         Linked SOs: {po.material_spec.linked_sos.join(", ")}
                       </p>
@@ -266,17 +272,23 @@ export default function Purchase() {
           <h2 className="text-xl font-semibold">Pending Approvals</h2>
           {loading ? (
             <p>Loading...</p>
+          ) : purchaseOrders.filter(po => po?.status === "pending").length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                No pending purchase orders
+              </CardContent>
+            </Card>
           ) : (
-            purchaseOrders.filter(po => po.status === "pending").map((po) => (
-              <Card key={po.id}>
+            purchaseOrders.filter(po => po?.status === "pending").map((po) => (
+              <Card key={po?.id ?? Math.random()}>
                 <CardContent className="pt-6">
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-semibold">{po.po_id}</p>
-                      <p className="text-sm text-muted-foreground">{po.supplier}</p>
-                      <p className="text-sm">{po.material_spec.alloy} - {po.quantity_kg} kg</p>
-                      {po.sales_orders && (
-                        <p className="text-xs text-muted-foreground">For SO: {po.sales_orders.so_id}</p>
+                      <p className="font-semibold">{po?.po_id ?? "N/A"}</p>
+                      <p className="text-sm text-muted-foreground">{po?.supplier ?? "N/A"}</p>
+                      <p className="text-sm">{po?.material_spec?.alloy ?? "N/A"} - {po?.quantity_kg ?? 0} kg</p>
+                      {po?.sales_orders && (
+                        <p className="text-xs text-muted-foreground">For SO: {po.sales_orders?.so_id ?? "N/A"}</p>
                       )}
                     </div>
                     <Button size="sm" onClick={() => handleApprovePO(po.id)}>
@@ -293,35 +305,46 @@ export default function Purchase() {
 
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">All Purchase Orders</h2>
-        <div className="grid gap-4">
-          {purchaseOrders.map((po) => (
-            <Card key={po.id}>
-              <CardContent className="pt-6">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="font-semibold">{po.po_id}</p>
-                    <p className="text-sm text-muted-foreground">{po.supplier}</p>
-                    <p className="text-sm">{po.material_spec.alloy} - {po.quantity_kg} kg</p>
-                    {po.sales_orders && (
-                      <p className="text-xs text-muted-foreground">For SO: {po.sales_orders.so_id}</p>
-                    )}
+        {purchaseOrders.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center space-y-2">
+              <p className="text-lg font-medium">No Purchase Orders Yet</p>
+              <p className="text-sm text-muted-foreground">
+                Purchase orders will appear here when created
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {purchaseOrders.map((po) => (
+              <Card key={po?.id ?? Math.random()}>
+                <CardContent className="pt-6">
+                  <div className="flex justify-between">
+                    <div>
+                      <p className="font-semibold">{po?.po_id ?? "N/A"}</p>
+                      <p className="text-sm text-muted-foreground">{po?.supplier ?? "N/A"}</p>
+                      <p className="text-sm">{po?.material_spec?.alloy ?? "N/A"} - {po?.quantity_kg ?? 0} kg</p>
+                      {po?.sales_orders && (
+                        <p className="text-xs text-muted-foreground">For SO: {po.sales_orders?.so_id ?? "N/A"}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className={`inline-block px-2 py-1 rounded text-sm ${
+                        po?.status === 'approved' ? 'bg-green-100 text-green-800' :
+                        po?.status === 'received' ? 'bg-blue-100 text-blue-800' :
+                        po?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {po?.status ?? "unknown"}
+                      </p>
+                      <p className="text-xs mt-1">Expected: {po?.expected_delivery ? new Date(po.expected_delivery).toLocaleDateString() : "—"}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`inline-block px-2 py-1 rounded text-sm ${
-                      po.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      po.status === 'received' ? 'bg-blue-100 text-blue-800' :
-                      po.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {po.status}
-                    </p>
-                    <p className="text-xs mt-1">Expected: {new Date(po.expected_delivery).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
       </div>
     </div>
