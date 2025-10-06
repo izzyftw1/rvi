@@ -58,54 +58,54 @@ export const HistoricalDataDialog = ({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Lot ID</p>
-          <p className="font-medium">{data.lot_id}</p>
+          <p className="font-medium">{data?.lot_id ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Heat Number</p>
-          <p className="font-medium">{data.heat_no}</p>
+          <p className="font-medium">{data?.heat_no ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Alloy</p>
-          <p className="font-medium">{data.alloy}</p>
+          <p className="font-medium">{data?.alloy ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Supplier</p>
-          <p className="font-medium">{data.supplier}</p>
+          <p className="font-medium">{data?.supplier ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Material Size (mm)</p>
-          <p className="font-medium">{data.material_size_mm || "N/A"}</p>
+          <p className="font-medium">{data?.material_size_mm ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Bin Location</p>
-          <p className="font-medium">{data.bin_location || "N/A"}</p>
+          <p className="font-medium">{data?.bin_location ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Gross Weight (kg)</p>
-          <p className="font-medium">{Number(data.gross_weight).toFixed(3)}</p>
+          <p className="font-medium">{Number(data?.gross_weight ?? 0).toFixed(3)}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Net Weight (kg)</p>
-          <p className="font-medium">{Number(data.net_weight).toFixed(3)}</p>
+          <p className="font-medium">{Number(data?.net_weight ?? 0).toFixed(3)}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Status</p>
-          <Badge>{data.status}</Badge>
+          <Badge>{data?.status ?? "N/A"}</Badge>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">QC Status</p>
-          <Badge variant={data.qc_status === "approved" ? "default" : "secondary"}>
-            {data.qc_status || "pending"}
+          <Badge variant={data?.qc_status === "approved" ? "default" : "secondary"}>
+            {data?.qc_status ?? "pending"}
           </Badge>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Received</p>
-          <p className="font-medium">{new Date(data.received_date_time).toLocaleString()}</p>
+          <p className="font-medium">{data?.received_date_time ? new Date(data.received_date_time).toLocaleString() : "—"}</p>
         </div>
       </div>
 
       <div className="flex justify-center p-4 bg-secondary rounded-lg">
-        <QRCodeDisplay value={data.lot_id} title="Material Lot" />
+        <QRCodeDisplay value={data?.lot_id ?? ""} title="Material Lot" />
       </div>
 
       <div className="flex gap-2">
@@ -113,7 +113,7 @@ export const HistoricalDataDialog = ({
           <Printer className="h-4 w-4 mr-2" />
           Reprint Label
         </Button>
-        {data.mtc_file && (
+        {data?.mtc_file && (
           <Button onClick={handleDownloadMTC} variant="outline" className="flex-1">
             <Download className="h-4 w-4 mr-2" />
             Download MTC
@@ -134,32 +134,32 @@ export const HistoricalDataDialog = ({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Carton ID</p>
-          <p className="font-medium">{data.carton_id}</p>
+          <p className="font-medium">{data?.carton_id ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Quantity (pcs)</p>
-          <p className="font-medium">{data.quantity}</p>
+          <p className="font-medium">{data?.quantity ?? 0}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Gross Weight (kg)</p>
-          <p className="font-medium">{Number(data.gross_weight).toFixed(3)}</p>
+          <p className="font-medium">{Number(data?.gross_weight ?? 0).toFixed(3)}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Net Weight (kg)</p>
-          <p className="font-medium">{Number(data.net_weight).toFixed(3)}</p>
+          <p className="font-medium">{Number(data?.net_weight ?? 0).toFixed(3)}</p>
         </div>
         <div className="col-span-2">
           <p className="text-sm text-muted-foreground">Heat Numbers</p>
-          <p className="font-medium">{data.heat_nos?.join(", ") || "N/A"}</p>
+          <p className="font-medium">{data?.heat_nos?.join(", ") || "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Built At</p>
-          <p className="font-medium">{new Date(data.built_at).toLocaleString()}</p>
+          <p className="font-medium">{data?.built_at ? new Date(data.built_at).toLocaleString() : "—"}</p>
         </div>
       </div>
 
       <div className="flex justify-center p-4 bg-secondary rounded-lg">
-        <QRCodeDisplay value={data.carton_id} title="Carton" />
+        <QRCodeDisplay value={data?.carton_id ?? ""} title="Carton" />
       </div>
 
       <Button onClick={handlePrintLabel} className="w-full">
@@ -174,16 +174,16 @@ export const HistoricalDataDialog = ({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Pallet ID</p>
-          <p className="font-medium">{data.pallet_id}</p>
+          <p className="font-medium">{data?.pallet_id ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Built At</p>
-          <p className="font-medium">{new Date(data.built_at).toLocaleString()}</p>
+          <p className="font-medium">{data?.built_at ? new Date(data.built_at).toLocaleString() : "—"}</p>
         </div>
       </div>
 
       <div className="flex justify-center p-4 bg-secondary rounded-lg">
-        <QRCodeDisplay value={data.pallet_id} title="Pallet" />
+        <QRCodeDisplay value={data?.pallet_id ?? ""} title="Pallet" />
       </div>
 
       <Button onClick={handlePrintLabel} className="w-full">
@@ -198,42 +198,42 @@ export const HistoricalDataDialog = ({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-sm text-muted-foreground">WO ID</p>
-          <p className="font-medium">{data.wo_id}</p>
+          <p className="font-medium">{data?.wo_id ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Item Code</p>
-          <p className="font-medium">{data.item_code}</p>
+          <p className="font-medium">{data?.item_code ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Customer</p>
-          <p className="font-medium">{data.customer}</p>
+          <p className="font-medium">{data?.customer ?? "N/A"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Quantity</p>
-          <p className="font-medium">{data.quantity} pcs</p>
+          <p className="font-medium">{(data?.quantity ?? 0)} pcs</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Status</p>
-          <Badge>{data.status}</Badge>
+          <Badge>{data?.status ?? "N/A"}</Badge>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Current Stage</p>
-          <Badge variant="outline">{data.current_stage}</Badge>
+          <Badge variant="outline">{data?.current_stage ?? "N/A"}</Badge>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Due Date</p>
-          <p className="font-medium">{new Date(data.due_date).toLocaleDateString()}</p>
+          <p className="font-medium">{data?.due_date ? new Date(data.due_date).toLocaleDateString() : "—"}</p>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Priority</p>
-          <Badge variant={data.priority <= 2 ? "destructive" : "secondary"}>
-            P{data.priority}
+          <Badge variant={(data?.priority ?? 0) <= 2 ? "destructive" : "secondary"}>
+            P{data?.priority ?? 0}
           </Badge>
         </div>
       </div>
 
       <div className="flex justify-center p-4 bg-secondary rounded-lg">
-        <QRCodeDisplay value={data.wo_id} title="Work Order" />
+        <QRCodeDisplay value={data?.wo_id ?? ""} title="Work Order" />
       </div>
 
       <Button onClick={handlePrintLabel} className="w-full">
@@ -244,6 +244,13 @@ export const HistoricalDataDialog = ({
   );
 
   const renderDetails = () => {
+    if (!data) {
+      return (
+        <div className="text-center py-8 text-muted-foreground">
+          No records available
+        </div>
+      );
+    }
     switch (type) {
       case "material_lot": return renderMaterialLotDetails();
       case "carton": return renderCartonDetails();
@@ -259,7 +266,7 @@ export const HistoricalDataDialog = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
-            {type.replace("_", " ").toUpperCase()} Details - {getEntityId()}
+            {type?.replace("_", " ").toUpperCase()} Details - {getEntityId() || "N/A"}
           </DialogTitle>
           <DialogDescription>
             {type === "material_lot" && "View material lot information and traceability"}
