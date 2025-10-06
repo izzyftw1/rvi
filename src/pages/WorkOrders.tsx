@@ -9,9 +9,11 @@ import { Plus, Search, Eye } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
+import { useToast } from "@/hooks/use-toast";
 
 const WorkOrders = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
