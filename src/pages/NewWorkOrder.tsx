@@ -117,15 +117,27 @@ const NewWorkOrder = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="wo_id">WO ID *</Label>
+                  <Label htmlFor="wo_id">System WO ID *</Label>
                   <Input
                     id="wo_id"
                     value={formData.wo_id}
                     onChange={(e) => setFormData({ ...formData, wo_id: e.target.value })}
-                    placeholder="WO-2025-001"
+                    placeholder="ISO-PO123-SO456"
                     required
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="display_id">Display ID</Label>
+                  <Input
+                    id="display_id"
+                    value={formData.display_id}
+                    onChange={(e) => setFormData({ ...formData, display_id: e.target.value })}
+                    placeholder="ISO-PO123"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customer">Customer *</Label>
                   <Input
@@ -136,27 +148,26 @@ const NewWorkOrder = () => {
                     required
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="customer_po">Customer PO</Label>
+                  <Label htmlFor="customer_po">Customer PO *</Label>
                   <Input
                     id="customer_po"
                     value={formData.customer_po}
                     onChange={(e) => setFormData({ ...formData, customer_po: e.target.value })}
-                    placeholder="Customer purchase order number"
+                    placeholder="PO123"
+                    required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sales_order">Sales Order</Label>
-                  <Input
-                    id="sales_order"
-                    value={formData.sales_order}
-                    onChange={(e) => setFormData({ ...formData, sales_order: e.target.value })}
-                    placeholder="SO-2025-001"
-                  />
-                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sales_order">Sales Order</Label>
+                <Input
+                  id="sales_order"
+                  value={formData.sales_order}
+                  onChange={(e) => setFormData({ ...formData, sales_order: e.target.value })}
+                  placeholder="SO-2025-001"
+                />
               </div>
 
 
