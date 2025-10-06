@@ -21,7 +21,29 @@ const WorkOrders = () => {
   const [viewWO, setViewWO] = useState<any>(null);
 
   useEffect(() => {
+    // Initial load
     loadWorkOrders();
+
+    // Subscribe to realtime updates on work_orders
+    const channel = supabase
+      .channel('work_orders_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders' },
+        () => {
+          loadWorkOrders();
+        }
+      )
+      .subscribe();
+
+    // Refresh when window regains focus
+    const onFocus = () => loadWorkOrders();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   const loadWorkOrders = async () => {
