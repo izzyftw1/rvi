@@ -34,10 +34,47 @@ const WorkOrders = () => {
       setLoading(true);
       setError(null);
 
-      const { data, error: queryError } = await supabase
+      // Load work orders
+      const { data: workOrders, error: queryError } = await supabase
         .from("work_orders")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (queryError) throw queryError;
+
+      // Load related sales orders and line items
+      const salesOrderIds = [...new Set(workOrders?.map(wo => wo.sales_order).filter(Boolean))] as string[];
+      
+      let salesOrdersMap: any = {};
+      let lineItemsMap: any = {};
+
+      if (salesOrderIds.length > 0) {
+        const { data: salesOrders } = await supabase
+          .from("sales_orders")
+          .select("id, so_id, customer")
+          .in("id", salesOrderIds);
+        
+        salesOrdersMap = Object.fromEntries((salesOrders || []).map(so => [so.id, so]));
+
+        const { data: lineItems } = await supabase
+          .from("sales_order_line_items" as any)
+          .select("*")
+          .in("sales_order_id", salesOrderIds);
+        
+        // Map line items by work_order_id
+        lineItemsMap = Object.fromEntries(
+          (lineItems || [])
+            .filter((li: any) => li.work_order_id)
+            .map((li: any) => [li.work_order_id, li])
+        );
+      }
+
+      // Combine data
+      const data = workOrders?.map(wo => ({
+        ...wo,
+        sales_order: wo.sales_order ? salesOrdersMap[wo.sales_order] : null,
+        line_item: wo.id ? lineItemsMap[wo.id] : null
+      }));
 
       if (queryError) {
         throw queryError;
@@ -167,6 +204,12 @@ const WorkOrders = () => {
                         {wo.customer || "—"} • {wo.item_code || "—"}
                         {wo.customer_po && ` • PO: ${wo.customer_po}`}
                       </p>
+                      {wo.sales_order && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          From SO: {wo.sales_order.so_id}
+                          {wo.line_item && ` • Line #${wo.line_item.line_number}`}
+                        </p>
+                      )}
                     </div>
                     <Badge variant={getStatusVariant(wo.status || "pending")}>
                       {getStatusLabel(wo.status || "pending")}
