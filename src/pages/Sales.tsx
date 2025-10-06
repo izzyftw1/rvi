@@ -92,18 +92,25 @@ export default function Sales() {
   };
 
   const handleApprove = async (id: string) => {
-    const { error } = await supabase
-      .from("sales_orders")
-      .update({ 
-        status: "approved", 
-        approved_by: user?.id, 
-        approved_at: new Date().toISOString() 
-      })
-      .eq("id", id);
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from("sales_orders")
+        .update({ 
+          status: "approved", 
+          approved_by: user?.id, 
+          approved_at: new Date().toISOString() 
+        })
+        .eq("id", id);
 
-    if (!error) {
+      if (error) {
+        console.error("Approve SO failed:", error);
+        toast({ variant: "destructive", description: `Failed to approve: ${error.message}` });
+        return;
+      }
+
       toast({ description: "Sales order approved" });
-      loadSalesOrders();
+      await loadSalesOrders();
       
       // Notify purchase team
       const purchaseUsers = await supabase
@@ -111,8 +118,8 @@ export default function Sales() {
         .select("user_id")
         .eq("role", "purchase");
       
-      if (purchaseUsers.data) {
-        await supabase.rpc("notify_users", {
+      if (purchaseUsers.data && purchaseUsers.data.length) {
+        const { error: notifyError } = await supabase.rpc("notify_users", {
           _user_ids: purchaseUsers.data.map(u => u.user_id),
           _type: "sales_approved",
           _title: "New Sales Order Approved",
@@ -120,7 +127,15 @@ export default function Sales() {
           _entity_type: "sales_order",
           _entity_id: id
         });
+        if (notifyError) {
+          console.warn("Notification RPC failed:", notifyError);
+        }
       }
+    } catch (err: any) {
+      console.error("Unexpected error approving SO:", err);
+      toast({ variant: "destructive", description: "Unexpected error while approving." });
+    } finally {
+      setLoading(false);
     }
   };
 
