@@ -73,14 +73,28 @@ const MaterialInwards = () => {
   };
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      }
+    };
+    getUser();
     
     const loadPurchaseOrders = async () => {
-      const { data } = await supabase
-        .from("purchase_orders")
-        .select("*")
-        .eq("status", "approved");
-      if (data) setPurchaseOrders(data);
+      try {
+        const { data, error } = await supabase
+          .from("purchase_orders")
+          .select("*")
+          .eq("status", "approved");
+        if (error) throw error;
+        setPurchaseOrders(data ?? []);
+      } catch (error) {
+        console.error('Error loading purchase orders:', error);
+        setPurchaseOrders([]);
+      }
     };
     loadPurchaseOrders();
     loadLots();
@@ -333,17 +347,14 @@ const MaterialInwards = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="material_size_mm">Material Rod/Forging Size (mm) *</Label>
+                <Label htmlFor="material_size_mm">Material Size/Type</Label>
                 <Input
                   id="material_size_mm"
-                  type="number"
-                  step="0.1"
                   value={formData.material_size_mm}
                   onChange={(e) => setFormData({ ...formData, material_size_mm: e.target.value })}
-                  placeholder="12.7"
-                  required
+                  placeholder="e.g., Round 12mm, Hex 25mm, Forged"
                 />
-                <p className="text-xs text-muted-foreground">Enter the diameter/size of the material rod or forging</p>
+                <p className="text-xs text-muted-foreground">Enter material type and size (Hex, Round, Rectangle, Hollow, Forged)</p>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
