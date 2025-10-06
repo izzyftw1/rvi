@@ -72,7 +72,19 @@ const WorkOrders = () => {
   };
 
   const getStatusLabel = (status: string) => {
-    return status === "in_progress" ? "In Progress" : status;
+    // Map status values to display labels
+    switch (status) {
+      case "in_progress":
+        return "In Progress";
+      case "pending":
+        return "Pending";
+      case "completed":
+        return "Completed";
+      case "cancelled":
+        return "Cancelled";
+      default:
+        return status;
+    }
   };
 
   return (

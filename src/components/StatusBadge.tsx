@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface StatusBadgeProps {
-  status: 'pending' | 'in_progress' | 'qc' | 'packing' | 'completed' | 'shipped';
+  status: 'pending' | 'in_progress' | 'qc' | 'packing' | 'completed' | 'shipped' | 'cancelled';
   className?: string;
 }
 
@@ -36,6 +36,10 @@ export const StatusBadge = ({ status, className }: StatusBadgeProps) => {
       label: 'Shipped',
       variant: 'default' as const,
       className: 'bg-success',
+    },
+    cancelled: {
+      label: 'Cancelled',
+      variant: 'destructive' as const,
     },
   };
 
