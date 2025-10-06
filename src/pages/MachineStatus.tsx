@@ -53,7 +53,7 @@ const MachineStatus = () => {
         .select(`
           *,
           current_wo:work_orders!machines_current_wo_id_fkey(wo_id, display_id, item_code, quantity, customer),
-          current_operator:profiles!machines_current_operator_id_fkey(full_name),
+          current_operator:profiles!machines_operator_id_fkey(full_name),
           assignments:wo_machine_assignments!wo_machine_assignments_machine_id_fkey(
             *,
             work_order:work_orders(wo_id, display_id, item_code, customer, quantity)
@@ -247,12 +247,10 @@ const MachineStatus = () => {
                         </p>
                       </div>
 
-                      {machine.current_operator && (
-                        <p className="text-xs">
-                          <span className="text-muted-foreground">Operator:</span>{" "}
-                          {machine.current_operator.full_name}
-                        </p>
-                      )}
+                      <p className="text-xs">
+                        <span className="text-muted-foreground">Operator:</span>{" "}
+                        {machine.current_operator?.full_name || "Unassigned"}
+                      </p>
 
                       {getTimeRemaining(machine) && (
                         <div className="flex items-center gap-2">

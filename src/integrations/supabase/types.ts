@@ -515,6 +515,7 @@ export type Database = {
           location: string | null
           machine_id: string
           name: string
+          operator_id: string | null
           status: string | null
           updated_at: string
         }
@@ -529,6 +530,7 @@ export type Database = {
           location?: string | null
           machine_id: string
           name: string
+          operator_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -543,6 +545,7 @@ export type Database = {
           location?: string | null
           machine_id?: string
           name?: string
+          operator_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -559,6 +562,13 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machines_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
