@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { materialLotSchema } from "@/lib/validationSchemas";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
+import { Eye } from "lucide-react";
 
 const MaterialInwards = () => {
   const navigate = useNavigate();
@@ -48,6 +50,8 @@ const MaterialInwards = () => {
     bin_location: "",
     supplier: "",
   });
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewLot, setViewLot] = useState<any>(null);
 
   const loadLots = async () => {
     setLotsLoading(true);
@@ -217,6 +221,11 @@ const MaterialInwards = () => {
     // In production, this would trigger actual label printing
   };
 
+  const openView = (lot: any) => {
+    setViewLot(lot);
+    setViewOpen(true);
+  };
+
   const openEdit = (lot: any) => {
     setSelectedLot(lot);
     setEditForm({
@@ -227,6 +236,13 @@ const MaterialInwards = () => {
       supplier: lot.supplier ?? "",
     });
     setEditOpen(true);
+  };
+
+  const handleEditFromView = () => {
+    setViewOpen(false);
+    if (viewLot) {
+      openEdit(viewLot);
+    }
   };
 
   const saveEdit = async () => {
@@ -433,7 +449,12 @@ const MaterialInwards = () => {
                       <TableCell>{lot.qc_status || 'pending'}</TableCell>
                       <TableCell>{new Date(lot.received_date_time).toLocaleString()}</TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openView(lot)}>
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -442,6 +463,14 @@ const MaterialInwards = () => {
             </Table>
           </CardContent>
         </Card>
+
+        <HistoricalDataDialog
+          open={viewOpen}
+          onOpenChange={setViewOpen}
+          data={viewLot}
+          type="material_lot"
+          onEdit={handleEditFromView}
+        />
 
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
           <DialogContent>

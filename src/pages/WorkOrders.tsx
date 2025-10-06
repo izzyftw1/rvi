@@ -5,15 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Eye } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
 
 const WorkOrders = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewWO, setViewWO] = useState<any>(null);
 
   useEffect(() => {
     loadWorkOrders();
@@ -40,6 +43,12 @@ const WorkOrders = () => {
     wo.customer.toLowerCase().includes(search.toLowerCase()) ||
     wo.item_code.toLowerCase().includes(search.toLowerCase())
   );
+
+  const openView = (wo: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setViewWO(wo);
+    setViewOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -109,12 +118,29 @@ const WorkOrders = () => {
                       <p className="text-muted-foreground">Sales Order</p>
                       <p className="font-medium">{wo.sales_order || "—"}</p>
                     </div>
+                    <div className="flex items-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={(e) => openView(wo, e)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Quick View
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
+
+        <HistoricalDataDialog
+          open={viewOpen}
+          onOpenChange={setViewOpen}
+          data={viewWO}
+          type="work_order"
+        />
       </div>
     </div>
   );

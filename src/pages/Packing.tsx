@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,14 +7,22 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, Printer } from "lucide-react";
+import { Box, Package, Printer, Eye, History } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { cartonSchema, palletSchema } from "@/lib/validationSchemas";
+import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const Packing = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+
+  const [cartons, setCartons] = useState<any[]>([]);
+  const [pallets, setPallets] = useState<any[]>([]);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewData, setViewData] = useState<any>(null);
+  const [viewType, setViewType] = useState<"carton" | "pallet">("carton");
 
   // Carton Form
   const [woId, setWoId] = useState("");
@@ -32,6 +40,32 @@ const Packing = () => {
     pallet_id: "",
     carton_ids: "",
   });
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  const loadHistory = async () => {
+    const { data: cartonsData } = await supabase
+      .from("cartons")
+      .select("*")
+      .order("built_at", { ascending: false })
+      .limit(50);
+    setCartons(cartonsData || []);
+
+    const { data: palletsData } = await supabase
+      .from("pallets")
+      .select("*")
+      .order("built_at", { ascending: false })
+      .limit(50);
+    setPallets(palletsData || []);
+  };
+
+  const openView = (data: any, type: "carton" | "pallet") => {
+    setViewData(data);
+    setViewType(type);
+    setViewOpen(true);
+  };
 
   const handleFindWO = async () => {
     try {
@@ -109,6 +143,8 @@ const Packing = () => {
         title: "Carton created",
         description: `${cartonForm.carton_id} with ${heatNos.length} heat numbers`,
       });
+
+      loadHistory();
 
       // Reset
       setWoId("");
@@ -192,6 +228,8 @@ const Packing = () => {
         description: `${palletForm.pallet_id} with ${cartonsData?.length || 0} cartons`,
       });
 
+      loadHistory();
+
       // Reset
       setPalletForm({
         pallet_id: "",
@@ -212,12 +250,16 @@ const Packing = () => {
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Packing & Dispatch" subtitle="Build cartons and pallets" />
       
-      <div className="max-w-3xl mx-auto p-4 space-y-6">
+      <div className="max-w-6xl mx-auto p-4 space-y-6">
 
         <Tabs defaultValue="carton" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="carton">Build Carton</TabsTrigger>
             <TabsTrigger value="pallet">Build Pallet</TabsTrigger>
+            <TabsTrigger value="history">
+              <History className="h-4 w-4 mr-2" />
+              History
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="carton" className="space-y-4">
@@ -356,7 +398,90 @@ const Packing = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="history" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Cartons</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Carton ID</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Net Weight (kg)</TableHead>
+                      <TableHead>Gross Weight (kg)</TableHead>
+                      <TableHead>Built At</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cartons.length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="text-center">No cartons</TableCell></TableRow>
+                    ) : (
+                      cartons.map((carton) => (
+                        <TableRow key={carton.id}>
+                          <TableCell className="font-medium">{carton.carton_id}</TableCell>
+                          <TableCell>{carton.quantity}</TableCell>
+                          <TableCell>{Number(carton.net_weight).toFixed(3)}</TableCell>
+                          <TableCell>{Number(carton.gross_weight).toFixed(3)}</TableCell>
+                          <TableCell>{new Date(carton.built_at).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Button variant="outline" size="sm" onClick={() => openView(carton, "carton")}>
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Pallets</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pallet ID</TableHead>
+                      <TableHead>Built At</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pallets.length === 0 ? (
+                      <TableRow><TableCell colSpan={3} className="text-center">No pallets</TableCell></TableRow>
+                    ) : (
+                      pallets.map((pallet) => (
+                        <TableRow key={pallet.id}>
+                          <TableCell className="font-medium">{pallet.pallet_id}</TableCell>
+                          <TableCell>{new Date(pallet.built_at).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Button variant="outline" size="sm" onClick={() => openView(pallet, "pallet")}>
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
+
+        <HistoricalDataDialog
+          open={viewOpen}
+          onOpenChange={setViewOpen}
+          data={viewData}
+          type={viewType}
+        />
       </div>
     </div>
   );
