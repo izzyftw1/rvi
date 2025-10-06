@@ -144,7 +144,8 @@ export default function Sales() {
 
     const { error } = await supabase
       .from("sales_orders")
-      .insert({
+      .insert([{
+        so_id: so_id,
         customer: formData.customer,
         party_code: formData.party_code || null,
         po_number: formData.po_number,
@@ -156,7 +157,7 @@ export default function Sales() {
         gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
         net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
         cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null
-      });
+      }]);
 
     setLoading(false);
 
