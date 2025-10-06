@@ -371,10 +371,20 @@ const Index = () => {
                 <Boxes className="h-6 w-6" />
                 <span className="text-sm">Material Req</span>
               </Button>
+              <Button onClick={() => navigate("/customers")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <FileText className="h-6 w-6" />
+                <span className="text-sm">Customers</span>
+              </Button>
+              <Button onClick={() => navigate("/items")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <Box className="h-6 w-6" />
+                <span className="text-sm">Items</span>
+              </Button>
               <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
                 <span className="text-sm font-bold">📊 Reports</span>
               </Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
               <Button onClick={() => navigate("/tolerance-setup")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <ClipboardCheck className="h-6 w-6" />
                 <span className="text-sm">Tolerances</span>
@@ -383,13 +393,11 @@ const Index = () => {
                 <ClipboardCheck className="h-6 w-6" />
                 <span className="text-sm">Hourly QC</span>
               </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Button onClick={() => navigate("/cnc-dashboard")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
+              <Button onClick={() => navigate("/cnc-dashboard")} variant="default" className="h-auto py-4 flex-col gap-2">
                 <Activity className="h-6 w-6" />
                 <span className="text-sm font-bold">CNC Dashboard</span>
               </Button>
-              <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
+              <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="h-auto py-4 flex-col gap-2">
                 <Activity className="h-6 w-6" />
                 <span className="text-sm font-bold">Floor Dashboard</span>
               </Button>

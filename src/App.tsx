@@ -25,6 +25,8 @@ import HourlyQC from "./pages/HourlyQC";
 import ToleranceSetup from "./pages/ToleranceSetup";
 import Purchase from "./pages/Purchase";
 import Sales from "./pages/Sales";
+import CustomerMaster from "./pages/CustomerMaster";
+import ItemMaster from "./pages/ItemMaster";
 import NotFound from "./pages/NotFound";
 import DepartmentDetail from "./pages/DepartmentDetail";
 import MaterialRequirements from "./pages/MaterialRequirements";
@@ -45,6 +47,8 @@ const App = () => (
         <Route path="/scan" element={<ProtectedRoute><Scan /></ProtectedRoute>} />
         <Route path="/scan-console" element={<ProtectedRoute><ScanConsole /></ProtectedRoute>} />
         <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
+        <Route path="/customers" element={<ProtectedRoute><CustomerMaster /></ProtectedRoute>} />
+        <Route path="/items" element={<ProtectedRoute><ItemMaster /></ProtectedRoute>} />
         <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
         <Route path="/materials/inwards" element={<ProtectedRoute><MaterialInwards /></ProtectedRoute>} />
         <Route path="/qc/incoming" element={<ProtectedRoute><QCIncoming /></ProtectedRoute>} />
