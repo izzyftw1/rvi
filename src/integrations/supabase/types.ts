@@ -1904,6 +1904,7 @@ export type Database = {
           current_stage: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
           customer_po: string | null
+          cycle_time_seconds: number | null
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string
@@ -1928,6 +1929,7 @@ export type Database = {
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
           customer_po?: string | null
+          cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date: string
@@ -1952,6 +1954,7 @@ export type Database = {
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string
           customer_po?: string | null
+          cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string
