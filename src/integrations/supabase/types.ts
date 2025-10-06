@@ -319,6 +319,57 @@ export type Database = {
           },
         ]
       }
+      factory_calendar_settings: {
+        Row: {
+          break_1_end: string | null
+          break_1_start: string | null
+          break_2_end: string | null
+          break_2_start: string | null
+          created_at: string | null
+          day_name: string
+          day_shift_end: string | null
+          day_shift_start: string | null
+          id: string
+          night_shift_end: string | null
+          night_shift_start: string | null
+          overtime_allowed: boolean | null
+          updated_at: string | null
+          working: boolean | null
+        }
+        Insert: {
+          break_1_end?: string | null
+          break_1_start?: string | null
+          break_2_end?: string | null
+          break_2_start?: string | null
+          created_at?: string | null
+          day_name: string
+          day_shift_end?: string | null
+          day_shift_start?: string | null
+          id?: string
+          night_shift_end?: string | null
+          night_shift_start?: string | null
+          overtime_allowed?: boolean | null
+          updated_at?: string | null
+          working?: boolean | null
+        }
+        Update: {
+          break_1_end?: string | null
+          break_1_start?: string | null
+          break_2_end?: string | null
+          break_2_start?: string | null
+          created_at?: string | null
+          day_name?: string
+          day_shift_end?: string | null
+          day_shift_start?: string | null
+          id?: string
+          night_shift_end?: string | null
+          night_shift_start?: string | null
+          overtime_allowed?: boolean | null
+          updated_at?: string | null
+          working?: boolean | null
+        }
+        Relationships: []
+      }
       hourly_qc_checks: {
         Row: {
           check_datetime: string
