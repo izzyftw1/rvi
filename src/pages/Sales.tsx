@@ -442,7 +442,7 @@ export default function Sales() {
               <Input
                 type="number"
                 step="0.01"
-                placeholder="Cycle Time (seconds)"
+                placeholder="Cycle Time (per pc) in seconds"
                 value={formData.cycle_time_seconds}
                 onChange={(e) => setFormData({...formData, cycle_time_seconds: e.target.value})}
                 disabled={!isNewItem && formData.item_code !== ""}
