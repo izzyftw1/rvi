@@ -1665,8 +1665,11 @@ export type Database = {
           customer: string
           dispatch_allowed: boolean | null
           due_date: string
+          gross_weight_per_pc: number | null
           id: string
           item_code: string
+          material_size_mm: number | null
+          net_weight_per_pc: number | null
           priority: number | null
           production_allowed: boolean | null
           quantity: number
@@ -1684,8 +1687,11 @@ export type Database = {
           customer: string
           dispatch_allowed?: boolean | null
           due_date: string
+          gross_weight_per_pc?: number | null
           id?: string
           item_code: string
+          material_size_mm?: number | null
+          net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
           quantity: number
@@ -1703,8 +1709,11 @@ export type Database = {
           customer?: string
           dispatch_allowed?: boolean | null
           due_date?: string
+          gross_weight_per_pc?: number | null
           id?: string
           item_code?: string
+          material_size_mm?: number | null
+          net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
           quantity?: number
