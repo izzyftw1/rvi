@@ -36,6 +36,24 @@ export default function FactoryCalendar() {
     loadCalendarSettings();
   }, []);
 
+  const seedDefaultSettings = async () => {
+    const defaultSettings = [
+      { day_name: 'monday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
+      { day_name: 'tuesday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
+      { day_name: 'wednesday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
+      { day_name: 'thursday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
+      { day_name: 'friday', working: false, day_shift_start: null, day_shift_end: null, night_shift_start: null, night_shift_end: null, break_1_start: null, break_1_end: null, break_2_start: null, break_2_end: null, overtime_allowed: true },
+      { day_name: 'saturday', working: true, day_shift_start: '08:30:00', day_shift_end: '20:00:00', night_shift_start: '20:00:00', night_shift_end: '07:30:00', break_1_start: '12:30:00', break_1_end: '13:00:00', break_2_start: '00:00:00', break_2_end: '00:30:00', overtime_allowed: false },
+      { day_name: 'sunday', working: false, day_shift_start: null, day_shift_end: null, night_shift_start: null, night_shift_end: null, break_1_start: null, break_1_end: null, break_2_start: null, break_2_end: null, overtime_allowed: false },
+    ];
+
+    const { error } = await supabase
+      .from('factory_calendar_settings' as any)
+      .insert(defaultSettings as any);
+
+    if (error) throw error;
+  };
+
   const loadCalendarSettings = async () => {
     try {
       const { data: settings, error } = await supabase
@@ -45,7 +63,25 @@ export default function FactoryCalendar() {
 
       if (error) throw error;
 
-      if (settings) {
+      // If no settings exist, seed with defaults
+      if (!settings || settings.length === 0) {
+        await seedDefaultSettings();
+        // Reload after seeding
+        const { data: newSettings, error: reloadError } = await supabase
+          .from('factory_calendar_settings' as any)
+          .select('*')
+          .order('day_name');
+        
+        if (reloadError) throw reloadError;
+        
+        if (newSettings) {
+          const settingsMap: Record<string, DaySettings> = {};
+          newSettings.forEach((day: any) => {
+            settingsMap[day.day_name] = day;
+          });
+          setDaySettings(settingsMap);
+        }
+      } else {
         const settingsMap: Record<string, DaySettings> = {};
         settings.forEach((day: any) => {
           settingsMap[day.day_name] = day;
