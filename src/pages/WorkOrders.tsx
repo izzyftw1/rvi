@@ -24,15 +24,43 @@ const WorkOrders = () => {
 
   const loadWorkOrders = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from("work_orders")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setWorkOrders(data || []);
-    } catch (error) {
-      console.error("Error loading work orders:", error);
+      if (error) {
+        console.error("Error loading work orders:", error);
+        toast({ 
+          variant: "destructive", 
+          description: `Failed to load work orders: ${error.message}` 
+        });
+        setWorkOrders([]);
+        return;
+      }
+      
+      // Ensure all WOs have safe default values
+      const safeData = (data || []).map(wo => ({
+        ...wo,
+        wo_id: wo.wo_id || 'N/A',
+        customer: wo.customer || 'Unknown',
+        item_code: wo.item_code || 'N/A',
+        revision: wo.revision || '0',
+        quantity: wo.quantity || 0,
+        priority: wo.priority || 3,
+        status: wo.status || 'pending',
+        current_stage: wo.current_stage || 'goods_in',
+      }));
+      
+      setWorkOrders(safeData);
+    } catch (error: any) {
+      console.error("Unexpected error loading work orders:", error);
+      toast({ 
+        variant: "destructive", 
+        description: "Unexpected error loading work orders" 
+      });
+      setWorkOrders([]);
     } finally {
       setLoading(false);
     }
@@ -79,6 +107,12 @@ const WorkOrders = () => {
 
         {loading ? (
           <div className="text-center py-12">Loading...</div>
+        ) : filteredWOs.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">No work orders found</p>
+            </CardContent>
+          </Card>
         ) : (
           <div className="grid gap-4">
             {filteredWOs.map((wo) => (
@@ -90,19 +124,19 @@ const WorkOrders = () => {
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div>
-                      <CardTitle className="text-lg">{wo.wo_id}</CardTitle>
+                      <CardTitle className="text-lg">{wo.wo_id || 'N/A'}</CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
-                        {wo.customer} • {wo.item_code}
+                        {wo.customer || 'Unknown'} • {wo.item_code || 'N/A'}
                       </p>
                     </div>
-                    <StatusBadge status={wo.status} />
+                    <StatusBadge status={wo.status || 'pending'} />
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Quantity</p>
-                      <p className="font-medium">{wo.quantity} pcs</p>
+                      <p className="font-medium">{wo.quantity || 0} pcs</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Due Date</p>
@@ -112,8 +146,8 @@ const WorkOrders = () => {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Priority</p>
-                      <Badge variant={wo.priority <= 2 ? "destructive" : "secondary"}>
-                        P{wo.priority}
+                      <Badge variant={(wo.priority || 3) <= 2 ? "destructive" : "secondary"}>
+                        P{wo.priority || 3}
                       </Badge>
                     </div>
                     <div>
