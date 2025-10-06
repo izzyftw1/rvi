@@ -62,13 +62,17 @@ const WorkOrders = () => {
     switch (status) {
       case "completed":
         return "default";
-      case "active":
+      case "in_progress":
         return "secondary";
       case "cancelled":
         return "destructive";
       default:
         return "outline";
     }
+  };
+
+  const getStatusLabel = (status: string) => {
+    return status === "in_progress" ? "In Progress" : status;
   };
 
   return (
@@ -152,7 +156,7 @@ const WorkOrders = () => {
                       </p>
                     </div>
                     <Badge variant={getStatusVariant(wo.status || "pending")}>
-                      {wo.status || "pending"}
+                      {getStatusLabel(wo.status || "pending")}
                     </Badge>
                   </div>
                 </CardHeader>
