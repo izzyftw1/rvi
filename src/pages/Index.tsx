@@ -385,9 +385,9 @@ const Index = () => {
               </Button>
             </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              <Button onClick={() => navigate("/machine-status")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
+              <Button onClick={() => navigate("/cnc-dashboard")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
                 <Activity className="h-6 w-6" />
-                <span className="text-sm font-bold">Machine Status</span>
+                <span className="text-sm font-bold">CNC Dashboard</span>
               </Button>
               <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="h-auto py-4 flex items-center justify-center gap-2">
                 <Activity className="h-6 w-6" />
