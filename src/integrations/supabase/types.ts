@@ -1803,7 +1803,7 @@ export type Database = {
           so_id: string | null
           status: Database["public"]["Enums"]["wo_status"]
           updated_at: string
-          wo_id: string
+          wo_id: string | null
         }
         Insert: {
           bom?: Json | null
@@ -1827,7 +1827,7 @@ export type Database = {
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
-          wo_id: string
+          wo_id?: string | null
         }
         Update: {
           bom?: Json | null
@@ -1851,7 +1851,7 @@ export type Database = {
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
-          wo_id?: string
+          wo_id?: string | null
         }
         Relationships: [
           {

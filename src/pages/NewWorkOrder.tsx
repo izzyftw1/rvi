@@ -47,12 +47,10 @@ const NewWorkOrder = () => {
         return;
       }
 
-      // Generate unique wo_id and user-friendly display_id
+      // Generate user-friendly display_id
       const displayId = `ISO-${formData.customer_po}`;
-      const uniqueWoId = `${displayId}-${Date.now()}`;
 
       const { data: woData, error } = await supabase.from("work_orders").insert({
-        wo_id: uniqueWoId,
         display_id: displayId,
         customer: formData.customer,
         customer_po: formData.customer_po || null,
