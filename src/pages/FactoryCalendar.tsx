@@ -39,7 +39,7 @@ export default function FactoryCalendar() {
   const loadCalendarSettings = async () => {
     try {
       const { data: settings, error } = await supabase
-        .from('factory_calendar_settings')
+        .from('factory_calendar_settings' as any)
         .select('*')
         .order('day_name');
 
@@ -83,8 +83,8 @@ export default function FactoryCalendar() {
       }));
 
       const { error } = await supabase
-        .from('factory_calendar_settings')
-        .upsert(updates);
+        .from('factory_calendar_settings' as any)
+        .upsert(updates as any);
 
       if (error) throw error;
 
