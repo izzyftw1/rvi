@@ -48,6 +48,23 @@ const NewWorkOrder = () => {
         return;
       }
 
+      // Check if wo_id already exists
+      const { data: existingWO } = await supabase
+        .from("work_orders")
+        .select("wo_id")
+        .eq("wo_id", formData.wo_id)
+        .maybeSingle();
+
+      if (existingWO) {
+        toast({
+          variant: "destructive",
+          title: "Duplicate Work Order ID",
+          description: `Work Order ${formData.wo_id} already exists. Please use a different ID.`,
+        });
+        setLoading(false);
+        return;
+      }
+
       const { data: woData, error } = await supabase.from("work_orders").insert({
         wo_id: formData.wo_id,
         customer: formData.customer,
