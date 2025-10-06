@@ -20,8 +20,6 @@ const NewWorkOrder = () => {
   const [createdWO, setCreatedWO] = useState<any>(null);
 
   const [formData, setFormData] = useState({
-    wo_id: "",
-    display_id: "",
     customer: "",
     customer_po: "",
     item_code: "",
@@ -49,26 +47,13 @@ const NewWorkOrder = () => {
         return;
       }
 
-      // Check if wo_id already exists
-      const { data: existingWO } = await supabase
-        .from("work_orders")
-        .select("wo_id")
-        .eq("wo_id", formData.wo_id)
-        .maybeSingle();
-
-      if (existingWO) {
-        toast({
-          variant: "destructive",
-          title: "Duplicate Work Order ID",
-          description: `Work Order ${formData.wo_id} already exists. Please use a different ID.`,
-        });
-        setLoading(false);
-        return;
-      }
+      // Generate unique wo_id and user-friendly display_id
+      const displayId = `ISO-${formData.customer_po}`;
+      const uniqueWoId = `${displayId}-${Date.now()}`;
 
       const { data: woData, error } = await supabase.from("work_orders").insert({
-        wo_id: formData.wo_id,
-        display_id: formData.display_id || `ISO-${formData.customer_po}`,
+        wo_id: uniqueWoId,
+        display_id: displayId,
         customer: formData.customer,
         customer_po: formData.customer_po || null,
         item_code: formData.item_code,
@@ -84,7 +69,7 @@ const NewWorkOrder = () => {
 
       toast({
         title: "Work order created",
-        description: `WO ${woData.display_id || woData.wo_id} created successfully`,
+        description: `WO ${woData.display_id} created successfully`,
       });
 
       setCreatedWO(woData);
@@ -115,28 +100,6 @@ const NewWorkOrder = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="wo_id">System WO ID *</Label>
-                  <Input
-                    id="wo_id"
-                    value={formData.wo_id}
-                    onChange={(e) => setFormData({ ...formData, wo_id: e.target.value })}
-                    placeholder="ISO-PO123-SO456"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="display_id">Display ID</Label>
-                  <Input
-                    id="display_id"
-                    value={formData.display_id}
-                    onChange={(e) => setFormData({ ...formData, display_id: e.target.value })}
-                    placeholder="ISO-PO123"
-                  />
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customer">Customer *</Label>
@@ -250,9 +213,9 @@ const NewWorkOrder = () => {
           {createdWO && (
             <div className="flex justify-center">
               <QRCodeDisplay 
-                value={createdWO.wo_id}
+                value={createdWO.display_id || createdWO.wo_id}
                 title="Work Order Traveler"
-                entityInfo={`${createdWO.display_id || createdWO.wo_id} | ${createdWO.customer} | ${createdWO.item_code} | ${createdWO.quantity} pcs`}
+                entityInfo={`${createdWO.customer} | ${createdWO.item_code} | ${createdWO.quantity} pcs`}
                 size={250}
               />
             </div>
