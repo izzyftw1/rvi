@@ -38,11 +38,13 @@ const WorkOrders = () => {
     }
   };
 
-  const filteredWOs = workOrders.filter(wo =>
-    wo.wo_id.toLowerCase().includes(search.toLowerCase()) ||
-    wo.customer.toLowerCase().includes(search.toLowerCase()) ||
-    wo.item_code.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredWOs = workOrders.filter((wo) => {
+    const q = search.toLowerCase();
+    const woId = (wo.wo_id?.toString()?.toLowerCase() || "");
+    const customer = (wo.customer?.toLowerCase() || "");
+    const itemCode = (wo.item_code?.toLowerCase() || "");
+    return woId.includes(q) || customer.includes(q) || itemCode.includes(q);
+  });
 
   const openView = (wo: any, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -105,7 +107,7 @@ const WorkOrders = () => {
                     <div>
                       <p className="text-muted-foreground">Due Date</p>
                       <p className="font-medium">
-                        {new Date(wo.due_date).toLocaleDateString()}
+                        {wo.due_date ? new Date(wo.due_date).toLocaleDateString() : "—"}
                       </p>
                     </div>
                     <div>
