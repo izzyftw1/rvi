@@ -119,15 +119,27 @@ const NewWorkOrder = () => {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="customer_po">Customer PO</Label>
-                <Input
-                  id="customer_po"
-                  value={formData.customer_po}
-                  onChange={(e) => setFormData({ ...formData, customer_po: e.target.value })}
-                  placeholder="Customer purchase order number"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="customer_po">Customer PO</Label>
+                  <Input
+                    id="customer_po"
+                    value={formData.customer_po}
+                    onChange={(e) => setFormData({ ...formData, customer_po: e.target.value })}
+                    placeholder="Customer purchase order number"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sales_order">Sales Order</Label>
+                  <Input
+                    id="sales_order"
+                    value={formData.sales_order}
+                    onChange={(e) => setFormData({ ...formData, sales_order: e.target.value })}
+                    placeholder="SO-2025-001"
+                  />
+                </div>
               </div>
+
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -191,15 +203,6 @@ const NewWorkOrder = () => {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="sales_order">Sales Order</Label>
-                <Input
-                  id="sales_order"
-                  value={formData.sales_order}
-                  onChange={(e) => setFormData({ ...formData, sales_order: e.target.value })}
-                  placeholder="SO-2025-001"
-                />
-              </div>
 
               <Button type="submit" disabled={loading} className="w-full">
                 Create Work Order
