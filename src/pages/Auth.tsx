@@ -96,13 +96,12 @@ const Auth = () => {
 
         if (profileError) throw profileError;
 
-        // Insert role into user_roles table (the secure way to store roles)
+        // Use secure RPC function to assign role
         const { error: roleError } = await supabase
-          .from('user_roles')
-          .insert([{
-            user_id: authData.user.id,
-            role: role as any,
-          }]);
+          .rpc('assign_initial_role', {
+            _user_id: authData.user.id,
+            _requested_role: role
+          });
 
         if (roleError) throw roleError;
       }

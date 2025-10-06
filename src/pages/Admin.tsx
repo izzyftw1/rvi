@@ -149,10 +149,15 @@ export default function Admin() {
   };
 
   const handleAddRole = async (role: string) => {
+    if (!selectedUser) return;
+
     try {
       const { error } = await supabase
-        .from("user_roles")
-        .insert([{ user_id: selectedUser.id, role: role as any }]);
+        .rpc('manage_user_role', {
+          _target_user_id: selectedUser.id,
+          _role: role as any,
+          _action: 'add'
+        });
 
       if (error) throw error;
       toast({ title: "Success", description: `${role} role added` });
@@ -162,12 +167,16 @@ export default function Admin() {
     }
   };
 
-  const handleRemoveRole = async (roleId: string) => {
+  const handleRemoveRole = async (roleId: string, roleValue: string) => {
+    if (!selectedUser) return;
+
     try {
       const { error } = await supabase
-        .from("user_roles")
-        .delete()
-        .eq("id", roleId);
+        .rpc('manage_user_role', {
+          _target_user_id: selectedUser.id,
+          _role: roleValue as any,
+          _action: 'remove'
+        });
 
       if (error) throw error;
       toast({ title: "Success", description: "Role removed" });
@@ -324,14 +333,30 @@ export default function Admin() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {auditLogs.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell>{format(new Date(log.created_at), "PPp")}</TableCell>
-                        <TableCell><Badge variant="outline">{log.action_type}</Badge></TableCell>
-                        <TableCell>{log.module}</TableCell>
-                        <TableCell className="max-w-md truncate">{JSON.stringify(log.action_details)}</TableCell>
-                      </TableRow>
-                    ))}
+                    {auditLogs.map((log) => {
+                      const sanitizeAuditDetails = (details: any) => {
+                        if (!details) return {};
+                        const sanitized = { ...details };
+                        const sensitiveKeys = ['password', 'token', 'secret', 'api_key'];
+                        
+                        Object.keys(sanitized).forEach(key => {
+                          if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
+                            sanitized[key] = '[REDACTED]';
+                          }
+                        });
+                        
+                        return sanitized;
+                      };
+
+                      return (
+                        <TableRow key={log.id}>
+                          <TableCell>{format(new Date(log.created_at), "PPp")}</TableCell>
+                          <TableCell><Badge variant="outline">{log.action_type}</Badge></TableCell>
+                          <TableCell>{log.module}</TableCell>
+                          <TableCell className="max-w-md truncate">{JSON.stringify(sanitizeAuditDetails(log.action_details))}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -377,7 +402,7 @@ export default function Admin() {
                       {role.role}
                       <button
                         type="button"
-                        onClick={() => handleRemoveRole(role.id)}
+                        onClick={() => handleRemoveRole(role.id, role.role)}
                         className="ml-1 hover:text-destructive"
                       >
                         <XCircle className="h-3 w-3" />

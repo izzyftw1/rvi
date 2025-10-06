@@ -1730,6 +1730,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_initial_role: {
+        Args: { _requested_role: string; _user_id: string }
+        Returns: undefined
+      }
       has_permission: {
         Args: { _action: string; _module: string; _user_id: string }
         Returns: boolean
@@ -1740,6 +1744,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      manage_user_role: {
+        Args: {
+          _action: string
+          _role: Database["public"]["Enums"]["app_role"]
+          _target_user_id: string
+        }
+        Returns: undefined
       }
       notify_users: {
         Args: {
