@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Eye, Edit, Filter, CheckSquare, Square } from "lucide-react";
+import { Check, X, Eye, Filter, CheckSquare, Copy, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -19,7 +19,6 @@ interface LineItem {
   id?: string;
   line_number: number;
   item_code: string;
-  revision: string;
   quantity: number;
   alloy: string;
   gross_weight_per_pc_grams?: number;
@@ -28,6 +27,7 @@ interface LineItem {
   cycle_time_seconds?: number;
   due_date: string;
   priority: number;
+  notes?: string;
   status?: string;
   approved_by?: string;
   approved_at?: string;
@@ -49,22 +49,22 @@ export default function Sales() {
     {
       line_number: 1,
       item_code: "",
-      revision: "0",
       quantity: 0,
       alloy: "",
+      material_size_mm: "",
+      gross_weight_per_pc_grams: undefined,
+      net_weight_per_pc_grams: undefined,
+      cycle_time_seconds: undefined,
       due_date: "",
-      priority: 3
+      priority: 3,
+      notes: ""
     }
   ]);
   const [formData, setFormData] = useState({
     customer: "",
     party_code: "",
     po_number: "",
-    po_date: "",
-    material_rod_forging_size_mm: "",
-    gross_weight_per_pc_grams: "",
-    net_weight_per_pc_grams: "",
-    cycle_time_seconds: ""
+    po_date: ""
   });
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -168,20 +168,13 @@ export default function Sales() {
     updatedLineItems[index] = {
       ...updatedLineItems[index],
       item_code: value,
-      alloy: item?.alloy || "",
+      alloy: item?.alloy || updatedLineItems[index].alloy,
+      material_size_mm: item?.material_size_mm || updatedLineItems[index].material_size_mm,
+      gross_weight_per_pc_grams: item?.gross_weight_grams || updatedLineItems[index].gross_weight_per_pc_grams,
+      net_weight_per_pc_grams: item?.net_weight_grams || updatedLineItems[index].net_weight_per_pc_grams,
+      cycle_time_seconds: item?.cycle_time_seconds || updatedLineItems[index].cycle_time_seconds
     };
     setLineItems(updatedLineItems);
-    
-    // Update form-level fields if first line
-    if (index === 0 && item) {
-      setFormData({
-        ...formData,
-        material_rod_forging_size_mm: item.material_size_mm?.toString() || "",
-        gross_weight_per_pc_grams: item.gross_weight_grams?.toString() || "",
-        net_weight_per_pc_grams: item.net_weight_grams?.toString() || "",
-        cycle_time_seconds: item.cycle_time_seconds?.toString() || ""
-      });
-    }
   };
 
   const addLineItem = () => {
@@ -190,13 +183,62 @@ export default function Sales() {
       {
         line_number: lineItems.length + 1,
         item_code: "",
-        revision: "0",
         quantity: 0,
         alloy: "",
+        material_size_mm: "",
+        gross_weight_per_pc_grams: undefined,
+        net_weight_per_pc_grams: undefined,
+        cycle_time_seconds: undefined,
         due_date: "",
-        priority: 3
+        priority: 3,
+        notes: ""
       }
     ]);
+  };
+
+  const duplicateLineItem = (index: number) => {
+    const itemToDuplicate = { ...lineItems[index] };
+    const newLineItems = [...lineItems];
+    newLineItems.splice(index + 1, 0, {
+      ...itemToDuplicate,
+      line_number: index + 2,
+      id: undefined,
+      status: undefined
+    });
+    // Renumber all items after insertion
+    const renumbered = newLineItems.map((item, idx) => ({ ...item, line_number: idx + 1 }));
+    setLineItems(renumbered);
+  };
+
+  const handleBulkPaste = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      const rows = clipboardText.trim().split('\n').map(row => row.split('\t'));
+      
+      if (rows.length === 0) {
+        toast({ variant: "destructive", description: "No data found in clipboard" });
+        return;
+      }
+
+      const newItems: LineItem[] = rows.map((row, idx) => ({
+        line_number: lineItems.length + idx + 1,
+        item_code: row[0] || "",
+        quantity: parseInt(row[1]) || 0,
+        due_date: row[2] || "",
+        priority: parseInt(row[3]) || 3,
+        material_size_mm: row[4] || "",
+        alloy: row[5] || "",
+        cycle_time_seconds: parseFloat(row[6]) || undefined,
+        gross_weight_per_pc_grams: parseFloat(row[7]) || undefined,
+        net_weight_per_pc_grams: parseFloat(row[8]) || undefined,
+        notes: row[9] || ""
+      }));
+
+      setLineItems([...lineItems, ...newItems]);
+      toast({ description: `${newItems.length} rows pasted from clipboard` });
+    } catch (err) {
+      toast({ variant: "destructive", description: "Failed to paste from clipboard" });
+    }
   };
 
   const removeLineItem = (index: number) => {
@@ -224,7 +266,7 @@ export default function Sales() {
       const sequence = String((count || 0) + 1).padStart(3, '0');
       const so_id = `SO-${dateStr}-${sequence}`;
 
-      // Create sales order
+      // Create sales order (header only)
       const { data: newOrder, error: orderError } = await supabase
         .from("sales_orders")
         .insert([{
@@ -236,30 +278,30 @@ export default function Sales() {
           items: [], // Keep for backward compatibility
           status: "pending",
           created_by: user?.id,
-          material_rod_forging_size_mm: formData.material_rod_forging_size_mm || null,
-          gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
-          net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
-          cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null
+          material_rod_forging_size_mm: null,
+          gross_weight_per_pc_grams: null,
+          net_weight_per_pc_grams: null,
+          cycle_time_seconds: null
         }])
         .select()
         .single();
 
       if (orderError) throw orderError;
 
-      // Create line items
+      // Create line items (each with its own product details)
       const lineItemsToInsert = lineItems.map(item => ({
         sales_order_id: newOrder.id,
         line_number: item.line_number,
         item_code: item.item_code,
-        revision: item.revision,
         quantity: item.quantity,
         alloy: item.alloy,
-        gross_weight_per_pc_grams: formData.gross_weight_per_pc_grams ? parseFloat(formData.gross_weight_per_pc_grams) : null,
-        net_weight_per_pc_grams: formData.net_weight_per_pc_grams ? parseFloat(formData.net_weight_per_pc_grams) : null,
-        material_size_mm: formData.material_rod_forging_size_mm || null,
-        cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null,
+        gross_weight_per_pc_grams: item.gross_weight_per_pc_grams || null,
+        net_weight_per_pc_grams: item.net_weight_per_pc_grams || null,
+        material_size_mm: item.material_size_mm || null,
+        cycle_time_seconds: item.cycle_time_seconds || null,
         due_date: item.due_date,
         priority: item.priority,
+        notes: item.notes || null,
         status: 'pending'
       }));
 
@@ -273,18 +315,20 @@ export default function Sales() {
       
       // Reset form
       setFormData({ 
-        customer: "", party_code: "", po_number: "", po_date: "", 
-        material_rod_forging_size_mm: "", gross_weight_per_pc_grams: "", 
-        net_weight_per_pc_grams: "", cycle_time_seconds: "" 
+        customer: "", party_code: "", po_number: "", po_date: ""
       });
       setLineItems([{
         line_number: 1,
         item_code: "",
-        revision: "0",
         quantity: 0,
         alloy: "",
+        material_size_mm: "",
+        gross_weight_per_pc_grams: undefined,
+        net_weight_per_pc_grams: undefined,
+        cycle_time_seconds: undefined,
         due_date: "",
-        priority: 3
+        priority: 3,
+        notes: ""
       }]);
       setIsNewCustomer(false);
       await loadSalesOrders();
@@ -551,58 +595,36 @@ export default function Sales() {
                 </div>
               </div>
 
-              {/* Material Specs (applies to all line items) */}
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  placeholder="Material Size/Type (e.g., Round 12mm)"
-                  value={formData.material_rod_forging_size_mm}
-                  onChange={(e) => setFormData({...formData, material_rod_forging_size_mm: e.target.value})}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Cycle Time (sec/pc)"
-                  value={formData.cycle_time_seconds}
-                  onChange={(e) => setFormData({...formData, cycle_time_seconds: e.target.value})}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Gross Weight per pc (grams)"
-                  value={formData.gross_weight_per_pc_grams}
-                  onChange={(e) => setFormData({...formData, gross_weight_per_pc_grams: e.target.value})}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Net Weight per pc (grams)"
-                  value={formData.net_weight_per_pc_grams}
-                  onChange={(e) => setFormData({...formData, net_weight_per_pc_grams: e.target.value})}
-                />
-              </div>
-
               {/* Line Items Table */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label>Line Items</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-                    + Add Line Item
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={handleBulkPaste}>
+                      <Upload className="h-4 w-4 mr-1" />
+                      Paste from Excel
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+                      + Add Line Item
+                    </Button>
+                  </div>
                 </div>
                 <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
-                        <TableHead>Item Code</TableHead>
-                        <TableHead>Revision</TableHead>
-                        <TableHead>Qty (pcs)</TableHead>
-                        <TableHead>Alloy</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead className="w-16"></TableHead>
+                        <TableHead className="min-w-[150px]">Item Code</TableHead>
+                        <TableHead className="min-w-[100px]">Qty (pcs)</TableHead>
+                        <TableHead className="min-w-[130px]">Due Date</TableHead>
+                        <TableHead className="min-w-[90px]">Priority</TableHead>
+                        <TableHead className="min-w-[150px]">Material Size</TableHead>
+                        <TableHead className="min-w-[120px]">Alloy</TableHead>
+                        <TableHead className="min-w-[120px]">Cycle (s/pc)</TableHead>
+                        <TableHead className="min-w-[120px]">Gross (g/pc)</TableHead>
+                        <TableHead className="min-w-[120px]">Net (g/pc)</TableHead>
+                        <TableHead className="min-w-[200px]">Notes</TableHead>
+                        <TableHead className="w-24"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -616,7 +638,7 @@ export default function Sales() {
                               required
                             >
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select item" />
+                                <SelectValue placeholder="Select or type" />
                               </SelectTrigger>
                               <SelectContent>
                                 {items.map((itm) => (
@@ -629,18 +651,6 @@ export default function Sales() {
                           </TableCell>
                           <TableCell>
                             <Input
-                              type="text"
-                              value={item.revision}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].revision = e.target.value;
-                                setLineItems(updated);
-                              }}
-                              className="w-20"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
                               type="number"
                               value={item.quantity || ""}
                               onChange={(e) => {
@@ -648,19 +658,7 @@ export default function Sales() {
                                 updated[index].quantity = parseInt(e.target.value) || 0;
                                 setLineItems(updated);
                               }}
-                              className="w-24"
-                              required
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.alloy}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].alloy = e.target.value;
-                                setLineItems(updated);
-                              }}
-                              className="w-32"
+                              className="w-full"
                               required
                             />
                           </TableCell>
@@ -685,29 +683,117 @@ export default function Sales() {
                                 setLineItems(updated);
                               }}
                             >
-                              <SelectTrigger className="w-20">
+                              <SelectTrigger className="w-full">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="1">P1</SelectItem>
                                 <SelectItem value="2">P2</SelectItem>
                                 <SelectItem value="3">P3</SelectItem>
-                                <SelectItem value="4">P4</SelectItem>
-                                <SelectItem value="5">P5</SelectItem>
                               </SelectContent>
                             </Select>
                           </TableCell>
                           <TableCell>
-                            {lineItems.length > 1 && (
+                            <Input
+                              placeholder="e.g., Round 12mm"
+                              value={item.material_size_mm || ""}
+                              onChange={(e) => {
+                                const updated = [...lineItems];
+                                updated[index].material_size_mm = e.target.value;
+                                setLineItems(updated);
+                              }}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              value={item.alloy}
+                              onChange={(e) => {
+                                const updated = [...lineItems];
+                                updated[index].alloy = e.target.value;
+                                setLineItems(updated);
+                              }}
+                              className="w-full"
+                              required
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="sec/pc"
+                              value={item.cycle_time_seconds || ""}
+                              onChange={(e) => {
+                                const updated = [...lineItems];
+                                updated[index].cycle_time_seconds = parseFloat(e.target.value) || undefined;
+                                setLineItems(updated);
+                              }}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="grams"
+                              value={item.gross_weight_per_pc_grams || ""}
+                              onChange={(e) => {
+                                const updated = [...lineItems];
+                                updated[index].gross_weight_per_pc_grams = parseFloat(e.target.value) || undefined;
+                                setLineItems(updated);
+                              }}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="grams"
+                              value={item.net_weight_per_pc_grams || ""}
+                              onChange={(e) => {
+                                const updated = [...lineItems];
+                                updated[index].net_weight_per_pc_grams = parseFloat(e.target.value) || undefined;
+                                setLineItems(updated);
+                              }}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              placeholder="Optional notes"
+                              value={item.notes || ""}
+                              onChange={(e) => {
+                                const updated = [...lineItems];
+                                updated[index].notes = e.target.value;
+                                setLineItems(updated);
+                              }}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => removeLineItem(index)}
+                                onClick={() => duplicateLineItem(index)}
+                                title="Duplicate row"
                               >
-                                <X className="h-4 w-4" />
+                                <Copy className="h-4 w-4" />
                               </Button>
-                            )}
+                              {lineItems.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeLineItem(index)}
+                                  title="Remove row"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -873,11 +959,15 @@ export default function Sales() {
                       </TableHead>
                       <TableHead>#</TableHead>
                       <TableHead>Item Code</TableHead>
-                      <TableHead>Rev</TableHead>
                       <TableHead>Qty</TableHead>
-                      <TableHead>Alloy</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Priority</TableHead>
+                      <TableHead>Material</TableHead>
+                      <TableHead>Alloy</TableHead>
+                      <TableHead>Cycle</TableHead>
+                      <TableHead>Gross</TableHead>
+                      <TableHead>Net</TableHead>
+                      <TableHead>Notes</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>WO</TableHead>
                     </TableRow>
@@ -898,10 +988,19 @@ export default function Sales() {
                             )}
                           </TableCell>
                           <TableCell>{item.line_number}</TableCell>
-                          <TableCell>{item.item_code}</TableCell>
-                          <TableCell>{item.revision}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>{item.alloy}</TableCell>
+                          <TableCell className="font-medium">{item.item_code}</TableCell>
+                          <TableCell>
+                            {item.status === 'pending' ? (
+                              <Input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => handleInlineEdit(item.id, 'quantity', parseInt(e.target.value))}
+                                className="w-24"
+                              />
+                            ) : (
+                              item.quantity
+                            )}
+                          </TableCell>
                           <TableCell>
                             {item.status === 'pending' ? (
                               <Input
@@ -927,12 +1026,87 @@ export default function Sales() {
                                   <SelectItem value="1">P1</SelectItem>
                                   <SelectItem value="2">P2</SelectItem>
                                   <SelectItem value="3">P3</SelectItem>
-                                  <SelectItem value="4">P4</SelectItem>
-                                  <SelectItem value="5">P5</SelectItem>
                                 </SelectContent>
                               </Select>
                             ) : (
                               `P${item.priority}`
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.status === 'pending' ? (
+                              <Input
+                                value={item.material_size_mm || ""}
+                                onChange={(e) => handleInlineEdit(item.id, 'material_size_mm', e.target.value)}
+                                className="w-32"
+                                placeholder="e.g., Round 12mm"
+                              />
+                            ) : (
+                              item.material_size_mm || "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.status === 'pending' ? (
+                              <Input
+                                value={item.alloy}
+                                onChange={(e) => handleInlineEdit(item.id, 'alloy', e.target.value)}
+                                className="w-28"
+                              />
+                            ) : (
+                              item.alloy
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.status === 'pending' ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.cycle_time_seconds || ""}
+                                onChange={(e) => handleInlineEdit(item.id, 'cycle_time_seconds', parseFloat(e.target.value) || null)}
+                                className="w-24"
+                                placeholder="s/pc"
+                              />
+                            ) : (
+                              item.cycle_time_seconds ? `${item.cycle_time_seconds}s` : "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.status === 'pending' ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.gross_weight_per_pc_grams || ""}
+                                onChange={(e) => handleInlineEdit(item.id, 'gross_weight_per_pc_grams', parseFloat(e.target.value) || null)}
+                                className="w-24"
+                                placeholder="g"
+                              />
+                            ) : (
+                              item.gross_weight_per_pc_grams ? `${item.gross_weight_per_pc_grams}g` : "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.status === 'pending' ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.net_weight_per_pc_grams || ""}
+                                onChange={(e) => handleInlineEdit(item.id, 'net_weight_per_pc_grams', parseFloat(e.target.value) || null)}
+                                className="w-24"
+                                placeholder="g"
+                              />
+                            ) : (
+                              item.net_weight_per_pc_grams ? `${item.net_weight_per_pc_grams}g` : "-"
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[200px]">
+                            {item.status === 'pending' ? (
+                              <Textarea
+                                value={item.notes || ""}
+                                onChange={(e) => handleInlineEdit(item.id, 'notes', e.target.value)}
+                                className="min-h-[60px]"
+                                placeholder="Optional notes"
+                              />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{item.notes || "-"}</span>
                             )}
                           </TableCell>
                           <TableCell>
