@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, Printer, Eye, History } from "lucide-react";
+import { Box, Package, Printer, Eye, History, Trash2 } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { cartonSchema, palletSchema } from "@/lib/validationSchemas";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
@@ -65,6 +65,55 @@ const Packing = () => {
     setViewData(data);
     setViewType(type);
     setViewOpen(true);
+  };
+
+  const handleDeleteCarton = async (cartonId: string, cartonName: string) => {
+    if (!confirm(`Are you sure you want to delete carton ${cartonName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("cartons")
+        .delete()
+        .eq("id", cartonId);
+
+      if (error) throw error;
+
+      toast({ description: `Carton ${cartonName} deleted successfully` });
+      loadHistory();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
+    }
+  };
+
+  const handleDeletePallet = async (palletId: string, palletName: string) => {
+    if (!confirm(`Are you sure you want to delete pallet ${palletName}? This will also remove carton associations.`)) {
+      return;
+    }
+
+    try {
+      // Delete pallet_cartons relationships first
+      const { error: relationError } = await supabase
+        .from("pallet_cartons")
+        .delete()
+        .eq("pallet_id", palletId);
+
+      if (relationError) throw relationError;
+
+      // Delete pallet
+      const { error } = await supabase
+        .from("pallets")
+        .delete()
+        .eq("id", palletId);
+
+      if (error) throw error;
+
+      toast({ description: `Pallet ${palletName} deleted successfully` });
+      loadHistory();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
+    }
   };
 
   const handleFindWO = async () => {
@@ -428,9 +477,18 @@ const Packing = () => {
                           <TableCell>{Number(carton?.gross_weight ?? 0).toFixed(3)}</TableCell>
                           <TableCell>{carton?.built_at ? new Date(carton.built_at).toLocaleString() : "—"}</TableCell>
                           <TableCell>
-                            <Button variant="outline" size="sm" onClick={() => openView(carton, "carton")}>
-                              <Eye className="h-3 w-3" />
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openView(carton, "carton")}>
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="destructive" 
+                                size="sm" 
+                                onClick={() => handleDeleteCarton(carton.id, carton.carton_id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -462,9 +520,18 @@ const Packing = () => {
                           <TableCell className="font-medium">{pallet?.pallet_id ?? "N/A"}</TableCell>
                           <TableCell>{pallet?.built_at ? new Date(pallet.built_at).toLocaleString() : "—"}</TableCell>
                           <TableCell>
-                            <Button variant="outline" size="sm" onClick={() => openView(pallet, "pallet")}>
-                              <Eye className="h-3 w-3" />
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openView(pallet, "pallet")}>
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="destructive" 
+                                size="sm" 
+                                onClick={() => handleDeletePallet(pallet.id, pallet.pallet_id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))

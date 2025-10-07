@@ -4,14 +4,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, AlertCircle } from "lucide-react";
+import { Plus, AlertCircle, Trash2 } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { useToast } from "@/hooks/use-toast";
 
 const WorkOrders = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadWorkOrders();
@@ -124,6 +126,29 @@ const WorkOrders = () => {
     }
   };
 
+  const handleDeleteWorkOrder = async (woId: string, displayId: string) => {
+    if (!confirm(`Are you sure you want to delete Work Order ${displayId}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("work_orders")
+        .delete()
+        .eq("id", woId);
+
+      if (error) throw error;
+
+      toast({ description: `Work Order ${displayId} deleted successfully` });
+      await loadWorkOrders();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader />
@@ -192,11 +217,10 @@ const WorkOrders = () => {
               <Card
                 key={wo.id}
                 className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => navigate(`/work-orders/${wo.id}`)}
               >
                 <CardHeader>
                   <div className="flex items-start justify-between">
-                    <div>
+                    <div onClick={() => navigate(`/work-orders/${wo.id}`)} className="flex-1 cursor-pointer">
                       <CardTitle className="text-lg">
                         {wo.display_id || wo.wo_id || "—"}
                       </CardTitle>
@@ -211,12 +235,24 @@ const WorkOrders = () => {
                         </p>
                       )}
                     </div>
-                    <Badge variant={getStatusVariant(wo.status || "pending")}>
-                      {getStatusLabel(wo.status || "pending")}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={getStatusVariant(wo.status || "pending")}>
+                        {getStatusLabel(wo.status || "pending")}
+                      </Badge>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteWorkOrder(wo.id, wo.display_id || wo.wo_id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent onClick={() => navigate(`/work-orders/${wo.id}`)} className="cursor-pointer">
                   <div className="grid grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Quantity</p>

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Upload, Printer } from "lucide-react";
+import { Package, Upload, Printer, Trash2 } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { materialLotSchema } from "@/lib/validationSchemas";
@@ -282,6 +282,26 @@ const MaterialInwards = () => {
     }
   };
 
+  const handleDeleteLot = async (lotId: string, lotName: string) => {
+    if (!confirm(`Are you sure you want to delete material lot ${lotName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("material_lots")
+        .delete()
+        .eq("id", lotId);
+      
+      if (error) throw error;
+      
+      toast({ description: `Material lot ${lotName} deleted successfully` });
+      loadLots();
+    } catch (e: any) {
+      toast({ variant: "destructive", description: e?.message || "Delete failed" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Goods In - Material Inwards" subtitle="Receive new material lots" />
@@ -465,6 +485,13 @@ const MaterialInwards = () => {
                             <Eye className="h-3 w-3" />
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
+                          <Button 
+                            variant="destructive" 
+                            size="sm" 
+                            onClick={() => handleDeleteLot(lot.id, lot.lot_id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>

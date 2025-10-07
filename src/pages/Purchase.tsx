@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Check } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 
 export default function Purchase() {
@@ -113,6 +113,26 @@ export default function Purchase() {
           _entity_id: id
         });
       }
+    }
+  };
+
+  const handleDeletePO = async (poId: string, poName: string) => {
+    if (!confirm(`Are you sure you want to delete Purchase Order ${poName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("purchase_orders")
+        .delete()
+        .eq("id", poId);
+
+      if (error) throw error;
+
+      toast({ description: `Purchase Order ${poName} deleted successfully` });
+      loadData();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
     }
   };
 
@@ -328,16 +348,25 @@ export default function Purchase() {
                         <p className="text-xs text-muted-foreground">For SO: {po.sales_orders?.so_id ?? "N/A"}</p>
                       )}
                     </div>
-                    <div className="text-right">
-                      <p className={`inline-block px-2 py-1 rounded text-sm ${
-                        po?.status === 'approved' ? 'bg-green-100 text-green-800' :
-                        po?.status === 'received' ? 'bg-blue-100 text-blue-800' :
-                        po?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {po?.status ?? "unknown"}
-                      </p>
-                      <p className="text-xs mt-1">Expected: {po?.expected_delivery ? new Date(po.expected_delivery).toLocaleDateString() : "—"}</p>
+                    <div className="flex items-start gap-2">
+                      <div className="text-right">
+                        <p className={`inline-block px-2 py-1 rounded text-sm ${
+                          po?.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          po?.status === 'received' ? 'bg-blue-100 text-blue-800' :
+                          po?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {po?.status ?? "unknown"}
+                        </p>
+                        <p className="text-xs mt-1">Expected: {po?.expected_delivery ? new Date(po.expected_delivery).toLocaleDateString() : "—"}</p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeletePO(po.id, po.po_id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

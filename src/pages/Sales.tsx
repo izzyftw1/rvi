@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Eye, Filter, CheckSquare, Copy, Upload } from "lucide-react";
+import { Check, X, Eye, Filter, CheckSquare, Copy, Upload, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -492,6 +492,38 @@ export default function Sales() {
     }
   };
 
+  const handleDeleteOrder = async (orderId: string, soId: string) => {
+    if (!confirm(`Are you sure you want to delete Sales Order ${soId}? This will also delete all associated line items and cannot be undone.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Delete line items first
+      const { error: lineItemsError } = await supabase
+        .from("sales_order_line_items" as any)
+        .delete()
+        .eq("sales_order_id", orderId);
+
+      if (lineItemsError) throw lineItemsError;
+
+      // Delete sales order
+      const { error: orderError } = await supabase
+        .from("sales_orders")
+        .delete()
+        .eq("id", orderId);
+
+      if (orderError) throw orderError;
+
+      toast({ description: `Sales Order ${soId} deleted successfully` });
+      await loadSalesOrders();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'approved': return 'default';
@@ -903,6 +935,16 @@ export default function Sales() {
                       <Button variant="outline" size="sm" onClick={() => handleViewOrder(so)}>
                         <Eye className="h-4 w-4 mr-1" />
                         View/Approve
+                      </Button>
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteOrder(so.id, so.so_id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
