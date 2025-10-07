@@ -714,11 +714,19 @@ export default function MaterialRequirements() {
                           ✓ Covered
                         </Badge>
                       ) : req.status === "po_raised" ? (
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                        <Badge 
+                          variant="secondary" 
+                          className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900"
+                          onClick={() => navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
+                        >
                           Draft PO: {req.purchase_order?.po_id}
                         </Badge>
                       ) : req.status === "po_approved" ? (
-                        <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                        <Badge 
+                          variant="default" 
+                          className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
+                          onClick={() => navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
+                        >
                           Approved PO: {req.purchase_order?.po_id}
                         </Badge>
                       ) : (
@@ -742,7 +750,7 @@ export default function MaterialRequirements() {
                         </Button>
                       ) : req.purchase_order ? (
                         <div className="text-xs text-muted-foreground">
-                          PO: {req.purchase_order.quantity_kg.toFixed(2)} kg
+                          {req.purchase_order.quantity_kg.toFixed(2)} kg ordered
                         </div>
                       ) : null}
                     </TableCell>
