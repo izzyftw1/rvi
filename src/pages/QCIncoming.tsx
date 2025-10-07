@@ -60,11 +60,24 @@ export default function QCIncoming() {
           .from("documents")
           .upload(fileName, formData.oes_file);
         
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error("File upload error:", uploadError);
+          throw uploadError;
+        }
         oesFileUrl = fileName;
       }
 
-      const measurements = formData.measurements ? JSON.parse(formData.measurements) : {};
+      // Validate and parse measurements JSON
+      let measurements = {};
+      if (formData.measurements && formData.measurements.trim()) {
+        try {
+          measurements = JSON.parse(formData.measurements);
+        } catch (parseError) {
+          console.error("JSON parse error:", parseError);
+          toast({ variant: "destructive", description: "Invalid measurements JSON format" });
+          return;
+        }
+      }
 
       // Create a QC record linked to scan event
       const { error: qcError } = await supabase
@@ -74,18 +87,26 @@ export default function QCIncoming() {
           entity_id: selectedLot.lot_id,
           to_stage: `qc_incoming_${formData.result}`,
           owner_id: user?.id,
-          remarks: `QC ID: ${formData.qc_id}, Result: ${formData.result}, ${formData.remarks}`
+          remarks: `QC ID: ${formData.qc_id}, Result: ${formData.result}, ${formData.remarks || ""}`
         });
 
-      if (qcError) throw qcError;
+      if (qcError) {
+        console.error("Scan event error:", qcError);
+        throw qcError;
+      }
 
-      // Update material lot QC status - material remains "received" but qc_status controls availability
-      await supabase
+      // Update material lot QC status
+      const { error: updateError } = await supabase
         .from("material_lots")
         .update({ 
           qc_status: formData.result
         })
         .eq("id", selectedLot.id);
+
+      if (updateError) {
+        console.error("Material lot update error:", updateError);
+        throw updateError;
+      }
 
       if (formData.result === "pass") {
         // Notify production team
@@ -94,7 +115,7 @@ export default function QCIncoming() {
           .select("user_id")
           .eq("role", "production");
         
-        if (prodUsers.data) {
+        if (prodUsers.data && prodUsers.data.length > 0) {
           await supabase.rpc("notify_users", {
             _user_ids: prodUsers.data.map(u => u.user_id),
             _type: "qc_passed",
@@ -111,6 +132,7 @@ export default function QCIncoming() {
       setFormData({ qc_id: "", result: "", measurements: "", oes_file: null, remarks: "" });
       loadPendingLots();
     } catch (error) {
+      console.error("QC submission error:", error);
       toast({ variant: "destructive", description: "Failed to submit QC record" });
     } finally {
       setLoading(false);
