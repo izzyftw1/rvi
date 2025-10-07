@@ -706,16 +706,84 @@ export default function Sales() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Input
+                            <Select
                               value={item.alloy}
-                              onChange={(e) => {
+                              onValueChange={(val) => {
                                 const updated = [...lineItems];
-                                updated[index].alloy = e.target.value;
+                                if (val === "other") {
+                                  updated[index].alloy = "";
+                                } else {
+                                  updated[index].alloy = val;
+                                }
                                 setLineItems(updated);
                               }}
-                              className="w-full"
                               required
-                            />
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select alloy" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="brass_header" disabled className="font-semibold">
+                                  Brass Alloys
+                                </SelectItem>
+                                <SelectItem value="C36000">C36000</SelectItem>
+                                <SelectItem value="C37700">C37700</SelectItem>
+                                <SelectItem value="C38500">C38500</SelectItem>
+                                <SelectItem value="C46400">C46400</SelectItem>
+                                <SelectItem value="C23000">C23000</SelectItem>
+                                <SelectItem value="C27200">C27200</SelectItem>
+                                <SelectItem value="C26000">C26000</SelectItem>
+                                <SelectItem value="C27450">C27450</SelectItem>
+                                <SelectItem value="DZR Brass (CW602N)">DZR Brass (CW602N)</SelectItem>
+                                <SelectItem value="CW614N">CW614N</SelectItem>
+                                <SelectItem value="CW617N">CW617N</SelectItem>
+                                <SelectItem value="CZ122">CZ122</SelectItem>
+                                
+                                <SelectItem value="ss_header" disabled className="font-semibold mt-2">
+                                  Stainless Steels
+                                </SelectItem>
+                                <SelectItem value="SS304">SS304</SelectItem>
+                                <SelectItem value="SS304L">SS304L</SelectItem>
+                                <SelectItem value="SS316">SS316</SelectItem>
+                                <SelectItem value="SS316L">SS316L</SelectItem>
+                                <SelectItem value="SS410">SS410</SelectItem>
+                                <SelectItem value="SS420">SS420</SelectItem>
+                                <SelectItem value="SS430">SS430</SelectItem>
+                                
+                                <SelectItem value="copper_header" disabled className="font-semibold mt-2">
+                                  Copper Alloys
+                                </SelectItem>
+                                <SelectItem value="ETP Copper">ETP Copper</SelectItem>
+                                <SelectItem value="OFHC Copper">OFHC Copper</SelectItem>
+                                
+                                <SelectItem value="aluminium_header" disabled className="font-semibold mt-2">
+                                  Aluminium Alloys
+                                </SelectItem>
+                                <SelectItem value="6061">6061</SelectItem>
+                                <SelectItem value="6082">6082</SelectItem>
+                                <SelectItem value="7075">7075</SelectItem>
+                                <SelectItem value="1100">1100</SelectItem>
+                                <SelectItem value="2024">2024</SelectItem>
+                                <SelectItem value="5052">5052</SelectItem>
+                                
+                                <SelectItem value="other" className="font-semibold mt-2">
+                                  Other (specify)
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {item.alloy && !["C36000", "C37700", "C38500", "C46400", "C23000", "C27200", "C26000", "C27450", "DZR Brass (CW602N)", "CW614N", "CW617N", "CZ122", "SS304", "SS304L", "SS316", "SS316L", "SS410", "SS420", "SS430", "ETP Copper", "OFHC Copper", "6061", "6082", "7075", "1100", "2024", "5052"].includes(item.alloy) && (
+                              <Input
+                                placeholder="Specify alloy"
+                                value={item.alloy}
+                                onChange={(e) => {
+                                  const updated = [...lineItems];
+                                  updated[index].alloy = e.target.value;
+                                  setLineItems(updated);
+                                }}
+                                className="w-full mt-1"
+                                required
+                              />
+                            )}
                           </TableCell>
                           <TableCell>
                             <Input
