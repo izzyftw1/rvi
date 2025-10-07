@@ -32,6 +32,7 @@ const MaterialInwards = () => {
     net_weight: "",
     bin_location: "",
     mtc_file: null as File | null,
+    po_id: "",
   });
 
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
@@ -88,7 +89,8 @@ const MaterialInwards = () => {
         const { data, error } = await supabase
           .from("purchase_orders")
           .select("*")
-          .eq("status", "approved");
+          .in("status", ["approved", "pending"])
+          .order("created_at", { ascending: false });
         if (error) throw error;
         setPurchaseOrders(data ?? []);
       } catch (error) {
@@ -158,7 +160,7 @@ const MaterialInwards = () => {
           bin_location: formData.bin_location,
           mtc_file: mtcFileUrl,
           received_by: user?.id,
-          po_id: selectedPO || null,
+          po_id: formData.po_id || null,
           qc_status: "pending"
         })
         .select()
@@ -209,7 +211,7 @@ const MaterialInwards = () => {
       
       setFormData({
         lot_id: "", heat_no: "", alloy: "", supplier: "",
-        material_size_mm: "", gross_weight: "", net_weight: "", bin_location: "", mtc_file: null
+        material_size_mm: "", gross_weight: "", net_weight: "", bin_location: "", mtc_file: null, po_id: ""
       });
       setSelectedPO("");
     } catch (error) {
@@ -320,6 +322,42 @@ const MaterialInwards = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="po_select">Purchase Order *</Label>
+                <Select value={selectedPO} onValueChange={(value) => {
+                  setSelectedPO(value);
+                  // Auto-fill fields from PO
+                  const po = purchaseOrders.find(p => p.id === value);
+                  if (po) {
+                    setFormData({
+                      ...formData,
+                      supplier: po.supplier || "",
+                      material_size_mm: po.material_size_mm || "",
+                      alloy: po.material_spec?.alloy || "",
+                      po_id: value
+                    });
+                  }
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an approved PO" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {purchaseOrders.map(po => {
+                      const pendingQty = (po.quantity_kg || 0) - (po.quantity_received_kg || 0);
+                      return (
+                        <SelectItem key={po.id} value={po.id}>
+                          {po.po_id} - {po.supplier} - {po.material_size_mm || 'N/A'} - 
+                          Pending: {pendingQty.toFixed(2)} kg
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select the PO for this material receipt. Supplier and material details will be auto-filled.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="lot_id">Lot ID *</Label>
@@ -451,6 +489,7 @@ const MaterialInwards = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Lot ID</TableHead>
+                  <TableHead>PO Number</TableHead>
                   <TableHead>Size (mm)</TableHead>
                   <TableHead>Gross (kg)</TableHead>
                   <TableHead>Net (kg)</TableHead>
@@ -463,39 +502,55 @@ const MaterialInwards = () => {
               </TableHeader>
               <TableBody>
                 {lotsLoading ? (
-                  <TableRow><TableCell colSpan={9} className="text-center">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center">Loading...</TableCell></TableRow>
                 ) : lotsError ? (
-                  <TableRow><TableCell colSpan={9} className="text-destructive">{lotsError}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-destructive">{lotsError}</TableCell></TableRow>
                 ) : lots.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center">No Data Available</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center">No Data Available</TableCell></TableRow>
                 ) : (
-                  lots.map((lot) => (
-                    <TableRow key={lot.id}>
-                      <TableCell className="font-medium">{lot.lot_id}</TableCell>
-                      <TableCell>{lot.material_size_mm ?? 'N/A'}</TableCell>
-                      <TableCell>{Number(lot.gross_weight ?? 0).toFixed(2)}</TableCell>
-                      <TableCell>{Number(lot.net_weight ?? 0).toFixed(2)}</TableCell>
-                      <TableCell>{lot.supplier || 'unknown'}</TableCell>
-                      <TableCell>{lot.status}</TableCell>
-                      <TableCell>{lot.qc_status || 'pending'}</TableCell>
-                      <TableCell>{new Date(lot.received_date_time).toLocaleString()}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openView(lot)}>
-                            <Eye className="h-3 w-3" />
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
-                          <Button 
-                            variant="destructive" 
-                            size="sm" 
-                            onClick={() => handleDeleteLot(lot.id, lot.lot_id)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  lots.map((lot) => {
+                    const linkedPO = purchaseOrders.find(po => po.id === lot.po_id);
+                    return (
+                      <TableRow key={lot.id}>
+                        <TableCell className="font-medium">{lot.lot_id}</TableCell>
+                        <TableCell>
+                          {linkedPO ? (
+                            <Button
+                              variant="link"
+                              className="p-0 h-auto font-normal text-blue-600 hover:text-blue-800"
+                              onClick={() => navigate(`/purchase?po_id=${linkedPO.po_id}`)}
+                            >
+                              {linkedPO.po_id}
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground">No PO</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{lot.material_size_mm ?? 'N/A'}</TableCell>
+                        <TableCell>{Number(lot.gross_weight ?? 0).toFixed(2)}</TableCell>
+                        <TableCell>{Number(lot.net_weight ?? 0).toFixed(2)}</TableCell>
+                        <TableCell>{lot.supplier || 'unknown'}</TableCell>
+                        <TableCell>{lot.status}</TableCell>
+                        <TableCell>{lot.qc_status || 'pending'}</TableCell>
+                        <TableCell>{new Date(lot.received_date_time).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openView(lot)}>
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
+                            <Button 
+                              variant="destructive" 
+                              size="sm" 
+                              onClick={() => handleDeleteLot(lot.id, lot.lot_id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

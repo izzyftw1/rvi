@@ -1213,11 +1213,13 @@ export type Database = {
           created_by: string | null
           expected_delivery: string | null
           id: string
+          last_received_at: string | null
           linked_sales_orders: Json | null
           material_size_mm: string | null
           material_spec: Json
           po_id: string
           quantity_kg: number
+          quantity_received_kg: number | null
           so_id: string | null
           status: string
           supplier: string | null
@@ -1230,11 +1232,13 @@ export type Database = {
           created_by?: string | null
           expected_delivery?: string | null
           id?: string
+          last_received_at?: string | null
           linked_sales_orders?: Json | null
           material_size_mm?: string | null
           material_spec: Json
           po_id: string
           quantity_kg: number
+          quantity_received_kg?: number | null
           so_id?: string | null
           status?: string
           supplier?: string | null
@@ -1247,11 +1251,13 @@ export type Database = {
           created_by?: string | null
           expected_delivery?: string | null
           id?: string
+          last_received_at?: string | null
           linked_sales_orders?: Json | null
           material_size_mm?: string | null
           material_spec?: Json
           po_id?: string
           quantity_kg?: number
+          quantity_received_kg?: number | null
           so_id?: string | null
           status?: string
           supplier?: string | null
