@@ -30,6 +30,11 @@ interface MaterialRequirement {
   }>;
   status: string;
   requirement_id?: string;
+  purchase_order?: {
+    po_id: string;
+    status: string;
+    quantity_kg: number;
+  } | null;
 }
 
 export default function MaterialRequirements() {
@@ -77,7 +82,7 @@ export default function MaterialRequirements() {
       }
     });
     
-    // Set up realtime subscriptions for both sales_orders and material_lots
+    // Set up realtime subscriptions for sales_orders, material_lots, and purchase_orders
     const channel = supabase
       .channel('material-requirements-updates')
       .on(
@@ -97,6 +102,17 @@ export default function MaterialRequirements() {
           event: '*',
           schema: 'public',
           table: 'material_lots'
+        },
+        () => {
+          setTimeout(() => loadRequirements(), 0);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'purchase_orders'
         },
         () => {
           setTimeout(() => loadRequirements(), 0);
@@ -237,6 +253,24 @@ export default function MaterialRequirements() {
         }
       }
 
+      // Fetch related purchase orders for each material size
+      const { data: purchaseOrders, error: poError } = await supabase
+        .from("purchase_orders")
+        .select("*")
+        .in("status", ["draft", "pending", "approved"])
+        .not("material_size_mm", "is", null);
+
+      if (poError) throw poError;
+
+      // Map POs by material size
+      const poMap = new Map<number, any>();
+      (purchaseOrders ?? []).forEach((po: any) => {
+        const size = Number(po.material_size_mm);
+        if (!poMap.has(size) || po.created_at > poMap.get(size).created_at) {
+          poMap.set(size, po);
+        }
+      });
+
       // Fetch statuses from material_requirements table
       const { data: statusData, error: statusErr } = await supabase
         .from("material_requirements")
@@ -247,11 +281,30 @@ export default function MaterialRequirements() {
       const statusMap = new Map((statusData ?? []).map((s: any) => [Number(s.material_size_mm), { status: s.status, id: s.id }]));
 
       // Apply statuses and calculate final status
-      const requirementsArray = Array.from(grouped.values()).map((req) => ({
-        ...req,
-        status: req.surplus_deficit_kg >= 0 ? "covered" : "shortfall",
-        requirement_id: statusMap.get(req.material_size_mm)?.id
-      }));
+      const requirementsArray = Array.from(grouped.values()).map((req) => {
+        const relatedPO = poMap.get(req.material_size_mm);
+        let finalStatus = req.surplus_deficit_kg >= 0 ? "covered" : "shortfall";
+        
+        // Update status based on PO existence
+        if (relatedPO && req.surplus_deficit_kg < 0) {
+          if (relatedPO.status === "draft") {
+            finalStatus = "po_raised";
+          } else if (relatedPO.status === "approved" || relatedPO.status === "pending") {
+            finalStatus = "po_approved";
+          }
+        }
+
+        return {
+          ...req,
+          status: finalStatus,
+          requirement_id: statusMap.get(req.material_size_mm)?.id,
+          purchase_order: relatedPO ? {
+            po_id: relatedPO.po_id,
+            status: relatedPO.status,
+            quantity_kg: relatedPO.quantity_kg
+          } : null
+        };
+      });
 
       setRequirements(requirementsArray);
       setDebug({ 
@@ -656,15 +709,26 @@ export default function MaterialRequirements() {
                       </div>
                     </TableCell>
                     <TableCell>
-                    <Badge 
-                        variant={req.status === "covered" ? "default" : "destructive"}
-                        className={req.status === "covered" ? "bg-green-600 hover:bg-green-700" : ""}
-                      >
-                        {req.status === "covered" ? "✓ Covered" : "⚠ Shortfall"}
-                      </Badge>
+                      {req.status === "covered" ? (
+                        <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                          ✓ Covered
+                        </Badge>
+                      ) : req.status === "po_raised" ? (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                          Draft PO: {req.purchase_order?.po_id}
+                        </Badge>
+                      ) : req.status === "po_approved" ? (
+                        <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                          Approved PO: {req.purchase_order?.po_id}
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive">
+                          ⚠ Shortfall
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {req.surplus_deficit_kg < 0 && (
+                      {req.surplus_deficit_kg < 0 && !req.purchase_order ? (
                         <Button 
                           size="sm" 
                           onClick={() => handlePlaceOrder(
@@ -673,9 +737,14 @@ export default function MaterialRequirements() {
                             req.linked_sales_orders.map(so => so.so_id)
                           )}
                         >
+                          <ShoppingCart className="mr-2 h-4 w-4" />
                           Place Order
                         </Button>
-                      )}
+                      ) : req.purchase_order ? (
+                        <div className="text-xs text-muted-foreground">
+                          PO: {req.purchase_order.quantity_kg.toFixed(2)} kg
+                        </div>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))
