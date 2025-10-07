@@ -709,9 +709,9 @@ export default function MaterialRequirements() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {req.status === "covered" ? (
+                      {req.status === "covered" || req.status === "fulfilled" ? (
                         <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                          ✓ Covered
+                          ✓ {req.status === "fulfilled" ? "Fulfilled" : "Covered"}
                         </Badge>
                       ) : req.status === "po_raised" ? (
                         <Badge 
@@ -728,6 +728,14 @@ export default function MaterialRequirements() {
                           onClick={() => navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
                         >
                           Approved PO: {req.purchase_order?.po_id}
+                        </Badge>
+                      ) : req.status === "partially_fulfilled" ? (
+                        <Badge 
+                          variant="secondary" 
+                          className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 cursor-pointer hover:bg-amber-200 dark:hover:bg-amber-900"
+                          onClick={() => req.purchase_order && navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
+                        >
+                          Partially Fulfilled: {req.purchase_order?.po_id}
                         </Badge>
                       ) : (
                         <Badge variant="destructive">
@@ -749,8 +757,13 @@ export default function MaterialRequirements() {
                           Place Order
                         </Button>
                       ) : req.purchase_order ? (
-                        <div className="text-xs text-muted-foreground">
-                          {req.purchase_order.quantity_kg.toFixed(2)} kg ordered
+                        <div className="text-xs">
+                          <div className="font-medium">{req.purchase_order.quantity_kg.toFixed(2)} kg ordered</div>
+                          {req.status === "partially_fulfilled" && (
+                            <div className="text-amber-600 dark:text-amber-400">
+                              Remaining: {Math.abs(req.surplus_deficit_kg).toFixed(2)} kg
+                            </div>
+                          )}
                         </div>
                       ) : null}
                     </TableCell>
