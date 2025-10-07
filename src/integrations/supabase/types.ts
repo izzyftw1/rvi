@@ -1441,7 +1441,6 @@ export type Database = {
           material_size_mm: string | null
           net_weight_per_pc_grams: number | null
           notes: string | null
-          priority: number
           quantity: number
           rejected_at: string | null
           rejected_by: string | null
@@ -1465,7 +1464,6 @@ export type Database = {
           material_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           notes?: string | null
-          priority?: number
           quantity: number
           rejected_at?: string | null
           rejected_by?: string | null
@@ -1489,7 +1487,6 @@ export type Database = {
           material_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           notes?: string | null
-          priority?: number
           quantity?: number
           rejected_at?: string | null
           rejected_by?: string | null
@@ -2101,7 +2098,6 @@ export type Database = {
           item_code: string
           material_size_mm: string | null
           net_weight_per_pc: number | null
-          priority: number | null
           production_allowed: boolean | null
           quantity: number
           revision: string | null
@@ -2126,7 +2122,6 @@ export type Database = {
           item_code: string
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
-          priority?: number | null
           production_allowed?: boolean | null
           quantity: number
           revision?: string | null
@@ -2151,7 +2146,6 @@ export type Database = {
           item_code?: string
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
-          priority?: number | null
           production_allowed?: boolean | null
           quantity?: number
           revision?: string | null

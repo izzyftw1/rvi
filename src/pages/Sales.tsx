@@ -26,7 +26,6 @@ interface LineItem {
   material_size_mm?: string;
   cycle_time_seconds?: number;
   due_date: string;
-  priority: number;
   notes?: string;
   status?: string;
   approved_by?: string;
@@ -56,7 +55,6 @@ export default function Sales() {
       net_weight_per_pc_grams: undefined,
       cycle_time_seconds: undefined,
       due_date: "",
-      priority: 3,
       notes: ""
     }
   ]);
@@ -190,7 +188,6 @@ export default function Sales() {
         net_weight_per_pc_grams: undefined,
         cycle_time_seconds: undefined,
         due_date: "",
-        priority: 3,
         notes: ""
       }
     ]);
@@ -225,13 +222,12 @@ export default function Sales() {
         item_code: row[0] || "",
         quantity: parseInt(row[1]) || 0,
         due_date: row[2] || "",
-        priority: parseInt(row[3]) || 3,
-        material_size_mm: row[4] || "",
-        alloy: row[5] || "",
-        cycle_time_seconds: parseFloat(row[6]) || undefined,
-        gross_weight_per_pc_grams: parseFloat(row[7]) || undefined,
-        net_weight_per_pc_grams: parseFloat(row[8]) || undefined,
-        notes: row[9] || ""
+        material_size_mm: row[3] || "",
+        alloy: row[4] || "",
+        cycle_time_seconds: parseFloat(row[5]) || undefined,
+        gross_weight_per_pc_grams: parseFloat(row[6]) || undefined,
+        net_weight_per_pc_grams: parseFloat(row[7]) || undefined,
+        notes: row[8] || ""
       }));
 
       setLineItems([...lineItems, ...newItems]);
@@ -300,7 +296,6 @@ export default function Sales() {
         material_size_mm: item.material_size_mm || null,
         cycle_time_seconds: item.cycle_time_seconds || null,
         due_date: item.due_date,
-        priority: item.priority,
         notes: item.notes || null,
         status: 'pending'
       }));
@@ -327,7 +322,6 @@ export default function Sales() {
         net_weight_per_pc_grams: undefined,
         cycle_time_seconds: undefined,
         due_date: "",
-        priority: 3,
         notes: ""
       }]);
       setIsNewCustomer(false);
@@ -617,7 +611,6 @@ export default function Sales() {
                         <TableHead className="min-w-[150px]">Item Code</TableHead>
                         <TableHead className="min-w-[100px]">Qty (pcs)</TableHead>
                         <TableHead className="min-w-[130px]">Due Date</TableHead>
-                        <TableHead className="min-w-[90px]">Priority</TableHead>
                         <TableHead className="min-w-[150px]">Material Size</TableHead>
                         <TableHead className="min-w-[120px]">Alloy</TableHead>
                         <TableHead className="min-w-[120px]">Cycle (s/pc)</TableHead>
@@ -673,25 +666,6 @@ export default function Sales() {
                               }}
                               required
                             />
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={item.priority.toString()}
-                              onValueChange={(val) => {
-                                const updated = [...lineItems];
-                                updated[index].priority = parseInt(val);
-                                setLineItems(updated);
-                              }}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">P1</SelectItem>
-                                <SelectItem value="2">P2</SelectItem>
-                                <SelectItem value="3">P3</SelectItem>
-                              </SelectContent>
-                            </Select>
                           </TableCell>
                           <TableCell>
                             <Input
