@@ -1426,6 +1426,110 @@ export type Database = {
           },
         ]
       }
+      sales_order_line_items: {
+        Row: {
+          alloy: string
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          cycle_time_seconds: number | null
+          due_date: string
+          gross_weight_per_pc_grams: number | null
+          id: string
+          item_code: string
+          line_number: number
+          material_size_mm: string | null
+          net_weight_per_pc_grams: number | null
+          notes: string | null
+          priority: number
+          quantity: number
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          sales_order_id: string
+          status: string
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          alloy: string
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          cycle_time_seconds?: number | null
+          due_date: string
+          gross_weight_per_pc_grams?: number | null
+          id?: string
+          item_code: string
+          line_number: number
+          material_size_mm?: string | null
+          net_weight_per_pc_grams?: number | null
+          notes?: string | null
+          priority?: number
+          quantity: number
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          sales_order_id: string
+          status?: string
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          alloy?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          cycle_time_seconds?: number | null
+          due_date?: string
+          gross_weight_per_pc_grams?: number | null
+          id?: string
+          item_code?: string
+          line_number?: number
+          material_size_mm?: string | null
+          net_weight_per_pc_grams?: number | null
+          notes?: string | null
+          priority?: number
+          quantity?: number
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          sales_order_id?: string
+          status?: string
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_order_line_items_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_rejected_by_fkey"
+            columns: ["rejected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_orders: {
         Row: {
           approved_at: string | null
