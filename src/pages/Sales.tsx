@@ -71,6 +71,8 @@ export default function Sales() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [rejectionReason, setRejectionReason] = useState("");
+  const [newItemCodes, setNewItemCodes] = useState<{ [key: number]: string }>({});
+  const [isCreatingNewItem, setIsCreatingNewItem] = useState<{ [key: number]: boolean }>({});
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -657,22 +659,64 @@ export default function Sales() {
                         <TableRow key={index}>
                           <TableCell>{item.line_number}</TableCell>
                           <TableCell>
-                            <Select 
-                              value={item.item_code} 
-                              onValueChange={(val) => handleItemCodeChange(index, val)}
-                              required
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select or type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {items.map((itm) => (
-                                  <SelectItem key={itm.id} value={itm.item_code}>
-                                    {itm.item_code}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            {isCreatingNewItem[index] ? (
+                              <div className="flex gap-2">
+                                <Input
+                                  placeholder="New item code"
+                                  value={newItemCodes[index] || ""}
+                                  onChange={(e) => {
+                                    setNewItemCodes({ ...newItemCodes, [index]: e.target.value });
+                                    const updated = [...lineItems];
+                                    updated[index].item_code = e.target.value;
+                                    setLineItems(updated);
+                                  }}
+                                  className="w-full"
+                                  required
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setIsCreatingNewItem({ ...isCreatingNewItem, [index]: false });
+                                    setNewItemCodes({ ...newItemCodes, [index]: "" });
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-1">
+                                <Select 
+                                  value={item.item_code} 
+                                  onValueChange={(val) => {
+                                    if (val === "__new__") {
+                                      setIsCreatingNewItem({ ...isCreatingNewItem, [index]: true });
+                                    } else {
+                                      handleItemCodeChange(index, val);
+                                    }
+                                  }}
+                                  required={!isCreatingNewItem[index]}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select or add new" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-background z-50">
+                                    <SelectItem value="__new__" className="font-semibold text-blue-600">
+                                      + Add New Item Code
+                                    </SelectItem>
+                                    <SelectItem value="__historical__" disabled className="font-semibold mt-2">
+                                      Historical Items
+                                    </SelectItem>
+                                    {items.slice(0, 10).map((itm) => (
+                                      <SelectItem key={itm.id} value={itm.item_code}>
+                                        {itm.item_code} {itm.alloy ? `(${itm.alloy})` : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Input
