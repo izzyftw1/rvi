@@ -1,17 +1,24 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { ZoomIn, ZoomOut, Download, RefreshCw } from "lucide-react";
-import { format, addHours, addDays, startOfDay, endOfDay, differenceInMinutes } from "date-fns";
+import { Download, RefreshCw, LayoutGrid, Calendar, List } from "lucide-react";
+import { format, addDays, startOfDay, endOfDay, isToday, differenceInMinutes } from "date-fns";
 import jsPDF from "jspdf";
 
+import { FilterPanel } from "./gantt/FilterPanel";
+import { TimelineView } from "./gantt/TimelineView";
+import { KanbanView } from "./gantt/KanbanView";
+import { ListView } from "./gantt/ListView";
+import { SummaryPanel } from "./gantt/SummaryPanel";
+
 type ZoomLevel = "hour" | "day" | "week";
+type ViewMode = "timeline" | "kanban" | "list";
 
 interface Assignment {
   id: string;
@@ -29,99 +36,6 @@ interface Assignment {
   };
 }
 
-interface GanttBarProps {
-  assignment: Assignment;
-  machineIndex: number;
-  timelineStart: Date;
-  pixelsPerMinute: number;
-  onDrop: (assignmentId: string, newMachineId: string) => void;
-}
-
-const GanttBar = ({ assignment, machineIndex, timelineStart, pixelsPerMinute, onDrop }: GanttBarProps) => {
-  const [{ isDragging }, drag] = useDrag(() => ({
-    type: "assignment",
-    item: { id: assignment.id, machineId: assignment.machine_id },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  }));
-
-  const start = new Date(assignment.scheduled_start);
-  const end = new Date(assignment.scheduled_end);
-  const leftOffset = differenceInMinutes(start, timelineStart) * pixelsPerMinute;
-  const width = differenceInMinutes(end, start) * pixelsPerMinute;
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      scheduled: "bg-blue-500",
-      running: "bg-green-500",
-      completed: "bg-gray-400",
-      paused: "bg-yellow-500",
-      cancelled: "bg-red-500",
-    };
-    return colors[status] || "bg-gray-500";
-  };
-
-  return (
-    <div
-      ref={drag}
-      className={`absolute h-8 rounded px-2 text-white text-xs flex items-center cursor-move ${getStatusColor(
-        assignment.status
-      )} ${isDragging ? "opacity-50" : "opacity-90"} hover:opacity-100 transition-opacity`}
-      style={{
-        left: `${leftOffset}px`,
-        width: `${width}px`,
-        top: "4px",
-      }}
-      title={`${assignment.work_order?.display_id || assignment.work_order?.wo_id} - ${assignment.work_order?.item_code}`}
-    >
-      <div className="truncate">
-        {assignment.work_order?.display_id || assignment.work_order?.wo_id}
-      </div>
-    </div>
-  );
-};
-
-interface MachineRowProps {
-  machine: any;
-  assignments: Assignment[];
-  timelineStart: Date;
-  pixelsPerMinute: number;
-  onDrop: (assignmentId: string, newMachineId: string) => void;
-}
-
-const MachineRow = ({ machine, assignments, timelineStart, pixelsPerMinute, onDrop }: MachineRowProps) => {
-  const [{ isOver }, drop] = useDrop(() => ({
-    accept: "assignment",
-    drop: (item: { id: string; machineId: string }) => {
-      if (item.machineId !== machine.id) {
-        onDrop(item.id, machine.id);
-      }
-    },
-    collect: (monitor) => ({
-      isOver: monitor.isOver(),
-    }),
-  }));
-
-  return (
-    <div
-      ref={drop}
-      className={`relative h-12 border-b ${isOver ? "bg-blue-50" : ""}`}
-    >
-      {assignments.map((assignment) => (
-        <GanttBar
-          key={assignment.id}
-          assignment={assignment}
-          machineIndex={0}
-          timelineStart={timelineStart}
-          pixelsPerMinute={pixelsPerMinute}
-          onDrop={onDrop}
-        />
-      ))}
-    </div>
-  );
-};
-
 export const GanttScheduler = () => {
   const { toast } = useToast();
   const [machines, setMachines] = useState<any[]>([]);
@@ -129,6 +43,13 @@ export const GanttScheduler = () => {
   const [loading, setLoading] = useState(true);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("day");
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
+  
+  // Filters
+  const [selectedMachineGroup, setSelectedMachineGroup] = useState("all");
+  const [selectedJobStatus, setSelectedJobStatus] = useState("all");
+  const [selectedShift, setSelectedShift] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     loadData();
@@ -178,20 +99,9 @@ export const GanttScheduler = () => {
 
   const handleDrop = async (assignmentId: string, newMachineId: string) => {
     try {
-      const assignment = assignments.find((a) => a.id === assignmentId);
-      if (!assignment) return;
-
-      // Calculate duration
-      const start = new Date(assignment.scheduled_start);
-      const end = new Date(assignment.scheduled_end);
-      const durationMs = end.getTime() - start.getTime();
-
-      // Keep the same start time but update machine
       const { error } = await supabase
         .from("wo_machine_assignments")
-        .update({
-          machine_id: newMachineId,
-        })
+        .update({ machine_id: newMachineId })
         .eq("id", assignmentId);
 
       if (error) throw error;
@@ -208,6 +118,7 @@ export const GanttScheduler = () => {
     }
   };
 
+  // Timeline calculations
   const { timelineStart, timelineEnd, pixelsPerMinute } = useMemo(() => {
     const start = startOfDay(currentDate);
     let end: Date;
@@ -215,74 +126,128 @@ export const GanttScheduler = () => {
 
     switch (zoomLevel) {
       case "hour":
-        end = addHours(start, 24);
-        ppm = 2; // 2 pixels per minute = 120 pixels per hour
+        end = addDays(start, 1);
+        ppm = 3;
         break;
       case "day":
         end = addDays(start, 7);
-        ppm = 0.5; // 0.5 pixels per minute = 30 pixels per hour
+        ppm = 0.7;
         break;
       case "week":
         end = addDays(start, 28);
-        ppm = 0.125; // 0.125 pixels per minute = 7.5 pixels per hour
+        ppm = 0.175;
         break;
     }
 
     return { timelineStart: start, timelineEnd: end, pixelsPerMinute: ppm };
   }, [currentDate, zoomLevel]);
 
-  const timelineWidth = differenceInMinutes(timelineEnd, timelineStart) * pixelsPerMinute;
+  // Filtered data
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((assignment) => {
+      if (selectedJobStatus !== "all" && assignment.status !== selectedJobStatus) return false;
+      
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        const matchesWO = assignment.work_order?.display_id?.toLowerCase().includes(search) ||
+                         assignment.work_order?.wo_id?.toLowerCase().includes(search);
+        const matchesItem = assignment.work_order?.item_code?.toLowerCase().includes(search);
+        const matchesCustomer = assignment.work_order?.customer?.toLowerCase().includes(search);
+        
+        if (!matchesWO && !matchesItem && !matchesCustomer) return false;
+      }
 
-  const generateTimeLabels = () => {
-    const labels: Date[] = [];
-    let current = new Date(timelineStart);
+      return true;
+    });
+  }, [assignments, selectedJobStatus, searchTerm]);
 
-    switch (zoomLevel) {
-      case "hour":
-        while (current <= timelineEnd) {
-          labels.push(new Date(current));
-          current = addHours(current, 1);
-        }
-        break;
-      case "day":
-        while (current <= timelineEnd) {
-          labels.push(new Date(current));
-          current = addDays(current, 1);
-        }
-        break;
-      case "week":
-        while (current <= timelineEnd) {
-          labels.push(new Date(current));
-          current = addDays(current, 7);
-        }
-        break;
-    }
+  const filteredMachines = useMemo(() => {
+    if (selectedMachineGroup === "all") return machines;
+    return machines.filter((m) => m.location === selectedMachineGroup);
+  }, [machines, selectedMachineGroup]);
 
-    return labels;
-  };
+  // Machine groups for filter
+  const machineGroups = useMemo(() => {
+    const groups = new Set(machines.map((m) => m.location).filter(Boolean));
+    return Array.from(groups);
+  }, [machines]);
+
+  // Calculate utilization
+  const utilization = useMemo(() => {
+    const util: Record<string, number> = {};
+    
+    filteredMachines.forEach((machine) => {
+      const machineAssignments = filteredAssignments.filter(
+        (a) => a.machine_id === machine.id && a.status !== "completed"
+      );
+      
+      const totalMinutes = machineAssignments.reduce((acc, assignment) => {
+        const start = new Date(assignment.scheduled_start);
+        const end = new Date(assignment.scheduled_end);
+        return acc + differenceInMinutes(end, start);
+      }, 0);
+      
+      const availableMinutes = differenceInMinutes(timelineEnd, timelineStart);
+      util[machine.id] = Math.min((totalMinutes / availableMinutes) * 100, 100);
+    });
+    
+    return util;
+  }, [filteredMachines, filteredAssignments, timelineStart, timelineEnd]);
+
+  // Summary calculations
+  const summaryData = useMemo(() => {
+    const todayAssignments = filteredAssignments.filter((a) =>
+      isToday(new Date(a.scheduled_start))
+    );
+
+    const partsInProgress = filteredAssignments
+      .filter((a) => a.status === "running")
+      .reduce((sum, a) => sum + a.quantity_allocated, 0);
+
+    const bottlenecks = filteredMachines
+      .filter((m) => utilization[m.id] >= 90)
+      .map((m) => m.machine_id);
+
+    const runningJobs = filteredAssignments
+      .filter((a) => a.status === "running")
+      .sort((a, b) => 
+        new Date(a.scheduled_end).getTime() - new Date(b.scheduled_end).getTime()
+      );
+
+    const nextCompletion = runningJobs.length > 0 
+      ? new Date(runningJobs[0].scheduled_end) 
+      : null;
+
+    return {
+      totalJobsToday: todayAssignments.length,
+      totalPartsInProgress: partsInProgress,
+      bottleneckMachines: bottlenecks,
+      nextCompletion,
+    };
+  }, [filteredAssignments, filteredMachines, utilization]);
 
   const exportToPDF = () => {
     const doc = new jsPDF({ orientation: "landscape" });
     
     doc.setFontSize(16);
-    doc.text("CNC Machine Schedule", 14, 20);
+    doc.text("CNC Production Schedule", 14, 20);
     
     doc.setFontSize(10);
     doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy HH:mm")}`, 14, 28);
-    doc.text(`View: ${zoomLevel.toUpperCase()}`, 14, 34);
+    doc.text(`View: ${zoomLevel.toUpperCase()} | Mode: ${viewMode.toUpperCase()}`, 14, 34);
 
     let yPos = 45;
     
-    machines.forEach((machine, index) => {
+    filteredMachines.forEach((machine) => {
       if (yPos > 180) {
         doc.addPage();
         yPos = 20;
       }
 
       doc.setFontSize(9);
-      doc.text(`${machine.machine_id} - ${machine.name}`, 14, yPos);
+      doc.text(`${machine.machine_id} - ${machine.name} (${utilization[machine.id]?.toFixed(0)}% utilized)`, 14, yPos);
       
-      const machineAssignments = assignments.filter((a) => a.machine_id === machine.id);
+      const machineAssignments = filteredAssignments.filter((a) => a.machine_id === machine.id);
       
       machineAssignments.forEach((assignment) => {
         yPos += 6;
@@ -290,7 +255,7 @@ export const GanttScheduler = () => {
         const endTime = format(new Date(assignment.scheduled_end), "HH:mm");
         doc.setFontSize(8);
         doc.text(
-          `  ${assignment.work_order?.display_id} | ${startTime} - ${endTime} | ${assignment.status}`,
+          `  ${assignment.work_order?.display_id} | ${assignment.work_order?.item_code} | ${startTime}-${endTime} | ${assignment.status}`,
           16,
           yPos
         );
@@ -299,19 +264,33 @@ export const GanttScheduler = () => {
       yPos += 10;
     });
 
-    doc.save(`cnc-schedule-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    doc.save(`production-schedule-${format(new Date(), "yyyy-MM-dd")}.pdf`);
     toast({ title: "Success", description: "Schedule exported to PDF" });
   };
-
-  const timeLabels = generateTimeLabels();
 
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="space-y-4">
+        {/* Summary Panel */}
+        <SummaryPanel {...summaryData} />
+
+        {/* Filters */}
+        <FilterPanel
+          machineGroups={machineGroups}
+          selectedMachineGroup={selectedMachineGroup}
+          onMachineGroupChange={setSelectedMachineGroup}
+          selectedJobStatus={selectedJobStatus}
+          onJobStatusChange={setSelectedJobStatus}
+          selectedShift={selectedShift}
+          onShiftChange={setSelectedShift}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+        />
+
         {/* Controls */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -345,9 +324,9 @@ export const GanttScheduler = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="hour">Hourly</SelectItem>
-                    <SelectItem value="day">Daily</SelectItem>
-                    <SelectItem value="week">Weekly</SelectItem>
+                    <SelectItem value="hour">Day View</SelectItem>
+                    <SelectItem value="day">Week View</SelectItem>
+                    <SelectItem value="week">Month View</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -357,100 +336,80 @@ export const GanttScheduler = () => {
 
                 <Button size="sm" variant="outline" onClick={exportToPDF}>
                   <Download className="h-4 w-4 mr-2" />
-                  Export PDF
+                  Export
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Legend */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4 text-xs">
-              <span className="font-medium">Status:</span>
-              <Badge className="bg-blue-500">Scheduled</Badge>
-              <Badge className="bg-green-500">Running</Badge>
-              <Badge className="bg-yellow-500">Paused</Badge>
-              <Badge className="bg-gray-400">Completed</Badge>
-              <Badge className="bg-red-500">Cancelled</Badge>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Main Content */}
+        <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
+          <TabsList className="grid w-full max-w-md grid-cols-3">
+            <TabsTrigger value="timeline">
+              <Calendar className="h-4 w-4 mr-2" />
+              Timeline
+            </TabsTrigger>
+            <TabsTrigger value="kanban">
+              <LayoutGrid className="h-4 w-4 mr-2" />
+              Kanban
+            </TabsTrigger>
+            <TabsTrigger value="list">
+              <List className="h-4 w-4 mr-2" />
+              List
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Gantt Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Machine Schedule - Drag to Reassign</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <TabsContent value="timeline" className="mt-4">
             {loading ? (
-              <div className="text-center py-8">Loading schedule...</div>
+              <Card>
+                <CardContent className="py-12">
+                  <div className="text-center text-muted-foreground">Loading schedule...</div>
+                </CardContent>
+              </Card>
             ) : (
-              <div className="overflow-x-auto">
-                <div className="inline-block min-w-full">
-                  {/* Timeline Header */}
-                  <div className="flex">
-                    <div className="w-40 flex-shrink-0 border-r bg-muted p-2 font-semibold text-sm">
-                      Machine
-                    </div>
-                    <div className="relative" style={{ width: `${timelineWidth}px` }}>
-                      <div className="flex border-b">
-                        {timeLabels.map((label, idx) => (
-                          <div
-                            key={idx}
-                            className="border-r px-2 py-2 text-xs text-muted-foreground"
-                            style={{
-                              width:
-                                zoomLevel === "hour"
-                                  ? "120px"
-                                  : zoomLevel === "day"
-                                  ? "720px"
-                                  : "1440px",
-                            }}
-                          >
-                            {zoomLevel === "hour"
-                              ? format(label, "HH:mm")
-                              : format(label, "MMM dd")}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Machine Rows */}
-                  {machines.map((machine) => {
-                    const machineAssignments = assignments.filter(
-                      (a) => a.machine_id === machine.id
-                    );
-
-                    return (
-                      <div key={machine.id} className="flex">
-                        <div className="w-40 flex-shrink-0 border-r p-2 text-sm font-medium">
-                          {machine.machine_id}
-                          <div className="text-xs text-muted-foreground truncate">
-                            {machine.name}
-                          </div>
-                        </div>
-                        <div className="relative" style={{ width: `${timelineWidth}px` }}>
-                          <MachineRow
-                            machine={machine}
-                            assignments={machineAssignments}
-                            timelineStart={timelineStart}
-                            pixelsPerMinute={pixelsPerMinute}
-                            onDrop={handleDrop}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <TimelineView
+                machines={filteredMachines}
+                assignments={filteredAssignments}
+                timelineStart={timelineStart}
+                timelineEnd={timelineEnd}
+                pixelsPerMinute={pixelsPerMinute}
+                zoomLevel={zoomLevel}
+                onDrop={handleDrop}
+                utilization={utilization}
+              />
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
+
+          <TabsContent value="kanban" className="mt-4">
+            {loading ? (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="text-center text-muted-foreground">Loading...</div>
+                </CardContent>
+              </Card>
+            ) : (
+              <KanbanView
+                machines={filteredMachines}
+                assignments={filteredAssignments}
+                onDrop={handleDrop}
+              />
+            )}
+          </TabsContent>
+
+          <TabsContent value="list" className="mt-4">
+            {loading ? (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="text-center text-muted-foreground">Loading...</div>
+                </CardContent>
+              </Card>
+            ) : (
+              <ListView machines={filteredMachines} assignments={filteredAssignments} />
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </DndProvider>
   );
 };
-
