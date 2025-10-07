@@ -1213,12 +1213,14 @@ export type Database = {
           created_by: string | null
           expected_delivery: string | null
           id: string
+          linked_sales_orders: Json | null
+          material_size_mm: string | null
           material_spec: Json
           po_id: string
           quantity_kg: number
           so_id: string | null
           status: string
-          supplier: string
+          supplier: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1228,12 +1230,14 @@ export type Database = {
           created_by?: string | null
           expected_delivery?: string | null
           id?: string
+          linked_sales_orders?: Json | null
+          material_size_mm?: string | null
           material_spec: Json
           po_id: string
           quantity_kg: number
           so_id?: string | null
           status?: string
-          supplier: string
+          supplier?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1243,12 +1247,14 @@ export type Database = {
           created_by?: string | null
           expected_delivery?: string | null
           id?: string
+          linked_sales_orders?: Json | null
+          material_size_mm?: string | null
           material_spec?: Json
           po_id?: string
           quantity_kg?: number
           so_id?: string | null
           status?: string
-          supplier?: string
+          supplier?: string | null
           updated_at?: string | null
         }
         Relationships: [

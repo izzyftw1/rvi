@@ -298,55 +298,70 @@ export default function MaterialRequirements() {
 
   const handlePlaceOrder = async (materialSize: string, requiredQty: number, relatedSOs: string[]) => {
     try {
-      // Generate PO ID
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // Generate PO number: P-YYYYMMDD-###
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+      
       const { data: existingPOs } = await supabase
         .from("purchase_orders")
         .select("po_id")
+        .like("po_id", `P-${dateStr}-%`)
         .order("created_at", { ascending: false })
         .limit(1);
       
-      const lastPONum = existingPOs?.[0]?.po_id?.match(/\d+$/)?.[0] || "0";
-      const newPONum = String(parseInt(lastPONum) + 1).padStart(3, '0');
-      const newPOId = `PO-${new Date().getFullYear()}-${newPONum}`;
+      const lastNum = existingPOs?.[0]?.po_id?.split('-')[2] || "000";
+      const newNum = String(parseInt(lastNum) + 1).padStart(3, '0');
+      const newPOId = `P-${dateStr}-${newNum}`;
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Create draft PO - link to first SO if available
-      const { data: soData } = await supabase
+      // Get full SO data for linked orders
+      const { data: linkedSOData } = await supabase
         .from("sales_orders")
-        .select("id")
-        .eq("so_id", relatedSOs[0])
-        .maybeSingle();
+        .select("id, so_id, customer, po_number")
+        .in("so_id", relatedSOs);
 
+      const linkedSalesOrders = linkedSOData?.map(so => ({
+        id: so.id,
+        so_id: so.so_id,
+        customer: so.customer,
+        po_number: so.po_number
+      })) || [];
+
+      // Create draft PO with all required fields
       const { error } = await supabase
         .from("purchase_orders")
         .insert({
           po_id: newPOId,
-          so_id: soData?.id || null,
-          supplier: "", // To be filled by Purchase Manager
+          material_size_mm: materialSize,
+          quantity_kg: Math.abs(requiredQty), // Ensure positive quantity
+          linked_sales_orders: linkedSalesOrders,
           material_spec: {
             size_mm: materialSize,
-            linked_sos: relatedSOs
+            type: "raw_material"
           },
-          quantity_kg: requiredQty,
           status: "draft",
-          created_by: user?.id
+          created_by: user.id,
+          so_id: linkedSalesOrders[0]?.id || null // Link to first SO for backward compatibility
         });
 
       if (error) throw error;
 
       toast({ 
-        description: `Draft PO ${newPOId} created. Navigate to Purchase page to complete details.` 
+        description: "Purchase order draft created successfully",
+        title: `PO ${newPOId} Created`
       });
 
       // Navigate to Purchase page after a short delay
       setTimeout(() => navigate("/purchase"), 1500);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating draft PO:", error);
       toast({ 
         variant: "destructive", 
-        description: "Failed to create purchase order draft" 
+        title: "Failed to Create Purchase Order",
+        description: error?.message || "An error occurred while creating the draft PO"
       });
     }
   };
