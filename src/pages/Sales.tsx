@@ -1144,7 +1144,7 @@ export default function Sales() {
                           <TableCell>
                             {item.status === 'pending' ? (
                               <Select
-                                value={item.priority.toString()}
+                                value={(item.priority || 3).toString()}
                                 onValueChange={(val) => handleInlineEdit(item.id, 'priority', parseInt(val))}
                               >
                                 <SelectTrigger className="w-20">
@@ -1157,7 +1157,7 @@ export default function Sales() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              `P${item.priority}`
+                              `P${item.priority || 3}`
                             )}
                           </TableCell>
                           <TableCell>
