@@ -2159,9 +2159,24 @@ export type Database = {
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string
+          first_piece_flagged_at: string | null
+          first_piece_flagged_by: string | null
+          first_piece_qc_approved_at: string | null
+          first_piece_qc_approved_by: string | null
+          first_piece_qc_remarks: string | null
+          first_piece_qc_status:
+            | Database["public"]["Enums"]["first_piece_qc_status"]
+            | null
+          first_piece_ready_for_qc: boolean | null
           gross_weight_per_pc: number | null
           id: string
           item_code: string
+          material_qc_approved_at: string | null
+          material_qc_approved_by: string | null
+          material_qc_remarks: string | null
+          material_qc_status:
+            | Database["public"]["Enums"]["material_qc_status"]
+            | null
           material_size_mm: string | null
           net_weight_per_pc: number | null
           production_allowed: boolean | null
@@ -2183,9 +2198,24 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date: string
+          first_piece_flagged_at?: string | null
+          first_piece_flagged_by?: string | null
+          first_piece_qc_approved_at?: string | null
+          first_piece_qc_approved_by?: string | null
+          first_piece_qc_remarks?: string | null
+          first_piece_qc_status?:
+            | Database["public"]["Enums"]["first_piece_qc_status"]
+            | null
+          first_piece_ready_for_qc?: boolean | null
           gross_weight_per_pc?: number | null
           id?: string
           item_code: string
+          material_qc_approved_at?: string | null
+          material_qc_approved_by?: string | null
+          material_qc_remarks?: string | null
+          material_qc_status?:
+            | Database["public"]["Enums"]["material_qc_status"]
+            | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           production_allowed?: boolean | null
@@ -2207,9 +2237,24 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string
+          first_piece_flagged_at?: string | null
+          first_piece_flagged_by?: string | null
+          first_piece_qc_approved_at?: string | null
+          first_piece_qc_approved_by?: string | null
+          first_piece_qc_remarks?: string | null
+          first_piece_qc_status?:
+            | Database["public"]["Enums"]["first_piece_qc_status"]
+            | null
+          first_piece_ready_for_qc?: boolean | null
           gross_weight_per_pc?: number | null
           id?: string
           item_code?: string
+          material_qc_approved_at?: string | null
+          material_qc_approved_by?: string | null
+          material_qc_remarks?: string | null
+          material_qc_status?:
+            | Database["public"]["Enums"]["material_qc_status"]
+            | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           production_allowed?: boolean | null
@@ -2332,6 +2377,8 @@ export type Database = {
         | "maintenance"
         | "design"
         | "packing"
+      first_piece_qc_status: "not_required" | "pending" | "approved" | "failed"
+      material_qc_status: "not_required" | "pending" | "passed" | "failed"
       material_status: "received" | "issued" | "in_use" | "consumed"
       operation_letter:
         | "A"
@@ -2509,6 +2556,8 @@ export const Constants = {
         "design",
         "packing",
       ],
+      first_piece_qc_status: ["not_required", "pending", "approved", "failed"],
+      material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_status: ["received", "issued", "in_use", "consumed"],
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       qc_result: ["pass", "fail", "rework"],

@@ -49,9 +49,14 @@ interface WorkOrder {
   customer: string;
   item_code: string;
   quantity: number;
+  first_piece_qc_status?: string;
 }
 
-export function ProductionLogForm() {
+interface ProductionLogFormProps {
+  workOrder?: any;
+}
+
+export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFormProps = {}) {
   const [loading, setLoading] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
@@ -109,6 +114,12 @@ export function ProductionLogForm() {
   };
 
   const onSubmit = async (data: ProductionLogFormData) => {
+    // Check First Piece QC gate for mass production
+    if (propWorkOrder && propWorkOrder.first_piece_qc_status === 'pending') {
+      toast.error("First Piece QC must be approved before mass production logging");
+      return;
+    }
+
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();

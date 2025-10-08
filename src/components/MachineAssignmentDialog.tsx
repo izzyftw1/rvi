@@ -102,6 +102,16 @@ export const MachineAssignmentDialog = ({
   };
 
   const handleAssign = async () => {
+    // Check Material QC gate
+    if (workOrder.material_qc_status !== 'passed') {
+      toast({
+        title: "Material QC Required",
+        description: "Material QC must pass before assigning machines to this work order.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate cycle time exists
     const effectiveCycleTime = getEffectiveCycleTime();
     if (!effectiveCycleTime) {

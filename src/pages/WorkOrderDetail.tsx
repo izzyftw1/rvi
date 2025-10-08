@@ -12,11 +12,14 @@ import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
 import { ProductionLogForm } from "@/components/ProductionLogForm";
+import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
+import { MaterialQCApproval } from "@/components/MaterialQCApproval";
+import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -416,6 +419,8 @@ const WorkOrderDetail = () => {
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{wo.wo_id}</h1>
               <StatusBadge status={wo.status} />
+              <QCGateStatusBadge status={wo.material_qc_status} label={`Material QC: ${wo.material_qc_status}`} />
+              <QCGateStatusBadge status={wo.first_piece_qc_status} label={`First Piece: ${wo.first_piece_qc_status}`} />
             </div>
             <p className="text-sm text-muted-foreground">
               {wo.customer} • {wo.item_code}
@@ -433,10 +438,33 @@ const WorkOrderDetail = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={() => setShowAssignmentDialog(true)} variant="default">
+            <Button 
+              onClick={() => setShowAssignmentDialog(true)} 
+              variant="default"
+              disabled={wo.material_qc_status !== 'passed'}
+              title={wo.material_qc_status !== 'passed' ? 'Material QC must pass before assigning machines' : ''}
+            >
               <Cpu className="h-4 w-4 mr-2" />
               Assign Machines
             </Button>
+            {wo.first_piece_qc_status === 'pending' && !wo.first_piece_ready_for_qc && (
+              <Button 
+                onClick={async () => {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  await supabase.from('work_orders').update({
+                    first_piece_ready_for_qc: true,
+                    first_piece_flagged_by: user?.id,
+                    first_piece_flagged_at: new Date().toISOString(),
+                  }).eq('id', wo.id);
+                  loadWorkOrderData();
+                  toast({ title: "First piece flagged for QC inspection" });
+                }}
+                variant="outline"
+              >
+                <Flag className="h-4 w-4 mr-2" />
+                Flag First Piece Ready
+              </Button>
+            )}
             {hourlyQcRecords.length > 0 && (
               <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
                 <FileText className="h-4 w-4 mr-2" />
@@ -550,6 +578,60 @@ const WorkOrderDetail = () => {
           </CardContent>
         </Card>
 
+        {/* QC Gate Approvals */}
+        {wo.material_qc_status === 'pending' && (
+          <MaterialQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
+        )}
+        
+        {wo.first_piece_ready_for_qc && wo.first_piece_qc_status === 'pending' && (
+          <FirstPieceQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
+        )}
+
+        {/* QC Gate Status Details */}
+        {(wo.material_qc_status !== 'not_required' || wo.first_piece_qc_status !== 'not_required') && (
+          <Card>
+            <CardHeader>
+              <CardTitle>QC Gates Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {wo.material_qc_status !== 'not_required' && (
+                <div className="p-4 border rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold">Raw Material QC</h3>
+                    <QCGateStatusBadge status={wo.material_qc_status} />
+                  </div>
+                  {wo.material_qc_approved_at && (
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>Approved: {new Date(wo.material_qc_approved_at).toLocaleString()}</p>
+                      {wo.material_qc_remarks && <p>Remarks: {wo.material_qc_remarks}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {wo.first_piece_qc_status !== 'not_required' && (
+                <div className="p-4 border rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold">First Piece QC</h3>
+                    <QCGateStatusBadge status={wo.first_piece_qc_status} />
+                  </div>
+                  {wo.first_piece_flagged_at && (
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>Flagged: {new Date(wo.first_piece_flagged_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {wo.first_piece_qc_approved_at && (
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>Approved: {new Date(wo.first_piece_qc_approved_at).toLocaleString()}</p>
+                      {wo.first_piece_qc_remarks && <p>Remarks: {wo.first_piece_qc_remarks}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Production Progress Card */}
         {woProgress && (
           <WOProgressCard
@@ -562,7 +644,7 @@ const WorkOrderDetail = () => {
         )}
 
         {/* Production Log Form */}
-        <ProductionLogForm />
+        <ProductionLogForm workOrder={wo} />
 
         {/* Tabs */}
         <Tabs defaultValue="production" className="w-full">
