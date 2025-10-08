@@ -276,7 +276,7 @@ export default function ProductionProgress() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => navigate(`/work-orders/${wo.id}`)}
+                          onClick={() => navigate(`/work-order/${wo.id}`)}
                         >
                           View Details
                         </Button>
