@@ -59,7 +59,6 @@ interface ProductionLogFormProps {
 export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFormProps = {}) {
   const [loading, setLoading] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<string>("");
   
   const {
@@ -72,45 +71,48 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
     resolver: zodResolver(productionLogSchema),
   });
 
+  // Auto-populate work order if provided
+  useEffect(() => {
+    if (propWorkOrder?.id) {
+      setValue("wo_id", propWorkOrder.id);
+    }
+  }, [propWorkOrder, setValue]);
+
   useEffect(() => {
     loadMachines();
-    loadWorkOrders();
-  }, []);
-
-  useEffect(() => {
-    if (selectedMachine) {
-      const machine = machines.find(m => m.id === selectedMachine);
-      if (machine?.current_wo_id) {
-        setValue("wo_id", machine.current_wo_id);
-      }
-    }
-  }, [selectedMachine, machines, setValue]);
+  }, [propWorkOrder]);
 
   const loadMachines = async () => {
-    const { data, error } = await supabase
-      .from("machines")
-      .select("id, machine_id, name, current_wo_id")
-      .order("machine_id");
+    try {
+      // If work order is provided, load only machines assigned to this WO
+      if (propWorkOrder?.id) {
+        const { data: assignments, error: assignError } = await supabase
+          .from("wo_machine_assignments")
+          .select("machine_id, machines(id, machine_id, name, current_wo_id)")
+          .eq("wo_id", propWorkOrder.id)
+          .eq("status", "running");
 
-    if (error) {
+        if (assignError) throw assignError;
+
+        const assignedMachines = assignments
+          ?.map(a => a.machines)
+          .filter(Boolean) || [];
+        
+        setMachines(assignedMachines as Machine[]);
+      } else {
+        // Load all machines if no work order specified
+        const { data, error } = await supabase
+          .from("machines")
+          .select("id, machine_id, name, current_wo_id")
+          .order("machine_id");
+
+        if (error) throw error;
+        setMachines(data || []);
+      }
+    } catch (error: any) {
+      console.error("Error loading machines:", error);
       toast.error("Failed to load machines");
-      return;
     }
-    setMachines(data || []);
-  };
-
-  const loadWorkOrders = async () => {
-    const { data, error } = await supabase
-      .from("work_orders")
-      .select("id, wo_id, display_id, customer, item_code, quantity")
-      .in("status", ["in_progress", "pending"])
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      toast.error("Failed to load work orders");
-      return;
-    }
-    setWorkOrders(data || []);
   };
 
   const onSubmit = async (data: ProductionLogFormData) => {
@@ -151,10 +153,35 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
     <Card>
       <CardHeader>
         <CardTitle>Production Log Entry</CardTitle>
-        <CardDescription>Record production progress and scrap quantities</CardDescription>
+        <CardDescription>
+          {propWorkOrder 
+            ? `Recording for WO: ${propWorkOrder.display_id || propWorkOrder.wo_id} - ${propWorkOrder.item_code}`
+            : "Record production progress and scrap quantities"
+          }
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Show WO info banner if work order is provided */}
+          {propWorkOrder && (
+            <div className="p-4 bg-muted rounded-lg border">
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Customer</p>
+                  <p className="font-medium">{propWorkOrder.customer}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Item Code</p>
+                  <p className="font-medium">{propWorkOrder.item_code}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Target Quantity</p>
+                  <p className="font-medium">{propWorkOrder.quantity} pcs</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="machine_id">Machine *</Label>
@@ -166,38 +193,23 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select machine" />
+                  <SelectValue placeholder={machines.length === 0 ? "No machines assigned" : "Select machine"} />
                 </SelectTrigger>
                 <SelectContent>
                   {machines.map((machine) => (
                     <SelectItem key={machine.id} value={machine.id}>
                       {machine.machine_id} - {machine.name}
-                      {machine.current_wo_id && " (Currently Running)"}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {machines.length === 0 && propWorkOrder && (
+                <p className="text-sm text-muted-foreground">
+                  No machines currently assigned to this work order
+                </p>
+              )}
               {errors.machine_id && (
                 <p className="text-sm text-destructive">{errors.machine_id.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="wo_id">Work Order *</Label>
-              <Select onValueChange={(value) => setValue("wo_id", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select work order" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workOrders.map((wo) => (
-                    <SelectItem key={wo.id} value={wo.id}>
-                      {wo.display_id} - {wo.customer} - {wo.item_code} ({wo.quantity} pcs)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.wo_id && (
-                <p className="text-sm text-destructive">{errors.wo_id.message}</p>
               )}
             </div>
 
