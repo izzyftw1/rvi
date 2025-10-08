@@ -82,7 +82,7 @@ export default function MaterialRequirements() {
       }
     });
     
-    // Set up realtime subscriptions for sales_orders, material_lots, and purchase_orders
+    // Set up realtime subscriptions for sales_orders, sales_order_line_items, material_lots, purchase_orders, and material_requirements
     const channel = supabase
       .channel('material-requirements-updates')
       .on(
@@ -91,6 +91,17 @@ export default function MaterialRequirements() {
           event: '*',
           schema: 'public',
           table: 'sales_orders'
+        },
+        () => {
+          setTimeout(() => loadRequirements(), 0);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sales_order_line_items'
         },
         () => {
           setTimeout(() => loadRequirements(), 0);
@@ -113,6 +124,17 @@ export default function MaterialRequirements() {
           event: '*',
           schema: 'public',
           table: 'purchase_orders'
+        },
+        () => {
+          setTimeout(() => loadRequirements(), 0);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'material_requirements'
         },
         () => {
           setTimeout(() => loadRequirements(), 0);
