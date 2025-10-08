@@ -14,6 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { WOProgressCard } from "@/components/WOProgressCard";
+import { ProductionLogsTable } from "@/components/ProductionLogsTable";
+import { ProductionLogForm } from "@/components/ProductionLogForm";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -34,6 +37,7 @@ const WorkOrderDetail = () => {
   const [showStageDialog, setShowStageDialog] = useState(false);
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
   const [machineAssignments, setMachineAssignments] = useState<any[]>([]);
+  const [woProgress, setWoProgress] = useState<any>(null);
 
   useEffect(() => {
     loadWorkOrderData();
@@ -198,6 +202,14 @@ const WorkOrderDetail = () => {
         .order("scheduled_start", { ascending: true });
 
       setMachineAssignments(assignmentsData || []);
+
+      // Load production progress
+      if (id) {
+        const { data: progressData } = await supabase.rpc("get_wo_progress", {
+          _wo_id: id,
+        });
+        setWoProgress(progressData?.[0] || null);
+      }
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -538,9 +550,24 @@ const WorkOrderDetail = () => {
           </CardContent>
         </Card>
 
+        {/* Production Progress Card */}
+        {woProgress && (
+          <WOProgressCard
+            targetQuantity={woProgress.target_quantity}
+            completedQuantity={woProgress.total_completed}
+            scrapQuantity={woProgress.total_scrap}
+            progressPercentage={woProgress.progress_percentage}
+            remainingQuantity={woProgress.remaining_quantity}
+          />
+        )}
+
+        {/* Production Log Form */}
+        <ProductionLogForm />
+
         {/* Tabs */}
-        <Tabs defaultValue="routing" className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
+        <Tabs defaultValue="production" className="w-full">
+            <TabsList className="grid w-full grid-cols-8">
+              <TabsTrigger value="production">Production</TabsTrigger>
               <TabsTrigger value="routing">Routing</TabsTrigger>
               <TabsTrigger value="stage-history">Stage History</TabsTrigger>
               <TabsTrigger value="design">Design Files</TabsTrigger>
@@ -549,6 +576,10 @@ const WorkOrderDetail = () => {
               <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
               <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="production" className="space-y-4">
+            <ProductionLogsTable woId={id || ""} />
+          </TabsContent>
 
           <TabsContent value="routing" className="space-y-4">
             <Card>

@@ -1167,6 +1167,60 @@ export type Database = {
           },
         ]
       }
+      production_logs: {
+        Row: {
+          created_at: string
+          id: string
+          log_timestamp: string
+          machine_id: string
+          operator_id: string | null
+          quantity_completed: number
+          quantity_scrap: number
+          remarks: string | null
+          shift: string | null
+          wo_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          log_timestamp?: string
+          machine_id: string
+          operator_id?: string | null
+          quantity_completed?: number
+          quantity_scrap?: number
+          remarks?: string | null
+          shift?: string | null
+          wo_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          log_timestamp?: string
+          machine_id?: string
+          operator_id?: string | null
+          quantity_completed?: number
+          quantity_scrap?: number
+          remarks?: string | null
+          shift?: string | null
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_logs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -2201,6 +2255,17 @@ export type Database = {
       check_machine_availability: {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
+      }
+      get_wo_progress: {
+        Args: { _wo_id: string }
+        Returns: {
+          net_completed: number
+          progress_percentage: number
+          remaining_quantity: number
+          target_quantity: number
+          total_completed: number
+          total_scrap: number
+        }[]
       }
       has_permission: {
         Args: { _action: string; _module: string; _user_id: string }

@@ -401,6 +401,10 @@ const Index = () => {
                 <Activity className="h-6 w-6" />
                 <span className="text-sm font-bold">Floor Dashboard</span>
               </Button>
+              <Button onClick={() => navigate("/production-progress")} variant="default" className="h-auto py-4 flex-col gap-2 bg-green-600 hover:bg-green-700">
+                <BarChart3 className="h-6 w-6" />
+                <span className="text-sm font-bold">Production Progress</span>
+              </Button>
             </div>
           </CardContent>
         </Card>
