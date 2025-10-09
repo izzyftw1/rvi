@@ -49,6 +49,7 @@ import Invoices from "./pages/finance/Invoices";
 import Payments from "./pages/finance/Payments";
 import Aging from "./pages/finance/Aging";
 import FinanceSettings from "./pages/finance/FinanceSettings";
+import FinanceReports from "./pages/finance/FinanceReports";
 
 
 const App = () => (
@@ -100,6 +101,7 @@ const App = () => (
         <Route path="/finance/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
         <Route path="/finance/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
         <Route path="/finance/aging" element={<ProtectedRoute><Aging /></ProtectedRoute>} />
+        <Route path="/finance/reports" element={<ProtectedRoute><FinanceReports /></ProtectedRoute>} />
           <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
           <Route path="/logistics" element={<ProtectedRoute><Logistics /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
