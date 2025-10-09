@@ -269,10 +269,7 @@ export default function Sales() {
         gross_weight_per_pc_grams: item.gross_weight_per_pc_g || null,
         cycle_time_seconds: null,
         due_date: item.due_date,
-        notes: null,
-        status: 'approved', // Auto-approve to trigger work order generation
-        price_per_pc: item.price_per_pc || 0,
-        line_amount: item.line_amount || 0
+        price_per_pc: item.price_per_pc || 0
       }));
 
       const { error: lineItemsError } = await supabase
