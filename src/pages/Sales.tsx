@@ -285,8 +285,6 @@ export default function Sales() {
         }])
         .select()
         .single();
-        .select()
-        .single();
 
       if (orderError) throw orderError;
 
