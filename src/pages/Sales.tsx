@@ -261,13 +261,21 @@ export default function Sales() {
       // Create sales order (auto-approved to trigger work order generation)
       const { data: newOrder, error: orderError } = await supabase
         .from("sales_orders")
-        .insert([{
+        .insert([{ 
           so_id,
           customer: formData.customer_name,
           party_code: customers.find(c => c.id === formData.customer_id)?.party_code || "",
           po_number: formData.po_number,
           po_date: formData.po_date,
-          items: [], // Legacy field
+          items: (lineItems || []).map((item: any) => ({
+            item_code: item.item_code,
+            quantity: Number(item.quantity) || 0,
+            due_date: item.due_date || null,
+            price_per_pc: item.price_per_pc ?? null,
+            line_amount: item.price_per_pc != null && item.quantity != null ? Number(item.price_per_pc) * Number(item.quantity) : null,
+            drawing_number: item.drawing_number ?? null,
+            priority: 3
+          })),
           status: "approved", // Auto-approve to skip manual approval step
           created_by: user?.id,
           material_rod_forging_size_mm: null,
@@ -275,6 +283,8 @@ export default function Sales() {
           net_weight_per_pc_grams: null,
           cycle_time_seconds: null
         }])
+        .select()
+        .single();
         .select()
         .single();
 
