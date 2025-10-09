@@ -2,6 +2,14 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import rvLogo from '@/assets/rv-industries-logo.jpg';
 
+declare module 'jspdf' {
+  interface jsPDF {
+    lastAutoTable: {
+      finalY: number;
+    };
+  }
+}
+
 interface InvoiceLineItem {
   srNo: number;
   description: string;

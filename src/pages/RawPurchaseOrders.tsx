@@ -13,7 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, Edit, PackagePlus, ArrowLeft } from "lucide-react";
+import { CheckCircle, Edit, PackagePlus, ArrowLeft, Download } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { ReconciliationRow } from "@/components/ReconciliationRow";
 
 interface RPO {
   id: string;
@@ -45,6 +48,34 @@ interface Supplier {
   name: string;
 }
 
+interface Reconciliation {
+  id: string;
+  rpo_id: string;
+  reason: string;
+  resolution: string;
+  qty_delta_kg: number | null;
+  rate_delta: number | null;
+  amount_delta: number | null;
+  resolution_ref: string | null;
+  notes: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+interface Receipt {
+  id: string;
+  rpo_id: string;
+  qty_received_kg: number;
+  supplier_invoice_no: string | null;
+  supplier_invoice_date: string | null;
+  rate_on_invoice: number | null;
+  received_date: string;
+  lr_no: string | null;
+  transporter: string | null;
+  notes: string | null;
+}
+
 export default function RawPurchaseOrders() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -56,6 +87,9 @@ export default function RawPurchaseOrders() {
   const [selectedRPO, setSelectedRPO] = useState<RPO | null>(null);
   const [detailView, setDetailView] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [detailTab, setDetailTab] = useState("overview");
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -130,6 +164,31 @@ export default function RawPurchaseOrders() {
       setSelectedRPO(rpo);
       setDetailView(true);
       populateEditForm(rpo);
+      await loadReconciliationsAndReceipts(rpo.id);
+    }
+  };
+
+  const loadReconciliationsAndReceipts = async (rpoId: string) => {
+    try {
+      const { data: recons, error: recError } = await supabase
+        .from("raw_po_reconciliations")
+        .select("*")
+        .eq("rpo_id", rpoId)
+        .order("created_at", { ascending: false });
+
+      const { data: recs, error: recpError } = await supabase
+        .from("raw_po_receipts")
+        .select("*")
+        .eq("rpo_id", rpoId)
+        .order("received_date", { ascending: false });
+
+      if (recError) throw recError;
+      if (recpError) throw recpError;
+
+      setReconciliations(recons || []);
+      setReceipts(recs || []);
+    } catch (error: any) {
+      console.error("Error loading reconciliations/receipts:", error);
     }
   };
 
@@ -249,6 +308,124 @@ export default function RawPurchaseOrders() {
   const handleReceiveMaterial = (rpo: RPO) => {
     // Navigate to Material Inwards with pre-filled data
     navigate(`/material-inwards?rpo_id=${rpo.id}&rpo_no=${rpo.rpo_no}`);
+  };
+
+  const handleMarkResolved = async (reconId: string, resolution: string, resolutionRef: string, notes: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Validate resolution type
+      const validResolutions = ["pending", "credit_note", "debit_note", "price_adjustment"];
+      if (!validResolutions.includes(resolution)) {
+        throw new Error("Invalid resolution type");
+      }
+
+      const { error } = await supabase
+        .from("raw_po_reconciliations")
+        .update({
+          resolution: resolution as "pending" | "credit_note" | "debit_note" | "price_adjustment",
+          resolution_ref: resolutionRef || null,
+          notes: notes || null,
+          resolved_by: user.id,
+          resolved_at: new Date().toISOString()
+        })
+        .eq("id", reconId);
+
+      if (error) throw error;
+
+      toast({ title: "Success", description: "Reconciliation marked as resolved" });
+      if (selectedRPO) {
+        await loadReconciliationsAndReceipts(selectedRPO.id);
+      }
+    } catch (error: any) {
+      console.error("Error resolving reconciliation:", error);
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
+  const exportReconciliationPDF = () => {
+    if (!selectedRPO) return;
+
+    const doc = new jsPDF();
+    let yPos = 20;
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Purchase Order Reconciliation Report", 105, yPos, { align: "center" });
+    yPos += 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`RPO No: ${selectedRPO.rpo_no}`, 20, yPos);
+    yPos += 6;
+    doc.text(`Supplier: ${selectedRPO.suppliers?.name || "N/A"}`, 20, yPos);
+    yPos += 6;
+    doc.text(`Item: ${selectedRPO.item_code} - ${selectedRPO.alloy} - ${selectedRPO.material_size_mm}mm`, 20, yPos);
+    yPos += 10;
+
+    // Summary section
+    doc.setFont("helvetica", "bold");
+    doc.text("Order Summary:", 20, yPos);
+    yPos += 6;
+    doc.setFont("helvetica", "normal");
+
+    const totalReceived = receipts.reduce((sum, r) => sum + r.qty_received_kg, 0);
+    const totalInvoiced = receipts.reduce((sum, r) => sum + (r.qty_received_kg * (r.rate_on_invoice || 0)), 0);
+
+    doc.text(`Ordered Qty: ${selectedRPO.qty_ordered_kg.toFixed(3)} kg @ ₹${selectedRPO.rate_per_kg.toFixed(2)}/kg = ₹${selectedRPO.amount_ordered.toFixed(2)}`, 20, yPos);
+    yPos += 6;
+    doc.text(`Received Qty: ${totalReceived.toFixed(3)} kg`, 20, yPos);
+    yPos += 6;
+    doc.text(`Invoiced Amount: ₹${totalInvoiced.toFixed(2)}`, 20, yPos);
+    yPos += 10;
+
+    // Receipts table
+    if (receipts.length > 0) {
+      const receiptData = receipts.map(r => [
+        r.received_date,
+        r.qty_received_kg.toFixed(3),
+        r.rate_on_invoice?.toFixed(2) || "N/A",
+        (r.qty_received_kg * (r.rate_on_invoice || 0)).toFixed(2),
+        r.supplier_invoice_no || "N/A"
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [["Date", "Qty (kg)", "Rate", "Amount", "Invoice No"]],
+        body: receiptData,
+        theme: "grid",
+        headStyles: { fillColor: [66, 66, 66] },
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Variances table
+    if (reconciliations.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Variances:", 20, yPos);
+      yPos += 6;
+
+      const varianceData = reconciliations.map(r => [
+        r.reason.replace(/_/g, " ").toUpperCase(),
+        r.qty_delta_kg?.toFixed(3) || "N/A",
+        r.rate_delta?.toFixed(2) || "N/A",
+        r.amount_delta?.toFixed(2) || "N/A",
+        r.resolution.replace(/_/g, " ").toUpperCase(),
+        r.resolution_ref || "-"
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [["Type", "Qty Δ (kg)", "Rate Δ", "Amount Δ", "Resolution", "Ref"]],
+        body: varianceData,
+        theme: "grid",
+        headStyles: { fillColor: [66, 66, 66] },
+      });
+    }
+
+    doc.save(`RPO_${selectedRPO.rpo_no}_Reconciliation.pdf`);
   };
 
   const filteredRPOs = rpos.filter(rpo => rpo.status === selectedTab);
@@ -413,11 +590,26 @@ export default function RawPurchaseOrders() {
             </CardContent>
           </Card>
 
-          {/* Timeline */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-            </CardHeader>
+          {/* Tabs for Overview/Reconciliation */}
+          <Tabs value={detailTab} onValueChange={setDetailTab}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="reconciliation">
+                Reconciliation
+                {reconciliations.filter(r => r.resolution === "pending").length > 0 && (
+                  <Badge variant="destructive" className="ml-2">
+                    {reconciliations.filter(r => r.resolution === "pending").length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview">
+              {/* Timeline */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Timeline</CardTitle>
+                </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="flex gap-4">
@@ -457,10 +649,87 @@ export default function RawPurchaseOrders() {
                   </div>
                 )}
 
-                {/* TODO: Add receipts and reconciliations timeline items */}
+                {/* Receipts timeline */}
+                {receipts.map((receipt, idx) => (
+                  <div key={receipt.id} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 rounded-full bg-purple-600"></div>
+                      {idx < receipts.length - 1 && <div className="w-0.5 h-full bg-border"></div>}
+                    </div>
+                    <div className="pb-4">
+                      <p className="font-medium">Material Received</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(receipt.received_date).toLocaleDateString()} - {receipt.qty_received_kg.toFixed(3)} kg
+                        {receipt.supplier_invoice_no && ` (Invoice: ${receipt.supplier_invoice_no})`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
+            </TabsContent>
+
+            <TabsContent value="reconciliation">
+              <div className="space-y-4">
+                {/* Reconciliation Banner */}
+                {reconciliations.filter(r => r.resolution === "pending").length > 0 && (
+                  <Card className="border-amber-600 bg-amber-50 dark:bg-amber-950">
+                    <CardContent className="p-4">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        ⚠️ {reconciliations.filter(r => r.resolution === "pending").length} outstanding variance(s) require resolution
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Export Button */}
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={exportReconciliationPDF}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export PDF
+                  </Button>
+                </div>
+
+                {/* Reconciliations Table */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Variances</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {reconciliations.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">No variances recorded</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Qty Δ (kg)</TableHead>
+                            <TableHead>Rate Δ</TableHead>
+                            <TableHead>Amount Δ</TableHead>
+                            <TableHead>Resolution</TableHead>
+                            <TableHead>Ref</TableHead>
+                            <TableHead>Notes</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {reconciliations.map((recon) => (
+                            <ReconciliationRow 
+                              key={recon.id} 
+                              reconciliation={recon} 
+                              onMarkResolved={handleMarkResolved} 
+                            />
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     );
