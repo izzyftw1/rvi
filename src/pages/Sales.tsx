@@ -235,13 +235,20 @@ export default function Sales() {
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate customer selection first
+    if (!formData.customer_id) {
+      toast({ 
+        variant: "destructive", 
+        description: "Please select a customer before creating sales order" 
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Validate
-      if (!formData.customer_id) {
-        throw new Error("Please select a customer");
-      }
+      // Validate line items
       if (lineItems.some(li => !li.item_code || !li.quantity || !li.alloy)) {
         throw new Error("All line items must have item code, quantity, and alloy");
       }
@@ -258,13 +265,20 @@ export default function Sales() {
 
       const { subtotal, gstAmount, total } = calculateTotals();
 
+      // Get selected customer data
+      const selectedCustomer = customers.find(c => c.id === formData.customer_id);
+      if (!selectedCustomer) {
+        throw new Error("Selected customer not found");
+      }
+
       // Create sales order (auto-approved to trigger work order generation)
       const { data: newOrder, error: orderError } = await supabase
         .from("sales_orders")
         .insert([{ 
           so_id,
-          customer: formData.customer_name,
-          party_code: customers.find(c => c.id === formData.customer_id)?.party_code || "",
+          customer: formData.customer_id, // Send UUID, not name
+          customer_id: formData.customer_id, // Explicit customer_id field
+          party_code: selectedCustomer.party_code || "",
           po_number: formData.po_number,
           po_date: formData.po_date,
           currency: formData.currency,
