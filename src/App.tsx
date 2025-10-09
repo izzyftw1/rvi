@@ -41,6 +41,11 @@ import PurchaseSettings from "./pages/PurchaseSettings";
 import MaterialProcurementDashboard from "./pages/MaterialProcurementDashboard";
 import RPOInventoryReport from "./pages/RPOInventoryReport";
 import ReconciliationReport from "./pages/ReconciliationReport";
+import FinanceDashboard from "./pages/finance/FinanceDashboard";
+import Invoices from "./pages/finance/Invoices";
+import Payments from "./pages/finance/Payments";
+import Aging from "./pages/finance/Aging";
+import FinanceSettings from "./pages/finance/FinanceSettings";
 
 
 const App = () => (
@@ -86,6 +91,11 @@ const App = () => (
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="/factory-calendar" element={<ProtectedRoute><FactoryCalendar /></ProtectedRoute>} />
         <Route path="/production-progress" element={<ProtectedRoute><ProductionProgress /></ProtectedRoute>} />
+        <Route path="/finance/dashboard" element={<ProtectedRoute><FinanceDashboard /></ProtectedRoute>} />
+        <Route path="/finance/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+        <Route path="/finance/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+        <Route path="/finance/aging" element={<ProtectedRoute><Aging /></ProtectedRoute>} />
+        <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -21,7 +21,8 @@ import {
   Shield,
   Activity,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  DollarSign
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -396,6 +397,10 @@ const Index = () => {
               <Button onClick={() => navigate("/reports/reconciliation")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <AlertCircle className="h-6 w-6" />
                 <span className="text-sm">Reconciliations</span>
+              </Button>
+              <Button onClick={() => navigate("/finance/dashboard")} variant="secondary" className="h-auto py-4 flex-col gap-2 bg-green-500 hover:bg-green-600 text-white">
+                <DollarSign className="h-6 w-6" />
+                <span className="text-sm font-bold">Finance</span>
               </Button>
               <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
