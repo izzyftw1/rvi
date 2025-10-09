@@ -292,7 +292,8 @@ export default function Sales() {
         gross_weight_per_pc_grams: item.gross_weight_per_pc_g || null,
         cycle_time_seconds: null,
         due_date: item.due_date,
-        price_per_pc: item.price_per_pc || 0
+        notes: null,
+        status: 'approved'
       }));
 
       const { error: lineItemsError } = await supabase
