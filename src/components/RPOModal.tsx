@@ -270,12 +270,18 @@ export function RPOModal({
               <SelectTrigger>
                 <SelectValue placeholder="Select Supplier" />
               </SelectTrigger>
-              <SelectContent>
-                {suppliers.map(sup => (
-                  <SelectItem key={sup.id} value={sup.id}>
-                    {sup.name}
-                  </SelectItem>
-                ))}
+              <SelectContent className="z-[100] bg-background">
+                {suppliers.length === 0 ? (
+                  <div className="px-4 py-2 text-sm text-muted-foreground">
+                    No suppliers found. Please add suppliers first.
+                  </div>
+                ) : (
+                  suppliers.map(sup => (
+                    <SelectItem key={sup.id} value={sup.id}>
+                      {sup.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
