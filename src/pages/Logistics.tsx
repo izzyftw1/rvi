@@ -1,29 +1,76 @@
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Package, Truck, MapPin, FileText } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Package, Truck, MapPin, FileText, Home, Calendar } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export default function Logistics() {
+  // Mock shipment data
+  const shipments = [
+    {
+      id: "SHP-001",
+      wo: "ISO-72823-001",
+      status: "in_transit",
+      transporter: "XYZ Logistics",
+      lr_no: "LR-2024-001",
+      ship_date: "2024-01-15",
+      destination: "Mumbai, India",
+      cartons: 12,
+      weight: 250
+    },
+    {
+      id: "SHP-002",
+      wo: "ISO-72823-002",
+      status: "delivered",
+      transporter: "ABC Transport",
+      lr_no: "LR-2024-002",
+      ship_date: "2024-01-10",
+      destination: "Delhi, India",
+      cartons: 8,
+      weight: 180
+    }
+  ];
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, { variant: any; label: string }> = {
+      pending: { variant: "secondary", label: "Pending" },
+      picked: { variant: "outline", label: "Picked" },
+      in_transit: { variant: "default", label: "In Transit" },
+      delivered: { variant: "default", label: "Delivered" },
+      exception: { variant: "destructive", label: "Exception" }
+    };
+
+    const config = variants[status] || { variant: "secondary", label: status };
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Logistics" subtitle="Shipment tracking and delivery management" />
       
       <div className="p-6 space-y-6">
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Migration Required</AlertTitle>
-          <AlertDescription>
-            The shipments table enhancements are pending database migration approval. Once approved, you'll be able to:
-            <ul className="list-disc list-inside mt-2 space-y-1">
-              <li>Capture transporter, LR No, ship date, boxes/cartons, weights, ship-to address</li>
-              <li>Track shipment events (picked, in transit, delivered, exceptions)</li>
-              <li>Attach delivery documents (CI, Packing List, COO, MTC, POD)</li>
-              <li>Link shipments to invoices</li>
-              <li>View shipment timelines on Work Orders and Sales Orders</li>
-            </ul>
-          </AlertDescription>
-        </Alert>
+        {/* Breadcrumb */}
+        <div className="flex items-center justify-between">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/">
+                    <Home className="h-4 w-4" />
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Logistics</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
 
+        {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -31,8 +78,8 @@ export default function Logistics() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">—</div>
-              <p className="text-xs text-muted-foreground">Pending migration</p>
+              <div className="text-2xl font-bold">2</div>
+              <p className="text-xs text-muted-foreground">Demo data</p>
             </CardContent>
           </Card>
 
@@ -42,8 +89,8 @@ export default function Logistics() {
               <Truck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">—</div>
-              <p className="text-xs text-muted-foreground">Pending migration</p>
+              <div className="text-2xl font-bold">1</div>
+              <p className="text-xs text-muted-foreground">Currently shipping</p>
             </CardContent>
           </Card>
 
@@ -53,8 +100,8 @@ export default function Logistics() {
               <MapPin className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">—</div>
-              <p className="text-xs text-muted-foreground">Pending migration</p>
+              <div className="text-2xl font-bold">1</div>
+              <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
 
@@ -64,62 +111,76 @@ export default function Logistics() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">—</div>
-              <p className="text-xs text-muted-foreground">Pending migration</p>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">All up to date</p>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Planned Features</CardTitle>
-            <CardDescription>
-              Comprehensive shipment and delivery tracking capabilities
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Shipment Creation</h3>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>✓ Create shipments from Dispatch page or Sales Orders</li>
-                  <li>✓ Capture transporter name, LR number, ship date</li>
-                  <li>✓ Record boxes/cartons, gross/net weights</li>
-                  <li>✓ Ship-to address with full details</li>
-                  <li>✓ Attach documents (CI, Packing List, COO, MTC)</li>
-                </ul>
-              </div>
+        {/* Shipment Cards */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold">Active Shipments</h2>
+          </div>
 
-              <div>
-                <h3 className="font-semibold mb-2">Shipment Timeline</h3>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>✓ Event tracking: picked, in transit, out for delivery, delivered</li>
-                  <li>✓ Exception tracking with notes</li>
-                  <li>✓ Timeline widget on Work Orders and Sales Orders</li>
-                  <li>✓ Manual event entry for now</li>
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2">Delivery Confirmation</h3>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>✓ Delivered date capture</li>
-                  <li>✓ Proof of Delivery (POD) attachment (photo/PDF)</li>
-                  <li>✓ Status tracking and notifications</li>
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2">Integration</h3>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>✓ Link shipments to invoices (bi-directional)</li>
-                  <li>✓ Document generation from Dispatch (if QC approved)</li>
-                  <li>✓ Document storage in shipments.documents (JSONB)</li>
-                </ul>
-              </div>
+          {shipments.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-12 space-y-4">
+                <Package className="h-16 w-16 mx-auto text-muted-foreground" />
+                <div>
+                  <h3 className="font-semibold text-lg">No shipments found</h3>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Create a shipment from the Dispatch page or Sales Order
+                  </p>
+                </div>
+                <Button disabled>
+                  <Package className="h-4 w-4 mr-2" />
+                  Create Shipment
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {shipments.map((shipment) => (
+                <Card key={shipment.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">{shipment.id}</CardTitle>
+                      {getStatusBadge(shipment.status)}
+                    </div>
+                    <CardDescription>Work Order: {shipment.wo}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Truck className="h-4 w-4 text-muted-foreground" />
+                      <span>{shipment.transporter}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span>LR: {shipment.lr_no}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span>{shipment.destination}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span>Shipped: {new Date(shipment.ship_date).toLocaleDateString()}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2 border-t">
+                      <span>{shipment.cartons} cartons</span>
+                      <span>•</span>
+                      <span>{shipment.weight} kg</span>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full mt-2" disabled>
+                      View Timeline & Docs
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </div>
     </div>
   );

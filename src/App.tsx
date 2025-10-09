@@ -46,6 +46,7 @@ import RPOInventoryReport from "./pages/RPOInventoryReport";
 import ReconciliationReport from "./pages/ReconciliationReport";
 import FinanceDashboard from "./pages/finance/FinanceDashboard";
 import Invoices from "./pages/finance/Invoices";
+import InvoiceDetail from "./pages/finance/InvoiceDetail";
 import Payments from "./pages/finance/Payments";
 import Aging from "./pages/finance/Aging";
 import FinanceSettings from "./pages/finance/FinanceSettings";
@@ -99,6 +100,7 @@ const App = () => (
         <Route path="/production-progress" element={<ProtectedRoute><ProductionProgress /></ProtectedRoute>} />
         <Route path="/finance/dashboard" element={<ProtectedRoute><FinanceDashboard /></ProtectedRoute>} />
         <Route path="/finance/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+        <Route path="/finance/invoices/:id" element={<ProtectedRoute><InvoiceDetail /></ProtectedRoute>} />
         <Route path="/finance/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
         <Route path="/finance/aging" element={<ProtectedRoute><Aging /></ProtectedRoute>} />
         <Route path="/finance/reports" element={<ProtectedRoute><FinanceReports /></ProtectedRoute>} />

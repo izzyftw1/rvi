@@ -3,9 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { OverdueInvoicesWidget } from "@/components/finance/OverdueInvoicesWidget";
 import { CashflowProjection } from "@/components/finance/CashflowProjection";
 import { FollowupsTodayWidget } from "@/components/finance/FollowupsTodayWidget";
-import { DollarSign, TrendingUp, AlertCircle, Clock } from "lucide-react";
+import { DollarSign, TrendingUp, AlertCircle, Clock, Home } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 
 export default function FinanceDashboard() {
   const [stats, setStats] = useState({
@@ -85,11 +89,49 @@ export default function FinanceDashboard() {
     }
   };
 
+  // Mock trend data for charts
+  const arTrendData = [
+    { month: 'Jan', ar: 45000, overdue: 12000 },
+    { month: 'Feb', ar: 52000, overdue: 15000 },
+    { month: 'Mar', ar: 48000, overdue: 11000 },
+    { month: 'Apr', ar: 61000, overdue: 18000 },
+    { month: 'May', ar: 55000, overdue: 14000 },
+    { month: 'Jun', ar: stats.totalAR, overdue: stats.overdueAR }
+  ];
+
+  const collectionTrendData = [
+    { week: 'W1', collected: 12000 },
+    { week: 'W2', collected: 15000 },
+    { week: 'W3', collected: 11000 },
+    { week: 'W4', collected: 13000 }
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Finance Dashboard" subtitle="Accounts Receivable & Cash Management" />
       
       <div className="p-6 space-y-6">
+        {/* Breadcrumb */}
+        <div className="flex items-center justify-between">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/">
+                    <Home className="h-4 w-4" />
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Finance Dashboard</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+          <Button variant="outline" asChild>
+            <Link to="/finance/reports">View Reports</Link>
+          </Button>
+        </div>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
@@ -149,6 +191,56 @@ export default function FinanceDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <OverdueInvoicesWidget />
           <FollowupsTodayWidget />
+        </div>
+
+        {/* Trend Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>AR Trend</CardTitle>
+              <CardDescription>Total AR vs Overdue (Last 6 months)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={arTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="month" className="text-xs" />
+                  <YAxis className="text-xs" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                  />
+                  <Bar dataKey="ar" fill="hsl(var(--primary))" name="Total AR" />
+                  <Bar dataKey="overdue" fill="hsl(var(--destructive))" name="Overdue" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Collection Trend</CardTitle>
+              <CardDescription>Cash collected (Last 4 weeks)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={collectionTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="week" className="text-xs" />
+                  <YAxis className="text-xs" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="collected" 
+                    stroke="hsl(var(--chart-2))" 
+                    strokeWidth={2} 
+                    name="Collected"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Cashflow Projection */}
