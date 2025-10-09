@@ -37,6 +37,7 @@ import FactoryCalendar from "./pages/FactoryCalendar";
 import ProductionProgress from "./pages/ProductionProgress";
 import RawPurchaseOrders from "./pages/RawPurchaseOrders";
 import SupplierLedger from "./pages/SupplierLedger";
+import PurchaseSettings from "./pages/PurchaseSettings";
 
 
 const App = () => (
@@ -54,6 +55,7 @@ const App = () => (
         <Route path="/items" element={<ProtectedRoute><ItemMaster /></ProtectedRoute>} />
         <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
         <Route path="/purchase/raw-po" element={<ProtectedRoute><RawPurchaseOrders /></ProtectedRoute>} />
+        <Route path="/purchase/settings" element={<ProtectedRoute><PurchaseSettings /></ProtectedRoute>} />
         <Route path="/suppliers/:id/ledger" element={<ProtectedRoute><SupplierLedger /></ProtectedRoute>} />
         <Route path="/materials/inwards" element={<ProtectedRoute><MaterialInwards /></ProtectedRoute>} />
         <Route path="/qc/incoming" element={<ProtectedRoute><QCIncoming /></ProtectedRoute>} />

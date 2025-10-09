@@ -1387,6 +1387,33 @@ export type Database = {
           },
         ]
       }
+      purchase_settings: {
+        Row: {
+          created_at: string
+          id: string
+          rate_variance_tolerance_percent: number
+          require_reason_on_override: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rate_variance_tolerance_percent?: number
+          require_reason_on_override?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rate_variance_tolerance_percent?: number
+          require_reason_on_override?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       qc_records: {
         Row: {
           approved_by: string | null

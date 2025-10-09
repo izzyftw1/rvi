@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,10 @@ export default function MaterialInwards() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [tolerancePercent, setTolerancePercent] = useState(5.0);
+  const [requireReason, setRequireReason] = useState(true);
+  const [showVarianceWarning, setShowVarianceWarning] = useState(false);
+  const [variancePercent, setVariancePercent] = useState(0);
 
   // RPO Selection
   const [rpoSearchOpen, setRpoSearchOpen] = useState(false);
@@ -50,6 +56,7 @@ export default function MaterialInwards() {
     lr_no: "",
     transporter: "",
     notes: "",
+    variance_reason: "",
     invoice_file: null as File | null
   });
 
@@ -60,6 +67,7 @@ export default function MaterialInwards() {
     };
     getUser();
 
+    loadSettings();
     loadApprovedRPOs();
 
     // Check if RPO is pre-selected from URL
@@ -68,6 +76,39 @@ export default function MaterialInwards() {
       loadSpecificRPO(rpoId);
     }
   }, []);
+
+  const loadSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("purchase_settings")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setTolerancePercent(data.rate_variance_tolerance_percent);
+        setRequireReason(data.require_reason_on_override);
+      }
+    } catch (error: any) {
+      console.error("Error loading settings:", error);
+    }
+  };
+
+  useEffect(() => {
+    // Check variance when rate changes
+    if (selectedRPO && formData.rate_on_invoice) {
+      const invoiceRate = parseFloat(formData.rate_on_invoice);
+      const poRate = selectedRPO.rate_per_kg;
+      const variance = ((invoiceRate - poRate) / poRate) * 100;
+      setVariancePercent(variance);
+      setShowVarianceWarning(Math.abs(variance) > tolerancePercent);
+    } else {
+      setShowVarianceWarning(false);
+      setVariancePercent(0);
+    }
+  }, [formData.rate_on_invoice, selectedRPO, tolerancePercent]);
 
   const loadApprovedRPOs = async () => {
     try {
@@ -149,6 +190,13 @@ export default function MaterialInwards() {
 
       if (!formData.heat_no) {
         toast({ variant: "destructive", description: "Heat number is required" });
+        setLoading(false);
+        return;
+      }
+
+      // Check variance and require reason if needed
+      if (showVarianceWarning && requireReason && !formData.variance_reason.trim()) {
+        toast({ variant: "destructive", description: "Variance reason is required when rate differs by more than tolerance" });
         setLoading(false);
         return;
       }
@@ -235,6 +283,10 @@ export default function MaterialInwards() {
           reason = "rate_variance";
         }
 
+        const reconNotes = formData.variance_reason 
+          ? `Variance reason: ${formData.variance_reason}. Auto-created on receipt. Qty received: ${qtyReceived} kg, Rate: ${rateOnInvoice}`
+          : `Auto-created on receipt. Qty received: ${qtyReceived} kg, Rate: ${rateOnInvoice}`;
+
         await supabase
           .from("raw_po_reconciliations")
           .insert({
@@ -244,8 +296,28 @@ export default function MaterialInwards() {
             amount_delta: amountDelta,
             reason: reason as any,
             resolution: "pending" as any,
-            notes: `Auto-created on receipt. Qty received: ${qtyReceived} kg, Rate: ${rateOnInvoice}`
+            notes: reconNotes
           } as any);
+
+        // 4a. Notify Purchase Managers if variance exceeds tolerance
+        if (showVarianceWarning) {
+          const { data: purchaseManagers } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .eq("role", "purchase");
+
+          if (purchaseManagers && purchaseManagers.length > 0) {
+            const managerIds = purchaseManagers.map(m => m.user_id);
+            await supabase.rpc("notify_users", {
+              _user_ids: managerIds,
+              _type: "rate_variance_alert",
+              _title: "Rate Variance Alert",
+              _message: `RPO ${selectedRPO.rpo_no}: Invoice rate ₹${rateOnInvoice.toFixed(2)}/kg differs from PO rate ₹${selectedRPO.rate_per_kg.toFixed(2)}/kg by ${variancePercent.toFixed(2)}%. Reason: ${formData.variance_reason || "Not provided"}`,
+              _entity_type: "raw_purchase_order",
+              _entity_id: selectedRPO.id
+            });
+          }
+        }
       }
 
       // 5. Update RPO status
@@ -277,8 +349,10 @@ export default function MaterialInwards() {
         lr_no: "",
         transporter: "",
         notes: "",
+        variance_reason: "",
         invoice_file: null
       });
+      setShowVarianceWarning(false);
 
       loadApprovedRPOs();
     } catch (error: any) {
@@ -378,6 +452,18 @@ export default function MaterialInwards() {
                     </div>
                   </div>
 
+                  {/* Variance Warning */}
+                  {showVarianceWarning && (
+                    <Alert variant="destructive" className="border-red-600 bg-red-50 dark:bg-red-950">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Rate Variance Alert:</strong> Invoice rate differs from PO rate by {variancePercent.toFixed(2)}% 
+                        (exceeds tolerance of {tolerancePercent}%). 
+                        {requireReason && " A reason is required to proceed."}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="rate_on_invoice">Rate on Invoice (per kg)</Label>
@@ -387,10 +473,12 @@ export default function MaterialInwards() {
                         step="0.01"
                         value={formData.rate_on_invoice}
                         onChange={(e) => setFormData({...formData, rate_on_invoice: e.target.value})}
+                        className={showVarianceWarning ? "border-red-600" : ""}
                       />
                       {formData.rate_on_invoice && parseFloat(formData.rate_on_invoice) !== selectedRPO.rate_per_kg && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          Rate variance: ₹{(parseFloat(formData.rate_on_invoice) - selectedRPO.rate_per_kg).toFixed(2)}/kg
+                        <p className={`text-xs mt-1 ${showVarianceWarning ? "text-red-600 font-semibold" : "text-amber-600"}`}>
+                          Rate variance: ₹{(parseFloat(formData.rate_on_invoice) - selectedRPO.rate_per_kg).toFixed(2)}/kg 
+                          ({variancePercent > 0 ? "+" : ""}{variancePercent.toFixed(2)}%)
                         </p>
                       )}
                     </div>
@@ -403,6 +491,23 @@ export default function MaterialInwards() {
                       />
                     </div>
                   </div>
+
+                  {/* Variance Reason (required if exceeds tolerance) */}
+                  {showVarianceWarning && requireReason && (
+                    <div>
+                      <Label htmlFor="variance_reason" className="text-red-600">
+                        Variance Reason * (Required)
+                      </Label>
+                      <Input
+                        id="variance_reason"
+                        value={formData.variance_reason}
+                        onChange={(e) => setFormData({...formData, variance_reason: e.target.value})}
+                        placeholder="Explain why the rate differs from PO rate"
+                        className="border-red-600"
+                        required
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="transporter">Transporter</Label>

@@ -552,10 +552,13 @@ export default function RawPurchaseOrders() {
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Rate per kg</Label>
-                  {editMode ? (
+                  {editMode && selectedRPO.status === "draft" ? (
                     <Input type="number" step="0.01" value={editForm.rate_per_kg} onChange={(e) => setEditForm({...editForm, rate_per_kg: e.target.value})} />
                   ) : (
-                    <p className="font-medium">₹{selectedRPO.rate_per_kg.toFixed(2)}</p>
+                    <>
+                      <p className="font-medium">₹{selectedRPO.rate_per_kg.toFixed(2)}</p>
+                      {selectedRPO.status !== "draft" && <p className="text-xs text-muted-foreground">🔒 Frozen on approval</p>}
+                    </>
                   )}
                 </div>
                 <div>
