@@ -276,8 +276,8 @@ export default function Sales() {
         .from("sales_orders")
         .insert([{ 
           so_id,
-          customer: formData.customer_id, // Send UUID, not name
-          customer_id: formData.customer_id, // Explicit customer_id field
+          customer: selectedCustomer.customer_name, // Keep display name in 'customer' (text)
+          customer_id: formData.customer_id, // Store UUID linkage
           party_code: selectedCustomer.party_code || "",
           po_number: formData.po_number,
           po_date: formData.po_date,
