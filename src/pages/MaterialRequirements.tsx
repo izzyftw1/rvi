@@ -15,7 +15,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { Home } from "lucide-react";
 
 interface MaterialRequirement {
-  material_size_mm: number;
+  material_size_mm: string;
   alloy: string;
   total_pcs: number;
   total_gross_weight_kg: number;
@@ -59,6 +59,20 @@ export default function MaterialRequirements() {
   const [debug, setDebug] = useState<{ approved: number; grouped: number; inventory: number; error: string }>({ approved: 0, grouped: 0, inventory: 0, error: "" });
   const [rpoModalOpen, setRpoModalOpen] = useState(false);
   const [selectedRequirement, setSelectedRequirement] = useState<MaterialRequirement | null>(null);
+
+  // Normalize and format material size values like "20 hex" / "hex 20" / "20" → "20 HEX" or "20 mm"
+  const normalizeSize = (raw: any): string => {
+    if (!raw) return "";
+    const s = String(raw).trim();
+    // Extract numeric and textual parts regardless of order
+    const numMatch = s.match(/\d+(?:\.\d+)?/);
+    const textMatch = s.match(/[a-zA-Z]+/g);
+    const num = numMatch ? numMatch[0] : "";
+    const text = textMatch ? textMatch.join(" ").toUpperCase() : "";
+    if (num && text) return `${num} ${text}`;
+    if (num) return `${num} mm`;
+    return s.toUpperCase();
+  };
 
   useEffect(() => {
     // Auth: set up listener FIRST, then check existing session
@@ -108,7 +122,7 @@ export default function MaterialRequirements() {
       // Fetch WOs that haven't started production (goods_in stage only)
       const { data: workOrders, error: woError } = await supabase
         .from("work_orders")
-        .select("id, wo_id, item_code, quantity, gross_weight_per_pc, net_weight_per_pc, material_size_mm, sales_order, current_stage")
+        .select("id, wo_id, item_code, quantity, gross_weight_per_pc, net_weight_per_pc, material_size_mm, sales_order, current_stage, financial_snapshot")
         .eq("current_stage", "goods_in");
 
       if (woError) throw woError;
@@ -155,7 +169,7 @@ export default function MaterialRequirements() {
 
       // Process WOs for requirements (only if no approved RPO exists)
       for (const wo of workOrders || []) {
-        const size = wo.material_size_mm;
+        const size = normalizeSize(wo.material_size_mm);
         const alloy = ""; // Extract from WO if available
         const key = `${size}-${alloy}`;
 
