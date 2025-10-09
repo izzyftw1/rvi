@@ -2560,6 +2560,7 @@ export type Database = {
           gross_weight_per_pc_grams: number | null
           id: string
           item_code: string
+          item_id: string | null
           line_number: number
           material_size_mm: string | null
           net_weight_per_pc_grams: number | null
@@ -2583,6 +2584,7 @@ export type Database = {
           gross_weight_per_pc_grams?: number | null
           id?: string
           item_code: string
+          item_id?: string | null
           line_number: number
           material_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
@@ -2606,6 +2608,7 @@ export type Database = {
           gross_weight_per_pc_grams?: number | null
           id?: string
           item_code?: string
+          item_id?: string | null
           line_number?: number
           material_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
@@ -2633,6 +2636,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_operator_daily"
             referencedColumns: ["operator_id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "item_master"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "sales_order_line_items_rejected_by_fkey"
@@ -2679,6 +2689,7 @@ export type Database = {
           created_by: string | null
           currency: string | null
           customer: string
+          customer_id: string | null
           cycle_time_seconds: number | null
           drawing_number: string | null
           expected_delivery_date: string | null
@@ -2707,6 +2718,7 @@ export type Database = {
           created_by?: string | null
           currency?: string | null
           customer: string
+          customer_id?: string | null
           cycle_time_seconds?: number | null
           drawing_number?: string | null
           expected_delivery_date?: string | null
@@ -2735,6 +2747,7 @@ export type Database = {
           created_by?: string | null
           currency?: string | null
           customer?: string
+          customer_id?: string | null
           cycle_time_seconds?: number | null
           drawing_number?: string | null
           expected_delivery_date?: string | null
@@ -2756,7 +2769,15 @@ export type Database = {
           total_amount?: number | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sales_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scan_events: {
         Row: {
@@ -3454,6 +3475,7 @@ export type Database = {
           created_at: string
           current_stage: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
+          customer_id: string | null
           customer_po: string | null
           cycle_time_seconds: number | null
           dispatch_allowed: boolean | null
@@ -3492,6 +3514,7 @@ export type Database = {
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
+          customer_id?: string | null
           customer_po?: string | null
           cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
@@ -3530,6 +3553,7 @@ export type Database = {
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string
+          customer_id?: string | null
           customer_po?: string | null
           cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
@@ -3564,6 +3588,13 @@ export type Database = {
           wo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_orders_site_id_fkey"
             columns: ["site_id"]
