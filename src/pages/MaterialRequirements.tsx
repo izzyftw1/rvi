@@ -10,13 +10,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Download, FileSpreadsheet, ShoppingCart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { RPOModal } from "@/components/RPOModal";
 
 interface MaterialRequirement {
   material_size_mm: number;
+  alloy: string;
   total_pcs: number;
   total_gross_weight_kg: number;
   total_net_weight_kg: number;
-  inventory_pcs: number;
   inventory_gross_kg: number;
   inventory_net_kg: number;
   surplus_deficit_kg: number;
@@ -28,13 +29,13 @@ interface MaterialRequirement {
     pcs: number;
     id: string;
   }>;
-  status: string;
-  requirement_id?: string;
-  purchase_order?: {
-    po_id: string;
-    status: string;
-    quantity_kg: number;
-  } | null;
+  linked_work_orders: Array<{
+    wo_id: string;
+    id: string;
+    item_code: string;
+  }>;
+  procurement_status: "none" | "draft" | "pending_approval" | "approved" | "part_received";
+  rpo_no?: string | null;
 }
 
 export default function MaterialRequirements() {
@@ -54,6 +55,8 @@ export default function MaterialRequirements() {
   const [session, setSession] = useState<any>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [debug, setDebug] = useState<{ approved: number; grouped: number; inventory: number; error: string }>({ approved: 0, grouped: 0, inventory: 0, error: "" });
+  const [rpoModalOpen, setRpoModalOpen] = useState(false);
+  const [selectedRequirement, setSelectedRequirement] = useState<MaterialRequirement | null>(null);
 
   useEffect(() => {
     // Auth: set up listener FIRST, then check existing session
@@ -82,64 +85,13 @@ export default function MaterialRequirements() {
       }
     });
     
-    // Set up realtime subscriptions for sales_orders, sales_order_line_items, material_lots, purchase_orders, and material_requirements
+    // Set up realtime subscriptions
     const channel = supabase
       .channel('material-requirements-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sales_orders'
-        },
-        () => {
-          setTimeout(() => loadRequirements(), 0);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sales_order_line_items'
-        },
-        () => {
-          setTimeout(() => loadRequirements(), 0);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'material_lots'
-        },
-        () => {
-          setTimeout(() => loadRequirements(), 0);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'purchase_orders'
-        },
-        () => {
-          setTimeout(() => loadRequirements(), 0);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'material_requirements'
-        },
-        () => {
-          setTimeout(() => loadRequirements(), 0);
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => setTimeout(() => loadRequirements(), 0))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => setTimeout(() => loadRequirements(), 0))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, () => setTimeout(() => loadRequirements(), 0))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, () => setTimeout(() => loadRequirements(), 0))
       .subscribe();
 
     return () => {
@@ -150,300 +102,175 @@ export default function MaterialRequirements() {
 
   const loadRequirements = async () => {
     setLoading(true);
-
     try {
-      // Fetch all approved sales orders
-      const { data: salesOrdersRaw, error } = await supabase
+      // Fetch WOs that haven't started production (goods_in stage only)
+      const { data: workOrders, error: woError } = await supabase
+        .from("work_orders")
+        .select("id, wo_id, item_code, quantity, gross_weight_per_pc, net_weight_per_pc, material_size_mm, sales_order, current_stage")
+        .eq("current_stage", "goods_in");
+
+      if (woError) throw woError;
+
+      // Fetch related SOs
+      const soIds = [...new Set(workOrders?.map(wo => wo.sales_order).filter(Boolean))];
+      const { data: salesOrders, error: soError } = await supabase
         .from("sales_orders")
-        .select("*")
-        .eq("status", "approved");
+        .select("id, so_id, customer")
+        .in("id", soIds);
 
-      if (error) throw error;
+      if (soError) throw soError;
 
-      const salesOrders = salesOrdersRaw ?? [];
-
-      // Fetch all material lots with inventory
-      const { data: materialLotsRaw, error: lotsError } = await supabase
-        .from("material_lots")
-        .select("*")
-        .in("status", ["received", "in_use"]);
-
-      if (lotsError) throw lotsError;
-
-      const materialLots = materialLotsRaw ?? [];
-
-      // Extract unique customers and suppliers
-      const uniqueCustomers = [...new Set(salesOrders.map((so: any) => so.customer).filter(Boolean))];
-      const uniqueSuppliers = [...new Set(materialLots.map((lot: any) => lot.supplier).filter(Boolean))];
-      setCustomers(uniqueCustomers);
-      setSuppliers(uniqueSuppliers);
-
-      // Group requirements by material size
-      const grouped = new Map<number, MaterialRequirement>();
-
-      for (const so of salesOrders as any[]) {
-        const size = (so as any).material_rod_forging_size_mm;
-        if (!size) continue;
-
-        const items = Array.isArray(so.items) ? so.items : [];
-        const totalPcs = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-
-        if (!grouped.has(size)) {
-          grouped.set(size, {
-            material_size_mm: Number(size),
-            total_pcs: 0,
-            total_gross_weight_kg: 0,
-            total_net_weight_kg: 0,
-            inventory_pcs: 0,
-            inventory_gross_kg: 0,
-            inventory_net_kg: 0,
-            surplus_deficit_kg: 0,
-            last_gi_reference: null,
-            last_gi_date: null,
-            linked_sales_orders: [],
-            status: "not_ordered"
-          });
-        }
-
-        const req = grouped.get(size)!;
-        req.total_pcs += totalPcs;
-        req.total_gross_weight_kg += (totalPcs * Number(so.gross_weight_per_pc_grams || 0)) / 1000;
-        req.total_net_weight_kg += (totalPcs * Number(so.net_weight_per_pc_grams || 0)) / 1000;
-        req.linked_sales_orders.push({
-          so_id: so.so_id,
-          customer: so.customer,
-          pcs: totalPcs,
-          id: so.id
-        });
-      }
-
-      // Add inventory data from material lots
-      const inventoryBySize = new Map<number, { gross: number; net: number; lastLot: any }>();
-      
-      console.log('[MaterialReq] Processing', materialLots.length, 'material lots');
-      
-      for (const lot of materialLots as any[]) {
-        const size = Number(lot.material_size_mm);
-        console.log('[MaterialReq] Lot', lot.lot_id, 'size:', size, 'gross:', lot.gross_weight, 'net:', lot.net_weight);
-        if (!size) continue;
-
-        if (!inventoryBySize.has(size)) {
-          inventoryBySize.set(size, { gross: 0, net: 0, lastLot: lot });
-        }
-
-        const inv = inventoryBySize.get(size)!;
-        inv.gross += Number(lot.gross_weight || 0);
-        inv.net += Number(lot.net_weight || 0);
-        
-        // Track most recent lot
-        if (new Date(lot.received_date_time) > new Date(inv.lastLot.received_date_time)) {
-          inv.lastLot = lot;
-        }
-
-        // Add to grouped if size exists in inventory but not in requirements
-        if (!grouped.has(size)) {
-          grouped.set(size, {
-            material_size_mm: size,
-            total_pcs: 0,
-            total_gross_weight_kg: 0,
-            total_net_weight_kg: 0,
-            inventory_pcs: 0,
-            inventory_gross_kg: 0,
-            inventory_net_kg: 0,
-            surplus_deficit_kg: 0,
-            last_gi_reference: null,
-            last_gi_date: null,
-            linked_sales_orders: [],
-            status: "not_ordered"
-          });
-        }
-      }
-
-      // Merge inventory into requirements - SYNC BY GROSS WEIGHT
-      for (const [size, req] of grouped.entries()) {
-        const inv = inventoryBySize.get(size);
-        if (inv) {
-          req.inventory_gross_kg = inv.gross;
-          req.inventory_net_kg = inv.net;
-          // Calculate surplus/deficit based on GROSS WEIGHT
-          req.surplus_deficit_kg = inv.gross - req.total_gross_weight_kg;
-          req.last_gi_reference = inv.lastLot.lot_id;
-          req.last_gi_date = new Date(inv.lastLot.received_date_time).toLocaleDateString();
-        } else {
-          // No inventory - deficit equals requirement
-          req.surplus_deficit_kg = -req.total_gross_weight_kg;
-        }
-      }
-
-      // Fetch related purchase orders for each material size
-      const { data: purchaseOrders, error: poError } = await supabase
-        .from("purchase_orders")
-        .select("*")
-        .in("status", ["draft", "pending", "approved"])
-        .not("material_size_mm", "is", null);
-
-      if (poError) throw poError;
-
-      // Map POs by material size
-      const poMap = new Map<number, any>();
-      (purchaseOrders ?? []).forEach((po: any) => {
-        const size = Number(po.material_size_mm);
-        if (!poMap.has(size) || po.created_at > poMap.get(size).created_at) {
-          poMap.set(size, po);
-        }
-      });
-
-      // Fetch statuses from material_requirements table
-      const { data: statusData, error: statusErr } = await supabase
-        .from("material_requirements")
+      // Fetch inventory from inventory_lots
+      const { data: inventoryLots, error: invError } = await supabase
+        .from("inventory_lots")
         .select("*");
 
-      if (statusErr) throw statusErr;
+      if (invError) throw invError;
 
-      const statusMap = new Map((statusData ?? []).map((s: any) => [Number(s.material_size_mm), { status: s.status, id: s.id }]));
+      // Fetch all RPOs
+      const { data: rpos, error: rpoError } = await supabase
+        .from("raw_purchase_orders")
+        .select("*")
+        .in("status", ["draft", "pending_approval", "approved", "part_received"]);
 
-      // Apply statuses and calculate final status
-      const requirementsArray = Array.from(grouped.values()).map((req) => {
-        const relatedPO = poMap.get(req.material_size_mm);
-        let finalStatus = req.surplus_deficit_kg >= 0 ? "covered" : "shortfall";
-        
-        // Update status based on PO existence
-        if (relatedPO && req.surplus_deficit_kg < 0) {
-          if (relatedPO.status === "draft") {
-            finalStatus = "po_raised";
-          } else if (relatedPO.status === "approved" || relatedPO.status === "pending") {
-            finalStatus = "po_approved";
-          }
+      if (rpoError) throw rpoError;
+
+      // Group by size/alloy
+      const grouped = new Map<string, MaterialRequirement>();
+
+      // Process WOs for requirements (only if no approved RPO exists)
+      for (const wo of workOrders || []) {
+        const size = wo.material_size_mm;
+        const alloy = ""; // Extract from WO if available
+        const key = `${size}-${alloy}`;
+
+        // Check if approved RPO exists for this WO
+        const hasApprovedRPO = rpos?.some(
+          rpo => rpo.wo_id === wo.id && rpo.status === "approved"
+        );
+
+        if (hasApprovedRPO) continue; // Skip this WO
+
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            material_size_mm: Number(size),
+            alloy,
+            total_pcs: 0,
+            total_gross_weight_kg: 0,
+            total_net_weight_kg: 0,
+            inventory_gross_kg: 0,
+            inventory_net_kg: 0,
+            surplus_deficit_kg: 0,
+            last_gi_reference: null,
+            last_gi_date: null,
+            linked_sales_orders: [],
+            linked_work_orders: [],
+            procurement_status: "none"
+          });
         }
 
-        return {
-          ...req,
-          status: finalStatus,
-          requirement_id: statusMap.get(req.material_size_mm)?.id,
-          purchase_order: relatedPO ? {
-            po_id: relatedPO.po_id,
-            status: relatedPO.status,
-            quantity_kg: relatedPO.quantity_kg
-          } : null
-        };
-      });
+        const req = grouped.get(key)!;
+        req.total_pcs += wo.quantity;
+        req.total_gross_weight_kg += (wo.quantity * (wo.gross_weight_per_pc || 0)) / 1000;
+        req.total_net_weight_kg += (wo.quantity * (wo.net_weight_per_pc || 0)) / 1000;
 
+        req.linked_work_orders.push({
+          wo_id: wo.wo_id,
+          id: wo.id,
+          item_code: wo.item_code
+        });
+
+        // Find related SO
+        const relatedSO = salesOrders?.find(so => so.id === wo.sales_order);
+        if (relatedSO && !req.linked_sales_orders.find(s => s.id === relatedSO.id)) {
+          req.linked_sales_orders.push({
+            so_id: relatedSO.so_id,
+            customer: relatedSO.customer,
+            pcs: 0,
+            id: relatedSO.id
+          });
+        }
+      }
+
+      // Add inventory data
+      for (const lot of inventoryLots || []) {
+        const size = lot.material_size_mm;
+        const alloy = lot.alloy || "";
+        const key = `${size}-${alloy}`;
+
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            material_size_mm: Number(size),
+            alloy,
+            total_pcs: 0,
+            total_gross_weight_kg: 0,
+            total_net_weight_kg: 0,
+            inventory_gross_kg: 0,
+            inventory_net_kg: 0,
+            surplus_deficit_kg: 0,
+            last_gi_reference: lot.lot_id,
+            last_gi_date: new Date(lot.received_date).toLocaleDateString(),
+            linked_sales_orders: [],
+            linked_work_orders: [],
+            procurement_status: "none"
+          });
+        }
+
+        const req = grouped.get(key)!;
+        req.inventory_gross_kg += Number(lot.qty_kg || 0);
+        req.last_gi_reference = lot.lot_id;
+        req.last_gi_date = new Date(lot.received_date).toLocaleDateString();
+      }
+
+      // Calculate surplus/deficit and procurement status
+      for (const [key, req] of grouped.entries()) {
+        req.surplus_deficit_kg = req.inventory_gross_kg - req.total_gross_weight_kg;
+
+        // Find RPO for this size/alloy
+        const relatedRPO = rpos?.find(
+          rpo => rpo.material_size_mm === req.material_size_mm.toString() && 
+                 (rpo.alloy === req.alloy || (!rpo.alloy && !req.alloy))
+        );
+
+        if (relatedRPO) {
+          if (relatedRPO.status === "draft") {
+            req.procurement_status = "draft";
+          } else if (relatedRPO.status === "pending_approval") {
+            req.procurement_status = "pending_approval";
+          } else if (relatedRPO.status === "approved") {
+            req.procurement_status = "approved";
+          } else if (relatedRPO.status === "part_received") {
+            req.procurement_status = "part_received";
+          }
+          req.rpo_no = relatedRPO.rpo_no;
+        }
+      }
+
+      const requirementsArray = Array.from(grouped.values());
       setRequirements(requirementsArray);
-      setDebug({ 
-        approved: salesOrders.length, 
+      setDebug({
+        approved: workOrders?.length || 0,
         grouped: requirementsArray.length,
-        inventory: materialLots.length,
-        error: "" 
+        inventory: inventoryLots?.length || 0,
+        error: ""
       });
     } catch (err: any) {
       setDebug({ approved: 0, grouped: 0, inventory: 0, error: err?.message || String(err) });
-      toast({ variant: "destructive", description: `Failed to load dashboard: ${err?.message || err}` });
+      toast({ variant: "destructive", description: `Failed to load: ${err?.message || err}` });
     } finally {
       setLoading(false);
     }
   };
 
-  const updateStatus = async (materialSize: number, newStatus: string, requirementId?: string) => {
-    if (requirementId) {
-      // Update existing
-      const { error } = await supabase
-        .from("material_requirements")
-        .update({ status: newStatus })
-        .eq("id", requirementId);
-
-      if (error) {
-        toast({ variant: "destructive", description: "Failed to update status" });
-        return;
-      }
-    } else {
-      // Create new
-      const { error } = await supabase
-        .from("material_requirements")
-        .insert({ material_size_mm: materialSize, status: newStatus });
-
-      if (error) {
-        toast({ variant: "destructive", description: "Failed to update status" });
-        return;
-      }
-    }
-
-    toast({ description: "Status updated successfully" });
-    loadRequirements();
-  };
-
-  const handlePlaceOrder = async (materialSize: string, requiredQty: number, relatedSOs: string[]) => {
-    try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
-
-      // Generate PO number: P-YYYYMMDD-###
-      const today = new Date();
-      const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-      
-      const { data: existingPOs } = await supabase
-        .from("purchase_orders")
-        .select("po_id")
-        .like("po_id", `P-${dateStr}-%`)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      
-      const lastNum = existingPOs?.[0]?.po_id?.split('-')[2] || "000";
-      const newNum = String(parseInt(lastNum) + 1).padStart(3, '0');
-      const newPOId = `P-${dateStr}-${newNum}`;
-
-      // Get full SO data for linked orders
-      const { data: linkedSOData } = await supabase
-        .from("sales_orders")
-        .select("id, so_id, customer, po_number")
-        .in("so_id", relatedSOs);
-
-      const linkedSalesOrders = linkedSOData?.map(so => ({
-        id: so.id,
-        so_id: so.so_id,
-        customer: so.customer,
-        po_number: so.po_number
-      })) || [];
-
-      // Create draft PO with all required fields
-      const { error } = await supabase
-        .from("purchase_orders")
-        .insert({
-          po_id: newPOId,
-          material_size_mm: materialSize,
-          quantity_kg: Math.abs(requiredQty), // Ensure positive quantity
-          linked_sales_orders: linkedSalesOrders,
-          material_spec: {
-            size_mm: materialSize,
-            type: "raw_material"
-          },
-          status: "draft",
-          created_by: user.id,
-          so_id: linkedSalesOrders[0]?.id || null // Link to first SO for backward compatibility
-        });
-
-      if (error) throw error;
-
-      toast({ 
-        description: "Purchase order draft created successfully",
-        title: `PO ${newPOId} Created`
-      });
-
-      // Navigate to Purchase page after a short delay
-      setTimeout(() => navigate("/purchase"), 1500);
-    } catch (error: any) {
-      console.error("Error creating draft PO:", error);
-      toast({ 
-        variant: "destructive", 
-        title: "Failed to Create Purchase Order",
-        description: error?.message || "An error occurred while creating the draft PO"
-      });
-    }
+  const handlePlaceOrder = (req: MaterialRequirement) => {
+    setSelectedRequirement(req);
+    setRpoModalOpen(true);
   };
 
   const exportToExcel = async () => {
     const data = filteredRequirements.map(req => ({
       "Raw Material Size (mm)": req.material_size_mm,
+      "Alloy": req.alloy,
       "Requirement Gross (kg)": req.total_gross_weight_kg.toFixed(2),
       "Requirement Net (kg)": req.total_net_weight_kg.toFixed(2),
       "Requirement (pcs)": req.total_pcs,
@@ -451,9 +278,11 @@ export default function MaterialRequirements() {
       "Inventory Net (kg)": req.inventory_net_kg.toFixed(2),
       "Surplus/Deficit (kg)": req.surplus_deficit_kg.toFixed(2),
       "Linked Sales Orders": req.linked_sales_orders.map(so => so.so_id).join(", "),
+      "Linked Work Orders": req.linked_work_orders.map(wo => wo.wo_id).join(", "),
       "Last GI Reference": req.last_gi_reference || "N/A",
       "Last GI Date": req.last_gi_date || "N/A",
-      "Status": req.status
+      "Procurement Status": req.procurement_status,
+      "RPO No": req.rpo_no || "N/A"
     }));
 
     const XLSX = await import("xlsx");
@@ -467,23 +296,24 @@ export default function MaterialRequirements() {
     const { default: jsPDF } = await import("jspdf");
     await import("jspdf-autotable");
 
-    const doc = new jsPDF();
+    const doc = new jsPDF("landscape");
     
     doc.setFontSize(18);
     doc.text("Raw Material Requirements", 14, 20);
     
     const tableData = filteredRequirements.map(req => [
       req.material_size_mm.toString(),
+      req.alloy || "N/A",
       `${req.total_gross_weight_kg.toFixed(2)} kg (${req.total_pcs} pcs)`,
       `${req.inventory_gross_kg.toFixed(2)} kg`,
       `${req.surplus_deficit_kg >= 0 ? '+' : ''}${req.surplus_deficit_kg.toFixed(2)} kg`,
-      req.linked_sales_orders.map(so => so.so_id).join(", "),
-      req.last_gi_reference || "N/A",
-      req.status === "covered" ? "Covered" : "Shortfall"
+      req.linked_work_orders.map(wo => wo.wo_id).join(", "),
+      req.procurement_status,
+      req.rpo_no || "N/A"
     ]);
 
     (doc as any).autoTable({
-      head: [["Size (mm)", "Requirement", "Inventory", "Surplus/Deficit", "Sales Orders", "Last GI", "Status"]],
+      head: [["Size", "Alloy", "Requirement", "Inventory", "Surplus/Deficit", "Work Orders", "Status", "RPO"]],
       body: tableData,
       startY: 30,
     });
@@ -499,10 +329,9 @@ export default function MaterialRequirements() {
       return false;
     }
     if (filterStatus !== "all") {
-      if (filterStatus === "covered" && req.status !== "covered") return false;
-      if (filterStatus === "shortfall" && req.status !== "shortfall") return false;
+      if (filterStatus === "covered" && req.surplus_deficit_kg < 0) return false;
+      if (filterStatus === "shortfall" && req.surplus_deficit_kg >= 0) return false;
     }
-    // Note: supplier and date filters intentionally not applied to keep view responsive
     return true;
   });
 
@@ -669,13 +498,13 @@ export default function MaterialRequirements() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Size (mm)</TableHead>
-                <TableHead>Requirement</TableHead>
-                <TableHead>Inventory Available</TableHead>
+                <TableHead>Size (mm) / Alloy</TableHead>
+                <TableHead>Requirement (kg)</TableHead>
+                <TableHead>Inventory (kg)</TableHead>
                 <TableHead>Surplus/Deficit</TableHead>
-                <TableHead>Linked Sales Orders</TableHead>
+                <TableHead>Linked SO/WO</TableHead>
                 <TableHead>Last GI Ref</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Procurement Status</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -689,33 +518,44 @@ export default function MaterialRequirements() {
                   <TableCell colSpan={8} className="text-center">No Data Available</TableCell>
                 </TableRow>
               ) : (
-                filteredRequirements.map((req) => (
-                  <TableRow key={req.material_size_mm} className={req.status === "shortfall" ? "bg-destructive/5" : "bg-green-50/50 dark:bg-green-950/20"}>
-                    <TableCell className="font-bold">{req.material_size_mm}</TableCell>
+                filteredRequirements.map((req, idx) => (
+                  <TableRow key={`${req.material_size_mm}-${req.alloy}-${idx}`} className={req.surplus_deficit_kg < 0 ? "bg-destructive/5" : "bg-green-50/50 dark:bg-green-950/20"}>
+                    <TableCell>
+                      <div className="font-bold">{req.material_size_mm} mm</div>
+                      {req.alloy && <div className="text-xs text-muted-foreground">{req.alloy}</div>}
+                    </TableCell>
                     <TableCell>
                       <div className="text-sm">
                         <div className="font-medium">{req.total_gross_weight_kg.toFixed(2)} kg</div>
-                        <div className="text-xs text-muted-foreground">{req.total_pcs} pcs • {req.total_net_weight_kg.toFixed(2)} kg net</div>
+                        <div className="text-xs text-muted-foreground">{req.total_pcs} pcs</div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
                         <div className="font-medium">{req.inventory_gross_kg.toFixed(2)} kg</div>
-                        <div className="text-xs text-muted-foreground">{req.inventory_net_kg.toFixed(2)} kg net</div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className={`text-sm font-bold ${req.surplus_deficit_kg >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
+                      <Badge variant={req.surplus_deficit_kg >= 0 ? "default" : "destructive"} className={req.surplus_deficit_kg >= 0 ? "bg-green-600" : ""}>
                         {req.surplus_deficit_kg >= 0 ? '+' : ''}{req.surplus_deficit_kg.toFixed(2)} kg
-                      </div>
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {req.linked_sales_orders.map((so) => (
-                          <Badge key={so.id} variant="outline" className="text-xs">
-                            {so.so_id}
-                          </Badge>
-                        ))}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap gap-1">
+                          {req.linked_sales_orders.map((so) => (
+                            <Badge key={so.id} variant="outline" className="text-xs cursor-pointer hover:bg-accent" onClick={() => navigate(`/sales?so_id=${so.so_id}`)}>
+                              {so.so_id}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {req.linked_work_orders.map((wo) => (
+                            <Badge key={wo.id} variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => navigate(`/work-order/${wo.id}`)}>
+                              {wo.wo_id}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -731,63 +571,36 @@ export default function MaterialRequirements() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {req.status === "covered" || req.status === "fulfilled" ? (
-                        <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                          ✓ {req.status === "fulfilled" ? "Fulfilled" : "Covered"}
+                      {req.procurement_status === "none" ? (
+                        <Badge variant="outline">None</Badge>
+                      ) : req.procurement_status === "draft" ? (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                          Draft RPO: {req.rpo_no}
                         </Badge>
-                      ) : req.status === "po_raised" ? (
-                        <Badge 
-                          variant="secondary" 
-                          className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900"
-                          onClick={() => navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
-                        >
-                          Draft PO: {req.purchase_order?.po_id}
+                      ) : req.procurement_status === "pending_approval" ? (
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          Pending: {req.rpo_no}
                         </Badge>
-                      ) : req.status === "po_approved" ? (
-                        <Badge 
-                          variant="default" 
-                          className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
-                          onClick={() => navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
-                        >
-                          Approved PO: {req.purchase_order?.po_id}
+                      ) : req.procurement_status === "approved" ? (
+                        <Badge variant="default" className="bg-green-600">
+                          Approved: {req.rpo_no}
                         </Badge>
-                      ) : req.status === "partially_fulfilled" ? (
-                        <Badge 
-                          variant="secondary" 
-                          className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 cursor-pointer hover:bg-amber-200 dark:hover:bg-amber-900"
-                          onClick={() => req.purchase_order && navigate(`/purchase?po_id=${req.purchase_order?.po_id}`)}
-                        >
-                          Partially Fulfilled: {req.purchase_order?.po_id}
+                      ) : req.procurement_status === "part_received" ? (
+                        <Badge variant="default" className="bg-purple-600">
+                          Part Received: {req.rpo_no}
                         </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          ⚠ Shortfall
-                        </Badge>
-                      )}
+                      ) : null}
                     </TableCell>
                     <TableCell>
-                      {req.surplus_deficit_kg < 0 && !req.purchase_order ? (
+                      {req.surplus_deficit_kg < 0 && req.procurement_status === "none" && (
                         <Button 
                           size="sm" 
-                          onClick={() => handlePlaceOrder(
-                            req.material_size_mm.toString(), 
-                            Math.abs(req.surplus_deficit_kg), 
-                            req.linked_sales_orders.map(so => so.so_id)
-                          )}
+                          onClick={() => handlePlaceOrder(req)}
                         >
                           <ShoppingCart className="mr-2 h-4 w-4" />
                           Place Order
                         </Button>
-                      ) : req.purchase_order ? (
-                        <div className="text-xs">
-                          <div className="font-medium">{req.purchase_order.quantity_kg.toFixed(2)} kg ordered</div>
-                          {req.status === "partially_fulfilled" && (
-                            <div className="text-amber-600 dark:text-amber-400">
-                              Remaining: {Math.abs(req.surplus_deficit_kg).toFixed(2)} kg
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -829,6 +642,25 @@ export default function MaterialRequirements() {
           </CardContent>
         </Card>
       </div>
+
+      {/* RPO Modal */}
+      {selectedRequirement && (
+        <RPOModal
+          open={rpoModalOpen}
+          onClose={() => {
+            setRpoModalOpen(false);
+            setSelectedRequirement(null);
+          }}
+          materialSize={selectedRequirement.material_size_mm.toString()}
+          deficitKg={Math.abs(selectedRequirement.surplus_deficit_kg)}
+          linkedWorkOrders={selectedRequirement.linked_work_orders}
+          linkedSalesOrders={selectedRequirement.linked_sales_orders}
+          onSuccess={() => {
+            loadRequirements();
+            toast({ title: "Success", description: "RPO created successfully" });
+          }}
+        />
+      )}
     </div>
   );
 }
