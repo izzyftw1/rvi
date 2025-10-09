@@ -371,6 +371,10 @@ const Index = () => {
                 <Boxes className="h-6 w-6" />
                 <span className="text-sm">Material Req</span>
               </Button>
+              <Button onClick={() => navigate("/purchase/raw-po")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <Truck className="h-6 w-6" />
+                <span className="text-sm">Raw PO</span>
+              </Button>
               <Button onClick={() => navigate("/customers")} variant="secondary" className="h-auto py-4 flex-col gap-2">
                 <FileText className="h-6 w-6" />
                 <span className="text-sm">Customers</span>

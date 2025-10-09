@@ -35,6 +35,7 @@ import Maintenance from "./pages/Maintenance";
 import Admin from "./pages/Admin";
 import FactoryCalendar from "./pages/FactoryCalendar";
 import ProductionProgress from "./pages/ProductionProgress";
+import RawPurchaseOrders from "./pages/RawPurchaseOrders";
 
 
 const App = () => (
@@ -51,6 +52,7 @@ const App = () => (
         <Route path="/customers" element={<ProtectedRoute><CustomerMaster /></ProtectedRoute>} />
         <Route path="/items" element={<ProtectedRoute><ItemMaster /></ProtectedRoute>} />
         <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
+        <Route path="/purchase/raw-po" element={<ProtectedRoute><RawPurchaseOrders /></ProtectedRoute>} />
         <Route path="/materials/inwards" element={<ProtectedRoute><MaterialInwards /></ProtectedRoute>} />
         <Route path="/qc/incoming" element={<ProtectedRoute><QCIncoming /></ProtectedRoute>} />
         <Route path="/work-orders" element={<ProtectedRoute><WorkOrders /></ProtectedRoute>} />

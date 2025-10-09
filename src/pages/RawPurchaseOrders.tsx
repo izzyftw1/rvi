@@ -1,0 +1,562 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { NavigationHeader } from "@/components/NavigationHeader";
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { CheckCircle, Edit, PackagePlus, ArrowLeft } from "lucide-react";
+
+interface RPO {
+  id: string;
+  rpo_no: string;
+  status: string;
+  supplier_id: string;
+  created_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  so_id: string | null;
+  wo_id: string | null;
+  item_code: string;
+  material_size_mm: string;
+  alloy: string;
+  qty_ordered_kg: number;
+  rate_per_kg: number;
+  amount_ordered: number;
+  expected_delivery_date: string | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+  suppliers?: { name: string };
+  work_orders?: { wo_id: string };
+  sales_orders?: { so_id: string };
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+export default function RawPurchaseOrders() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [loading, setLoading] = useState(true);
+  const [rpos, setRpos] = useState<RPO[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [selectedTab, setSelectedTab] = useState("draft");
+  const [selectedRPO, setSelectedRPO] = useState<RPO | null>(null);
+  const [detailView, setDetailView] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    supplier_id: "",
+    item_code: "",
+    material_size_mm: "",
+    alloy: "",
+    qty_ordered_kg: "",
+    rate_per_kg: "",
+    expected_delivery_date: "",
+    remarks: ""
+  });
+
+  useEffect(() => {
+    loadData();
+    
+    // Check URL params for specific RPO
+    const rpoNo = searchParams.get("rpo_no");
+    if (rpoNo) {
+      loadRPODetail(rpoNo);
+    }
+
+    // Realtime subscription
+    const channel = supabase
+      .channel('raw-po-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_po_receipts' }, () => loadData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Load RPOs with relations
+      const { data: rposData, error: rpoError } = await supabase
+        .from("raw_purchase_orders")
+        .select(`
+          *,
+          suppliers(name),
+          work_orders(wo_id),
+          sales_orders(so_id)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (rpoError) throw rpoError;
+
+      // Load suppliers
+      const { data: suppliersData, error: supError } = await supabase
+        .from("suppliers")
+        .select("id, name")
+        .order("name");
+
+      if (supError) throw supError;
+
+      setRpos(rposData || []);
+      setSuppliers(suppliersData || []);
+    } catch (error: any) {
+      console.error("Error loading data:", error);
+      toast({ variant: "destructive", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRPODetail = async (rpoNo: string) => {
+    const rpo = rpos.find(r => r.rpo_no === rpoNo);
+    if (rpo) {
+      setSelectedRPO(rpo);
+      setDetailView(true);
+      populateEditForm(rpo);
+    }
+  };
+
+  const populateEditForm = (rpo: RPO) => {
+    setEditForm({
+      supplier_id: rpo.supplier_id || "",
+      item_code: rpo.item_code || "",
+      material_size_mm: rpo.material_size_mm || "",
+      alloy: rpo.alloy || "",
+      qty_ordered_kg: rpo.qty_ordered_kg?.toString() || "",
+      rate_per_kg: rpo.rate_per_kg?.toString() || "",
+      expected_delivery_date: rpo.expected_delivery_date || "",
+      remarks: rpo.remarks || ""
+    });
+  };
+
+  const handleApprove = async (rpo: RPO) => {
+    // Validation
+    if (!rpo.supplier_id) {
+      toast({ variant: "destructive", description: "Cannot approve: Supplier is required" });
+      return;
+    }
+    if (!rpo.rate_per_kg || rpo.rate_per_kg <= 0) {
+      toast({ variant: "destructive", description: "Cannot approve: Rate per kg must be greater than 0" });
+      return;
+    }
+    if (!rpo.qty_ordered_kg || rpo.qty_ordered_kg <= 0) {
+      toast({ variant: "destructive", description: "Cannot approve: Quantity must be greater than 0" });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("raw_purchase_orders")
+        .update({
+          status: "approved",
+          approved_by: user.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq("id", rpo.id);
+
+      if (error) throw error;
+
+      toast({ title: "Success", description: `RPO ${rpo.rpo_no} approved` });
+      loadData();
+      if (selectedRPO?.id === rpo.id) {
+        setDetailView(false);
+        setSelectedRPO(null);
+      }
+    } catch (error: any) {
+      console.error("Error approving RPO:", error);
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedRPO) return;
+
+    // Validation
+    if (!editForm.supplier_id) {
+      toast({ variant: "destructive", description: "Supplier is required" });
+      return;
+    }
+    if (!editForm.rate_per_kg || parseFloat(editForm.rate_per_kg) <= 0) {
+      toast({ variant: "destructive", description: "Rate per kg must be greater than 0" });
+      return;
+    }
+    if (!editForm.qty_ordered_kg || parseFloat(editForm.qty_ordered_kg) <= 0) {
+      toast({ variant: "destructive", description: "Quantity must be greater than 0" });
+      return;
+    }
+
+    try {
+      const qty = parseFloat(editForm.qty_ordered_kg);
+      const rate = parseFloat(editForm.rate_per_kg);
+
+      const { error } = await supabase
+        .from("raw_purchase_orders")
+        .update({
+          supplier_id: editForm.supplier_id,
+          item_code: editForm.item_code,
+          material_size_mm: editForm.material_size_mm,
+          alloy: editForm.alloy,
+          qty_ordered_kg: qty,
+          rate_per_kg: rate,
+          amount_ordered: qty * rate,
+          expected_delivery_date: editForm.expected_delivery_date || null,
+          remarks: editForm.remarks
+        })
+        .eq("id", selectedRPO.id);
+
+      if (error) throw error;
+
+      toast({ title: "Success", description: "RPO updated successfully" });
+      setEditMode(false);
+      loadData();
+      // Refresh detail view
+      const { data: updated } = await supabase
+        .from("raw_purchase_orders")
+        .select(`*, suppliers(name), work_orders(wo_id), sales_orders(so_id)`)
+        .eq("id", selectedRPO.id)
+        .single();
+      
+      if (updated) {
+        setSelectedRPO(updated);
+        populateEditForm(updated);
+      }
+    } catch (error: any) {
+      console.error("Error updating RPO:", error);
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
+  const handleReceiveMaterial = (rpo: RPO) => {
+    // Navigate to Material Inwards with pre-filled data
+    navigate(`/material-inwards?rpo_id=${rpo.id}&rpo_no=${rpo.rpo_no}`);
+  };
+
+  const filteredRPOs = rpos.filter(rpo => rpo.status === selectedTab);
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, { variant: any; className?: string }> = {
+      draft: { variant: "outline" },
+      pending_approval: { variant: "secondary", className: "bg-amber-100 text-amber-700 dark:bg-amber-950" },
+      approved: { variant: "default", className: "bg-green-600" },
+      part_received: { variant: "default", className: "bg-blue-600" },
+      closed: { variant: "default", className: "bg-gray-600" },
+      cancelled: { variant: "destructive" }
+    };
+
+    const config = variants[status] || { variant: "outline" };
+    return (
+      <Badge variant={config.variant} className={config.className}>
+        {status.replace(/_/g, " ").toUpperCase()}
+      </Badge>
+    );
+  };
+
+  if (detailView && selectedRPO) {
+    return (
+      <div className="min-h-screen bg-background">
+        <NavigationHeader 
+          title={`RPO: ${selectedRPO.rpo_no}`} 
+          subtitle={`Status: ${selectedRPO.status}`}
+        />
+        
+        <div className="p-6">
+          <Button variant="ghost" onClick={() => { setDetailView(false); setSelectedRPO(null); setEditMode(false); }} className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to List
+          </Button>
+
+          {/* Header with WO/SO Context */}
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-2xl">{selectedRPO.rpo_no}</CardTitle>
+                  <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                    {selectedRPO.work_orders && (
+                      <div>WO: <Badge variant="secondary">{selectedRPO.work_orders.wo_id}</Badge></div>
+                    )}
+                    {selectedRPO.sales_orders && (
+                      <div>SO: <Badge variant="outline">{selectedRPO.sales_orders.so_id}</Badge></div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {selectedRPO.status === "draft" && !editMode && (
+                    <Button variant="outline" onClick={() => setEditMode(true)}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit
+                    </Button>
+                  )}
+                  {selectedRPO.status === "pending_approval" && (
+                    <Button onClick={() => handleApprove(selectedRPO)}>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Approve
+                    </Button>
+                  )}
+                  {selectedRPO.status === "approved" && (
+                    <Button onClick={() => handleReceiveMaterial(selectedRPO)}>
+                      <PackagePlus className="mr-2 h-4 w-4" />
+                      Receive Material
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Supplier</Label>
+                  {editMode ? (
+                    <Select value={editForm.supplier_id} onValueChange={(v) => setEditForm({...editForm, supplier_id: v})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {suppliers.map(s => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="font-medium">{selectedRPO.suppliers?.name || "N/A"}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Item Code</Label>
+                  {editMode ? (
+                    <Input value={editForm.item_code} onChange={(e) => setEditForm({...editForm, item_code: e.target.value})} />
+                  ) : (
+                    <p className="font-medium">{selectedRPO.item_code}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Size (mm)</Label>
+                  {editMode ? (
+                    <Input value={editForm.material_size_mm} onChange={(e) => setEditForm({...editForm, material_size_mm: e.target.value})} />
+                  ) : (
+                    <p className="font-medium">{selectedRPO.material_size_mm}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Alloy</Label>
+                  {editMode ? (
+                    <Input value={editForm.alloy} onChange={(e) => setEditForm({...editForm, alloy: e.target.value})} />
+                  ) : (
+                    <p className="font-medium">{selectedRPO.alloy}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Qty Ordered (kg)</Label>
+                  {editMode ? (
+                    <Input type="number" step="0.001" value={editForm.qty_ordered_kg} onChange={(e) => setEditForm({...editForm, qty_ordered_kg: e.target.value})} />
+                  ) : (
+                    <p className="font-medium">{selectedRPO.qty_ordered_kg.toFixed(3)}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Rate per kg</Label>
+                  {editMode ? (
+                    <Input type="number" step="0.01" value={editForm.rate_per_kg} onChange={(e) => setEditForm({...editForm, rate_per_kg: e.target.value})} />
+                  ) : (
+                    <p className="font-medium">₹{selectedRPO.rate_per_kg.toFixed(2)}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Total Amount</Label>
+                  <p className="font-medium">₹{selectedRPO.amount_ordered.toFixed(2)}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Expected Delivery</Label>
+                  {editMode ? (
+                    <Input type="date" value={editForm.expected_delivery_date} onChange={(e) => setEditForm({...editForm, expected_delivery_date: e.target.value})} />
+                  ) : (
+                    <p className="font-medium">{selectedRPO.expected_delivery_date ? new Date(selectedRPO.expected_delivery_date).toLocaleDateString() : "N/A"}</p>
+                  )}
+                </div>
+              </div>
+
+              {editMode ? (
+                <div className="mt-4">
+                  <Label className="text-xs text-muted-foreground">Remarks</Label>
+                  <Textarea value={editForm.remarks} onChange={(e) => setEditForm({...editForm, remarks: e.target.value})} rows={3} />
+                  <div className="flex gap-2 mt-4">
+                    <Button onClick={handleSaveEdit}>Save Changes</Button>
+                    <Button variant="outline" onClick={() => { setEditMode(false); populateEditForm(selectedRPO); }}>Cancel</Button>
+                  </div>
+                </div>
+              ) : selectedRPO.remarks && (
+                <div className="mt-4">
+                  <Label className="text-xs text-muted-foreground">Remarks</Label>
+                  <p className="text-sm">{selectedRPO.remarks}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Timeline */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Timeline</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                    <div className="w-0.5 h-full bg-border"></div>
+                  </div>
+                  <div className="pb-4">
+                    <p className="font-medium">Created</p>
+                    <p className="text-sm text-muted-foreground">{new Date(selectedRPO.created_at).toLocaleString()}</p>
+                  </div>
+                </div>
+
+                {selectedRPO.status !== "draft" && (
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 rounded-full bg-amber-600"></div>
+                      <div className="w-0.5 h-full bg-border"></div>
+                    </div>
+                    <div className="pb-4">
+                      <p className="font-medium">Submitted for Approval</p>
+                      <p className="text-sm text-muted-foreground">{new Date(selectedRPO.updated_at).toLocaleString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                {selectedRPO.approved_at && (
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                      {(selectedRPO.status === "part_received" || selectedRPO.status === "closed") && <div className="w-0.5 h-full bg-border"></div>}
+                    </div>
+                    <div className="pb-4">
+                      <p className="font-medium">Approved</p>
+                      <p className="text-sm text-muted-foreground">{new Date(selectedRPO.approved_at).toLocaleString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* TODO: Add receipts and reconciliations timeline items */}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <NavigationHeader title="Raw Purchase Orders" subtitle="Manage raw material procurement" />
+      
+      <div className="p-6">
+        <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="draft">Draft</TabsTrigger>
+            <TabsTrigger value="pending_approval">Pending Approval</TabsTrigger>
+            <TabsTrigger value="approved">Approved</TabsTrigger>
+            <TabsTrigger value="part_received">Part Received</TabsTrigger>
+            <TabsTrigger value="closed">Closed</TabsTrigger>
+            <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value={selectedTab}>
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>RPO No</TableHead>
+                      <TableHead>WO</TableHead>
+                      <TableHead>Item Code</TableHead>
+                      <TableHead>Size (mm)</TableHead>
+                      <TableHead>Alloy</TableHead>
+                      <TableHead>Supplier</TableHead>
+                      <TableHead>Qty Ordered (kg)</TableHead>
+                      <TableHead>Rate</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Expected Date</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={11} className="text-center">Loading...</TableCell>
+                      </TableRow>
+                    ) : filteredRPOs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={11} className="text-center text-muted-foreground">
+                          No {selectedTab.replace(/_/g, " ")} RPOs found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredRPOs.map((rpo) => (
+                        <TableRow key={rpo.id} className="cursor-pointer hover:bg-accent" onClick={() => { setSelectedRPO(rpo); setDetailView(true); populateEditForm(rpo); }}>
+                          <TableCell className="font-medium">{rpo.rpo_no}</TableCell>
+                          <TableCell>
+                            {rpo.work_orders ? (
+                              <Badge variant="secondary">{rpo.work_orders.wo_id}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{rpo.item_code}</TableCell>
+                          <TableCell>{rpo.material_size_mm}</TableCell>
+                          <TableCell>{rpo.alloy}</TableCell>
+                          <TableCell>{rpo.suppliers?.name || "N/A"}</TableCell>
+                          <TableCell>{rpo.qty_ordered_kg.toFixed(3)}</TableCell>
+                          <TableCell>₹{rpo.rate_per_kg.toFixed(2)}</TableCell>
+                          <TableCell>₹{rpo.amount_ordered.toFixed(2)}</TableCell>
+                          <TableCell>
+                            {rpo.expected_delivery_date 
+                              ? new Date(rpo.expected_delivery_date).toLocaleDateString() 
+                              : <span className="text-muted-foreground">-</span>
+                            }
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {selectedTab === "pending_approval" && (
+                              <Button size="sm" onClick={() => handleApprove(rpo)}>
+                                Approve
+                              </Button>
+                            )}
+                            {selectedTab === "approved" && (
+                              <Button size="sm" variant="outline" onClick={() => handleReceiveMaterial(rpo)}>
+                                Receive
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
