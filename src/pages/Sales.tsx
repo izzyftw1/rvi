@@ -267,6 +267,11 @@ export default function Sales() {
           party_code: customers.find(c => c.id === formData.customer_id)?.party_code || "",
           po_number: formData.po_number,
           po_date: formData.po_date,
+          currency: formData.currency,
+          payment_terms_days: formData.payment_terms_days,
+          incoterm: formData.incoterm,
+          expected_delivery_date: formData.expected_delivery_date || null,
+          drawing_number: formData.drawing_number || null,
           items: (lineItems || []).map((item: any) => ({
             item_code: item.item_code,
             quantity: Number(item.quantity) || 0,
@@ -276,7 +281,8 @@ export default function Sales() {
             drawing_number: item.drawing_number ?? null,
             priority: 3
           })),
-          status: "approved", // Auto-approve to skip manual approval step
+          total_amount: total,
+          status: "approved",
           created_by: user?.id,
           material_rod_forging_size_mm: null,
           gross_weight_per_pc_grams: null,
