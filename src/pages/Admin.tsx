@@ -12,8 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle, Edit, Trash2, UserCog } from "lucide-react";
+import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle, Edit, Trash2, UserCog, Factory } from "lucide-react";
 import { useUserRole, type UserRole } from "@/hooks/useUserRole";
+import { SitesManagement } from "@/components/admin/SitesManagement";
 
 export default function Admin() {
   const [users, setUsers] = useState<any[]>([]);
@@ -257,8 +258,9 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="users" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Users</TabsTrigger>
+            <TabsTrigger value="sites"><Factory className="h-4 w-4 mr-2" />Sites</TabsTrigger>
             <TabsTrigger value="permissions"><Shield className="h-4 w-4 mr-2" />Permissions</TabsTrigger>
             <TabsTrigger value="audit"><Activity className="h-4 w-4 mr-2" />Audit Trail</TabsTrigger>
           </TabsList>
@@ -319,6 +321,10 @@ export default function Admin() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="sites">
+            <SitesManagement />
           </TabsContent>
 
           <TabsContent value="permissions">

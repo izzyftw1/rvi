@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 import { format, differenceInMinutes, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { GanttScheduler } from "@/components/GanttScheduler";
 import { OEEWidget } from "@/components/OEEWidget";
+import { useSiteContext } from "@/hooks/useSiteContext";
 
 interface Machine {
   id: string;
@@ -33,6 +34,7 @@ interface Machine {
 const CNCDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { currentSite } = useSiteContext();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -41,7 +43,13 @@ const CNCDashboard = () => {
   const [machineOEE, setMachineOEE] = useState<any>(null);
 
   useEffect(() => {
-    loadMachines();
+    if (currentSite) {
+      loadMachines();
+    }
+  }, [currentSite]);
+
+  useEffect(() => {
+    if (!currentSite) return;
 
     const channel = supabase
       .channel("cnc-dashboard-realtime")
@@ -60,9 +68,11 @@ const CNCDashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentSite]);
 
   const loadMachines = async () => {
+    if (!currentSite) return;
+    
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -76,6 +86,7 @@ const CNCDashboard = () => {
             work_order:work_orders(wo_id, display_id, item_code, customer, quantity)
           )
         `)
+        .eq("site_id", currentSite.id)
         .order("machine_id", { ascending: true });
 
       if (error) throw error;

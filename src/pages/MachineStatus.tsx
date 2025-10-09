@@ -13,10 +13,12 @@ import { useNavigate } from "react-router-dom";
 import { format, differenceInMinutes } from "date-fns";
 import { GanttScheduler } from "@/components/GanttScheduler";
 import { MachineUtilizationDashboard } from "@/components/MachineUtilizationDashboard";
+import { useSiteContext } from "@/hooks/useSiteContext";
 
 const MachineStatus = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { currentSite } = useSiteContext();
   const [machines, setMachines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
@@ -24,7 +26,13 @@ const MachineStatus = () => {
   const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
-    loadMachines();
+    if (currentSite) {
+      loadMachines();
+    }
+  }, [currentSite]);
+
+  useEffect(() => {
+    if (!currentSite) return;
 
     const channel = supabase
       .channel("machines-realtime")
@@ -43,9 +51,11 @@ const MachineStatus = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentSite]);
 
   const loadMachines = async () => {
+    if (!currentSite) return;
+    
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -59,6 +69,7 @@ const MachineStatus = () => {
             work_order:work_orders(wo_id, display_id, item_code, customer, quantity)
           )
         `)
+        .eq("site_id", currentSite.id)
         .order("machine_id", { ascending: true });
 
       if (error) throw error;

@@ -4,6 +4,8 @@ import { Home, ArrowLeft, LogOut, Factory, Wrench, Shield, Calendar } from "luci
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import rvLogo from "@/assets/rv-logo.jpg";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useSiteContext } from "@/hooks/useSiteContext";
 
 interface NavigationHeaderProps {
   title?: string;
@@ -14,6 +16,7 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
   const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const { currentSite, setCurrentSite, availableSites, loading: sitesLoading } = useSiteContext();
 
   useEffect(() => {
     loadProfile();
@@ -99,6 +102,32 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
             )}
           </div>
           
+          <div className="flex items-center gap-4">
+            {/* Site Selector */}
+            {!sitesLoading && availableSites.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Factory className="h-4 w-4 text-muted-foreground" />
+                <Select
+                  value={currentSite?.id || ""}
+                  onValueChange={(value) => {
+                    const site = availableSites.find(s => s.id === value);
+                    if (site) setCurrentSite(site);
+                  }}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select site" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSites.map((site) => (
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.name} ({site.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Quick Access Maintenance */}
             <Button
               variant="ghost"
@@ -137,18 +166,19 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
             )}
 
             {/* User Info and Logout */}
-          <div className="flex items-center gap-4">
-            {profile && (
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium">{profile.full_name}</p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  {profile.role?.replace('_', ' ')}
-                </p>
-              </div>
-            )}
-            <Button variant="ghost" size="icon" onClick={handleLogout}>
-              <LogOut className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-4">
+              {profile && (
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium">{profile.full_name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">
+                    {profile.role?.replace('_', ' ')}
+                  </p>
+                </div>
+              )}
+              <Button variant="ghost" size="icon" onClick={handleLogout}>
+                <LogOut className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
