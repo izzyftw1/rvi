@@ -1,85 +1,96 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Eye, Filter, CheckSquare, Copy, Upload, Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Eye, Trash2, Plus, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 
 interface LineItem {
-  id?: string;
   line_number: number;
   item_code: string;
   quantity: number;
   alloy: string;
-  gross_weight_per_pc_grams?: number;
-  net_weight_per_pc_grams?: number;
-  material_size_mm?: string;
-  cycle_time_seconds?: number;
+  material_size: string;
+  net_weight_per_pc_g?: number;
+  gross_weight_per_pc_g?: number;
+  price_per_pc?: number;
+  line_amount?: number;
+  drawing_number?: string;
   due_date: string;
-  notes?: string;
-  status?: string;
-  approved_by?: string;
-  approved_at?: string;
-  rejected_by?: string;
-  rejected_at?: string;
-  rejection_reason?: string;
-  work_order_id?: string;
 }
 
+const ALLOYS = [
+  { group: "Brass Alloys", items: ["C36000", "C37700", "C38500", "C46400", "C23000", "C27200", "C26000", "C27450", "DZR Brass (CW602N)", "CW614N", "CW617N", "CZ122"] },
+  { group: "Stainless Steels", items: ["SS304", "SS304L", "SS316", "SS316L", "SS410", "SS420", "SS430"] },
+  { group: "Copper Alloys", items: ["ETP Copper", "OFHC Copper"] },
+  { group: "Aluminium Alloys", items: ["6061", "6082", "7075", "1100", "2024", "5052"] }
+];
+
+const CURRENCIES = ["USD", "EUR", "INR", "GBP"];
+const GST_TYPES = [
+  { value: "domestic", label: "Domestic" },
+  { value: "export", label: "Export" },
+  { value: "not_applicable", label: "Not Applicable" }
+];
+const INCOTERMS = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"];
+
 export default function Sales() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
-  const [lineItems, setLineItems] = useState<LineItem[]>([
-    {
-      line_number: 1,
-      item_code: "",
-      quantity: 0,
-      alloy: "",
-      material_size_mm: "",
-      gross_weight_per_pc_grams: undefined,
-      net_weight_per_pc_grams: undefined,
-      cycle_time_seconds: undefined,
-      due_date: "",
-      notes: ""
-    }
-  ]);
+  
   const [formData, setFormData] = useState({
-    customer: "",
-    party_code: "",
+    customer_id: "",
+    customer_name: "",
     po_number: "",
-    po_date: ""
+    po_date: "",
+    expected_delivery_date: "",
+    drawing_number: "",
+    currency: "USD",
+    payment_terms_days: 30,
+    gst_type: "domestic",
+    gst_number: "",
+    incoterm: "EXW",
+    gst_percent: 18
   });
-  const [isNewCustomer, setIsNewCustomer] = useState(false);
+  
+  const [lineItems, setLineItems] = useState<LineItem[]>([{
+    line_number: 1,
+    item_code: "",
+    quantity: 0,
+    alloy: "",
+    material_size: "",
+    net_weight_per_pc_g: undefined,
+    gross_weight_per_pc_g: undefined,
+    price_per_pc: undefined,
+    line_amount: 0,
+    drawing_number: "",
+    due_date: ""
+  }]);
+
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [selectedLineItems, setSelectedLineItems] = useState<any[]>([]);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [newItemCodes, setNewItemCodes] = useState<{ [key: number]: string }>({});
-  const [isCreatingNewItem, setIsCreatingNewItem] = useState<{ [key: number]: boolean }>({});
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-    loadSalesOrders();
-    loadCustomers();
-    loadItems();
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders()]);
+    setLoading(false);
+  };
 
   const loadCustomers = async () => {
     const { data } = await supabase
@@ -98,145 +109,83 @@ export default function Sales() {
   };
 
   const loadSalesOrders = async () => {
-    setLoading(true);
-    
-    // Load sales orders
-    const { data: orders, error: ordersError } = await supabase
+    const { data: orders } = await supabase
       .from("sales_orders")
       .select("*")
       .order("created_at", { ascending: false });
     
-    if (ordersError || !orders) {
-      setLoading(false);
-      return;
-    }
-
-    // Load line items for all orders
-    const { data: lineItems } = await supabase
-      .from("sales_order_line_items" as any)
-      .select("*");
-    
-    // Combine data
-    const ordersWithCounts = orders.map((order: any) => {
-      const orderLineItems = lineItems?.filter((li: any) => li.sales_order_id === order.id) || [];
-      return {
+    if (orders) {
+      const { data: lineItems } = await supabase
+        .from("sales_order_line_items" as any)
+        .select("*");
+      
+      const ordersWithItems = orders.map(order => ({
         ...order,
-        line_items: orderLineItems,
-        line_item_counts: {
-          total: orderLineItems.length,
-          pending: orderLineItems.filter((li: any) => li.status === 'pending').length,
-          approved: orderLineItems.filter((li: any) => li.status === 'approved').length,
-          rejected: orderLineItems.filter((li: any) => li.status === 'rejected').length,
-          on_hold: orderLineItems.filter((li: any) => li.status === 'on_hold').length
-        }
-      };
-    });
-    
-    setSalesOrders(ordersWithCounts);
-    setLoading(false);
+        sales_order_items: lineItems?.filter((li: any) => li.sales_order_id === order.id) || [],
+        total_amount: 0 // Will be calculated from line items after migration
+      }));
+      
+      setSalesOrders(ordersWithItems);
+    }
   };
 
-  const generatePartyCode = (customerName: string) => {
-    const prefix = customerName.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    return `${prefix}${randomNum}`;
-  };
-
-  const handleCustomerChange = (value: string) => {
-    if (value === "new_customer") {
-      setIsNewCustomer(true);
-      setFormData({ ...formData, customer: "", party_code: "" });
-    } else {
-      setIsNewCustomer(false);
-      const customer = customers.find(c => c.customer_name === value);
-      setFormData({ 
-        ...formData, 
-        customer: value,
-        party_code: customer?.party_code || ""
+  const handleCustomerChange = (customerId: string) => {
+    const customer = customers.find(c => c.id === customerId);
+    if (customer) {
+      setFormData({
+        ...formData,
+        customer_id: customerId,
+        customer_name: customer.customer_name,
+        currency: customer.currency || "USD",
+        payment_terms_days: customer.payment_terms_days || 30,
+        gst_number: customer.gst_number || "",
+        gst_type: customer.gst_type || "domestic"
       });
     }
   };
 
-  const handleNewCustomerNameChange = (name: string) => {
-    const partyCode = name.length >= 3 ? generatePartyCode(name) : "";
-    setFormData({ ...formData, customer: name, party_code: partyCode });
-  };
-
   const handleItemCodeChange = (index: number, value: string) => {
     const item = items.find(i => i.item_code === value);
-    const updatedLineItems = [...lineItems];
-    updatedLineItems[index] = {
-      ...updatedLineItems[index],
+    const updated = [...lineItems];
+    updated[index] = {
+      ...updated[index],
       item_code: value,
-      alloy: item?.alloy || updatedLineItems[index].alloy,
-      material_size_mm: item?.material_size_mm || updatedLineItems[index].material_size_mm,
-      gross_weight_per_pc_grams: item?.gross_weight_grams || updatedLineItems[index].gross_weight_per_pc_grams,
-      net_weight_per_pc_grams: item?.net_weight_grams || updatedLineItems[index].net_weight_per_pc_grams,
-      cycle_time_seconds: item?.cycle_time_seconds || updatedLineItems[index].cycle_time_seconds
+      alloy: item?.alloy || updated[index].alloy,
+      material_size: item?.material_size_mm || updated[index].material_size,
+      gross_weight_per_pc_g: item?.gross_weight_grams || updated[index].gross_weight_per_pc_g,
+      net_weight_per_pc_g: item?.net_weight_grams || updated[index].net_weight_per_pc_g
     };
-    setLineItems(updatedLineItems);
+    setLineItems(updated);
+  };
+
+  const updateLineItemField = (index: number, field: keyof LineItem, value: any) => {
+    const updated = [...lineItems];
+    updated[index] = { ...updated[index], [field]: value };
+    
+    // Auto-calculate line amount if qty or price changes
+    if (field === 'quantity' || field === 'price_per_pc') {
+      const qty = field === 'quantity' ? value : updated[index].quantity;
+      const price = field === 'price_per_pc' ? value : updated[index].price_per_pc;
+      updated[index].line_amount = (qty || 0) * (price || 0);
+    }
+    
+    setLineItems(updated);
   };
 
   const addLineItem = () => {
-    setLineItems([
-      ...lineItems,
-      {
-        line_number: lineItems.length + 1,
-        item_code: "",
-        quantity: 0,
-        alloy: "",
-        material_size_mm: "",
-        gross_weight_per_pc_grams: undefined,
-        net_weight_per_pc_grams: undefined,
-        cycle_time_seconds: undefined,
-        due_date: "",
-        notes: ""
-      }
-    ]);
-  };
-
-  const duplicateLineItem = (index: number) => {
-    const itemToDuplicate = { ...lineItems[index] };
-    const newLineItems = [...lineItems];
-    newLineItems.splice(index + 1, 0, {
-      ...itemToDuplicate,
-      line_number: index + 2,
-      id: undefined,
-      status: undefined
-    });
-    // Renumber all items after insertion
-    const renumbered = newLineItems.map((item, idx) => ({ ...item, line_number: idx + 1 }));
-    setLineItems(renumbered);
-  };
-
-  const handleBulkPaste = async () => {
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      const rows = clipboardText.trim().split('\n').map(row => row.split('\t'));
-      
-      if (rows.length === 0) {
-        toast({ variant: "destructive", description: "No data found in clipboard" });
-        return;
-      }
-
-      const newItems: LineItem[] = rows.map((row, idx) => ({
-        line_number: lineItems.length + idx + 1,
-        item_code: row[0] || "",
-        quantity: parseInt(row[1]) || 0,
-        due_date: row[2] || "",
-        material_size_mm: row[3] || "",
-        alloy: row[4] || "",
-        cycle_time_seconds: parseFloat(row[5]) || undefined,
-        gross_weight_per_pc_grams: parseFloat(row[6]) || undefined,
-        net_weight_per_pc_grams: parseFloat(row[7]) || undefined,
-        notes: row[8] || ""
-      }));
-
-      setLineItems([...lineItems, ...newItems]);
-      toast({ description: `${newItems.length} rows pasted from clipboard` });
-    } catch (err) {
-      toast({ variant: "destructive", description: "Failed to paste from clipboard" });
-    }
+    setLineItems([...lineItems, {
+      line_number: lineItems.length + 1,
+      item_code: "",
+      quantity: 0,
+      alloy: "",
+      material_size: "",
+      net_weight_per_pc_g: undefined,
+      gross_weight_per_pc_g: undefined,
+      price_per_pc: undefined,
+      line_amount: 0,
+      drawing_number: formData.drawing_number,
+      due_date: ""
+    }]);
   };
 
   const removeLineItem = (index: number) => {
@@ -246,34 +195,48 @@ export default function Sales() {
     }
   };
 
+  const calculateTotals = () => {
+    const subtotal = lineItems.reduce((sum, item) => sum + (item.line_amount || 0), 0);
+    const gstAmount = formData.gst_type === 'domestic' ? (subtotal * formData.gst_percent) / 100 : 0;
+    const total = subtotal + gstAmount;
+    return { subtotal, gstAmount, total };
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      // Validate
+      if (!formData.customer_id) {
+        throw new Error("Please select a customer");
+      }
+      if (lineItems.some(li => !li.item_code || !li.quantity || !li.alloy)) {
+        throw new Error("All line items must have item code, quantity, and alloy");
+      }
+
       // Generate SO ID
       const today = new Date();
       const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-      
       const { count } = await supabase
         .from("sales_orders")
         .select("*", { count: 'exact', head: true })
-        .gte('created_at', new Date(today.setHours(0, 0, 0, 0)).toISOString())
-        .lte('created_at', new Date(today.setHours(23, 59, 59, 999)).toISOString());
-      
+        .gte('created_at', new Date(today.setHours(0, 0, 0, 0)).toISOString());
       const sequence = String((count || 0) + 1).padStart(3, '0');
       const so_id = `SO-${dateStr}-${sequence}`;
 
-      // Create sales order (header only)
+      const { subtotal, gstAmount, total } = calculateTotals();
+
+      // Create sales order (using existing schema - migration pending)
       const { data: newOrder, error: orderError } = await supabase
         .from("sales_orders")
         .insert([{
-          so_id: so_id,
-          customer: formData.customer,
-          party_code: formData.party_code || null,
+          so_id,
+          customer: formData.customer_name,
+          party_code: customers.find(c => c.id === formData.customer_id)?.party_code || "",
           po_number: formData.po_number,
           po_date: formData.po_date,
-          items: [], // Keep for backward compatibility
+          items: [], // Legacy field
           status: "pending",
           created_by: user?.id,
           material_rod_forging_size_mm: null,
@@ -286,19 +249,19 @@ export default function Sales() {
 
       if (orderError) throw orderError;
 
-      // Create line items (each with its own product details)
+      // Create line items
       const lineItemsToInsert = lineItems.map(item => ({
         sales_order_id: newOrder.id,
         line_number: item.line_number,
         item_code: item.item_code,
         quantity: item.quantity,
         alloy: item.alloy,
-        gross_weight_per_pc_grams: item.gross_weight_per_pc_grams || null,
-        net_weight_per_pc_grams: item.net_weight_per_pc_grams || null,
-        material_size_mm: item.material_size_mm || null,
-        cycle_time_seconds: item.cycle_time_seconds || null,
+        material_size_mm: item.material_size,
+        net_weight_per_pc_grams: item.net_weight_per_pc_g || null,
+        gross_weight_per_pc_grams: item.gross_weight_per_pc_g || null,
+        cycle_time_seconds: null,
         due_date: item.due_date,
-        notes: item.notes || null,
+        notes: null,
         status: 'pending'
       }));
 
@@ -311,607 +274,282 @@ export default function Sales() {
       toast({ description: `Sales order ${so_id} created with ${lineItems.length} line items` });
       
       // Reset form
-      setFormData({ 
-        customer: "", party_code: "", po_number: "", po_date: ""
+      setFormData({
+        customer_id: "",
+        customer_name: "",
+        po_number: "",
+        po_date: "",
+        expected_delivery_date: "",
+        drawing_number: "",
+        currency: "USD",
+        payment_terms_days: 30,
+        gst_type: "domestic",
+        gst_number: "",
+        incoterm: "EXW",
+        gst_percent: 18
       });
       setLineItems([{
         line_number: 1,
         item_code: "",
         quantity: 0,
         alloy: "",
-        material_size_mm: "",
-        gross_weight_per_pc_grams: undefined,
-        net_weight_per_pc_grams: undefined,
-        cycle_time_seconds: undefined,
-        due_date: "",
-        notes: ""
+        material_size: "",
+        due_date: ""
       }]);
-      setIsNewCustomer(false);
-      await loadSalesOrders();
-      await loadCustomers();
-      await loadItems();
+      
+      await loadData();
     } catch (err: any) {
-      console.error("Error creating SO:", err);
-      toast({ variant: "destructive", description: `Failed: ${err.message}` });
+      toast({ variant: "destructive", description: err.message });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleViewOrder = async (order: any) => {
-    setSelectedOrder(order);
-    setIsEditMode(false);
-    setIsViewDialogOpen(true);
-    setSelectedLineItems([]);
-  };
-
-  const toggleLineItemSelection = (lineItem: any) => {
-    setSelectedLineItems(prev => {
-      const exists = prev.find(li => li.id === lineItem.id);
-      if (exists) {
-        return prev.filter(li => li.id !== lineItem.id);
-      } else {
-        return [...prev, lineItem];
-      }
-    });
-  };
-
-  const selectAllPendingLineItems = () => {
-    const pendingItems = selectedOrder?.line_items?.filter((li: any) => li.status === 'pending') || [];
-    setSelectedLineItems(pendingItems);
-  };
-
-  const handleBatchApprove = async () => {
-    if (selectedLineItems.length === 0) {
-      toast({ variant: "destructive", description: "No line items selected" });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const updates = selectedLineItems.map(li => ({
-        id: li.id,
-        status: 'approved',
-        approved_by: user?.id,
-        approved_at: new Date().toISOString()
-      }));
-
-      for (const update of updates) {
-        const { error } = await supabase
-          .from("sales_order_line_items" as any)
-          .update({
-            status: update.status,
-            approved_by: update.approved_by,
-            approved_at: update.approved_at
-          })
-          .eq("id", update.id);
-
-        if (error) throw error;
-      }
-
-      toast({ description: `${selectedLineItems.length} line items approved. Work orders will be auto-generated.` });
-      setSelectedLineItems([]);
-      setIsViewDialogOpen(false);
-      await loadSalesOrders();
-    } catch (err: any) {
-      console.error("Batch approve error:", err);
-      toast({ variant: "destructive", description: `Failed: ${err.message}` });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBatchReject = async () => {
-    if (selectedLineItems.length === 0) {
-      toast({ variant: "destructive", description: "No line items selected" });
-      return;
-    }
-
-    if (!rejectionReason.trim()) {
-      toast({ variant: "destructive", description: "Please provide a rejection reason" });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const updates = selectedLineItems.map(li => ({
-        id: li.id,
-        status: 'rejected',
-        rejected_by: user?.id,
-        rejected_at: new Date().toISOString(),
-        rejection_reason: rejectionReason
-      }));
-
-      for (const update of updates) {
-        const { error } = await supabase
-          .from("sales_order_line_items" as any)
-          .update({
-            status: update.status,
-            rejected_by: update.rejected_by,
-            rejected_at: update.rejected_at,
-            rejection_reason: update.rejection_reason
-          })
-          .eq("id", update.id);
-
-        if (error) throw error;
-      }
-
-      toast({ description: `${selectedLineItems.length} line items rejected` });
-      setSelectedLineItems([]);
-      setRejectionReason("");
-      setIsViewDialogOpen(false);
-      await loadSalesOrders();
-    } catch (err: any) {
-      console.error("Batch reject error:", err);
-      toast({ variant: "destructive", description: `Failed: ${err.message}` });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBatchOnHold = async () => {
-    if (selectedLineItems.length === 0) {
-      toast({ variant: "destructive", description: "No line items selected" });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      for (const li of selectedLineItems) {
-        const { error } = await supabase
-          .from("sales_order_line_items" as any)
-          .update({ status: 'on_hold' })
-          .eq("id", li.id);
-
-        if (error) throw error;
-      }
-
-      toast({ description: `${selectedLineItems.length} line items put on hold` });
-      setSelectedLineItems([]);
-      setIsViewDialogOpen(false);
-      await loadSalesOrders();
-    } catch (err: any) {
-      console.error("Batch on hold error:", err);
-      toast({ variant: "destructive", description: `Failed: ${err.message}` });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInlineEdit = async (lineItemId: string, field: string, value: any) => {
-    try {
-      const { error } = await supabase
-        .from("sales_order_line_items" as any)
-        .update({ [field]: value })
-        .eq("id", lineItemId);
-
-      if (error) throw error;
-
-      toast({ description: "Line item updated" });
-      await loadSalesOrders();
-    } catch (err: any) {
-      toast({ variant: "destructive", description: `Update failed: ${err.message}` });
     }
   };
 
   const handleDeleteOrder = async (orderId: string, soId: string) => {
-    if (!confirm(`Are you sure you want to delete Sales Order ${soId}? This will also delete all associated line items and cannot be undone.`)) {
-      return;
-    }
-
+    if (!confirm(`Delete ${soId}? This will delete all line items.`)) return;
     setLoading(true);
     try {
-      // Delete line items first
-      const { error: lineItemsError } = await supabase
-        .from("sales_order_line_items" as any)
-        .delete()
-        .eq("sales_order_id", orderId);
-
-      if (lineItemsError) throw lineItemsError;
-
-      // Delete sales order
-      const { error: orderError } = await supabase
-        .from("sales_orders")
-        .delete()
-        .eq("id", orderId);
-
-      if (orderError) throw orderError;
-
-      toast({ description: `Sales Order ${soId} deleted successfully` });
+      await supabase.from("sales_order_line_items" as any).delete().eq("sales_order_id", orderId);
+      await supabase.from("sales_orders").delete().eq("id", orderId);
+      toast({ description: `${soId} deleted` });
       await loadSalesOrders();
     } catch (err: any) {
-      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
+      toast({ variant: "destructive", description: err.message });
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case 'approved': return 'default';
-      case 'pending': return 'secondary';
-      case 'rejected': return 'destructive';
-      case 'on_hold': return 'outline';
-      default: return 'secondary';
-    }
-  };
-
-  const filteredOrders = salesOrders.filter(order => {
-    if (filterStatus === 'all') return true;
-    if (filterStatus === 'has_pending') return order.line_item_counts.pending > 0;
-    return order.status === filterStatus;
-  });
+  const { subtotal, gstAmount, total } = calculateTotals();
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Sales Orders" subtitle="Create and manage sales orders with line-item approval" />
+      <NavigationHeader title="Sales Orders" subtitle="Create and manage sales orders with financial tracking" />
       
       <div className="p-6 space-y-6">
-        {/* Create Sales Order Form */}
+        {/* Create Form */}
         <Card>
           <CardHeader>
             <CardTitle>Create Sales Order</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCreateOrder} className="space-y-4">
-              {/* Customer Selection */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Customer Name</Label>
-                  {!isNewCustomer ? (
-                    <Select onValueChange={handleCustomerChange} required>
+            <form onSubmit={handleCreateOrder} className="space-y-6">
+              {/* Header Section */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Order Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Customer *</Label>
+                    <Select value={formData.customer_id} onValueChange={handleCustomerChange} required>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select customer or add new" />
+                        <SelectValue placeholder="Select customer" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="new_customer">+ Add New Customer</SelectItem>
-                        {customers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.customer_name}>
-                            {customer.customer_name} {customer.party_code ? `(${customer.party_code})` : ""}
+                      <SelectContent className="bg-background z-50">
+                        {customers.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.customer_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : (
-                    <div className="flex gap-2">
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Customer PO Number *</Label>
+                    <Input
+                      value={formData.po_number}
+                      onChange={(e) => setFormData({...formData, po_number: e.target.value})}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>PO Date *</Label>
+                    <Input
+                      type="date"
+                      value={formData.po_date}
+                      onChange={(e) => setFormData({...formData, po_date: e.target.value})}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Expected Delivery Date</Label>
+                    <Input
+                      type="date"
+                      value={formData.expected_delivery_date}
+                      onChange={(e) => setFormData({...formData, expected_delivery_date: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Drawing Number</Label>
+                    <Input
+                      value={formData.drawing_number}
+                      onChange={(e) => setFormData({...formData, drawing_number: e.target.value})}
+                      placeholder="Default for all lines"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select value={formData.currency} onValueChange={(v) => setFormData({...formData, currency: v})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Payment Terms (Days)</Label>
+                    <Input
+                      type="number"
+                      value={formData.payment_terms_days}
+                      onChange={(e) => setFormData({...formData, payment_terms_days: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>GST Type</Label>
+                    <Select value={formData.gst_type} onValueChange={(v) => setFormData({...formData, gst_type: v as any})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        {GST_TYPES.map(g => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>GST Number</Label>
+                    <Input
+                      value={formData.gst_number}
+                      onChange={(e) => setFormData({...formData, gst_number: e.target.value})}
+                      disabled
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Incoterm</Label>
+                    <Select value={formData.incoterm} onValueChange={(v) => setFormData({...formData, incoterm: v})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        {INCOTERMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {formData.gst_type === 'domestic' && (
+                    <div className="space-y-2">
+                      <Label>GST %</Label>
                       <Input
-                        placeholder="Enter new customer name"
-                        value={formData.customer}
-                        onChange={(e) => handleNewCustomerNameChange(e.target.value)}
-                        required
+                        type="number"
+                        value={formData.gst_percent}
+                        onChange={(e) => setFormData({...formData, gst_percent: parseFloat(e.target.value) || 0})}
                       />
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={() => setIsNewCustomer(false)}
-                      >
-                        Cancel
-                      </Button>
                     </div>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label>Party Code</Label>
-                  <Input
-                    placeholder="Auto-generated"
-                    value={formData.party_code}
-                    onChange={(e) => setFormData({...formData, party_code: e.target.value})}
-                    disabled={!isNewCustomer}
-                  />
-                </div>
               </div>
 
-              {/* PO Details */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Customer PO Number</Label>
-                  <Input
-                    placeholder="PO Number"
-                    value={formData.po_number}
-                    onChange={(e) => setFormData({...formData, po_number: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>PO Date</Label>
-                  <Input
-                    type="date"
-                    value={formData.po_date}
-                    onChange={(e) => setFormData({...formData, po_date: e.target.value})}
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Line Items Table */}
-              <div className="space-y-2">
+              {/* Line Items */}
+              <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <Label>Line Items</Label>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={handleBulkPaste}>
-                      <Upload className="h-4 w-4 mr-1" />
-                      Paste from Excel
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-                      + Add Line Item
-                    </Button>
-                  </div>
+                  <h3 className="font-semibold text-lg">Line Items</h3>
+                  <Button type="button" size="sm" onClick={addLineItem}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Line
+                  </Button>
                 </div>
+
                 <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
-                        <TableHead className="min-w-[150px]">Item Code</TableHead>
-                        <TableHead className="min-w-[100px]">Qty (pcs)</TableHead>
-                        <TableHead className="min-w-[130px]">Due Date</TableHead>
+                        <TableHead className="min-w-[150px]">Item Code *</TableHead>
+                        <TableHead className="min-w-[100px]">Qty (pcs) *</TableHead>
+                        <TableHead className="min-w-[120px]">Alloy *</TableHead>
                         <TableHead className="min-w-[150px]">Material Size</TableHead>
-                        <TableHead className="min-w-[120px]">Alloy</TableHead>
-                        <TableHead className="min-w-[120px]">Cycle (s/pc)</TableHead>
-                        <TableHead className="min-w-[120px]">Gross (g/pc)</TableHead>
-                        <TableHead className="min-w-[120px]">Net (g/pc)</TableHead>
-                        <TableHead className="min-w-[200px]">Notes</TableHead>
-                        <TableHead className="w-24"></TableHead>
+                        <TableHead className="min-w-[100px]">Net Wt (g/pc)</TableHead>
+                        <TableHead className="min-w-[100px]">Gross Wt (g/pc)</TableHead>
+                        <TableHead className="min-w-[120px]">Drawing #</TableHead>
+                        <TableHead className="min-w-[120px]">Price/pc ({formData.currency})</TableHead>
+                        <TableHead className="min-w-[120px]">Line Amt</TableHead>
+                        <TableHead className="min-w-[130px]">Due Date</TableHead>
+                        <TableHead className="w-16"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lineItems.map((item, index) => (
-                        <TableRow key={index}>
+                      {lineItems.map((item, idx) => (
+                        <TableRow key={idx}>
                           <TableCell>{item.line_number}</TableCell>
                           <TableCell>
-                            {isCreatingNewItem[index] ? (
-                              <div className="flex gap-2">
-                                <Input
-                                  placeholder="New item code"
-                                  value={newItemCodes[index] || ""}
-                                  onChange={(e) => {
-                                    setNewItemCodes({ ...newItemCodes, [index]: e.target.value });
-                                    const updated = [...lineItems];
-                                    updated[index].item_code = e.target.value;
-                                    setLineItems(updated);
-                                  }}
-                                  className="w-full"
-                                  required
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setIsCreatingNewItem({ ...isCreatingNewItem, [index]: false });
-                                    setNewItemCodes({ ...newItemCodes, [index]: "" });
-                                  }}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex gap-1">
-                                <Select 
-                                  value={item.item_code} 
-                                  onValueChange={(val) => {
-                                    if (val === "__new__") {
-                                      setIsCreatingNewItem({ ...isCreatingNewItem, [index]: true });
-                                    } else {
-                                      handleItemCodeChange(index, val);
-                                    }
-                                  }}
-                                  required={!isCreatingNewItem[index]}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select or add new" />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-background z-50">
-                                    <SelectItem value="__new__" className="font-semibold text-blue-600">
-                                      + Add New Item Code
-                                    </SelectItem>
-                                    <SelectItem value="__historical__" disabled className="font-semibold mt-2">
-                                      Historical Items
-                                    </SelectItem>
-                                    {items.slice(0, 10).map((itm) => (
-                                      <SelectItem key={itm.id} value={itm.item_code}>
-                                        {itm.item_code} {itm.alloy ? `(${itm.alloy})` : ""}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              value={item.quantity || ""}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].quantity = parseInt(e.target.value) || 0;
-                                setLineItems(updated);
-                              }}
-                              className="w-full"
-                              required
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="date"
-                              value={item.due_date}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].due_date = e.target.value;
-                                setLineItems(updated);
-                              }}
-                              required
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              placeholder="e.g., Round 12mm"
-                              value={item.material_size_mm || ""}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].material_size_mm = e.target.value;
-                                setLineItems(updated);
-                              }}
-                              className="w-full"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={item.alloy}
-                              onValueChange={(val) => {
-                                const updated = [...lineItems];
-                                if (val === "other") {
-                                  updated[index].alloy = "";
-                                } else {
-                                  updated[index].alloy = val;
-                                }
-                                setLineItems(updated);
-                              }}
-                              required
-                            >
+                            <Select value={item.item_code} onValueChange={(v) => handleItemCodeChange(idx, v)} required>
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select alloy" />
+                                <SelectValue placeholder="Select or add" />
                               </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="brass_header" disabled className="font-semibold">
-                                  Brass Alloys
-                                </SelectItem>
-                                <SelectItem value="C36000">C36000</SelectItem>
-                                <SelectItem value="C37700">C37700</SelectItem>
-                                <SelectItem value="C38500">C38500</SelectItem>
-                                <SelectItem value="C46400">C46400</SelectItem>
-                                <SelectItem value="C23000">C23000</SelectItem>
-                                <SelectItem value="C27200">C27200</SelectItem>
-                                <SelectItem value="C26000">C26000</SelectItem>
-                                <SelectItem value="C27450">C27450</SelectItem>
-                                <SelectItem value="DZR Brass (CW602N)">DZR Brass (CW602N)</SelectItem>
-                                <SelectItem value="CW614N">CW614N</SelectItem>
-                                <SelectItem value="CW617N">CW617N</SelectItem>
-                                <SelectItem value="CZ122">CZ122</SelectItem>
-                                
-                                <SelectItem value="ss_header" disabled className="font-semibold mt-2">
-                                  Stainless Steels
-                                </SelectItem>
-                                <SelectItem value="SS304">SS304</SelectItem>
-                                <SelectItem value="SS304L">SS304L</SelectItem>
-                                <SelectItem value="SS316">SS316</SelectItem>
-                                <SelectItem value="SS316L">SS316L</SelectItem>
-                                <SelectItem value="SS410">SS410</SelectItem>
-                                <SelectItem value="SS420">SS420</SelectItem>
-                                <SelectItem value="SS430">SS430</SelectItem>
-                                
-                                <SelectItem value="copper_header" disabled className="font-semibold mt-2">
-                                  Copper Alloys
-                                </SelectItem>
-                                <SelectItem value="ETP Copper">ETP Copper</SelectItem>
-                                <SelectItem value="OFHC Copper">OFHC Copper</SelectItem>
-                                
-                                <SelectItem value="aluminium_header" disabled className="font-semibold mt-2">
-                                  Aluminium Alloys
-                                </SelectItem>
-                                <SelectItem value="6061">6061</SelectItem>
-                                <SelectItem value="6082">6082</SelectItem>
-                                <SelectItem value="7075">7075</SelectItem>
-                                <SelectItem value="1100">1100</SelectItem>
-                                <SelectItem value="2024">2024</SelectItem>
-                                <SelectItem value="5052">5052</SelectItem>
-                                
-                                <SelectItem value="other" className="font-semibold mt-2">
-                                  Other (specify)
-                                </SelectItem>
+                              <SelectContent className="bg-background z-50">
+                                <SelectItem value="__new__" className="font-semibold text-primary">+ Add New</SelectItem>
+                                {items.slice(0, 15).map((itm) => (
+                                  <SelectItem key={itm.id} value={itm.item_code}>
+                                    {itm.item_code} {itm.alloy ? `(${itm.alloy})` : ""}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
-                            {item.alloy && !["C36000", "C37700", "C38500", "C46400", "C23000", "C27200", "C26000", "C27450", "DZR Brass (CW602N)", "CW614N", "CW617N", "CZ122", "SS304", "SS304L", "SS316", "SS316L", "SS410", "SS420", "SS430", "ETP Copper", "OFHC Copper", "6061", "6082", "7075", "1100", "2024", "5052"].includes(item.alloy) && (
-                              <Input
-                                placeholder="Specify alloy"
-                                value={item.alloy}
-                                onChange={(e) => {
-                                  const updated = [...lineItems];
-                                  updated[index].alloy = e.target.value;
-                                  setLineItems(updated);
-                                }}
-                                className="w-full mt-1"
-                                required
-                              />
-                            )}
                           </TableCell>
                           <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="sec/pc"
-                              value={item.cycle_time_seconds || ""}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].cycle_time_seconds = parseFloat(e.target.value) || undefined;
-                                setLineItems(updated);
-                              }}
-                              className="w-full"
-                            />
+                            <Input type="number" value={item.quantity || ""} onChange={(e) => updateLineItemField(idx, 'quantity', parseInt(e.target.value) || 0)} required />
                           </TableCell>
                           <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="grams"
-                              value={item.gross_weight_per_pc_grams || ""}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].gross_weight_per_pc_grams = parseFloat(e.target.value) || undefined;
-                                setLineItems(updated);
-                              }}
-                              className="w-full"
-                            />
+                            <Select value={item.alloy} onValueChange={(v) => updateLineItemField(idx, 'alloy', v)} required>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-background z-50">
+                                {ALLOYS.map(group => (
+                                  <div key={group.group}>
+                                    <SelectItem value={`__${group.group}__`} disabled className="font-semibold">{group.group}</SelectItem>
+                                    {group.items.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                                  </div>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="grams"
-                              value={item.net_weight_per_pc_grams || ""}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].net_weight_per_pc_grams = parseFloat(e.target.value) || undefined;
-                                setLineItems(updated);
-                              }}
-                              className="w-full"
-                            />
+                            <Input value={item.material_size || ""} onChange={(e) => updateLineItemField(idx, 'material_size', e.target.value)} placeholder="e.g., Ø12mm" />
                           </TableCell>
                           <TableCell>
-                            <Input
-                              placeholder="Optional notes"
-                              value={item.notes || ""}
-                              onChange={(e) => {
-                                const updated = [...lineItems];
-                                updated[index].notes = e.target.value;
-                                setLineItems(updated);
-                              }}
-                              className="w-full"
-                            />
+                            <Input type="number" step="0.01" value={item.net_weight_per_pc_g || ""} onChange={(e) => updateLineItemField(idx, 'net_weight_per_pc_g', parseFloat(e.target.value))} />
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => duplicateLineItem(index)}
-                                title="Duplicate row"
-                              >
-                                <Copy className="h-4 w-4" />
+                            <Input type="number" step="0.01" value={item.gross_weight_per_pc_g || ""} onChange={(e) => updateLineItemField(idx, 'gross_weight_per_pc_g', parseFloat(e.target.value))} />
+                          </TableCell>
+                          <TableCell>
+                            <Input value={item.drawing_number || ""} onChange={(e) => updateLineItemField(idx, 'drawing_number', e.target.value)} placeholder={formData.drawing_number} />
+                          </TableCell>
+                          <TableCell>
+                            <Input type="number" step="0.0001" value={item.price_per_pc || ""} onChange={(e) => updateLineItemField(idx, 'price_per_pc', parseFloat(e.target.value))} />
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {(item.line_amount || 0).toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <Input type="date" value={item.due_date} onChange={(e) => updateLineItemField(idx, 'due_date', e.target.value)} />
+                          </TableCell>
+                          <TableCell>
+                            {lineItems.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removeLineItem(idx)}>
+                                <X className="h-4 w-4" />
                               </Button>
-                              {lineItems.length > 1 && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeLineItem(index)}
-                                  title="Remove row"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -920,350 +558,122 @@ export default function Sales() {
                 </div>
               </div>
 
-              <Button type="submit" disabled={loading} className="w-full">
-                Create Sales Order ({lineItems.length} line items)
-              </Button>
+              {/* Footer Totals */}
+              <div className="flex justify-end">
+                <div className="w-96 space-y-2 bg-muted/20 p-4 rounded-lg">
+                  <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span className="font-medium">{formData.currency} {subtotal.toFixed(2)}</span>
+                  </div>
+                  {formData.gst_type === 'domestic' && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span>GST ({formData.gst_percent}%):</span>
+                        <span>{formData.currency} {gstAmount.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-lg font-bold border-t pt-2">
+                    <span>Total:</span>
+                    <span>{formData.currency} {total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button type="submit" disabled={loading}>
+                  Create Sales Order ({lineItems.length} line items)
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
 
-        {/* Sales Orders List with Filters */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">Sales Orders</h2>
-            <div className="flex gap-2 items-center">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Orders</SelectItem>
-                  <SelectItem value="has_pending">Has Pending Items</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {loading ? (
-            <p>Loading...</p>
-          ) : filteredOrders.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">No sales orders found</p>
-              </CardContent>
-            </Card>
-          ) : (
-            filteredOrders.map((so) => (
-              <Card key={so.id}>
-                <CardContent className="pt-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold">{so.so_id}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {so.customer} • PO: {so.po_number} • {new Date(so.po_date).toLocaleDateString()}
-                      </p>
-                      <div className="flex gap-2 mt-2">
-                        <Badge variant={getStatusBadgeVariant(so.status)}>{so.status}</Badge>
-                        <Badge variant="outline">
-                          {so.line_item_counts.total} items: {so.line_item_counts.approved} approved, {so.line_item_counts.pending} pending
-                          {so.line_item_counts.rejected > 0 && `, ${so.line_item_counts.rejected} rejected`}
-                          {so.line_item_counts.on_hold > 0 && `, ${so.line_item_counts.on_hold} on hold`}
-                        </Badge>
-                      </div>
+        {/* Orders List */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales Orders</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {loading && <p className="text-muted-foreground">Loading...</p>}
+              {salesOrders.map(order => (
+                <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{order.so_id}</span>
+                      <Badge variant="outline">{order.status}</Badge>
+                      <span className="text-sm text-muted-foreground">{order.customer}</span>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleViewOrder(so)}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        View/Approve
-                      </Button>
-                      <Button 
-                        variant="destructive" 
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteOrder(so.id, so.so_id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      PO: {order.po_number} | {order.sales_order_items?.length || 0} items | {order.currency} {order.total_amount?.toFixed(2)}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setSelectedOrder(order);
+                      setIsViewDialogOpen(true);
+                    }}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDeleteOrder(order.id, order.so_id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* View/Approve Line Items Dialog */}
+      {/* View Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl">
           <DialogHeader>
             <DialogTitle>Sales Order: {selectedOrder?.so_id}</DialogTitle>
-            <DialogDescription>
-              {selectedOrder?.customer} • PO: {selectedOrder?.po_number}
-            </DialogDescription>
           </DialogHeader>
-
           {selectedOrder && (
             <div className="space-y-4">
-              {/* Action Buttons */}
-              <div className="flex justify-between items-center">
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={selectAllPendingLineItems}
-                  >
-                    <CheckSquare className="h-4 w-4 mr-1" />
-                    Select All Pending
-                  </Button>
-                  <span className="text-sm text-muted-foreground self-center">
-                    {selectedLineItems.length} selected
-                  </span>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Customer:</span>
+                  <p className="font-medium">{selectedOrder.customer}</p>
                 </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="default" 
-                    size="sm" 
-                    onClick={handleBatchApprove}
-                    disabled={selectedLineItems.length === 0}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Approve Selected
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleBatchOnHold}
-                    disabled={selectedLineItems.length === 0}
-                  >
-                    On Hold
-                  </Button>
-                  <Button 
-                    variant="destructive" 
-                    size="sm" 
-                    onClick={handleBatchReject}
-                    disabled={selectedLineItems.length === 0}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Reject Selected
-                  </Button>
+                <div>
+                  <span className="text-muted-foreground">PO Number:</span>
+                  <p className="font-medium">{selectedOrder.po_number}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Total:</span>
+                  <p className="font-medium">{selectedOrder.currency} {selectedOrder.total_amount?.toFixed(2)}</p>
                 </div>
               </div>
 
-              {/* Rejection Reason */}
-              {selectedLineItems.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Rejection Reason (required for reject)</Label>
-                  <Textarea
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Enter reason for rejection..."
-                  />
-                </div>
-              )}
-
-              {/* Line Items Table */}
-              <div className="border rounded-lg overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">
-                        <Checkbox
-                          checked={selectedLineItems.length === selectedOrder.line_items?.filter((li: any) => li.status === 'pending').length}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              selectAllPendingLineItems();
-                            } else {
-                              setSelectedLineItems([]);
-                            }
-                          }}
-                        />
-                      </TableHead>
-                      <TableHead>#</TableHead>
-                      <TableHead>Item Code</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Material</TableHead>
-                      <TableHead>Alloy</TableHead>
-                      <TableHead>Cycle</TableHead>
-                      <TableHead>Gross</TableHead>
-                      <TableHead>Net</TableHead>
-                      <TableHead>Notes</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>WO</TableHead>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Item Code</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Alloy</TableHead>
+                    <TableHead>Price/pc</TableHead>
+                    <TableHead>Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedOrder.sales_order_items?.map((item: any) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.line_number}</TableCell>
+                      <TableCell>{item.item_code}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{item.alloy}</TableCell>
+                      <TableCell>{item.price_per_pc?.toFixed(4)}</TableCell>
+                      <TableCell className="font-medium">{item.line_amount?.toFixed(2)}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedOrder.line_items?.map((item: any) => {
-                      const isSelected = selectedLineItems.some(li => li.id === item.id);
-                      const canSelect = item.status === 'pending';
-                      
-                      return (
-                        <TableRow key={item.id} className={isSelected ? 'bg-muted/50' : ''}>
-                          <TableCell>
-                            {canSelect && (
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleLineItemSelection(item)}
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell>{item.line_number}</TableCell>
-                          <TableCell className="font-medium">{item.item_code}</TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                type="number"
-                                value={item.quantity}
-                                onChange={(e) => handleInlineEdit(item.id, 'quantity', parseInt(e.target.value))}
-                                className="w-24"
-                              />
-                            ) : (
-                              item.quantity
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                type="date"
-                                value={item.due_date}
-                                onChange={(e) => handleInlineEdit(item.id, 'due_date', e.target.value)}
-                                className="w-36"
-                              />
-                            ) : (
-                              new Date(item.due_date).toLocaleDateString()
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Select
-                                value={(item.priority || 3).toString()}
-                                onValueChange={(val) => handleInlineEdit(item.id, 'priority', parseInt(val))}
-                              >
-                                <SelectTrigger className="w-20">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="1">P1</SelectItem>
-                                  <SelectItem value="2">P2</SelectItem>
-                                  <SelectItem value="3">P3</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              `P${item.priority || 3}`
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                value={item.material_size_mm || ""}
-                                onChange={(e) => handleInlineEdit(item.id, 'material_size_mm', e.target.value)}
-                                className="w-32"
-                                placeholder="e.g., Round 12mm"
-                              />
-                            ) : (
-                              item.material_size_mm || "-"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                value={item.alloy}
-                                onChange={(e) => handleInlineEdit(item.id, 'alloy', e.target.value)}
-                                className="w-28"
-                              />
-                            ) : (
-                              item.alloy
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={item.cycle_time_seconds || ""}
-                                onChange={(e) => handleInlineEdit(item.id, 'cycle_time_seconds', parseFloat(e.target.value) || null)}
-                                className="w-24"
-                                placeholder="s/pc"
-                              />
-                            ) : (
-                              item.cycle_time_seconds ? `${item.cycle_time_seconds}s` : "-"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={item.gross_weight_per_pc_grams || ""}
-                                onChange={(e) => handleInlineEdit(item.id, 'gross_weight_per_pc_grams', parseFloat(e.target.value) || null)}
-                                className="w-24"
-                                placeholder="g"
-                              />
-                            ) : (
-                              item.gross_weight_per_pc_grams ? `${item.gross_weight_per_pc_grams}g` : "-"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'pending' ? (
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={item.net_weight_per_pc_grams || ""}
-                                onChange={(e) => handleInlineEdit(item.id, 'net_weight_per_pc_grams', parseFloat(e.target.value) || null)}
-                                className="w-24"
-                                placeholder="g"
-                              />
-                            ) : (
-                              item.net_weight_per_pc_grams ? `${item.net_weight_per_pc_grams}g` : "-"
-                            )}
-                          </TableCell>
-                          <TableCell className="max-w-[200px]">
-                            {item.status === 'pending' ? (
-                              <Textarea
-                                value={item.notes || ""}
-                                onChange={(e) => handleInlineEdit(item.id, 'notes', e.target.value)}
-                                className="min-h-[60px]"
-                                placeholder="Optional notes"
-                              />
-                            ) : (
-                              <span className="text-sm text-muted-foreground">{item.notes || "-"}</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusBadgeVariant(item.status)}>
-                              {item.status}
-                            </Badge>
-                            {item.rejection_reason && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {item.rejection_reason}
-                              </p>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.work_order_id && (
-                              <Button
-                                variant="link"
-                                size="sm"
-                                onClick={() => navigate(`/work-orders/${item.work_order_id}`)}
-                              >
-                                View WO
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </DialogContent>
