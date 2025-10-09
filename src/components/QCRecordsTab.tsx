@@ -111,9 +111,19 @@ export const QCRecordsTab = ({ records, woId, workOrder, onUpdate }: QCRecordsTa
   return (
     <>
       <QCGateControls 
-        woId={workOrder.id} 
-        qcMaterialPassed={workOrder.qc_material_passed}
-        qcFirstPiecePassed={workOrder.qc_first_piece_passed}
+        woId={workOrder.id}
+        materialQC={{
+          status: workOrder.qc_material_status || 'pending',
+          approvedAt: workOrder.qc_material_approved_at,
+          approvedBy: workOrder.qc_material_approved_by,
+          remarks: workOrder.qc_material_remarks
+        }}
+        firstPieceQC={{
+          status: workOrder.qc_first_piece_status || 'pending',
+          approvedAt: workOrder.qc_first_piece_approved_at,
+          approvedBy: workOrder.qc_first_piece_approved_by,
+          remarks: workOrder.qc_first_piece_remarks
+        }}
         onUpdate={onUpdate}
       />
       

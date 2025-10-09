@@ -1,46 +1,42 @@
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Ban } from "lucide-react";
+
+type QCGateStatus = 'passed' | 'pending' | 'failed' | 'waived';
 
 interface QCGateStatusBadgeProps {
-  status: 'not_required' | 'pending' | 'passed' | 'failed' | 'approved';
+  status: QCGateStatus;
   label?: string;
 }
 
 export const QCGateStatusBadge = ({ status, label }: QCGateStatusBadgeProps) => {
   const configs = {
-    not_required: {
-      icon: null,
-      variant: "secondary" as const,
-      label: "Not Required",
-      className: "",
-    },
     pending: {
       icon: Clock,
       variant: "outline" as const,
-      label: "Pending QC",
+      label: "⏳ Pending",
       className: "border-warning text-warning",
     },
     passed: {
       icon: CheckCircle2,
       variant: "default" as const,
-      label: "QC Passed",
-      className: "bg-success",
-    },
-    approved: {
-      icon: CheckCircle2,
-      variant: "default" as const,
-      label: "QC Approved",
-      className: "bg-success",
+      label: "✅ Passed",
+      className: "bg-success text-success-foreground",
     },
     failed: {
       icon: XCircle,
       variant: "destructive" as const,
-      label: "QC Failed",
+      label: "❌ Failed",
       className: "",
+    },
+    waived: {
+      icon: Ban,
+      variant: "secondary" as const,
+      label: "🚫 Waived",
+      className: "bg-muted",
     },
   };
 
-  const config = configs[status] || configs.not_required;
+  const config = configs[status] || configs.pending;
   const Icon = config.icon;
 
   return (

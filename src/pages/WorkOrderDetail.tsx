@@ -56,7 +56,10 @@ const WorkOrderDetail = () => {
 
   useEffect(() => {
     if (wo) {
-      setQcGatesBlocked(!wo.qc_material_passed || !wo.qc_first_piece_passed);
+      // QC gates block production if they are pending or failed (but NOT if waived)
+      const materialBlocked = wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed';
+      const firstPieceBlocked = wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed';
+      setQcGatesBlocked(materialBlocked || firstPieceBlocked);
     }
   }, [wo]);
 
@@ -507,42 +510,6 @@ const WorkOrderDetail = () => {
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold">{wo.wo_id}</h1>
               <StatusBadge status={wo.status} />
-              
-              {/* QC Gate: Material Chemical Test */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card">
-                <FlaskConical className="h-4 w-4" />
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">QC-In Chemical:</span>
-                    <QCGateStatusBadge 
-                      status={wo.qc_material_passed ? 'passed' : 'pending'} 
-                    />
-                  </div>
-                  {wo.qc_material_approved_at && (
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(wo.qc_material_approved_at).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* QC Gate: First Piece */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card">
-                <CheckSquare className="h-4 w-4" />
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">First-Piece QC:</span>
-                    <QCGateStatusBadge 
-                      status={wo.qc_first_piece_passed ? 'passed' : 'pending'} 
-                    />
-                  </div>
-                  {wo.qc_first_piece_approved_at && (
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(wo.qc_first_piece_approved_at).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </div>
             </div>
             <p className="text-sm text-muted-foreground">
               {wo.customer} • {wo.item_code}
@@ -563,8 +530,8 @@ const WorkOrderDetail = () => {
             <Button 
               onClick={() => setShowAssignmentDialog(true)} 
               variant="default"
-              disabled={!wo.qc_material_passed}
-              title={!wo.qc_material_passed ? 'Material QC must pass before assigning machines' : ''}
+              disabled={qcGatesBlocked}
+              title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : ''}
             >
               <Cpu className="h-4 w-4 mr-2" />
               Assign Machines
@@ -592,11 +559,14 @@ const WorkOrderDetail = () => {
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-semibold text-destructive">Production Blocked - QC Gates Pending</h3>
+                <h3 className="font-semibold text-destructive">Production Blocked – QC Gates Pending</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {!wo.qc_material_passed && "Material Chemical Test must pass before production can begin. "}
-                  {wo.qc_material_passed && !wo.qc_first_piece_passed && "First-Piece QC must pass before mass production can begin. "}
-                  Production logging is disabled until all QC gates are cleared.
+                  {(wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed') && 
+                    "Material QC must pass or be waived before production can begin. "}
+                  {wo.qc_material_status === 'passed' && 
+                    (wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed') && 
+                    "First Piece QC must pass or be waived before mass production can begin. "}
+                  Please complete or waive the required QC approvals in the QC Records tab.
                 </p>
               </div>
             </div>
@@ -705,58 +675,13 @@ const WorkOrderDetail = () => {
           </CardContent>
         </Card>
 
-        {/* QC Gate Approvals */}
+        {/* Material QC and First Piece QC Approval Components - Legacy Support */}
         {wo.material_qc_status === 'pending' && (
           <MaterialQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
         )}
         
         {wo.first_piece_ready_for_qc && wo.first_piece_qc_status === 'pending' && (
           <FirstPieceQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
-        )}
-
-        {/* QC Gate Status Details */}
-        {(wo.material_qc_status !== 'not_required' || wo.first_piece_qc_status !== 'not_required') && (
-          <Card>
-            <CardHeader>
-              <CardTitle>QC Gates Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {wo.material_qc_status !== 'not_required' && (
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold">Raw Material QC</h3>
-                    <QCGateStatusBadge status={wo.material_qc_status} />
-                  </div>
-                  {wo.material_qc_approved_at && (
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>Approved: {new Date(wo.material_qc_approved_at).toLocaleString()}</p>
-                      {wo.material_qc_remarks && <p>Remarks: {wo.material_qc_remarks}</p>}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {wo.first_piece_qc_status !== 'not_required' && (
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold">First Piece QC</h3>
-                    <QCGateStatusBadge status={wo.first_piece_qc_status} />
-                  </div>
-                  {wo.first_piece_flagged_at && (
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>Flagged: {new Date(wo.first_piece_flagged_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {wo.first_piece_qc_approved_at && (
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>Approved: {new Date(wo.first_piece_qc_approved_at).toLocaleString()}</p>
-                      {wo.first_piece_qc_remarks && <p>Remarks: {wo.first_piece_qc_remarks}</p>}
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         )}
 
         {/* Production Progress Card */}
@@ -789,19 +714,19 @@ const WorkOrderDetail = () => {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Production logging is blocked until all QC gates are cleared. Please complete the required QC approvals before logging production.
+                Production logging is blocked until all QC gates pass or are waived. Please complete the required QC approvals in the QC Records tab.
               </p>
               <div className="space-y-2">
-                {!wo.qc_material_passed && (
+                {(wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed') && (
                   <div className="flex items-center gap-2 text-sm">
                     <div className="w-2 h-2 rounded-full bg-destructive"></div>
-                    <span>Material Chemical Test (QC-In) - Pending</span>
+                    <span>Raw Material QC - {wo.qc_material_status === 'pending' ? 'Pending' : 'Failed'}</span>
                   </div>
                 )}
-                {wo.qc_material_passed && !wo.qc_first_piece_passed && (
+                {(wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed') && (
                   <div className="flex items-center gap-2 text-sm">
                     <div className="w-2 h-2 rounded-full bg-destructive"></div>
-                    <span>First-Piece QC - Pending</span>
+                    <span>First Piece QC - {wo.qc_first_piece_status === 'pending' ? 'Pending' : 'Failed'}</span>
                   </div>
                 )}
               </div>

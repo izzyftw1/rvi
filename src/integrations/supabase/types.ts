@@ -3470,9 +3470,13 @@ export type Database = {
           qc_first_piece_approved_at: string | null
           qc_first_piece_approved_by: string | null
           qc_first_piece_passed: boolean
+          qc_first_piece_remarks: string | null
+          qc_first_piece_status: string | null
           qc_material_approved_at: string | null
           qc_material_approved_by: string | null
           qc_material_passed: boolean
+          qc_material_remarks: string | null
+          qc_material_status: string | null
           quantity: number
           revision: string | null
           sales_order: string | null
@@ -3503,9 +3507,13 @@ export type Database = {
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean
+          qc_first_piece_remarks?: string | null
+          qc_first_piece_status?: string | null
           qc_material_approved_at?: string | null
           qc_material_approved_by?: string | null
           qc_material_passed?: boolean
+          qc_material_remarks?: string | null
+          qc_material_status?: string | null
           quantity: number
           revision?: string | null
           sales_order?: string | null
@@ -3536,9 +3544,13 @@ export type Database = {
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean
+          qc_first_piece_remarks?: string | null
+          qc_first_piece_status?: string | null
           qc_material_approved_at?: string | null
           qc_material_approved_by?: string | null
           qc_material_passed?: boolean
+          qc_material_remarks?: string | null
+          qc_material_status?: string | null
           quantity?: number
           revision?: string | null
           sales_order?: string | null
