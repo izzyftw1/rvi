@@ -12,7 +12,7 @@ import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
@@ -46,10 +46,19 @@ const WorkOrderDetail = () => {
   const [machineAssignments, setMachineAssignments] = useState<any[]>([]);
   const [woProgress, setWoProgress] = useState<any>(null);
   const [woOEE, setWoOEE] = useState<any>(null);
+  const [qcGatesBlocked, setQcGatesBlocked] = useState(false);
+  const [showOverrideDialog, setShowOverrideDialog] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
 
   useEffect(() => {
     loadWorkOrderData();
   }, [id]);
+
+  useEffect(() => {
+    if (wo) {
+      setQcGatesBlocked(!wo.qc_material_passed || !wo.qc_first_piece_passed);
+    }
+  }, [wo]);
 
   const loadWorkOrderData = async () => {
     try {
@@ -495,15 +504,45 @@ const WorkOrderDetail = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold">{wo.wo_id}</h1>
               <StatusBadge status={wo.status} />
-              <Badge variant={wo.qc_material_passed ? "default" : "destructive"}>
-                {wo.qc_material_passed ? "✅ Material QC Passed" : "🔴 Material QC Pending"}
-              </Badge>
-              <Badge variant={wo.qc_first_piece_passed ? "default" : "destructive"}>
-                {wo.qc_first_piece_passed ? "✅ First Piece QC Passed" : "🔴 First Piece QC Pending"}
-              </Badge>
+              
+              {/* QC Gate: Material Chemical Test */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card">
+                <FlaskConical className="h-4 w-4" />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">QC-In Chemical:</span>
+                    <QCGateStatusBadge 
+                      status={wo.qc_material_passed ? 'passed' : 'pending'} 
+                    />
+                  </div>
+                  {wo.qc_material_approved_at && (
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(wo.qc_material_approved_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* QC Gate: First Piece */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card">
+                <CheckSquare className="h-4 w-4" />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">First-Piece QC:</span>
+                    <QCGateStatusBadge 
+                      status={wo.qc_first_piece_passed ? 'passed' : 'pending'} 
+                    />
+                  </div>
+                  {wo.qc_first_piece_approved_at && (
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(wo.qc_first_piece_approved_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
             <p className="text-sm text-muted-foreground">
               {wo.customer} • {wo.item_code}
@@ -546,6 +585,23 @@ const WorkOrderDetail = () => {
             </Button>
           </div>
         </div>
+
+        {/* QC Gates Blocked Warning */}
+        {qcGatesBlocked && (
+          <div className="bg-destructive/10 border-2 border-destructive rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-destructive">Production Blocked - QC Gates Pending</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {!wo.qc_material_passed && "Material Chemical Test must pass before production can begin. "}
+                  {wo.qc_material_passed && !wo.qc_first_piece_passed && "First-Piece QC must pass before mass production can begin. "}
+                  Production logging is disabled until all QC gates are cleared.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Machine Assignments */}
         {machineAssignments.length > 0 && (
@@ -723,7 +779,37 @@ const WorkOrderDetail = () => {
         )}
 
         {/* Production Log Form */}
-        <ProductionLogForm workOrder={wo} />
+        {qcGatesBlocked ? (
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="text-destructive flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Production Logging Disabled
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Production logging is blocked until all QC gates are cleared. Please complete the required QC approvals before logging production.
+              </p>
+              <div className="space-y-2">
+                {!wo.qc_material_passed && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="w-2 h-2 rounded-full bg-destructive"></div>
+                    <span>Material Chemical Test (QC-In) - Pending</span>
+                  </div>
+                )}
+                {wo.qc_material_passed && !wo.qc_first_piece_passed && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="w-2 h-2 rounded-full bg-destructive"></div>
+                    <span>First-Piece QC - Pending</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <ProductionLogForm workOrder={wo} />
+        )}
 
         {/* Tabs */}
         <Tabs defaultValue="production" className="w-full">

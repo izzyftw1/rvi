@@ -164,7 +164,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
   const onSubmit = async (data: ProductionLogFormData) => {
     // Check both QC gates before allowing production logging
     if (propWorkOrder && (!propWorkOrder.qc_material_passed || !propWorkOrder.qc_first_piece_passed)) {
-      toast.error("Cannot start mass production until QC gates are cleared");
+      toast.error("Cannot log production until QC gates are cleared. Material Chemical Test and First-Piece QC must both pass.");
       return;
     }
 
