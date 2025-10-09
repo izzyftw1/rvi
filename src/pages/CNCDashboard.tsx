@@ -13,8 +13,9 @@ import {
   AlertCircle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { format, differenceInMinutes, startOfDay, endOfDay } from "date-fns";
+import { format, differenceInMinutes, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { GanttScheduler } from "@/components/GanttScheduler";
+import { OEEWidget } from "@/components/OEEWidget";
 
 interface Machine {
   id: string;
@@ -37,6 +38,7 @@ const CNCDashboard = () => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [queuePanelOpen, setQueuePanelOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [machineOEE, setMachineOEE] = useState<any>(null);
 
   useEffect(() => {
     loadMachines();
@@ -179,9 +181,85 @@ const CNCDashboard = () => {
     return getQueueCount(machine) > 3;
   };
 
-  const openQueuePanel = (machine: Machine) => {
+  const openQueuePanel = async (machine: Machine) => {
     setSelectedMachine(machine);
     setQueuePanelOpen(true);
+    
+    // Load OEE metrics for this machine
+    await loadMachineOEE(machine.id);
+  };
+
+  const loadMachineOEE = async (machineId: string) => {
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const weekStart = format(startOfWeek(new Date()), 'yyyy-MM-dd');
+      const weekEnd = format(endOfWeek(new Date()), 'yyyy-MM-dd');
+      const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+      const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+
+      // Fetch today's metrics
+      const { data: todayData } = await supabase
+        .from('machine_daily_metrics')
+        .select('*')
+        .eq('machine_id', machineId)
+        .eq('date', today)
+        .single();
+
+      // Fetch this week's metrics
+      const { data: weekData } = await supabase
+        .from('machine_daily_metrics')
+        .select('*')
+        .eq('machine_id', machineId)
+        .gte('date', weekStart)
+        .lte('date', weekEnd);
+
+      // Fetch this month's metrics
+      const { data: monthData } = await supabase
+        .from('machine_daily_metrics')
+        .select('*')
+        .eq('machine_id', machineId)
+        .gte('date', monthStart)
+        .lte('date', monthEnd);
+
+      const calculateOEE = (data: any) => {
+        if (!data) return { availability: 0, performance: 0, quality: 0, oee: 0 };
+        
+        const availability = data.availability_pct || 0;
+        const performance = data.performance_pct || 0;
+        const quality = data.quality_pct || 0;
+        const oee = data.oee_pct || 0;
+
+        return { availability, performance, quality, oee };
+      };
+
+      const calculateAverageOEE = (dataArray: any[]) => {
+        if (!dataArray || dataArray.length === 0) {
+          return { availability: 0, performance: 0, quality: 0, oee: 0 };
+        }
+
+        const totals = dataArray.reduce((acc, d) => ({
+          availability: acc.availability + (d.availability_pct || 0),
+          performance: acc.performance + (d.performance_pct || 0),
+          quality: acc.quality + (d.quality_pct || 0),
+          oee: acc.oee + (d.oee_pct || 0),
+        }), { availability: 0, performance: 0, quality: 0, oee: 0 });
+
+        return {
+          availability: totals.availability / dataArray.length,
+          performance: totals.performance / dataArray.length,
+          quality: totals.quality / dataArray.length,
+          oee: totals.oee / dataArray.length,
+        };
+      };
+
+      setMachineOEE({
+        today: calculateOEE(todayData),
+        week: calculateAverageOEE(weekData || []),
+        month: calculateAverageOEE(monthData || []),
+      });
+    } catch (error: any) {
+      console.error('Error loading machine OEE:', error);
+    }
   };
 
   return (
@@ -514,6 +592,14 @@ const CNCDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* OEE Metrics */}
+              {machineOEE && (
+                <OEEWidget 
+                  metrics={machineOEE}
+                  title={`OEE - ${selectedMachine.machine_id}`}
+                />
+              )}
 
               {/* Upcoming Queue */}
               <Card>

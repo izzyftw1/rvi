@@ -21,6 +21,8 @@ import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 import { MaterialQCApproval } from "@/components/MaterialQCApproval";
 import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
 import { useUserRole } from "@/hooks/useUserRole";
+import { OEEWidget } from "@/components/OEEWidget";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -43,6 +45,7 @@ const WorkOrderDetail = () => {
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
   const [machineAssignments, setMachineAssignments] = useState<any[]>([]);
   const [woProgress, setWoProgress] = useState<any>(null);
+  const [woOEE, setWoOEE] = useState<any>(null);
 
   useEffect(() => {
     loadWorkOrderData();
@@ -215,10 +218,84 @@ const WorkOrderDetail = () => {
         });
         setWoProgress(progressData?.[0] || null);
       }
+
+      // Load OEE for assigned machines
+      if (assignmentsData && assignmentsData.length > 0) {
+        await loadWOOEE(assignmentsData);
+      }
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadWOOEE = async (assignments: any[]) => {
+    try {
+      // Get running machines
+      const runningMachines = assignments
+        .filter((a: any) => a.status === 'running')
+        .map((a: any) => a.machine_id);
+
+      if (runningMachines.length === 0) {
+        setWoOEE(null);
+        return;
+      }
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const weekStart = format(startOfWeek(new Date()), 'yyyy-MM-dd');
+      const weekEnd = format(endOfWeek(new Date()), 'yyyy-MM-dd');
+      const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+      const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+
+      // Fetch metrics for all running machines
+      const { data: todayData } = await supabase
+        .from('machine_daily_metrics')
+        .select('*')
+        .in('machine_id', runningMachines)
+        .eq('date', today);
+
+      const { data: weekData } = await supabase
+        .from('machine_daily_metrics')
+        .select('*')
+        .in('machine_id', runningMachines)
+        .gte('date', weekStart)
+        .lte('date', weekEnd);
+
+      const { data: monthData } = await supabase
+        .from('machine_daily_metrics')
+        .select('*')
+        .in('machine_id', runningMachines)
+        .gte('date', monthStart)
+        .lte('date', monthEnd);
+
+      const calculateAverageOEE = (dataArray: any[]) => {
+        if (!dataArray || dataArray.length === 0) {
+          return { availability: 0, performance: 0, quality: 0, oee: 0 };
+        }
+
+        const totals = dataArray.reduce((acc, d) => ({
+          availability: acc.availability + (d.availability_pct || 0),
+          performance: acc.performance + (d.performance_pct || 0),
+          quality: acc.quality + (d.quality_pct || 0),
+          oee: acc.oee + (d.oee_pct || 0),
+        }), { availability: 0, performance: 0, quality: 0, oee: 0 });
+
+        return {
+          availability: totals.availability / dataArray.length,
+          performance: totals.performance / dataArray.length,
+          quality: totals.quality / dataArray.length,
+          oee: totals.oee / dataArray.length,
+        };
+      };
+
+      setWoOEE({
+        today: calculateAverageOEE(todayData || []),
+        week: calculateAverageOEE(weekData || []),
+        month: calculateAverageOEE(monthData || []),
+      });
+    } catch (error: any) {
+      console.error('Error loading WO OEE:', error);
     }
   };
 
@@ -634,6 +711,14 @@ const WorkOrderDetail = () => {
             scrapQuantity={woProgress.total_scrap}
             progressPercentage={woProgress.progress_percentage}
             remainingQuantity={woProgress.remaining_quantity}
+          />
+        )}
+
+        {/* OEE Widget for running WO */}
+        {woOEE && machineAssignments.some(a => a.status === 'running') && (
+          <OEEWidget 
+            metrics={woOEE}
+            title="Work Order OEE (Running Machines)"
           />
         )}
 
