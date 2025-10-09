@@ -29,9 +29,9 @@ const TraceabilityReports = () => {
               pallet_cartons(
                 carton:cartons(
                   *,
-                  work_order:work_orders(*),
-                  wo_material_issues(
-                    material_lot:material_lots(*)
+                  wo:work_orders(*),
+                  material_issues(
+                    lot:material_lots(*)
                   )
                 )
               )
@@ -67,8 +67,8 @@ const TraceabilityReports = () => {
         .from("material_lots")
         .select(`
           *,
-          wo_material_issues(
-            work_order:work_orders(
+          material_issues(
+            wo:work_orders(
               *,
               cartons(*),
               qc_records(*)
@@ -103,8 +103,8 @@ const TraceabilityReports = () => {
         .from("material_lots")
         .select(`
           *,
-          wo_material_issues(
-            work_order:work_orders(
+          material_issues(
+            wo:work_orders(
               *,
               cartons(
                 pallet_cartons(

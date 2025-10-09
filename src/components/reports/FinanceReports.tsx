@@ -118,27 +118,36 @@ const FinanceReports = () => {
     try {
       // Get material costs by customer via work orders
       const { data: materialIssues } = await supabase
-        .from("wo_material_issues")
+        .from("material_issues")
         .select(`
           quantity_kg,
-          work_order:work_orders(customer),
-          lot:material_lots(
-            material_costs(cost_per_kg)
-          )
+          wo:work_orders(customer),
+          lot:material_lots(id)
         `);
+
+      // Get material costs
+      const { data: materialCosts } = await supabase
+        .from("material_costs")
+        .select("lot_id, cost_per_kg");
 
       // Get processing costs by customer
       const { data: processingCosts } = await supabase
         .from("processing_costs")
         .select(`
           cost_amount,
-          work_order:work_orders(customer)
+          wo:work_orders(customer)
         `);
 
       const customerData: any = {};
 
+      // Build cost per kg lookup
+      const costLookup: any = {};
+      materialCosts?.forEach(mc => {
+        costLookup[mc.lot_id] = mc.cost_per_kg;
+      });
+
       materialIssues?.forEach((mi: any) => {
-        const customer = mi.work_order?.customer || "Unknown";
+        const customer = mi.wo?.customer || "Unknown";
         if (!customerData[customer]) {
           customerData[customer] = {
             customer,
@@ -147,12 +156,12 @@ const FinanceReports = () => {
             logisticsCost: 0,
           };
         }
-        const costPerKg = Number(mi.lot?.material_costs?.[0]?.cost_per_kg || 0);
+        const costPerKg = Number(costLookup[mi.lot?.id] || 0);
         customerData[customer].materialCost += Number(mi.quantity_kg || 0) * costPerKg;
       });
 
       processingCosts?.forEach((pc: any) => {
-        const customer = pc.work_order?.customer || "Unknown";
+        const customer = pc.wo?.customer || "Unknown";
         if (!customerData[customer]) {
           customerData[customer] = {
             customer,

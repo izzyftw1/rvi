@@ -58,16 +58,16 @@ const InventoryReports = () => {
   const loadConsumptionData = async () => {
     try {
       const { data, error } = await supabase
-        .from("wo_material_issues")
+        .from("material_issues")
         .select(`
           quantity_kg,
-          work_order:work_orders(customer)
+          wo:work_orders(customer)
         `);
 
       if (error) throw error;
 
       const consumption = data?.reduce((acc: any, issue) => {
-        const customer = issue.work_order?.customer || "Unknown";
+        const customer = issue.wo?.customer || "Unknown";
         if (!acc[customer]) {
           acc[customer] = { customer, totalKg: 0 };
         }
