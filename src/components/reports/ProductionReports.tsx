@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Activity, ArrowRight } from "lucide-react";
 
 const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
 const ProductionReports = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [wipData, setWipData] = useState<any[]>([]);
   const [cycleTimeData, setCycleTimeData] = useState<any[]>([]);
@@ -136,8 +140,17 @@ const ProductionReports = () => {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Production & Efficiency Analytics</CardTitle>
-          <CardDescription>WIP, cycle times, bottlenecks, and productivity metrics</CardDescription>
+          <div className="flex justify-between items-start">
+            <div>
+              <CardTitle>Production & Efficiency Analytics</CardTitle>
+              <CardDescription>WIP, cycle times, bottlenecks, and productivity metrics</CardDescription>
+            </div>
+            <Button onClick={() => navigate('/reports/machine-runtime')} className="gap-2">
+              <Activity className="h-4 w-4" />
+              Machine Runtime Report
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
