@@ -48,6 +48,7 @@ export default function Sales() {
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [historicalLineItems, setHistoricalLineItems] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     customer_id: "",
@@ -88,8 +89,16 @@ export default function Sales() {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders()]);
+    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders(), loadHistoricalLineItems()]);
     setLoading(false);
+  };
+
+  const loadHistoricalLineItems = async () => {
+    const { data } = await supabase
+      .from("sales_order_line_items" as any)
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (data) setHistoricalLineItems(data);
   };
 
   const loadCustomers = async () => {
@@ -154,15 +163,29 @@ export default function Sales() {
     }
     
     const item = items.find(i => i.item_code === value);
+    
+    // Find most recent historical line item for this item code
+    const historicalItem = historicalLineItems
+      .filter((li: any) => li.item_code === value)
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    
     const updated = [...lineItems];
     updated[index] = {
       ...updated[index],
       item_code: value,
-      alloy: item?.alloy || updated[index].alloy,
-      material_size: item?.material_size_mm || updated[index].material_size,
-      gross_weight_per_pc_g: item?.gross_weight_grams || updated[index].gross_weight_per_pc_g,
-      net_weight_per_pc_g: item?.net_weight_grams || updated[index].net_weight_per_pc_g
+      alloy: item?.alloy || historicalItem?.alloy || updated[index].alloy,
+      material_size: item?.material_size_mm || historicalItem?.material_size_mm || updated[index].material_size,
+      gross_weight_per_pc_g: item?.gross_weight_grams || historicalItem?.gross_weight_per_pc_grams || updated[index].gross_weight_per_pc_g,
+      net_weight_per_pc_g: item?.net_weight_grams || historicalItem?.net_weight_per_pc_grams || updated[index].net_weight_per_pc_g,
+      drawing_number: historicalItem?.drawing_number || formData.drawing_number || updated[index].drawing_number,
+      price_per_pc: historicalItem?.price_per_pc || updated[index].price_per_pc
     };
+    
+    // Auto-calculate line amount if we have quantity and price
+    if (updated[index].quantity && updated[index].price_per_pc) {
+      updated[index].line_amount = updated[index].quantity * (updated[index].price_per_pc || 0);
+    }
+    
     setLineItems(updated);
   };
 
