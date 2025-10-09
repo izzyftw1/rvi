@@ -331,33 +331,38 @@ const Index = () => {
       status: (kpiMetrics.revenueYTD >= kpiMetrics.revenueTarget * 0.8 ? 'good' : 
               kpiMetrics.revenueYTD >= kpiMetrics.revenueTarget * 0.6 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
       trend: 12,
-      icon: DollarSign
+      icon: DollarSign,
+      onClick: () => navigate("/finance/dashboard")
     },
     {
       label: "Orders in Pipeline",
       value: kpiMetrics.ordersPipeline.toString(),
       status: 'good' as const,
-      icon: Package
+      icon: Package,
+      onClick: () => navigate("/sales")
     },
     {
       label: "Orders in Production",
       value: kpiMetrics.ordersProduction.toString(),
       status: 'good' as const,
-      icon: Factory
+      icon: Factory,
+      onClick: () => navigate("/production-progress")
     },
     {
       label: "Late Deliveries",
       value: kpiMetrics.lateDeliveries.toString(),
       status: (kpiMetrics.lateDeliveries === 0 ? 'good' : 
               kpiMetrics.lateDeliveries <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: AlertTriangle
+      icon: AlertTriangle,
+      onClick: () => navigate("/work-orders") // Could add a filter parameter later
     },
     {
       label: "Late Payments",
       value: `₹${(kpiMetrics.latePayments / 100000).toFixed(1)}L`,
       status: (kpiMetrics.latePayments === 0 ? 'good' : 
               kpiMetrics.latePayments <= 50000 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: CreditCard
+      icon: CreditCard,
+      onClick: () => navigate("/finance/invoices")
     }
   ];
 

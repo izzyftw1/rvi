@@ -9,6 +9,7 @@ interface KPIMetric {
   status: 'good' | 'warning' | 'critical';
   trend?: number;
   icon: React.ElementType;
+  onClick?: () => void;
 }
 
 interface KPIBannerProps {
@@ -39,7 +40,15 @@ export const KPIBanner = ({ metrics }: KPIBannerProps) => {
       {metrics.map((metric, idx) => {
         const Icon = metric.icon;
         return (
-          <Card key={idx} className={cn("border-l-4 transition-all hover:shadow-lg", getStatusColor(metric.status))}>
+          <Card 
+            key={idx} 
+            className={cn(
+              "border-l-4 transition-all hover:shadow-lg",
+              getStatusColor(metric.status),
+              metric.onClick && "cursor-pointer hover:scale-105"
+            )}
+            onClick={metric.onClick}
+          >
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-2">
                 <Icon className={cn("h-5 w-5", getStatusIconColor(metric.status))} />
