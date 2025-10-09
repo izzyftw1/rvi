@@ -145,6 +145,14 @@ export default function Sales() {
   };
 
   const handleItemCodeChange = (index: number, value: string) => {
+    if (value === "__new__") {
+      // User wants to add a new item - just clear the field so they can type
+      const updated = [...lineItems];
+      updated[index] = { ...updated[index], item_code: "" };
+      setLineItems(updated);
+      return;
+    }
+    
     const item = items.find(i => i.item_code === value);
     const updated = [...lineItems];
     updated[index] = {
@@ -473,7 +481,7 @@ export default function Sales() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
-                        <TableHead className="min-w-[150px]">Item Code *</TableHead>
+                        <TableHead className="min-w-[180px]">Item Code *</TableHead>
                         <TableHead className="min-w-[100px]">Qty (pcs) *</TableHead>
                         <TableHead className="min-w-[120px]">Alloy *</TableHead>
                         <TableHead className="min-w-[150px]">Material Size</TableHead>
@@ -491,19 +499,19 @@ export default function Sales() {
                         <TableRow key={idx}>
                           <TableCell>{item.line_number}</TableCell>
                           <TableCell>
-                            <Select value={item.item_code} onValueChange={(v) => handleItemCodeChange(idx, v)} required>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select or add" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-background z-50">
-                                <SelectItem value="__new__" className="font-semibold text-primary">+ Add New</SelectItem>
-                                {items.slice(0, 15).map((itm) => (
-                                  <SelectItem key={itm.id} value={itm.item_code}>
-                                    {itm.item_code} {itm.alloy ? `(${itm.alloy})` : ""}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Input 
+                              value={item.item_code} 
+                              onChange={(e) => updateLineItemField(idx, 'item_code', e.target.value.toUpperCase())}
+                              placeholder="Type or select"
+                              list={`item-codes-${idx}`}
+                              className="w-full"
+                              required
+                            />
+                            <datalist id={`item-codes-${idx}`}>
+                              {items.slice(0, 20).map((itm) => (
+                                <option key={itm.id} value={itm.item_code} />
+                              ))}
+                            </datalist>
                           </TableCell>
                           <TableCell>
                             <Input type="number" value={item.quantity || ""} onChange={(e) => updateLineItemField(idx, 'quantity', parseInt(e.target.value) || 0)} required />
