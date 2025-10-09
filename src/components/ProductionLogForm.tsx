@@ -116,9 +116,9 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
   };
 
   const onSubmit = async (data: ProductionLogFormData) => {
-    // Check First Piece QC gate for mass production
-    if (propWorkOrder && propWorkOrder.first_piece_qc_status === 'pending') {
-      toast.error("First Piece QC must be approved before mass production logging");
+    // Check both QC gates before allowing production logging
+    if (propWorkOrder && (!propWorkOrder.qc_material_passed || !propWorkOrder.qc_first_piece_passed)) {
+      toast.error("Cannot start mass production until QC gates are cleared");
       return;
     }
 

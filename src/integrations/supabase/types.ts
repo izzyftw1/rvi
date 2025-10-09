@@ -2159,27 +2159,18 @@ export type Database = {
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string
-          first_piece_flagged_at: string | null
-          first_piece_flagged_by: string | null
-          first_piece_qc_approved_at: string | null
-          first_piece_qc_approved_by: string | null
-          first_piece_qc_remarks: string | null
-          first_piece_qc_status:
-            | Database["public"]["Enums"]["first_piece_qc_status"]
-            | null
-          first_piece_ready_for_qc: boolean | null
           gross_weight_per_pc: number | null
           id: string
           item_code: string
-          material_qc_approved_at: string | null
-          material_qc_approved_by: string | null
-          material_qc_remarks: string | null
-          material_qc_status:
-            | Database["public"]["Enums"]["material_qc_status"]
-            | null
           material_size_mm: string | null
           net_weight_per_pc: number | null
           production_allowed: boolean | null
+          qc_first_piece_approved_at: string | null
+          qc_first_piece_approved_by: string | null
+          qc_first_piece_passed: boolean
+          qc_material_approved_at: string | null
+          qc_material_approved_by: string | null
+          qc_material_passed: boolean
           quantity: number
           revision: string | null
           sales_order: string | null
@@ -2198,27 +2189,18 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date: string
-          first_piece_flagged_at?: string | null
-          first_piece_flagged_by?: string | null
-          first_piece_qc_approved_at?: string | null
-          first_piece_qc_approved_by?: string | null
-          first_piece_qc_remarks?: string | null
-          first_piece_qc_status?:
-            | Database["public"]["Enums"]["first_piece_qc_status"]
-            | null
-          first_piece_ready_for_qc?: boolean | null
           gross_weight_per_pc?: number | null
           id?: string
           item_code: string
-          material_qc_approved_at?: string | null
-          material_qc_approved_by?: string | null
-          material_qc_remarks?: string | null
-          material_qc_status?:
-            | Database["public"]["Enums"]["material_qc_status"]
-            | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           production_allowed?: boolean | null
+          qc_first_piece_approved_at?: string | null
+          qc_first_piece_approved_by?: string | null
+          qc_first_piece_passed?: boolean
+          qc_material_approved_at?: string | null
+          qc_material_approved_by?: string | null
+          qc_material_passed?: boolean
           quantity: number
           revision?: string | null
           sales_order?: string | null
@@ -2237,27 +2219,18 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string
-          first_piece_flagged_at?: string | null
-          first_piece_flagged_by?: string | null
-          first_piece_qc_approved_at?: string | null
-          first_piece_qc_approved_by?: string | null
-          first_piece_qc_remarks?: string | null
-          first_piece_qc_status?:
-            | Database["public"]["Enums"]["first_piece_qc_status"]
-            | null
-          first_piece_ready_for_qc?: boolean | null
           gross_weight_per_pc?: number | null
           id?: string
           item_code?: string
-          material_qc_approved_at?: string | null
-          material_qc_approved_by?: string | null
-          material_qc_remarks?: string | null
-          material_qc_status?:
-            | Database["public"]["Enums"]["material_qc_status"]
-            | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           production_allowed?: boolean | null
+          qc_first_piece_approved_at?: string | null
+          qc_first_piece_approved_by?: string | null
+          qc_first_piece_passed?: boolean
+          qc_material_approved_at?: string | null
+          qc_material_approved_by?: string | null
+          qc_material_passed?: boolean
           quantity?: number
           revision?: string | null
           sales_order?: string | null

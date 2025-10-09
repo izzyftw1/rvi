@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { toast } from "sonner";
+import { QCGateControls } from "./QCGateControls";
 
 interface QCRecord {
   id: string;
@@ -27,9 +28,11 @@ interface QCRecord {
 interface QCRecordsTabProps {
   records: QCRecord[];
   woId: string;
+  workOrder: any;
+  onUpdate: () => void;
 }
 
-export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
+export const QCRecordsTab = ({ records, woId, workOrder, onUpdate }: QCRecordsTabProps) => {
   const [machineFilter, setMachineFilter] = useState<string>("all");
   const [operatorFilter, setOperatorFilter] = useState<string>("all");
   const [operationFilter, setOperationFilter] = useState<string>("all");
@@ -106,21 +109,29 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Hourly Dimensional QC Records</CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={exportToExcel}>
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export Excel
-            </Button>
-            <Button variant="outline" size="sm" onClick={exportToPDF}>
-              <FileText className="h-4 w-4 mr-2" />
-              Export PDF
-            </Button>
+    <>
+      <QCGateControls 
+        woId={workOrder.id} 
+        qcMaterialPassed={workOrder.qc_material_passed}
+        qcFirstPiecePassed={workOrder.qc_first_piece_passed}
+        onUpdate={onUpdate}
+      />
+      
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Hourly Dimensional QC Records</CardTitle>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={exportToExcel}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportToPDF}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export PDF
+              </Button>
+            </div>
           </div>
-        </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
           <div>
             <Select value={machineFilter} onValueChange={setMachineFilter}>
@@ -278,5 +289,6 @@ export const QCRecordsTab = ({ records, woId }: QCRecordsTabProps) => {
         )}
       </CardContent>
     </Card>
+    </>
   );
 };

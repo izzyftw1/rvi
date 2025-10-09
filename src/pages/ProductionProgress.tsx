@@ -17,7 +17,6 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Search, TrendingUp, Package, AlertTriangle, CheckCircle2, Lock } from "lucide-react";
-import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 
 interface WOProgress {
   id: string;
@@ -35,8 +34,8 @@ interface WOProgress {
   status: string;
   due_date: string;
   cycle_time_seconds: number;
-  material_qc_status: string;
-  first_piece_qc_status: string;
+  qc_material_passed: boolean;
+  qc_first_piece_passed: boolean;
 }
 
 export default function ProductionProgress() {
@@ -83,8 +82,8 @@ export default function ProductionProgress() {
           status,
           due_date,
           cycle_time_seconds,
-          material_qc_status,
-          first_piece_qc_status
+          qc_material_passed,
+          qc_first_piece_passed
         `)
         .in("status", ["in_progress", "pending"])
         .order("created_at", { ascending: false });
@@ -151,9 +150,9 @@ export default function ProductionProgress() {
     onTrack: woProgress.filter(wo => wo.progress_percentage >= 50).length,
     behindSchedule: woProgress.filter(wo => wo.progress_percentage < 50 && wo.progress_percentage > 0).length,
     notStarted: woProgress.filter(wo => wo.progress_percentage === 0).length,
-    blockedMaterialQC: woProgress.filter(wo => wo.material_qc_status === 'pending').length,
-    blockedFirstPiece: woProgress.filter(wo => wo.first_piece_qc_status === 'pending').length,
-    inMassProduction: woProgress.filter(wo => wo.first_piece_qc_status === 'approved').length,
+    blockedMaterialQC: woProgress.filter(wo => !wo.qc_material_passed).length,
+    blockedFirstPiece: woProgress.filter(wo => wo.qc_material_passed && !wo.qc_first_piece_passed).length,
+    inMassProduction: woProgress.filter(wo => wo.qc_material_passed && wo.qc_first_piece_passed).length,
   };
 
   return (
@@ -298,12 +297,12 @@ export default function ProductionProgress() {
                       <TableCell>{wo.item_code}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          {wo.material_qc_status !== 'not_required' && (
-                            <QCGateStatusBadge status={wo.material_qc_status as any} label={`Mat: ${wo.material_qc_status}`} />
-                          )}
-                          {wo.first_piece_qc_status !== 'not_required' && (
-                            <QCGateStatusBadge status={wo.first_piece_qc_status as any} label={`FP: ${wo.first_piece_qc_status}`} />
-                          )}
+                          <Badge variant={wo.qc_material_passed ? "default" : "destructive"}>
+                            {wo.qc_material_passed ? "Mat ✅" : "Mat 🔴"}
+                          </Badge>
+                          <Badge variant={wo.qc_first_piece_passed ? "default" : "destructive"}>
+                            {wo.qc_first_piece_passed ? "FP ✅" : "FP 🔴"}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">{wo.quantity.toLocaleString()}</TableCell>

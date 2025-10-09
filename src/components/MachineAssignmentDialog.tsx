@@ -103,7 +103,7 @@ export const MachineAssignmentDialog = ({
 
   const handleAssign = async () => {
     // Check Material QC gate
-    if (workOrder.material_qc_status !== 'passed') {
+    if (!workOrder.qc_material_passed) {
       toast({
         title: "Material QC Required",
         description: "Material QC must pass before assigning machines to this work order.",

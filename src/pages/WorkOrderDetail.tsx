@@ -419,8 +419,12 @@ const WorkOrderDetail = () => {
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{wo.wo_id}</h1>
               <StatusBadge status={wo.status} />
-              <QCGateStatusBadge status={wo.material_qc_status} label={`Material QC: ${wo.material_qc_status}`} />
-              <QCGateStatusBadge status={wo.first_piece_qc_status} label={`First Piece: ${wo.first_piece_qc_status}`} />
+              <Badge variant={wo.qc_material_passed ? "default" : "destructive"}>
+                {wo.qc_material_passed ? "✅ Material QC Passed" : "🔴 Material QC Pending"}
+              </Badge>
+              <Badge variant={wo.qc_first_piece_passed ? "default" : "destructive"}>
+                {wo.qc_first_piece_passed ? "✅ First Piece QC Passed" : "🔴 First Piece QC Pending"}
+              </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               {wo.customer} • {wo.item_code}
@@ -441,30 +445,12 @@ const WorkOrderDetail = () => {
             <Button 
               onClick={() => setShowAssignmentDialog(true)} 
               variant="default"
-              disabled={wo.material_qc_status !== 'passed'}
-              title={wo.material_qc_status !== 'passed' ? 'Material QC must pass before assigning machines' : ''}
+              disabled={!wo.qc_material_passed}
+              title={!wo.qc_material_passed ? 'Material QC must pass before assigning machines' : ''}
             >
               <Cpu className="h-4 w-4 mr-2" />
               Assign Machines
             </Button>
-            {wo.first_piece_qc_status === 'pending' && !wo.first_piece_ready_for_qc && (
-              <Button 
-                onClick={async () => {
-                  const { data: { user } } = await supabase.auth.getUser();
-                  await supabase.from('work_orders').update({
-                    first_piece_ready_for_qc: true,
-                    first_piece_flagged_by: user?.id,
-                    first_piece_flagged_at: new Date().toISOString(),
-                  }).eq('id', wo.id);
-                  loadWorkOrderData();
-                  toast({ title: "First piece flagged for QC inspection" });
-                }}
-                variant="outline"
-              >
-                <Flag className="h-4 w-4 mr-2" />
-                Flag First Piece Ready
-              </Button>
-            )}
             {hourlyQcRecords.length > 0 && (
               <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
                 <FileText className="h-4 w-4 mr-2" />
@@ -938,7 +924,7 @@ const WorkOrderDetail = () => {
           </TabsContent>
 
           <TabsContent value="hourly-qc" className="space-y-4">
-            <QCRecordsTab records={hourlyQcRecords} woId={wo.wo_id} />
+            <QCRecordsTab records={hourlyQcRecords} woId={wo.wo_id} workOrder={wo} onUpdate={loadWorkOrderData} />
           </TabsContent>
 
           <TabsContent value="genealogy" className="space-y-4">
