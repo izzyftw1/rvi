@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      ar_followups: {
+        Row: {
+          channel: Database["public"]["Enums"]["followup_channel"] | null
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string | null
+          created_by: string | null
+          followup_date: string | null
+          id: string
+          invoice_id: string
+          next_followup_date: string | null
+          notes: string | null
+          outcome: string | null
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["followup_channel"] | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          followup_date?: string | null
+          id?: string
+          invoice_id: string
+          next_followup_date?: string | null
+          notes?: string | null
+          outcome?: string | null
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["followup_channel"] | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          followup_date?: string | null
+          id?: string
+          invoice_id?: string
+          next_followup_date?: string | null
+          notes?: string | null
+          outcome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ar_followups_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -146,27 +199,60 @@ export type Database = {
       }
       customer_master: {
         Row: {
+          city: string | null
+          country: string | null
           created_at: string | null
+          credit_limit_amount: number | null
+          credit_limit_currency: string | null
           customer_name: string
+          gst_number: string | null
+          gst_type: Database["public"]["Enums"]["gst_type"] | null
           id: string
           last_used: string | null
           party_code: string | null
+          payment_terms_days: number | null
+          primary_contact_email: string | null
+          primary_contact_name: string | null
+          primary_contact_phone: string | null
+          state: string | null
           updated_at: string | null
         }
         Insert: {
+          city?: string | null
+          country?: string | null
           created_at?: string | null
+          credit_limit_amount?: number | null
+          credit_limit_currency?: string | null
           customer_name: string
+          gst_number?: string | null
+          gst_type?: Database["public"]["Enums"]["gst_type"] | null
           id?: string
           last_used?: string | null
           party_code?: string | null
+          payment_terms_days?: number | null
+          primary_contact_email?: string | null
+          primary_contact_name?: string | null
+          primary_contact_phone?: string | null
+          state?: string | null
           updated_at?: string | null
         }
         Update: {
+          city?: string | null
+          country?: string | null
           created_at?: string | null
+          credit_limit_amount?: number | null
+          credit_limit_currency?: string | null
           customer_name?: string
+          gst_number?: string | null
+          gst_type?: Database["public"]["Enums"]["gst_type"] | null
           id?: string
           last_used?: string | null
           party_code?: string | null
+          payment_terms_days?: number | null
+          primary_contact_email?: string | null
+          primary_contact_name?: string | null
+          primary_contact_phone?: string | null
+          state?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -528,6 +614,160 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_items: {
+        Row: {
+          amount: number
+          created_at: string | null
+          description: string
+          gst_amount: number | null
+          gst_percent: number | null
+          id: string
+          invoice_id: string
+          quantity: number
+          rate: number
+          so_item_id: string | null
+          total_line: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          description: string
+          gst_amount?: number | null
+          gst_percent?: number | null
+          id?: string
+          invoice_id: string
+          quantity: number
+          rate: number
+          so_item_id?: string | null
+          total_line: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          description?: string
+          gst_amount?: number | null
+          gst_percent?: number | null
+          id?: string
+          invoice_id?: string
+          quantity?: number
+          rate?: number
+          so_item_id?: string | null
+          total_line?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_so_item_id_fkey"
+            columns: ["so_item_id"]
+            isOneToOne: false
+            referencedRelation: "sales_order_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          balance_amount: number
+          created_at: string | null
+          created_by: string | null
+          currency: string | null
+          customer_id: string
+          due_date: string
+          expected_payment_date: string | null
+          gst_amount: number | null
+          gst_percent: number | null
+          id: string
+          invoice_date: string
+          invoice_no: string
+          paid_amount: number | null
+          payment_terms_days: number | null
+          pdf_url: string | null
+          recovery_stage: Database["public"]["Enums"]["recovery_stage"] | null
+          so_id: string | null
+          status: Database["public"]["Enums"]["invoice_status"] | null
+          subtotal: number
+          total_amount: number
+          updated_at: string | null
+          wo_id: string | null
+        }
+        Insert: {
+          balance_amount?: number
+          created_at?: string | null
+          created_by?: string | null
+          currency?: string | null
+          customer_id: string
+          due_date: string
+          expected_payment_date?: string | null
+          gst_amount?: number | null
+          gst_percent?: number | null
+          id?: string
+          invoice_date?: string
+          invoice_no: string
+          paid_amount?: number | null
+          payment_terms_days?: number | null
+          pdf_url?: string | null
+          recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
+          so_id?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"] | null
+          subtotal?: number
+          total_amount?: number
+          updated_at?: string | null
+          wo_id?: string | null
+        }
+        Update: {
+          balance_amount?: number
+          created_at?: string | null
+          created_by?: string | null
+          currency?: string | null
+          customer_id?: string
+          due_date?: string
+          expected_payment_date?: string | null
+          gst_amount?: number | null
+          gst_percent?: number | null
+          id?: string
+          invoice_date?: string
+          invoice_no?: string
+          paid_amount?: number | null
+          payment_terms_days?: number | null
+          pdf_url?: string | null
+          recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
+          so_id?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"] | null
+          subtotal?: number
+          total_amount?: number
+          updated_at?: string | null
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -1139,6 +1379,53 @@ export type Database = {
           pallet_id?: string
         }
         Relationships: []
+      }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string | null
+          created_by: string | null
+          id: string
+          invoice_id: string
+          method: Database["public"]["Enums"]["payment_method"] | null
+          notes: string | null
+          payment_date: string
+          received_by: string | null
+          reference: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          invoice_id: string
+          method?: Database["public"]["Enums"]["payment_method"] | null
+          notes?: string | null
+          payment_date?: string
+          received_by?: string | null
+          reference?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          invoice_id?: string
+          method?: Database["public"]["Enums"]["payment_method"] | null
+          notes?: string | null
+          payment_date?: string
+          received_by?: string | null
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ppe_inventory: {
         Row: {
@@ -1804,6 +2091,78 @@ export type Database = {
           },
         ]
       }
+      sales_order_items: {
+        Row: {
+          alloy: string | null
+          created_at: string | null
+          drawing_number: string | null
+          due_date: string | null
+          gross_weight_per_pc_g: number | null
+          id: string
+          item_code: string
+          line_amount: number | null
+          line_number: number
+          material_size: string | null
+          net_weight_per_pc_g: number | null
+          price_per_pc: number | null
+          quantity: number
+          sales_order_id: string
+          updated_at: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          alloy?: string | null
+          created_at?: string | null
+          drawing_number?: string | null
+          due_date?: string | null
+          gross_weight_per_pc_g?: number | null
+          id?: string
+          item_code: string
+          line_amount?: number | null
+          line_number: number
+          material_size?: string | null
+          net_weight_per_pc_g?: number | null
+          price_per_pc?: number | null
+          quantity: number
+          sales_order_id: string
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          alloy?: string | null
+          created_at?: string | null
+          drawing_number?: string | null
+          due_date?: string | null
+          gross_weight_per_pc_g?: number | null
+          id?: string
+          item_code?: string
+          line_amount?: number | null
+          line_number?: number
+          material_size?: string | null
+          net_weight_per_pc_g?: number | null
+          price_per_pc?: number | null
+          quantity?: number
+          sales_order_id?: string
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_order_items_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_order_line_items: {
         Row: {
           alloy: string
@@ -1911,18 +2270,27 @@ export type Database = {
           approved_by: string | null
           created_at: string | null
           created_by: string | null
+          currency: string | null
           customer: string
           cycle_time_seconds: number | null
+          drawing_number: string | null
+          expected_delivery_date: string | null
           gross_weight_per_pc_grams: number | null
           id: string
+          incoterm: string | null
           items: Json
+          line_level_pricing: boolean | null
           material_rod_forging_size_mm: string | null
           net_weight_per_pc_grams: number | null
           party_code: string | null
+          payment_terms_days: number | null
           po_date: string
           po_number: string
+          price_per_pc: number | null
           so_id: string
           status: string
+          tax_profile_id: string | null
+          total_amount: number | null
           updated_at: string | null
         }
         Insert: {
@@ -1930,18 +2298,27 @@ export type Database = {
           approved_by?: string | null
           created_at?: string | null
           created_by?: string | null
+          currency?: string | null
           customer: string
           cycle_time_seconds?: number | null
+          drawing_number?: string | null
+          expected_delivery_date?: string | null
           gross_weight_per_pc_grams?: number | null
           id?: string
+          incoterm?: string | null
           items: Json
+          line_level_pricing?: boolean | null
           material_rod_forging_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           party_code?: string | null
+          payment_terms_days?: number | null
           po_date: string
           po_number: string
+          price_per_pc?: number | null
           so_id: string
           status?: string
+          tax_profile_id?: string | null
+          total_amount?: number | null
           updated_at?: string | null
         }
         Update: {
@@ -1949,18 +2326,27 @@ export type Database = {
           approved_by?: string | null
           created_at?: string | null
           created_by?: string | null
+          currency?: string | null
           customer?: string
           cycle_time_seconds?: number | null
+          drawing_number?: string | null
+          expected_delivery_date?: string | null
           gross_weight_per_pc_grams?: number | null
           id?: string
+          incoterm?: string | null
           items?: Json
+          line_level_pricing?: boolean | null
           material_rod_forging_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           party_code?: string | null
+          payment_terms_days?: number | null
           po_date?: string
           po_number?: string
+          price_per_pc?: number | null
           so_id?: string
           status?: string
+          tax_profile_id?: string | null
+          total_amount?: number | null
           updated_at?: string | null
         }
         Relationships: []
@@ -2080,6 +2466,41 @@ export type Database = {
           },
         ]
       }
+      shipment_events: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          event_time: string | null
+          event_type: Database["public"]["Enums"]["shipment_event_type"]
+          id: string
+          shipment_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          event_time?: string | null
+          event_type: Database["public"]["Enums"]["shipment_event_type"]
+          id?: string
+          shipment_id: string
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          event_time?: string | null
+          event_type?: Database["public"]["Enums"]["shipment_event_type"]
+          id?: string
+          shipment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_events_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipment_pallets: {
         Row: {
           pallet_id: string
@@ -2112,39 +2533,87 @@ export type Database = {
       }
       shipments: {
         Row: {
+          boxes: number | null
+          carrier: string | null
           coo_file: string | null
           created_at: string
           customer: string
+          delivered_date: string | null
+          documents: Json | null
+          gross_weight_kg: number | null
           id: string
           incoterm: string | null
           invoice_file: string | null
+          lr_no: string | null
+          net_weight_kg: number | null
           packing_list_file: string | null
           ship_date: string
           ship_id: string
+          ship_to_address: Json | null
+          so_id: string | null
+          transporter_name: string | null
+          wo_id: string | null
         }
         Insert: {
+          boxes?: number | null
+          carrier?: string | null
           coo_file?: string | null
           created_at?: string
           customer: string
+          delivered_date?: string | null
+          documents?: Json | null
+          gross_weight_kg?: number | null
           id?: string
           incoterm?: string | null
           invoice_file?: string | null
+          lr_no?: string | null
+          net_weight_kg?: number | null
           packing_list_file?: string | null
           ship_date?: string
           ship_id: string
+          ship_to_address?: Json | null
+          so_id?: string | null
+          transporter_name?: string | null
+          wo_id?: string | null
         }
         Update: {
+          boxes?: number | null
+          carrier?: string | null
           coo_file?: string | null
           created_at?: string
           customer?: string
+          delivered_date?: string | null
+          documents?: Json | null
+          gross_weight_kg?: number | null
           id?: string
           incoterm?: string | null
           invoice_file?: string | null
+          lr_no?: string | null
+          net_weight_kg?: number | null
           packing_list_file?: string | null
           ship_date?: string
           ship_id?: string
+          ship_to_address?: Json | null
+          so_id?: string | null
+          transporter_name?: string | null
+          wo_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "shipments_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipments_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       suppliers: {
         Row: {
@@ -2510,7 +2979,9 @@ export type Database = {
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string
+          financial_snapshot: Json | null
           gross_weight_per_pc: number | null
+          hidden_financial: boolean | null
           id: string
           item_code: string
           material_size_mm: string | null
@@ -2540,7 +3011,9 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date: string
+          financial_snapshot?: Json | null
           gross_weight_per_pc?: number | null
+          hidden_financial?: boolean | null
           id?: string
           item_code: string
           material_size_mm?: string | null
@@ -2570,7 +3043,9 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string
+          financial_snapshot?: Json | null
           gross_weight_per_pc?: number | null
+          hidden_financial?: boolean | null
           id?: string
           item_code?: string
           material_size_mm?: string | null
@@ -2659,6 +3134,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      mark_overdue_invoices: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       notify_users: {
         Args: {
           _entity_id?: string
@@ -2706,6 +3185,15 @@ export type Database = {
         | "design"
         | "packing"
       first_piece_qc_status: "not_required" | "pending" | "approved" | "failed"
+      followup_channel: "phone" | "email" | "whatsapp" | "in_person"
+      gst_type: "domestic" | "export" | "not_applicable"
+      invoice_status:
+        | "draft"
+        | "issued"
+        | "part_paid"
+        | "paid"
+        | "overdue"
+        | "void"
       material_qc_status: "not_required" | "pending" | "passed" | "failed"
       material_status: "received" | "issued" | "in_use" | "consumed"
       operation_letter:
@@ -2719,6 +3207,13 @@ export type Database = {
         | "H"
         | "I"
         | "J"
+      payment_method:
+        | "bank_transfer"
+        | "cheque"
+        | "cash"
+        | "upi"
+        | "card"
+        | "other"
       qc_result: "pass" | "fail" | "rework"
       qc_type: "first_piece" | "in_process" | "final"
       reconciliation_reason:
@@ -2731,6 +3226,13 @@ export type Database = {
         | "debit_note"
         | "price_adjustment"
         | "pending"
+      recovery_stage:
+        | "none"
+        | "friendly"
+        | "firm"
+        | "final_notice"
+        | "hold_shipments"
+        | "legal"
       rpo_status:
         | "draft"
         | "pending_approval"
@@ -2738,6 +3240,20 @@ export type Database = {
         | "part_received"
         | "closed"
         | "cancelled"
+      sales_order_status:
+        | "draft"
+        | "pending_approval"
+        | "approved"
+        | "invoiced"
+        | "closed"
+        | "cancelled"
+      shipment_event_type:
+        | "label_created"
+        | "picked"
+        | "in_transit"
+        | "out_for_delivery"
+        | "delivered"
+        | "exception"
       wo_stage: "goods_in" | "production" | "qc" | "packing" | "dispatch"
       wo_status:
         | "pending"
@@ -2902,9 +3418,27 @@ export const Constants = {
         "packing",
       ],
       first_piece_qc_status: ["not_required", "pending", "approved", "failed"],
+      followup_channel: ["phone", "email", "whatsapp", "in_person"],
+      gst_type: ["domestic", "export", "not_applicable"],
+      invoice_status: [
+        "draft",
+        "issued",
+        "part_paid",
+        "paid",
+        "overdue",
+        "void",
+      ],
       material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_status: ["received", "issued", "in_use", "consumed"],
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+      payment_method: [
+        "bank_transfer",
+        "cheque",
+        "cash",
+        "upi",
+        "card",
+        "other",
+      ],
       qc_result: ["pass", "fail", "rework"],
       qc_type: ["first_piece", "in_process", "final"],
       reconciliation_reason: [
@@ -2919,6 +3453,14 @@ export const Constants = {
         "price_adjustment",
         "pending",
       ],
+      recovery_stage: [
+        "none",
+        "friendly",
+        "firm",
+        "final_notice",
+        "hold_shipments",
+        "legal",
+      ],
       rpo_status: [
         "draft",
         "pending_approval",
@@ -2926,6 +3468,22 @@ export const Constants = {
         "part_received",
         "closed",
         "cancelled",
+      ],
+      sales_order_status: [
+        "draft",
+        "pending_approval",
+        "approved",
+        "invoiced",
+        "closed",
+        "cancelled",
+      ],
+      shipment_event_type: [
+        "label_created",
+        "picked",
+        "in_transit",
+        "out_for_delivery",
+        "delivered",
+        "exception",
       ],
       wo_stage: ["goods_in", "production", "qc", "packing", "dispatch"],
       wo_status: [
