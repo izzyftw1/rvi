@@ -27,6 +27,8 @@ import ToleranceSetup from "./pages/ToleranceSetup";
 import Purchase from "./pages/Purchase";
 import Sales from "./pages/Sales";
 import CustomerMaster from "./pages/CustomerMaster";
+import CustomerDetail from "./pages/CustomerDetail";
+import CustomerReports from "./pages/CustomerReports";
 import ItemMaster from "./pages/ItemMaster";
 import NotFound from "./pages/NotFound";
 import DepartmentDetail from "./pages/DepartmentDetail";
@@ -61,6 +63,8 @@ const App = () => (
         <Route path="/scan-console" element={<ProtectedRoute><ScanConsole /></ProtectedRoute>} />
         <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><CustomerMaster /></ProtectedRoute>} />
+        <Route path="/customers/:id" element={<ProtectedRoute><CustomerDetail /></ProtectedRoute>} />
+        <Route path="/customers/reports" element={<ProtectedRoute><CustomerReports /></ProtectedRoute>} />
         <Route path="/items" element={<ProtectedRoute><ItemMaster /></ProtectedRoute>} />
         <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
         <Route path="/purchase/raw-po" element={<ProtectedRoute><RawPurchaseOrders /></ProtectedRoute>} />
