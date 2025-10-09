@@ -11,6 +11,8 @@ import { Download, FileSpreadsheet, ShoppingCart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { RPOModal } from "@/components/RPOModal";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Home } from "lucide-react";
 
 interface MaterialRequirement {
   material_size_mm: number;
@@ -267,6 +269,21 @@ export default function MaterialRequirements() {
     setRpoModalOpen(true);
   };
 
+  const checkExistingRPO = (req: MaterialRequirement): { hasDraft: boolean; rpoNo: string | null } => {
+    // Check if a draft or pending_approval RPO exists for the same size/alloy with matching WO
+    const existingRPO = requirements.find(r => 
+      r.material_size_mm === req.material_size_mm && 
+      r.alloy === req.alloy &&
+      (r.procurement_status === 'draft' || r.procurement_status === 'pending_approval') &&
+      r.linked_work_orders.some(wo => req.linked_work_orders.some(rwo => rwo.id === wo.id))
+    );
+    
+    return {
+      hasDraft: !!existingRPO,
+      rpoNo: existingRPO?.rpo_no || null
+    };
+  };
+
   const exportToExcel = async () => {
     const data = filteredRequirements.map(req => ({
       "Raw Material Size (mm)": req.material_size_mm,
@@ -382,6 +399,23 @@ export default function MaterialRequirements() {
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Raw Material Requirements Dashboard" subtitle="Material planning and procurement tracking" />
+      
+      <div className="p-6 pb-0">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/" className="flex items-center gap-1">
+                <Home className="h-4 w-4" />
+                Home
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Material Requirements</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
       
       <div className="p-6">
         <div className="flex justify-end gap-2 mb-6">
@@ -592,21 +626,51 @@ export default function MaterialRequirements() {
                       ) : null}
                     </TableCell>
                     <TableCell>
-                      {req.surplus_deficit_kg < 0 && req.procurement_status === "none" && (
-                        <Button 
-                          size="sm" 
-                          onClick={() => handlePlaceOrder(req)}
-                        >
-                          <ShoppingCart className="mr-2 h-4 w-4" />
-                          Place Order
-                        </Button>
-                      )}
+                      {(() => {
+                        const { hasDraft, rpoNo } = checkExistingRPO(req);
+                        if (hasDraft && rpoNo) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="cursor-pointer" onClick={() => navigate(`/purchase/rpo?tab=${req.procurement_status === 'draft' ? 'draft' : 'pending_approval'}`)}>
+                                {req.procurement_status === 'draft' ? 'Draft RPO' : 'RPO PA'}
+                              </Badge>
+                              <Button 
+                                onClick={() => navigate(`/purchase/rpo?tab=${req.procurement_status === 'draft' ? 'draft' : 'pending_approval'}`)}
+                                size="sm"
+                                variant="outline"
+                              >
+                                View {rpoNo}
+                              </Button>
+                            </div>
+                          );
+                        }
+                        if (req.surplus_deficit_kg < 0 && req.procurement_status === "none") {
+                          return (
+                            <Button 
+                              size="sm" 
+                              onClick={() => handlePlaceOrder(req)}
+                            >
+                              <ShoppingCart className="mr-2 h-4 w-4" />
+                              Place Order
+                            </Button>
+                          );
+                        }
+                        return null;
+                      })()}
                     </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
+          {filteredRequirements.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">No material requirements found</p>
+              <Button onClick={() => navigate('/work-orders/new')} variant="outline">
+                Create Work Order
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
