@@ -195,6 +195,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cartons_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       customer_master: {
@@ -324,6 +331,13 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "design_files_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -556,6 +570,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "hourly_qc_checks_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       inventory_lots: {
@@ -770,6 +791,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "invoices_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       item_master: {
@@ -942,6 +970,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "machines_current_wo_id_fkey"
+            columns: ["current_wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "machines_department_id_fkey"
             columns: ["department_id"]
             isOneToOne: false
@@ -1083,6 +1118,13 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_issues_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -1230,6 +1272,13 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "non_consumable_usage_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -1512,6 +1561,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "processing_costs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       production_logs: {
@@ -1564,6 +1620,13 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_logs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -1760,6 +1823,13 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_records_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -1987,6 +2057,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "raw_purchase_orders_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       role_permissions: {
@@ -2089,6 +2166,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "routing_steps_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sales_order_items: {
@@ -2159,6 +2243,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -2260,6 +2351,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -2613,6 +2711,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "shipments_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       suppliers: {
@@ -2786,6 +2891,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "wo_actions_log_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       wo_machine_assignments: {
@@ -2874,6 +2986,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "wo_machine_assignments_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       wo_material_issues: {
@@ -2922,6 +3041,13 @@ export type Database = {
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "wo_material_issues_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
         ]
       }
       wo_stage_history: {
@@ -2964,6 +3090,13 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_stage_history_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -3077,7 +3210,113 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      work_orders_restricted: {
+        Row: {
+          bom: Json | null
+          created_at: string | null
+          current_stage: Database["public"]["Enums"]["wo_stage"] | null
+          customer: string | null
+          customer_po: string | null
+          cycle_time_seconds: number | null
+          dispatch_allowed: boolean | null
+          display_id: string | null
+          due_date: string | null
+          financial_snapshot: Json | null
+          gross_weight_per_pc: number | null
+          hidden_financial: boolean | null
+          id: string | null
+          item_code: string | null
+          material_size_mm: string | null
+          net_weight_per_pc: number | null
+          production_allowed: boolean | null
+          qc_first_piece_approved_at: string | null
+          qc_first_piece_approved_by: string | null
+          qc_first_piece_passed: boolean | null
+          qc_material_approved_at: string | null
+          qc_material_approved_by: string | null
+          qc_material_passed: boolean | null
+          quantity: number | null
+          revision: string | null
+          sales_order: string | null
+          so_id: string | null
+          status: Database["public"]["Enums"]["wo_status"] | null
+          updated_at: string | null
+          wo_id: string | null
+        }
+        Insert: {
+          bom?: Json | null
+          created_at?: string | null
+          current_stage?: Database["public"]["Enums"]["wo_stage"] | null
+          customer?: string | null
+          customer_po?: string | null
+          cycle_time_seconds?: number | null
+          dispatch_allowed?: boolean | null
+          display_id?: string | null
+          due_date?: string | null
+          financial_snapshot?: never
+          gross_weight_per_pc?: never
+          hidden_financial?: boolean | null
+          id?: string | null
+          item_code?: string | null
+          material_size_mm?: string | null
+          net_weight_per_pc?: never
+          production_allowed?: boolean | null
+          qc_first_piece_approved_at?: string | null
+          qc_first_piece_approved_by?: string | null
+          qc_first_piece_passed?: boolean | null
+          qc_material_approved_at?: string | null
+          qc_material_approved_by?: string | null
+          qc_material_passed?: boolean | null
+          quantity?: number | null
+          revision?: string | null
+          sales_order?: string | null
+          so_id?: string | null
+          status?: Database["public"]["Enums"]["wo_status"] | null
+          updated_at?: string | null
+          wo_id?: string | null
+        }
+        Update: {
+          bom?: Json | null
+          created_at?: string | null
+          current_stage?: Database["public"]["Enums"]["wo_stage"] | null
+          customer?: string | null
+          customer_po?: string | null
+          cycle_time_seconds?: number | null
+          dispatch_allowed?: boolean | null
+          display_id?: string | null
+          due_date?: string | null
+          financial_snapshot?: never
+          gross_weight_per_pc?: never
+          hidden_financial?: boolean | null
+          id?: string | null
+          item_code?: string | null
+          material_size_mm?: string | null
+          net_weight_per_pc?: never
+          production_allowed?: boolean | null
+          qc_first_piece_approved_at?: string | null
+          qc_first_piece_approved_by?: string | null
+          qc_first_piece_passed?: boolean | null
+          qc_material_approved_at?: string | null
+          qc_material_approved_by?: string | null
+          qc_material_passed?: boolean | null
+          quantity?: number | null
+          revision?: string | null
+          sales_order?: string | null
+          so_id?: string | null
+          status?: Database["public"]["Enums"]["wo_status"] | null
+          updated_at?: string | null
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       assign_initial_role: {
@@ -3126,6 +3365,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_finance_role: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       manage_user_role: {
         Args: {
           _action: string
@@ -3169,6 +3412,10 @@ export type Database = {
         | "accounts"
         | "sales"
         | "admin"
+        | "super_admin"
+        | "finance_admin"
+        | "finance_user"
+        | "ops_manager"
       department_type:
         | "hr"
         | "stores"
@@ -3400,6 +3647,10 @@ export const Constants = {
         "accounts",
         "sales",
         "admin",
+        "super_admin",
+        "finance_admin",
+        "finance_user",
+        "ops_manager",
       ],
       department_type: [
         "hr",

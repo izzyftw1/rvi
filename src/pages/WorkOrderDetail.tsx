@@ -20,11 +20,13 @@ import { ProductionLogForm } from "@/components/ProductionLogForm";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 import { MaterialQCApproval } from "@/components/MaterialQCApproval";
 import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isFinanceRole } = useUserRole();
   const [wo, setWo] = useState<any>(null);
   const [salesOrder, setSalesOrder] = useState<any>(null);
   const [routingSteps, setRoutingSteps] = useState<any[]>([]);
@@ -515,7 +517,7 @@ const WorkOrderDetail = () => {
             <CardTitle>Order Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Quantity</p>
                 <p className="text-lg font-bold">{wo.quantity} pcs</p>
@@ -542,12 +544,6 @@ const WorkOrderDetail = () => {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Priority</p>
-                <Badge variant={wo.priority <= 2 ? "destructive" : "secondary"} className="text-lg">
-                  P{wo.priority}
-                </Badge>
-              </div>
-              <div>
                 <p className="text-sm text-muted-foreground">Customer PO / Sales Order</p>
                 {salesOrder ? (
                   <button 
@@ -560,6 +556,18 @@ const WorkOrderDetail = () => {
                   <p className="text-lg font-bold">—</p>
                 )}
               </div>
+              {isFinanceRole() && (wo.gross_weight_per_pc || wo.net_weight_per_pc) && (
+                <>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Gross Weight</p>
+                    <p className="text-lg font-bold">{wo.gross_weight_per_pc}g/pc</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Net Weight</p>
+                    <p className="text-lg font-bold">{wo.net_weight_per_pc}g/pc</p>
+                  </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

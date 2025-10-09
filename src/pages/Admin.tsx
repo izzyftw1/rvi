@@ -12,11 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle, Edit, Trash2 } from "lucide-react";
+import { Users, Shield, Activity, UserPlus, CheckCircle2, XCircle, Edit, Trash2, UserCog } from "lucide-react";
+import { useUserRole, type UserRole } from "@/hooks/useUserRole";
 
 export default function Admin() {
   const [users, setUsers] = useState<any[]>([]);
   const [userRoles, setUserRoles] = useState<Record<string, any[]>>({});
+  const { impersonatedRole, impersonate, isSuperAdmin } = useUserRole();
   const [departments, setDepartments] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [permissions, setPermissions] = useState<any[]>([]);
@@ -40,16 +42,18 @@ export default function Admin() {
   const { toast } = useToast();
 
   const roles = [
-    { value: "admin", label: "Admin (Super Admin)" },
-    { value: "sales", label: "Sales" },
-    { value: "stores", label: "Stores/Goods In" },
+    { value: "super_admin", label: "Super Admin" },
+    { value: "finance_admin", label: "Finance Admin (Full Finance + Docs)" },
+    { value: "finance_user", label: "Finance User (Create Invoices, Payments)" },
+    { value: "ops_manager", label: "Operations Manager (SO/WO/Shipments; No Finance)" },
+    { value: "production", label: "Production (WO Only; No Prices)" },
     { value: "quality", label: "Quality (QC)" },
-    { value: "production", label: "Production" },
-    { value: "packing", label: "Packing" },
-    { value: "accounts", label: "Finance/Admin" },
+    { value: "stores", label: "Stores/Goods In" },
+    { value: "packing", label: "Packing/Dispatch" },
+    { value: "sales", label: "Sales (SO, Customers, Read-only Finance)" },
     { value: "purchase", label: "Purchase" },
-    { value: "cfo", label: "CFO" },
-    { value: "director", label: "Director" },
+    { value: "admin", label: "Admin (Legacy)" },
+    { value: "accounts", label: "Accounts (Legacy)" },
   ];
 
   useEffect(() => {
@@ -203,7 +207,35 @@ export default function Admin() {
           <div className="flex items-center gap-3">
             <Shield className="h-8 w-8 text-primary" />
             <h1 className="text-3xl font-bold">Admin Panel</h1>
+            {impersonatedRole && (
+              <Badge variant="destructive" className="ml-4">
+                <UserCog className="h-3 w-3 mr-1" />
+                Impersonating: {impersonatedRole}
+              </Badge>
+            )}
           </div>
+          <div className="flex gap-2">
+          {isSuperAdmin() && (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Test Role Visibility:</Label>
+              <Select
+                value={impersonatedRole || ""}
+                onValueChange={(value) => impersonate(value as UserRole || null)}
+              >
+                <SelectTrigger className="w-[250px]">
+                  <SelectValue placeholder="Select role to impersonate" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Normal View (No Impersonation)</SelectItem>
+                  {roles.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button><UserPlus className="h-4 w-4 mr-2" />Create User</Button>
@@ -221,6 +253,7 @@ export default function Admin() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         <Tabs defaultValue="users" className="w-full">
