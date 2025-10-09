@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Activity, ArrowRight } from "lucide-react";
+import { Activity, ArrowRight, Users } from "lucide-react";
 
 const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
@@ -145,11 +145,16 @@ const ProductionReports = () => {
               <CardTitle>Production & Efficiency Analytics</CardTitle>
               <CardDescription>WIP, cycle times, bottlenecks, and productivity metrics</CardDescription>
             </div>
-            <Button onClick={() => navigate('/reports/machine-runtime')} className="gap-2">
-              <Activity className="h-4 w-4" />
-              Machine Runtime Report
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => navigate('/reports/machine-runtime')} variant="outline" className="gap-2">
+                <Activity className="h-4 w-4" />
+                Machine Runtime
+              </Button>
+              <Button onClick={() => navigate('/reports/worker-efficiency')} variant="outline" className="gap-2">
+                <Users className="h-4 w-4" />
+                Worker Efficiency
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

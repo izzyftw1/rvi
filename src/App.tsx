@@ -52,6 +52,7 @@ import Aging from "./pages/finance/Aging";
 import FinanceSettings from "./pages/finance/FinanceSettings";
 import FinanceReports from "./pages/finance/FinanceReports";
 import MachineRuntime from "./pages/reports/MachineRuntime";
+import WorkerEfficiency from "./pages/reports/WorkerEfficiency";
 
 
 const App = () => (
@@ -106,6 +107,7 @@ const App = () => (
         <Route path="/finance/aging" element={<ProtectedRoute><Aging /></ProtectedRoute>} />
         <Route path="/finance/reports" element={<ProtectedRoute><FinanceReports /></ProtectedRoute>} />
           <Route path="/reports/machine-runtime" element={<ProtectedRoute><MachineRuntime /></ProtectedRoute>} />
+          <Route path="/reports/worker-efficiency" element={<ProtectedRoute><WorkerEfficiency /></ProtectedRoute>} />
           <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
           <Route path="/logistics" element={<ProtectedRoute><Logistics /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
