@@ -472,6 +472,66 @@ export type Database = {
           },
         ]
       }
+      inventory_lots: {
+        Row: {
+          alloy: string
+          cost_rate: number | null
+          created_at: string
+          heat_no: string | null
+          id: string
+          lot_id: string
+          material_size_mm: string
+          qty_kg: number
+          received_date: string
+          rpo_id: string | null
+          supplier_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          alloy: string
+          cost_rate?: number | null
+          created_at?: string
+          heat_no?: string | null
+          id?: string
+          lot_id: string
+          material_size_mm: string
+          qty_kg: number
+          received_date?: string
+          rpo_id?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          alloy?: string
+          cost_rate?: number | null
+          created_at?: string
+          heat_no?: string | null
+          id?: string
+          lot_id?: string
+          material_size_mm?: string
+          qty_kg?: number
+          received_date?: string
+          rpo_id?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_lots_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_lots_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       item_master: {
         Row: {
           alloy: string | null
@@ -1390,6 +1450,231 @@ export type Database = {
           },
         ]
       }
+      raw_po_receipts: {
+        Row: {
+          amount_on_invoice: number | null
+          created_at: string
+          gi_ref: string | null
+          id: string
+          lr_no: string | null
+          notes: string | null
+          qty_received_kg: number
+          rate_on_invoice: number | null
+          received_date: string
+          rpo_id: string
+          supplier_invoice_date: string | null
+          supplier_invoice_no: string | null
+          transporter: string | null
+        }
+        Insert: {
+          amount_on_invoice?: number | null
+          created_at?: string
+          gi_ref?: string | null
+          id?: string
+          lr_no?: string | null
+          notes?: string | null
+          qty_received_kg: number
+          rate_on_invoice?: number | null
+          received_date?: string
+          rpo_id: string
+          supplier_invoice_date?: string | null
+          supplier_invoice_no?: string | null
+          transporter?: string | null
+        }
+        Update: {
+          amount_on_invoice?: number | null
+          created_at?: string
+          gi_ref?: string | null
+          id?: string
+          lr_no?: string | null
+          notes?: string | null
+          qty_received_kg?: number
+          rate_on_invoice?: number | null
+          received_date?: string
+          rpo_id?: string
+          supplier_invoice_date?: string | null
+          supplier_invoice_no?: string | null
+          transporter?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_po_receipts_gi_ref_fkey"
+            columns: ["gi_ref"]
+            isOneToOne: false
+            referencedRelation: "material_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_po_receipts_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      raw_po_reconciliations: {
+        Row: {
+          amount_delta: number | null
+          created_at: string
+          id: string
+          notes: string | null
+          qty_delta_kg: number | null
+          rate_delta: number | null
+          reason: Database["public"]["Enums"]["reconciliation_reason"]
+          resolution: Database["public"]["Enums"]["reconciliation_resolution"]
+          resolution_ref: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rpo_id: string
+        }
+        Insert: {
+          amount_delta?: number | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          qty_delta_kg?: number | null
+          rate_delta?: number | null
+          reason: Database["public"]["Enums"]["reconciliation_reason"]
+          resolution?: Database["public"]["Enums"]["reconciliation_resolution"]
+          resolution_ref?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rpo_id: string
+        }
+        Update: {
+          amount_delta?: number | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          qty_delta_kg?: number | null
+          rate_delta?: number | null
+          reason?: Database["public"]["Enums"]["reconciliation_reason"]
+          resolution?: Database["public"]["Enums"]["reconciliation_resolution"]
+          resolution_ref?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rpo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_po_reconciliations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_po_reconciliations_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      raw_purchase_orders: {
+        Row: {
+          alloy: string | null
+          amount_ordered: number
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          expected_delivery_date: string | null
+          id: string
+          item_code: string | null
+          material_size_mm: string | null
+          qty_ordered_kg: number
+          rate_per_kg: number
+          remarks: string | null
+          rpo_no: string
+          so_id: string | null
+          status: Database["public"]["Enums"]["rpo_status"]
+          supplier_id: string | null
+          updated_at: string
+          wo_id: string | null
+        }
+        Insert: {
+          alloy?: string | null
+          amount_ordered: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          item_code?: string | null
+          material_size_mm?: string | null
+          qty_ordered_kg: number
+          rate_per_kg: number
+          remarks?: string | null
+          rpo_no: string
+          so_id?: string | null
+          status?: Database["public"]["Enums"]["rpo_status"]
+          supplier_id?: string | null
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Update: {
+          alloy?: string | null
+          amount_ordered?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          item_code?: string | null
+          material_size_mm?: string | null
+          qty_ordered_kg?: number
+          rate_per_kg?: number
+          remarks?: string | null
+          rpo_no?: string
+          so_id?: string | null
+          status?: Database["public"]["Enums"]["rpo_status"]
+          supplier_id?: string | null
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_purchase_orders_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_permissions: {
         Row: {
           can_approve: boolean | null
@@ -1834,6 +2119,45 @@ export type Database = {
         }
         Relationships: []
       }
+      suppliers: {
+        Row: {
+          contact_name: string | null
+          created_at: string
+          currency: string | null
+          email: string | null
+          gst_number: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_name?: string | null
+          created_at?: string
+          currency?: string | null
+          email?: string | null
+          gst_number?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_name?: string | null
+          created_at?: string
+          currency?: string | null
+          email?: string | null
+          gst_number?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       training_records: {
         Row: {
           created_at: string
@@ -2274,6 +2598,10 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
+      generate_rpo_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       get_wo_progress: {
         Args: { _wo_id: string }
         Returns: {
@@ -2366,6 +2694,23 @@ export type Database = {
         | "J"
       qc_result: "pass" | "fail" | "rework"
       qc_type: "first_piece" | "in_process" | "final"
+      reconciliation_reason:
+        | "short_supply"
+        | "excess_supply"
+        | "rate_variance"
+        | "other"
+      reconciliation_resolution:
+        | "credit_note"
+        | "debit_note"
+        | "price_adjustment"
+        | "pending"
+      rpo_status:
+        | "draft"
+        | "pending_approval"
+        | "approved"
+        | "part_received"
+        | "closed"
+        | "cancelled"
       wo_stage: "goods_in" | "production" | "qc" | "packing" | "dispatch"
       wo_status:
         | "pending"
@@ -2535,6 +2880,26 @@ export const Constants = {
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       qc_result: ["pass", "fail", "rework"],
       qc_type: ["first_piece", "in_process", "final"],
+      reconciliation_reason: [
+        "short_supply",
+        "excess_supply",
+        "rate_variance",
+        "other",
+      ],
+      reconciliation_resolution: [
+        "credit_note",
+        "debit_note",
+        "price_adjustment",
+        "pending",
+      ],
+      rpo_status: [
+        "draft",
+        "pending_approval",
+        "approved",
+        "part_received",
+        "closed",
+        "cancelled",
+      ],
       wo_stage: ["goods_in", "production", "qc", "packing", "dispatch"],
       wo_status: [
         "pending",
