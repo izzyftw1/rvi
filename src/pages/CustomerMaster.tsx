@@ -21,7 +21,18 @@ export default function CustomerMaster() {
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [formData, setFormData] = useState({
     customer_name: "",
-    party_code: ""
+    party_code: "",
+    city: "",
+    state: "",
+    country: "",
+    gst_number: "",
+    gst_type: "not_applicable" as "domestic" | "export" | "not_applicable",
+    credit_limit_amount: "",
+    credit_limit_currency: "USD",
+    payment_terms_days: "30",
+    primary_contact_name: "",
+    primary_contact_email: "",
+    primary_contact_phone: "",
   });
 
   useEffect(() => {
@@ -49,7 +60,21 @@ export default function CustomerMaster() {
 
   const handleAdd = () => {
     setEditingCustomer(null);
-    setFormData({ customer_name: "", party_code: "" });
+    setFormData({
+      customer_name: "",
+      party_code: "",
+      city: "",
+      state: "",
+      country: "",
+      gst_number: "",
+      gst_type: "not_applicable",
+      credit_limit_amount: "",
+      credit_limit_currency: "USD",
+      payment_terms_days: "30",
+      primary_contact_name: "",
+      primary_contact_email: "",
+      primary_contact_phone: "",
+    });
     setIsDialogOpen(true);
   };
 
@@ -57,7 +82,18 @@ export default function CustomerMaster() {
     setEditingCustomer(customer);
     setFormData({
       customer_name: customer.customer_name,
-      party_code: customer.party_code || ""
+      party_code: customer.party_code || "",
+      city: customer.city || "",
+      state: customer.state || "",
+      country: customer.country || "",
+      gst_number: customer.gst_number || "",
+      gst_type: customer.gst_type || "not_applicable",
+      credit_limit_amount: customer.credit_limit_amount?.toString() || "",
+      credit_limit_currency: customer.credit_limit_currency || "USD",
+      payment_terms_days: customer.payment_terms_days?.toString() || "30",
+      primary_contact_name: customer.primary_contact_name || "",
+      primary_contact_email: customer.primary_contact_email || "",
+      primary_contact_phone: customer.primary_contact_phone || "",
     });
     setIsDialogOpen(true);
   };
@@ -73,6 +109,17 @@ export default function CustomerMaster() {
       const dataToSave = {
         customer_name: formData.customer_name,
         party_code: formData.party_code || generatePartyCode(formData.customer_name),
+        city: formData.city || null,
+        state: formData.state || null,
+        country: formData.country || null,
+        gst_number: formData.gst_number || null,
+        gst_type: formData.gst_type,
+        credit_limit_amount: formData.credit_limit_amount ? parseFloat(formData.credit_limit_amount) : null,
+        credit_limit_currency: formData.credit_limit_currency,
+        payment_terms_days: formData.payment_terms_days ? parseInt(formData.payment_terms_days) : 30,
+        primary_contact_name: formData.primary_contact_name || null,
+        primary_contact_email: formData.primary_contact_email || null,
+        primary_contact_phone: formData.primary_contact_phone || null,
         last_used: new Date().toISOString()
       };
 
@@ -175,18 +222,35 @@ export default function CustomerMaster() {
               <div className="border rounded-lg overflow-hidden">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Customer Name</TableHead>
-                      <TableHead>Party Code</TableHead>
-                      <TableHead>Last Used</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
+                  <TableRow>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>Party Code</TableHead>
+                    <TableHead>City</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead>Country</TableHead>
+                    <TableHead>GST Type</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Last Used</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCustomers.map((customer) => (
+                     {filteredCustomers.map((customer) => (
                       <TableRow key={customer.id}>
                         <TableCell className="font-medium">{customer.customer_name}</TableCell>
                         <TableCell>{customer.party_code || "—"}</TableCell>
+                        <TableCell>{customer.city || "—"}</TableCell>
+                        <TableCell>{customer.state || "—"}</TableCell>
+                        <TableCell>{customer.country || "—"}</TableCell>
+                        <TableCell>
+                          <span className="text-xs px-2 py-1 rounded-full bg-muted">
+                            {customer.gst_type === "domestic" ? "Domestic" : 
+                             customer.gst_type === "export" ? "Export" : "N/A"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {customer.primary_contact_name || customer.primary_contact_email || "—"}
+                        </TableCell>
                         <TableCell>
                           {customer.last_used 
                             ? new Date(customer.last_used).toLocaleDateString()
@@ -229,35 +293,156 @@ export default function CustomerMaster() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingCustomer ? "Edit Customer" : "Add Customer"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Customer Name *</Label>
-              <Input
-                value={formData.customer_name}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  setFormData({
-                    ...formData,
-                    customer_name: name,
-                    party_code: formData.party_code || (name.length >= 3 ? generatePartyCode(name) : "")
-                  });
-                }}
-                placeholder="Enter customer name"
-              />
+          <div className="space-y-6 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 space-y-2">
+                <Label>Customer Name *</Label>
+                <Input
+                  value={formData.customer_name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setFormData({
+                      ...formData,
+                      customer_name: name,
+                      party_code: formData.party_code || (name.length >= 3 ? generatePartyCode(name) : "")
+                    });
+                  }}
+                  placeholder="Enter customer name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Party Code</Label>
+                <Input
+                  value={formData.party_code}
+                  onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
+                  placeholder="Auto-generated or enter custom code"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>GST Type</Label>
+                <select
+                  value={formData.gst_type}
+                  onChange={(e) => setFormData({ ...formData, gst_type: e.target.value as any })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="not_applicable">Not Applicable</option>
+                  <option value="domestic">Domestic</option>
+                  <option value="export">Export</option>
+                </select>
+              </div>
+              <div className="col-span-2 space-y-2">
+                <Label>GST Number</Label>
+                <Input
+                  value={formData.gst_number}
+                  onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
+                  placeholder="GST number (if applicable)"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Party Code</Label>
-              <Input
-                value={formData.party_code}
-                onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
-                placeholder="Auto-generated or enter custom code"
-              />
+
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Location</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>City</Label>
+                  <Input
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    placeholder="City"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>State</Label>
+                  <Input
+                    value={formData.state}
+                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                    placeholder="State"
+                  />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Country</Label>
+                  <Input
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    placeholder="Country"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="flex justify-end gap-2">
+
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Payment Terms</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Payment Terms (Days)</Label>
+                  <Input
+                    type="number"
+                    value={formData.payment_terms_days}
+                    onChange={(e) => setFormData({ ...formData, payment_terms_days: e.target.value })}
+                    placeholder="30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Credit Limit</Label>
+                  <Input
+                    type="number"
+                    value={formData.credit_limit_amount}
+                    onChange={(e) => setFormData({ ...formData, credit_limit_amount: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Currency</Label>
+                  <select
+                    value={formData.credit_limit_currency}
+                    onChange={(e) => setFormData({ ...formData, credit_limit_currency: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="INR">INR</option>
+                    <option value="GBP">GBP</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Primary Contact</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 space-y-2">
+                  <Label>Contact Name</Label>
+                  <Input
+                    value={formData.primary_contact_name}
+                    onChange={(e) => setFormData({ ...formData, primary_contact_name: e.target.value })}
+                    placeholder="Contact person name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.primary_contact_email}
+                    onChange={(e) => setFormData({ ...formData, primary_contact_email: e.target.value })}
+                    placeholder="email@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input
+                    value={formData.primary_contact_phone}
+                    onChange={(e) => setFormData({ ...formData, primary_contact_phone: e.target.value })}
+                    placeholder="+1234567890"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
