@@ -469,19 +469,6 @@ const Index = () => {
         {/* KPI Banner */}
         <KPIBanner metrics={kpiData} />
 
-        {/* Search Bar */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <Input 
-                placeholder="Search by WO, Heat No, Lot ID, Carton, Customer, PO..."
-                className="pl-10 h-12 text-base"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Quick Actions Accordion */}
         <div>
           <h2 className="text-xl font-bold mb-4">Quick Actions</h2>

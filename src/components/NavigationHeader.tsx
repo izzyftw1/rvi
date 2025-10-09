@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import rvLogo from "@/assets/rv-logo.jpg";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSiteContext } from "@/hooks/useSiteContext";
+import { GlobalSearch } from "./GlobalSearch";
 
 interface NavigationHeaderProps {
   title?: string;
@@ -103,6 +104,9 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
           </div>
           
           <div className="flex items-center gap-4">
+            {/* Global Search */}
+            <GlobalSearch />
+            
             {/* Site Selector */}
             {!sitesLoading && availableSites.length > 0 && (
               <div className="flex items-center gap-2">
