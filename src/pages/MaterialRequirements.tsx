@@ -170,7 +170,7 @@ export default function MaterialRequirements() {
       // Process WOs for requirements (only if no approved RPO exists)
       for (const wo of workOrders || []) {
         const size = normalizeSize(wo.material_size_mm);
-        const alloy = ""; // Extract from WO if available
+        const alloy = (wo.financial_snapshot as any)?.line_item?.alloy || "";
         const key = `${size}-${alloy}`;
 
         // Check if approved RPO exists for this WO
@@ -182,7 +182,7 @@ export default function MaterialRequirements() {
 
         if (!grouped.has(key)) {
           grouped.set(key, {
-            material_size_mm: Number(size),
+            material_size_mm: size,
             alloy,
             total_pcs: 0,
             total_gross_weight_kg: 0,
@@ -223,13 +223,13 @@ export default function MaterialRequirements() {
 
       // Add inventory data
       for (const lot of inventoryLots || []) {
-        const size = lot.material_size_mm;
+        const size = normalizeSize(lot.material_size_mm);
         const alloy = lot.alloy || "";
         const key = `${size}-${alloy}`;
 
         if (!grouped.has(key)) {
           grouped.set(key, {
-            material_size_mm: Number(size),
+            material_size_mm: size,
             alloy,
             total_pcs: 0,
             total_gross_weight_kg: 0,
@@ -257,7 +257,7 @@ export default function MaterialRequirements() {
 
         // Find RPO for this size/alloy
         const relatedRPO = rpos?.find(
-          rpo => rpo.material_size_mm === req.material_size_mm.toString() && 
+          rpo => normalizeSize(rpo.material_size_mm) === req.material_size_mm && 
                  (rpo.alloy === req.alloy || (!rpo.alloy && !req.alloy))
         );
 
@@ -346,7 +346,7 @@ export default function MaterialRequirements() {
     doc.text("Raw Material Requirements", 14, 20);
     
     const tableData = filteredRequirements.map(req => [
-      req.material_size_mm.toString(),
+      req.material_size_mm,
       req.alloy || "N/A",
       `${req.total_gross_weight_kg.toFixed(2)} kg (${req.total_pcs} pcs)`,
       `${req.inventory_gross_kg.toFixed(2)} kg`,
@@ -366,7 +366,7 @@ export default function MaterialRequirements() {
   };
 
   const filteredRequirements = requirements.filter(req => {
-    if (filterSize && filterSize !== "all" && req.material_size_mm.toString() !== filterSize) {
+    if (filterSize && filterSize !== "all" && req.material_size_mm !== filterSize) {
       return false;
     }
     if (filterCustomer && filterCustomer !== "all" && !req.linked_sales_orders.some(so => so.customer === filterCustomer)) {
@@ -582,7 +582,7 @@ export default function MaterialRequirements() {
                 filteredRequirements.map((req, idx) => (
                   <TableRow key={`${req.material_size_mm}-${req.alloy}-${idx}`} className={req.surplus_deficit_kg < 0 ? "bg-destructive/5" : "bg-green-50/50 dark:bg-green-950/20"}>
                     <TableCell>
-                      <div className="font-bold">{req.material_size_mm} mm</div>
+                      <div className="font-bold">{req.material_size_mm}</div>
                       {req.alloy && <div className="text-xs text-muted-foreground">{req.alloy}</div>}
                     </TableCell>
                     <TableCell>
@@ -742,7 +742,7 @@ export default function MaterialRequirements() {
             setRpoModalOpen(false);
             setSelectedRequirement(null);
           }}
-          materialSize={selectedRequirement.material_size_mm.toString()}
+          materialSize={selectedRequirement.material_size_mm}
           deficitKg={Math.abs(selectedRequirement.surplus_deficit_kg)}
           linkedWorkOrders={selectedRequirement.linked_work_orders}
           linkedSalesOrders={selectedRequirement.linked_sales_orders}
