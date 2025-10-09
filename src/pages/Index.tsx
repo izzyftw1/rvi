@@ -1,60 +1,58 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import rvLogo from "@/assets/rv-logo.jpg";
-import { DepartmentCard } from "@/components/DepartmentCard";
 import { 
   Factory, 
   Package, 
   Truck, 
   CheckCircle2,
   Search,
-  QrCode,
   LogOut,
-  BarChart3,
+  Shield,
+  DollarSign,
+  CreditCard,
+  AlertTriangle,
   Box,
   ClipboardCheck,
-  FileText,
-  Boxes,
-  Shield,
-  Activity,
-  FileSpreadsheet,
-  AlertCircle,
-  DollarSign,
-  PackageCheck
+  QrCode
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { KPIBanner } from "@/components/dashboard/KPIBanner";
+import { QuickActionsAccordion } from "@/components/dashboard/QuickActionsAccordion";
+import { FloorKanban } from "@/components/dashboard/FloorKanban";
+import { TodayTimeline } from "@/components/dashboard/TodayTimeline";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { isSuperAdmin, isFinanceRole } = useUserRole();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // KPI Metrics
+  const [kpiMetrics, setKpiMetrics] = useState({
+    revenueYTD: 0,
+    revenueTarget: 1000000,
+    ordersPipeline: 0,
+    ordersProduction: 0,
+    lateDeliveries: 0,
+    latePayments: 0,
+  });
+
+  // Floor Stats
   const [floorStats, setFloorStats] = useState({
-    stores: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
-    production: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
-    quality: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
-    packing: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
-    jobWork: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
-    dispatch: { wipPcs: 0, wipKg: 0, avgWaitTime: 0, alerts: 0 },
+    goods_in: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
+    production: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
+    qc: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
+    packing: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
+    dispatch: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
   });
-  const [stageCounts, setStageCounts] = useState({
-    goods_in: 0,
-    production: 0,
-    qc: 0,
-    packing: 0,
-    dispatch: 0,
-  });
-  const [todayStats, setTodayStats] = useState({
-    woDueToday: 0,
-    lateItems: 0,
-    blockedSteps: 0,
-    readyToShip: 0
-  });
+
+  const [todayEvents, setTodayEvents] = useState<any[]>([]);
 
   useEffect(() => {
     // Check for existing session
@@ -62,8 +60,7 @@ const Index = () => {
       if (session) {
         setUser(session.user);
         loadProfile(session.user.id);
-        loadIsAdmin(session.user.id);
-        loadLiveData();
+        loadDashboardData();
       } else {
         navigate("/auth");
       }
@@ -75,42 +72,22 @@ const Index = () => {
       if (session) {
         setUser(session.user);
         loadProfile(session.user.id);
-        loadIsAdmin(session.user.id);
-        loadLiveData();
+        loadDashboardData();
       } else {
         navigate("/auth");
       }
     });
 
-    // Set up real-time subscriptions for live updates
+    // Set up real-time subscriptions
     const channel = supabase
-      .channel('floor-status-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'routing_steps'
-        },
-        () => {
-          loadLiveData();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'work_orders'
-        },
-        () => {
-          loadLiveData();
-        }
-      )
+      .channel('dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        loadDashboardData();
+      })
       .subscribe();
 
     // Refresh data every 30 seconds
-    const interval = setInterval(loadLiveData, 30000);
+    const interval = setInterval(loadDashboardData, 30000);
 
     return () => {
       subscription.unsubscribe();
@@ -131,138 +108,202 @@ const Index = () => {
     }
   };
 
-  const loadIsAdmin = async (userId: string) => {
-    const { data: roles } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    setIsAdmin(roles?.some((r: any) => r.role === 'admin') || false);
+  const loadDashboardData = async () => {
+    try {
+      // Load KPIs
+      await loadKPIs();
+      
+      // Load Floor Status
+      await loadFloorStatus();
+      
+      // Load Today's Events
+      await loadTodayEvents();
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    }
   };
 
-  const loadLiveData = async () => {
-    try {
-      // Get all departments
-      const { data: departments } = await supabase
-        .from('departments')
-        .select('id, name, type');
+  const loadKPIs = async () => {
+    // Revenue YTD (from invoices)
+    const { data: invoices } = await supabase
+      .from('invoices')
+      .select('total_amount')
+      .gte('invoice_date', new Date(new Date().getFullYear(), 0, 1).toISOString());
+    
+    const revenueYTD = invoices?.reduce((sum, inv) => sum + (inv.total_amount || 0), 0) || 0;
 
-      if (!departments) return;
+    // Orders in Pipeline (pending/approved sales orders)
+    const { count: pipeline } = await supabase
+      .from('sales_orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['pending', 'approved']);
 
-      const newFloorStats = { ...floorStats };
-      
-      for (const dept of departments) {
-        const { data: steps } = await supabase
-          .from('routing_steps')
-          .select(`
-            consumed_qty,
-            actual_start,
-            work_orders (
-              quantity
-            )
-          `)
-          .eq('department_id', dept.id)
-          .in('status', ['in_progress', 'pending', 'waiting']);
+    // Orders in Production
+    const { count: production } = await supabase
+      .from('work_orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['in_progress', 'pending']);
 
-        if (steps) {
-          const totalPcs = steps.reduce((sum, step: any) => {
-            return sum + (step.work_orders?.quantity || 0);
-          }, 0);
+    // Late Deliveries
+    const today = new Date().toISOString().split('T')[0];
+    const { count: late } = await supabase
+      .from('work_orders')
+      .select('*', { count: 'exact', head: true })
+      .lt('due_date', today)
+      .neq('status', 'completed');
 
-          const avgWait = steps.length > 0
-            ? steps.reduce((sum, step: any) => {
-              if (step.actual_start) {
-                const hours = (Date.now() - new Date(step.actual_start).getTime()) / (1000 * 60 * 60);
-                return sum + hours;
-              }
-              return sum;
-            }, 0) / steps.length
-            : 0;
+    // Late Payments (overdue invoices)
+    const { data: overdueInvoices } = await supabase
+      .from('invoices')
+      .select('balance_amount')
+      .eq('status', 'overdue');
+    
+    const latePayments = overdueInvoices?.reduce((sum, inv) => sum + (inv.balance_amount || 0), 0) || 0;
 
-          const alerts = steps.filter((step: any) => {
-            if (step.actual_start) {
-              const hours = (Date.now() - new Date(step.actual_start).getTime()) / (1000 * 60 * 60);
-              return hours > 24;
-            }
-            return false;
-          }).length;
+    setKpiMetrics({
+      revenueYTD,
+      revenueTarget: 1000000,
+      ordersPipeline: pipeline || 0,
+      ordersProduction: production || 0,
+      lateDeliveries: late || 0,
+      latePayments,
+    });
+  };
 
-          const deptKey = dept.name.toLowerCase().replace(/\s+/g, '');
-          if (deptKey.includes('store')) {
-            newFloorStats.stores = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
-          } else if (deptKey.includes('production')) {
-            newFloorStats.production = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
-          } else if (deptKey.includes('quality')) {
-            newFloorStats.quality = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
-          } else if (deptKey.includes('packing')) {
-            newFloorStats.packing = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
-          } else if (deptKey.includes('job')) {
-            newFloorStats.jobWork = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
-          } else if (deptKey.includes('dispatch')) {
-            newFloorStats.dispatch = { wipPcs: totalPcs, wipKg: totalPcs * 0.5, avgWaitTime: avgWait, alerts };
-          }
-        }
+  const loadFloorStatus = async () => {
+    const { data: wos } = await supabase
+      .from('work_orders')
+      .select('id, current_stage, quantity, gross_weight_per_pc, created_at');
+
+    if (!wos) return;
+
+    const stages = {
+      goods_in: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
+      production: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
+      qc: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
+      packing: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
+      dispatch: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
+    };
+
+    wos.forEach(wo => {
+      const stage = wo.current_stage as keyof typeof stages;
+      if (stages[stage]) {
+        stages[stage].count++;
+        stages[stage].pcs += wo.quantity || 0;
+        stages[stage].kg += (wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000;
+        
+        const waitHours = (Date.now() - new Date(wo.created_at).getTime()) / (1000 * 60 * 60);
+        stages[stage].totalWaitHours += waitHours;
+        stages[stage].woCount++;
       }
+    });
 
-      setFloorStats(newFloorStats);
+    setFloorStats({
+      goods_in: {
+        count: stages.goods_in.count,
+        pcs: stages.goods_in.pcs,
+        kg: stages.goods_in.kg,
+        avgWait: stages.goods_in.woCount > 0 ? stages.goods_in.totalWaitHours / stages.goods_in.woCount : 0
+      },
+      production: {
+        count: stages.production.count,
+        pcs: stages.production.pcs,
+        kg: stages.production.kg,
+        avgWait: stages.production.woCount > 0 ? stages.production.totalWaitHours / stages.production.woCount : 0
+      },
+      qc: {
+        count: stages.qc.count,
+        pcs: stages.qc.pcs,
+        kg: stages.qc.kg,
+        avgWait: stages.qc.woCount > 0 ? stages.qc.totalWaitHours / stages.qc.woCount : 0
+      },
+      packing: {
+        count: stages.packing.count,
+        pcs: stages.packing.pcs,
+        kg: stages.packing.kg,
+        avgWait: stages.packing.woCount > 0 ? stages.packing.totalWaitHours / stages.packing.woCount : 0
+      },
+      dispatch: {
+        count: stages.dispatch.count,
+        pcs: stages.dispatch.pcs,
+        kg: stages.dispatch.kg,
+        avgWait: stages.dispatch.woCount > 0 ? stages.dispatch.totalWaitHours / stages.dispatch.woCount : 0
+      },
+    });
+  };
 
-      // Get today's stats
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { data: wosDueToday } = await supabase
-        .from('work_orders')
-        .select('id', { count: 'exact' })
-        .eq('due_date', today);
+  const loadTodayEvents = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const events: any[] = [];
 
-      const { data: lateWos } = await supabase
-        .from('work_orders')
-        .select('id', { count: 'exact' })
-        .lt('due_date', today)
-        .neq('status', 'completed');
+    // WOs due today
+    const { count: woDue } = await supabase
+      .from('work_orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('due_date', today);
 
-      const { data: readyShip } = await supabase
-        .from('work_orders')
-        .select('id', { count: 'exact' })
-        .eq('dispatch_allowed', true)
-        .neq('status', 'completed');
-
-      const { data: blocked } = await supabase
-        .from('routing_steps')
-        .select('id', { count: 'exact' })
-        .eq('status', 'waiting');
-
-      setTodayStats({
-        woDueToday: wosDueToday?.length || 0,
-        lateItems: lateWos?.length || 0,
-        readyToShip: readyShip?.length || 0,
-        blockedSteps: blocked?.length || 0
+    if (woDue && woDue > 0) {
+      events.push({
+        time: 'End of Day',
+        type: 'wo_due',
+        title: `${woDue} Work Orders Due`,
+        count: woDue,
+        priority: 'high'
       });
-
-      // Get stage counts
-      const { data: wos } = await supabase
-        .from("work_orders")
-        .select("current_stage");
-
-      if (wos) {
-        const counts = {
-          goods_in: 0,
-          production: 0,
-          qc: 0,
-          packing: 0,
-          dispatch: 0,
-        };
-
-        wos.forEach((wo) => {
-          if (wo.current_stage) {
-            counts[wo.current_stage as keyof typeof counts]++;
-          }
-        });
-
-        setStageCounts(counts);
-      }
-
-    } catch (error) {
-      console.error('Error loading live data:', error);
     }
+
+    // Late deliveries
+    const { count: late } = await supabase
+      .from('work_orders')
+      .select('*', { count: 'exact', head: true })
+      .lt('due_date', today)
+      .neq('status', 'completed');
+
+    if (late && late > 0) {
+      events.push({
+        time: 'Overdue',
+        type: 'late',
+        title: `${late} Late Deliveries`,
+        count: late,
+        priority: 'high'
+      });
+    }
+
+    // Ready to ship
+    const { count: ready } = await supabase
+      .from('work_orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('dispatch_allowed', true)
+      .neq('status', 'completed');
+
+    if (ready && ready > 0) {
+      events.push({
+        time: 'Ready Now',
+        type: 'ready',
+        title: `${ready} Ready for Dispatch`,
+        count: ready,
+        priority: 'medium'
+      });
+    }
+
+    // Payments expected (invoices due today)
+    const { count: paymentsDue } = await supabase
+      .from('invoices')
+      .select('*', { count: 'exact', head: true })
+      .eq('due_date', today)
+      .neq('status', 'paid');
+
+    if (paymentsDue && paymentsDue > 0) {
+      events.push({
+        time: 'Today',
+        type: 'payment',
+        title: `${paymentsDue} Payments Expected`,
+        count: paymentsDue,
+        priority: 'medium'
+      });
+    }
+
+    setTodayEvents(events);
   };
 
   const handleLogout = async () => {
@@ -281,10 +322,103 @@ const Index = () => {
     );
   }
 
+  // Prepare KPI data
+  const kpiData = [
+    {
+      label: "Revenue YTD",
+      value: `₹${(kpiMetrics.revenueYTD / 100000).toFixed(1)}L`,
+      target: `₹${(kpiMetrics.revenueTarget / 100000).toFixed(1)}L`,
+      status: (kpiMetrics.revenueYTD >= kpiMetrics.revenueTarget * 0.8 ? 'good' : 
+              kpiMetrics.revenueYTD >= kpiMetrics.revenueTarget * 0.6 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      trend: 12,
+      icon: DollarSign
+    },
+    {
+      label: "Orders in Pipeline",
+      value: kpiMetrics.ordersPipeline.toString(),
+      status: 'good' as const,
+      icon: Package
+    },
+    {
+      label: "Orders in Production",
+      value: kpiMetrics.ordersProduction.toString(),
+      status: 'good' as const,
+      icon: Factory
+    },
+    {
+      label: "Late Deliveries",
+      value: kpiMetrics.lateDeliveries.toString(),
+      status: (kpiMetrics.lateDeliveries === 0 ? 'good' : 
+              kpiMetrics.lateDeliveries <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: AlertTriangle
+    },
+    {
+      label: "Late Payments",
+      value: `₹${(kpiMetrics.latePayments / 100000).toFixed(1)}L`,
+      status: (kpiMetrics.latePayments === 0 ? 'good' : 
+              kpiMetrics.latePayments <= 50000 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: CreditCard
+    }
+  ];
+
+  // Prepare Kanban data
+  const kanbanStages = [
+    {
+      stage: "Goods In",
+      icon: Package,
+      count: floorStats.goods_in.count,
+      totalPcs: floorStats.goods_in.pcs,
+      totalKg: floorStats.goods_in.kg,
+      avgWaitHours: floorStats.goods_in.avgWait,
+      status: 'good' as const,
+      onClick: () => navigate("/stage/goods_in")
+    },
+    {
+      stage: "Production",
+      icon: Factory,
+      count: floorStats.production.count,
+      totalPcs: floorStats.production.pcs,
+      totalKg: floorStats.production.kg,
+      avgWaitHours: floorStats.production.avgWait,
+      status: 'good' as const,
+      onClick: () => navigate("/stage/production")
+    },
+    {
+      stage: "QC",
+      icon: ClipboardCheck,
+      count: floorStats.qc.count,
+      totalPcs: floorStats.qc.pcs,
+      totalKg: floorStats.qc.kg,
+      avgWaitHours: floorStats.qc.avgWait,
+      status: 'good' as const,
+      onClick: () => navigate("/stage/qc")
+    },
+    {
+      stage: "Packing",
+      icon: Box,
+      count: floorStats.packing.count,
+      totalPcs: floorStats.packing.pcs,
+      totalKg: floorStats.packing.kg,
+      avgWaitHours: floorStats.packing.avgWait,
+      status: 'good' as const,
+      onClick: () => navigate("/stage/packing")
+    },
+    {
+      stage: "Dispatch",
+      icon: Truck,
+      count: floorStats.dispatch.count,
+      totalPcs: floorStats.dispatch.pcs,
+      totalKg: floorStats.dispatch.kg,
+      avgWaitHours: floorStats.dispatch.avgWait,
+      status: 'good' as const,
+      onClick: () => navigate("/stage/dispatch")
+    }
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b bg-card sticky top-0 z-50 shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -293,15 +427,27 @@ const Index = () => {
                 alt="RV Industries Logo" 
                 className="h-16 object-contain"
               />
+              <div>
+                <h1 className="text-xl font-bold">Manufacturing Control Center</h1>
+                <p className="text-xs text-muted-foreground">Real-time Operations Dashboard</p>
+              </div>
             </div>
             <div className="flex items-center gap-4">
+              <Button 
+                onClick={() => navigate("/scan-console")} 
+                variant="default"
+                className="gap-2"
+              >
+                <QrCode className="h-4 w-4" />
+                Scan Console
+              </Button>
               <div className="text-right">
                 <p className="text-sm font-medium">{profile?.full_name}</p>
                 <p className="text-xs text-muted-foreground capitalize">{profile?.role?.replace('_', ' ')}</p>
               </div>
-              {isAdmin && (
-                <Button variant="ghost" onClick={() => navigate("/admin")} className="hidden sm:inline-flex">
-                  <Shield className="h-5 w-5 mr-2" />
+              {isSuperAdmin() && (
+                <Button variant="ghost" onClick={() => navigate("/admin")} className="hidden sm:inline-flex gap-2">
+                  <Shield className="h-5 w-5" />
                   Admin
                 </Button>
               )}
@@ -314,288 +460,34 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
-        {/* Quick Actions */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <QrCode className="h-5 w-5" />
-              Quick Actions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Button onClick={() => navigate("/scan-console")} className="h-auto py-4 flex-col gap-2 bg-primary">
-                <QrCode className="h-6 w-6" />
-                <span className="text-sm font-bold">📱 SCAN</span>
-              </Button>
-              <Button onClick={() => navigate("/sales")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <FileText className="h-6 w-6" />
-                <span className="text-sm">Sales</span>
-              </Button>
-              <Button onClick={() => navigate("/purchase")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Truck className="h-6 w-6" />
-                <span className="text-sm">Purchase</span>
-              </Button>
-              <Button onClick={() => navigate("/materials/inwards")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Box className="h-6 w-6" />
-                <span className="text-sm">Goods In</span>
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-              <Button onClick={() => navigate("/qc/incoming")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <ClipboardCheck className="h-6 w-6" />
-                <span className="text-sm">QC In</span>
-              </Button>
-              <Button onClick={() => navigate("/work-orders")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Search className="h-6 w-6" />
-                <span className="text-sm">Production</span>
-              </Button>
-              <Button onClick={() => navigate("/quality")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <ClipboardCheck className="h-6 w-6" />
-                <span className="text-sm">QC Batch</span>
-              </Button>
-              <Button onClick={() => navigate("/packing")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Package className="h-6 w-6" />
-                <span className="text-sm">Packing</span>
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Button onClick={() => navigate("/dispatch")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Truck className="h-6 w-6" />
-                <span className="text-sm">Dispatch</span>
-              </Button>
-              <Button onClick={() => navigate("/genealogy")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <BarChart3 className="h-6 w-6" />
-                <span className="text-sm">Genealogy</span>
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-              <Button onClick={() => navigate("/material-requirements")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Boxes className="h-6 w-6" />
-                <span className="text-sm">Material Req</span>
-              </Button>
-              <Button onClick={() => navigate("/purchase/raw-po")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Truck className="h-6 w-6" />
-                <span className="text-sm">Raw PO</span>
-              </Button>
-              <Button onClick={() => navigate("/customers")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <FileText className="h-6 w-6" />
-                <span className="text-sm">Customers</span>
-              </Button>
-              <Button onClick={() => navigate("/items")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <Box className="h-6 w-6" />
-                <span className="text-sm">Items</span>
-              </Button>
-              <Button onClick={() => navigate("/purchase/dashboard")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <BarChart3 className="h-6 w-6" />
-                <span className="text-sm">Procurement Dashboard</span>
-              </Button>
-              <Button onClick={() => navigate("/reports/rpo-inventory")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <FileSpreadsheet className="h-6 w-6" />
-                <span className="text-sm">RPO vs Inventory</span>
-              </Button>
-              <Button onClick={() => navigate("/reports/reconciliation")} variant="secondary" className="h-auto py-4 flex-col gap-2">
-                <AlertCircle className="h-6 w-6" />
-                <span className="text-sm">Reconciliations</span>
-              </Button>
-              <Button onClick={() => navigate("/finance/dashboard")} variant="secondary" className="h-auto py-4 flex-col gap-2 bg-green-500 hover:bg-green-600 text-white">
-                <DollarSign className="h-6 w-6" />
-                <span className="text-sm font-bold">Finance</span>
-              </Button>
-              <Button onClick={() => navigate("/logistics")} variant="secondary" className="h-auto py-4 flex-col gap-2 bg-blue-500 hover:bg-blue-600 text-white">
-                <PackageCheck className="h-6 w-6" />
-                <span className="text-sm font-bold">Logistics</span>
-              </Button>
-              <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
-                <BarChart3 className="h-6 w-6" />
-                <span className="text-sm font-bold">📊 All Reports</span>
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-              <Button onClick={() => navigate("/tolerance-setup")} variant="outline" className="h-auto py-4 flex-col gap-2">
-                <ClipboardCheck className="h-6 w-6" />
-                <span className="text-sm">Tolerances</span>
-              </Button>
-              <Button onClick={() => navigate("/hourly-qc")} variant="outline" className="h-auto py-4 flex-col gap-2">
-                <ClipboardCheck className="h-6 w-6" />
-                <span className="text-sm">Hourly QC</span>
-              </Button>
-              <Button onClick={() => navigate("/cnc-dashboard")} variant="default" className="h-auto py-4 flex-col gap-2">
-                <Activity className="h-6 w-6" />
-                <span className="text-sm font-bold">CNC Dashboard</span>
-              </Button>
-              <Button onClick={() => navigate("/floor-dashboard")} variant="default" className="h-auto py-4 flex-col gap-2">
-                <Activity className="h-6 w-6" />
-                <span className="text-sm font-bold">Floor Dashboard</span>
-              </Button>
-              <Button onClick={() => navigate("/production-progress")} variant="default" className="h-auto py-4 flex-col gap-2 bg-green-600 hover:bg-green-700">
-                <BarChart3 className="h-6 w-6" />
-                <span className="text-sm font-bold">Production Progress</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* KPI Banner */}
+        <KPIBanner metrics={kpiData} />
 
         {/* Search Bar */}
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Input 
-              placeholder="Search by WO, Heat No, Lot ID, Carton, Customer..."
-              className="pl-10 h-12 text-base"
-            />
-          </div>
-        </div>
-
-        {/* Live Floor Map */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold mb-4">Live Floor Status</h2>
-          
-          {/* Stage Counts with Drill-down */}
-          <Card className="mb-4">
-            <CardHeader>
-              <CardTitle>Work Orders by Stage</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-5 gap-4">
-                <Card 
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate("/stage/goods_in")}
-                >
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-3xl font-bold text-primary">{stageCounts.goods_in}</p>
-                    <p className="text-sm text-muted-foreground">Goods In</p>
-                  </CardContent>
-                </Card>
-                <Card 
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate("/stage/production")}
-                >
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-3xl font-bold text-primary">{stageCounts.production}</p>
-                    <p className="text-sm text-muted-foreground">Production</p>
-                  </CardContent>
-                </Card>
-                <Card 
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate("/stage/qc")}
-                >
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-3xl font-bold text-primary">{stageCounts.qc}</p>
-                    <p className="text-sm text-muted-foreground">QC</p>
-                  </CardContent>
-                </Card>
-                <Card 
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate("/stage/packing")}
-                >
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-3xl font-bold text-primary">{stageCounts.packing}</p>
-                    <p className="text-sm text-muted-foreground">Packing</p>
-                  </CardContent>
-                </Card>
-                <Card 
-                  className="cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => navigate("/stage/dispatch")}
-                >
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-3xl font-bold text-primary">{stageCounts.dispatch}</p>
-                    <p className="text-sm text-muted-foreground">Dispatch</p>
-                  </CardContent>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Department Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <DepartmentCard
-              title="Goods In"
-              icon={Package}
-              wipPcs={floorStats.stores.wipPcs}
-              wipKg={floorStats.stores.wipKg}
-              avgWaitTime={`${floorStats.stores.avgWaitTime.toFixed(1)}h`}
-              alerts={floorStats.stores.alerts}
-              onClick={() => navigate("/department/stores")}
-            />
-            <DepartmentCard
-              title="Production"
-              icon={Factory}
-              wipPcs={floorStats.production.wipPcs}
-              wipKg={floorStats.production.wipKg}
-              avgWaitTime={`${floorStats.production.avgWaitTime.toFixed(1)}h`}
-              alerts={floorStats.production.alerts}
-              onClick={() => navigate("/department/production")}
-            />
-            <DepartmentCard
-              title="Quality Control"
-              icon={CheckCircle2}
-              wipPcs={floorStats.quality.wipPcs}
-              wipKg={floorStats.quality.wipKg}
-              avgWaitTime={`${floorStats.quality.avgWaitTime.toFixed(1)}h`}
-              alerts={floorStats.quality.alerts}
-              onClick={() => navigate("/department/quality")}
-            />
-            <DepartmentCard
-              title="Packing"
-              icon={Box}
-              wipPcs={floorStats.packing.wipPcs}
-              wipKg={floorStats.packing.wipKg}
-              avgWaitTime={`${floorStats.packing.avgWaitTime.toFixed(1)}h`}
-              alerts={floorStats.packing.alerts}
-              onClick={() => navigate("/department/packing")}
-            />
-            <DepartmentCard
-              title="Job Work"
-              icon={Truck}
-              wipPcs={floorStats.jobWork.wipPcs}
-              wipKg={floorStats.jobWork.wipKg}
-              avgWaitTime={`${floorStats.jobWork.avgWaitTime.toFixed(1)}h`}
-              alerts={floorStats.jobWork.alerts}
-              onClick={() => navigate("/department/job-work")}
-            />
-            <DepartmentCard
-              title="Dispatch"
-              icon={Truck}
-              wipPcs={floorStats.dispatch.wipPcs}
-              wipKg={floorStats.dispatch.wipKg}
-              avgWaitTime={`${floorStats.dispatch.avgWaitTime.toFixed(1)}h`}
-              alerts={floorStats.dispatch.alerts}
-              onClick={() => navigate("/department/dispatch")}
-            />
-          </div>
-        </div>
-
-        {/* Today's Summary */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5" />
-              Today at a Glance
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-primary">{todayStats.woDueToday}</p>
-                <p className="text-sm text-muted-foreground">WOs Due Today</p>
-              </div>
-              <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-destructive">{todayStats.lateItems}</p>
-                <p className="text-sm text-muted-foreground">Late Items</p>
-              </div>
-              <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-yellow-500">{todayStats.blockedSteps}</p>
-                <p className="text-sm text-muted-foreground">Blocked Steps</p>
-              </div>
-              <div className="text-center p-4 bg-secondary rounded-lg">
-                <p className="text-3xl font-bold text-green-500">{todayStats.readyToShip}</p>
-                <p className="text-sm text-muted-foreground">Ready to Ship</p>
-              </div>
+          <CardContent className="p-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input 
+                placeholder="Search by WO, Heat No, Lot ID, Carton, Customer, PO..."
+                className="pl-10 h-12 text-base"
+              />
             </div>
           </CardContent>
         </Card>
+
+        {/* Quick Actions Accordion */}
+        <div>
+          <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+          <QuickActionsAccordion />
+        </div>
+
+        {/* Floor Kanban */}
+        <FloorKanban stages={kanbanStages} />
+
+        {/* Today Timeline */}
+        {todayEvents.length > 0 && <TodayTimeline events={todayEvents} />}
       </main>
     </div>
   );
