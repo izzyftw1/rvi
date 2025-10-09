@@ -115,12 +115,25 @@ export default function MaterialRequirements() {
 
       // Fetch related SOs
       const soIds = [...new Set(workOrders?.map(wo => wo.sales_order).filter(Boolean))];
-      const { data: salesOrders, error: soError } = await supabase
-        .from("sales_orders")
-        .select("id, so_id, customer")
-        .in("id", soIds);
+      
+      // Filter out invalid UUIDs (must be valid UUID format)
+      const validSoIds = soIds.filter(id => {
+        if (!id) return false;
+        // UUID format: 8-4-4-4-12 hexadecimal characters
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(id);
+      });
+      
+      let salesOrders = [];
+      if (validSoIds.length > 0) {
+        const { data, error: soError } = await supabase
+          .from("sales_orders")
+          .select("id, so_id, customer")
+          .in("id", validSoIds);
 
-      if (soError) throw soError;
+        if (soError) throw soError;
+        salesOrders = data || [];
+      }
 
       // Fetch inventory from inventory_lots
       const { data: inventoryLots, error: invError } = await supabase
