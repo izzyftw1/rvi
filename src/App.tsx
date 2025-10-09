@@ -38,6 +38,9 @@ import ProductionProgress from "./pages/ProductionProgress";
 import RawPurchaseOrders from "./pages/RawPurchaseOrders";
 import SupplierLedger from "./pages/SupplierLedger";
 import PurchaseSettings from "./pages/PurchaseSettings";
+import MaterialProcurementDashboard from "./pages/MaterialProcurementDashboard";
+import RPOInventoryReport from "./pages/RPOInventoryReport";
+import ReconciliationReport from "./pages/ReconciliationReport";
 
 
 const App = () => (
@@ -56,6 +59,9 @@ const App = () => (
         <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
         <Route path="/purchase/raw-po" element={<ProtectedRoute><RawPurchaseOrders /></ProtectedRoute>} />
         <Route path="/purchase/settings" element={<ProtectedRoute><PurchaseSettings /></ProtectedRoute>} />
+        <Route path="/purchase/dashboard" element={<ProtectedRoute><MaterialProcurementDashboard /></ProtectedRoute>} />
+        <Route path="/reports/rpo-inventory" element={<ProtectedRoute><RPOInventoryReport /></ProtectedRoute>} />
+        <Route path="/reports/reconciliation" element={<ProtectedRoute><ReconciliationReport /></ProtectedRoute>} />
         <Route path="/suppliers/:id/ledger" element={<ProtectedRoute><SupplierLedger /></ProtectedRoute>} />
         <Route path="/materials/inwards" element={<ProtectedRoute><MaterialInwards /></ProtectedRoute>} />
         <Route path="/qc/incoming" element={<ProtectedRoute><QCIncoming /></ProtectedRoute>} />

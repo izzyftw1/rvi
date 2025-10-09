@@ -19,7 +19,9 @@ import {
   FileText,
   Boxes,
   Shield,
-  Activity
+  Activity,
+  FileSpreadsheet,
+  AlertCircle
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -383,9 +385,21 @@ const Index = () => {
                 <Box className="h-6 w-6" />
                 <span className="text-sm">Items</span>
               </Button>
+              <Button onClick={() => navigate("/purchase/dashboard")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <BarChart3 className="h-6 w-6" />
+                <span className="text-sm">Procurement Dashboard</span>
+              </Button>
+              <Button onClick={() => navigate("/reports/rpo-inventory")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <FileSpreadsheet className="h-6 w-6" />
+                <span className="text-sm">RPO vs Inventory</span>
+              </Button>
+              <Button onClick={() => navigate("/reports/reconciliation")} variant="secondary" className="h-auto py-4 flex-col gap-2">
+                <AlertCircle className="h-6 w-6" />
+                <span className="text-sm">Reconciliations</span>
+              </Button>
               <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
-                <span className="text-sm font-bold">📊 Reports</span>
+                <span className="text-sm font-bold">📊 All Reports</span>
               </Button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
