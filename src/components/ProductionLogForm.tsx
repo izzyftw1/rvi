@@ -27,10 +27,36 @@ import { Loader2 } from "lucide-react";
 const productionLogSchema = z.object({
   wo_id: z.string().uuid("Please select a work order"),
   machine_id: z.string().uuid("Please select a machine"),
+  run_state: z.enum(['running', 'stopped', 'material_wait', 'maintenance', 'setup'], {
+    required_error: "Please select run state"
+  }),
+  downtime_minutes: z.coerce.number().min(0).optional(),
+  setup_no: z.string().optional(),
+  operation_code: z.string().optional(),
+  operator_type: z.enum(['RVI', 'CONTRACTOR'], { required_error: "Please select operator type" }),
+  planned_minutes: z.coerce.number().min(0).optional(),
   quantity_completed: z.coerce.number().min(0, "Must be 0 or greater"),
   quantity_scrap: z.coerce.number().min(0, "Must be 0 or greater"),
   shift: z.string().optional(),
   remarks: z.string().optional(),
+  actions_taken: z.string().optional(),
+}).refine((data) => {
+  // If run_state is not 'running', quantities can be 0
+  if (data.run_state !== 'running') return true;
+  // If running, at least some production should be logged
+  return data.quantity_completed > 0 || data.quantity_scrap > 0;
+}, {
+  message: "When running, at least one quantity field must be greater than 0",
+  path: ["quantity_completed"]
+}).refine((data) => {
+  // If run_state is not 'running', downtime_minutes must be provided
+  if (data.run_state !== 'running' && !data.downtime_minutes) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Downtime minutes required when not running",
+  path: ["downtime_minutes"]
 });
 
 type ProductionLogFormData = z.infer<typeof productionLogSchema>;
@@ -49,6 +75,8 @@ interface WorkOrder {
   customer: string;
   item_code: string;
   quantity: number;
+  cycle_time_seconds?: number;
+  revision?: string;
   first_piece_qc_status?: string;
 }
 
@@ -60,15 +88,23 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
   const [loading, setLoading] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<string>("");
+  const [runState, setRunState] = useState<string>("running");
+  const [plannedMinutes, setPlannedMinutes] = useState<number>(0);
+  const [targetQty, setTargetQty] = useState<number>(0);
   
   const {
     register,
     handleSubmit,
     setValue,
+    watch,
     reset,
     formState: { errors },
   } = useForm<ProductionLogFormData>({
     resolver: zodResolver(productionLogSchema),
+    defaultValues: {
+      operator_type: 'RVI',
+      run_state: 'running',
+    }
   });
 
   // Auto-populate work order if provided
@@ -77,6 +113,16 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
       setValue("wo_id", propWorkOrder.id);
     }
   }, [propWorkOrder, setValue]);
+
+  // Calculate target_qty when planned_minutes or cycle_time changes
+  useEffect(() => {
+    if (plannedMinutes && propWorkOrder?.cycle_time_seconds) {
+      const target = Math.floor((plannedMinutes * 60) / propWorkOrder.cycle_time_seconds);
+      setTargetQty(target);
+    } else {
+      setTargetQty(0);
+    }
+  }, [plannedMinutes, propWorkOrder?.cycle_time_seconds]);
 
   useEffect(() => {
     loadMachines();
@@ -126,22 +172,47 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      const { error } = await supabase.from("production_logs").insert({
+      const { error: logError } = await supabase.from("production_logs").insert({
         wo_id: data.wo_id,
         machine_id: data.machine_id,
+        run_state: data.run_state,
+        downtime_minutes: data.downtime_minutes || 0,
+        setup_no: data.setup_no,
+        operation_code: data.operation_code,
+        operator_type: data.operator_type,
+        planned_minutes: plannedMinutes || null,
+        target_qty: targetQty || null,
         quantity_completed: data.quantity_completed,
         quantity_scrap: data.quantity_scrap,
         shift: data.shift,
         remarks: data.remarks,
+        actions_taken: data.actions_taken,
         operator_id: user?.id,
         log_timestamp: new Date().toISOString(),
       });
 
-      if (error) throw error;
+      if (logError) throw logError;
+
+      // Create maintenance log if run_state is maintenance
+      if (data.run_state === 'maintenance' && data.downtime_minutes && data.downtime_minutes > 0) {
+        const startTime = new Date();
+        const endTime = new Date(startTime.getTime() + data.downtime_minutes * 60000);
+        
+        await supabase.from("maintenance_logs").insert({
+          machine_id: data.machine_id,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          downtime_reason: data.actions_taken || `Maintenance: ${data.remarks || 'Unspecified'}`,
+          logged_by: user?.id,
+        });
+      }
 
       toast.success("Production log submitted successfully");
       reset();
       setSelectedMachine("");
+      setRunState("running");
+      setPlannedMinutes(0);
+      setTargetQty(0);
     } catch (error: any) {
       toast.error(error.message || "Failed to submit production log");
     } finally {
@@ -165,24 +236,37 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
           {/* Show WO info banner if work order is provided */}
           {propWorkOrder && (
             <div className="p-4 bg-muted rounded-lg border">
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Customer</p>
-                  <p className="font-medium">{propWorkOrder.customer}</p>
+                  <p className="text-muted-foreground">WO ID</p>
+                  <p className="font-medium">{propWorkOrder.display_id || propWorkOrder.wo_id}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Item Code</p>
                   <p className="font-medium">{propWorkOrder.item_code}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Target Quantity</p>
+                  <p className="text-muted-foreground">Drawing/Rev</p>
+                  <p className="font-medium">{propWorkOrder.revision || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Cycle Time</p>
+                  <p className="font-medium">{propWorkOrder.cycle_time_seconds ? `${propWorkOrder.cycle_time_seconds}s` : 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Target Qty</p>
                   <p className="font-medium">{propWorkOrder.quantity} pcs</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Assigned Machines</p>
+                  <p className="font-medium">{machines.length} machine{machines.length !== 1 ? 's' : ''}</p>
                 </div>
               </div>
             </div>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Machine Selection */}
             <div className="space-y-2">
               <Label htmlFor="machine_id">Machine *</Label>
               <Select
@@ -213,6 +297,126 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
               )}
             </div>
 
+            {/* Run State */}
+            <div className="space-y-2">
+              <Label htmlFor="run_state">Run State *</Label>
+              <Select 
+                value={runState}
+                onValueChange={(value) => {
+                  setRunState(value);
+                  setValue("run_state", value as any);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select run state" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="running">Running</SelectItem>
+                  <SelectItem value="stopped">Stopped</SelectItem>
+                  <SelectItem value="material_wait">Material Wait</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                  <SelectItem value="setup">Setup</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.run_state && (
+                <p className="text-sm text-destructive">{errors.run_state.message}</p>
+              )}
+            </div>
+
+            {/* Downtime Minutes - Only show when not running */}
+            {runState !== 'running' && (
+              <div className="space-y-2">
+                <Label htmlFor="downtime_minutes">Downtime Minutes *</Label>
+                <Input
+                  id="downtime_minutes"
+                  type="number"
+                  min="0"
+                  {...register("downtime_minutes")}
+                />
+                {errors.downtime_minutes && (
+                  <p className="text-sm text-destructive">{errors.downtime_minutes.message}</p>
+                )}
+              </div>
+            )}
+
+            {/* Setup Number */}
+            <div className="space-y-2">
+              <Label htmlFor="setup_no">Setup No.</Label>
+              <Input
+                id="setup_no"
+                type="text"
+                placeholder="e.g., SETUP-001"
+                {...register("setup_no")}
+              />
+            </div>
+
+            {/* Operation Code */}
+            <div className="space-y-2">
+              <Label htmlFor="operation_code">Operation Code</Label>
+              <Select onValueChange={(value) => setValue("operation_code", value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select operation" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(op => (
+                    <SelectItem key={op} value={op}>{op}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Operator Type */}
+            <div className="space-y-2">
+              <Label htmlFor="operator_type">Operator Type *</Label>
+              <Select 
+                defaultValue="RVI"
+                onValueChange={(value) => setValue("operator_type", value as any)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RVI">RVI</SelectItem>
+                  <SelectItem value="CONTRACTOR">CONTRACTOR</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.operator_type && (
+                <p className="text-sm text-destructive">{errors.operator_type.message}</p>
+              )}
+            </div>
+
+            {/* Planned Minutes */}
+            <div className="space-y-2">
+              <Label htmlFor="planned_minutes">Planned Minutes</Label>
+              <Input
+                id="planned_minutes"
+                type="number"
+                min="0"
+                value={plannedMinutes}
+                onChange={(e) => setPlannedMinutes(Number(e.target.value))}
+                placeholder="Auto-filled from schedule"
+              />
+              <p className="text-xs text-muted-foreground">
+                Auto-calculated from Factory Calendar if scheduled
+              </p>
+            </div>
+
+            {/* Target Quantity - Read Only */}
+            <div className="space-y-2">
+              <Label htmlFor="target_qty">Target Qty (Read-only)</Label>
+              <Input
+                id="target_qty"
+                type="number"
+                value={targetQty}
+                readOnly
+                className="bg-muted"
+              />
+              <p className="text-xs text-muted-foreground">
+                Auto: (planned_min × 60) / cycle_time_sec
+              </p>
+            </div>
+
+            {/* Quantity Completed */}
             <div className="space-y-2">
               <Label htmlFor="quantity_completed">Quantity Completed *</Label>
               <Input
@@ -226,6 +430,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
               )}
             </div>
 
+            {/* Quantity Scrap */}
             <div className="space-y-2">
               <Label htmlFor="quantity_scrap">Quantity Scrap *</Label>
               <Input
@@ -239,6 +444,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
               )}
             </div>
 
+            {/* Shift */}
             <div className="space-y-2">
               <Label htmlFor="shift">Shift</Label>
               <Select onValueChange={(value) => setValue("shift", value)}>
@@ -252,11 +458,24 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
               </Select>
             </div>
 
+            {/* Actions Taken - Full width */}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="actions_taken">Actions Taken</Label>
+              <Textarea
+                id="actions_taken"
+                placeholder="Describe actions taken during this period..."
+                rows={2}
+                {...register("actions_taken")}
+              />
+            </div>
+
+            {/* Remarks - Full width */}
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="remarks">Remarks</Label>
               <Textarea
                 id="remarks"
                 placeholder="Any additional notes..."
+                rows={2}
                 {...register("remarks")}
               />
             </div>
