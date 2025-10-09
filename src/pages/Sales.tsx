@@ -279,7 +279,12 @@ export default function Sales() {
             price_per_pc: item.price_per_pc ?? null,
             line_amount: item.price_per_pc != null && item.quantity != null ? Number(item.price_per_pc) * Number(item.quantity) : null,
             drawing_number: item.drawing_number ?? null,
-            priority: 3
+            priority: 3,
+            alloy: item.alloy || null,
+            material_size_mm: item.material_size || null,
+            net_weight_per_pc_grams: item.net_weight_per_pc_g ?? null,
+            gross_weight_per_pc_grams: item.gross_weight_per_pc_g ?? null,
+            cycle_time_seconds: null
           })),
           total_amount: total,
           status: "approved",
