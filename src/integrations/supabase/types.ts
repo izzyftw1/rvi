@@ -3466,6 +3466,7 @@ export type Database = {
           item_code: string
           material_size_mm: string | null
           net_weight_per_pc: number | null
+          priority: number | null
           production_allowed: boolean | null
           qc_first_piece_approved_at: string | null
           qc_first_piece_approved_by: string | null
@@ -3503,6 +3504,7 @@ export type Database = {
           item_code: string
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
+          priority?: number | null
           production_allowed?: boolean | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
@@ -3540,6 +3542,7 @@ export type Database = {
           item_code?: string
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
+          priority?: number | null
           production_allowed?: boolean | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
