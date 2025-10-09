@@ -272,8 +272,7 @@ export default function Sales() {
         notes: null,
         status: 'approved', // Auto-approve to trigger work order generation
         price_per_pc: item.price_per_pc || 0,
-        line_amount: item.line_amount || 0,
-        drawing_number: item.drawing_number || formData.drawing_number || null
+        line_amount: item.line_amount || 0
       }));
 
       const { error: lineItemsError } = await supabase
