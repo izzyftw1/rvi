@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,602 +7,505 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Upload, Printer, Trash2 } from "lucide-react";
-import { QRCodeDisplay } from "@/components/QRCodeDisplay";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
-import { materialLotSchema } from "@/lib/validationSchemas";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Package, Upload, Search } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
-import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
-import { Eye } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const MaterialInwards = () => {
+interface RPO {
+  id: string;
+  rpo_no: string;
+  wo_id: string;
+  material_size_mm: string;
+  alloy: string;
+  qty_ordered_kg: number;
+  rate_per_kg: number;
+  supplier_id: string;
+  status: string;
+  suppliers: { name: string };
+  work_orders: { wo_id: string };
+}
+
+export default function MaterialInwards() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
-  
+
+  // RPO Selection
+  const [rpoSearchOpen, setRpoSearchOpen] = useState(false);
+  const [approvedRPOs, setApprovedRPOs] = useState<RPO[]>([]);
+  const [selectedRPO, setSelectedRPO] = useState<RPO | null>(null);
+  const [rpoSearch, setRpoSearch] = useState("");
+
+  // Form State
   const [formData, setFormData] = useState({
-    lot_id: "",
+    qty_received_kg: "",
     heat_no: "",
-    alloy: "",
-    supplier: "",
-    material_size_mm: "",
-    gross_weight: "",
-    net_weight: "",
-    bin_location: "",
-    mtc_file: null as File | null,
-    po_id: "",
+    supplier_invoice_no: "",
+    supplier_invoice_date: "",
+    rate_on_invoice: "",
+    lr_no: "",
+    transporter: "",
+    notes: "",
+    invoice_file: null as File | null
   });
-
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
-  const [selectedPO, setSelectedPO] = useState("");
-
-  const [lots, setLots] = useState<any[]>([]);
-  const [lotsLoading, setLotsLoading] = useState(false);
-  const [lotsError, setLotsError] = useState<string>("");
-
-  const [editOpen, setEditOpen] = useState(false);
-  const [selectedLot, setSelectedLot] = useState<any>(null);
-  const [editForm, setEditForm] = useState({
-    material_size_mm: "",
-    gross_weight: "",
-    net_weight: "",
-    bin_location: "",
-    supplier: "",
-  });
-  const [viewOpen, setViewOpen] = useState(false);
-  const [viewLot, setViewLot] = useState<any>(null);
-
-  const loadLots = async () => {
-    setLotsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("material_lots")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      setLots(data ?? []);
-      setLotsError("");
-    } catch (e: any) {
-      setLots([]);
-      setLotsError(e?.message || String(e));
-    } finally {
-      setLotsLoading(false);
-    }
-  };
 
   useEffect(() => {
     const getUser = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-      } catch (error) {
-        console.error('Error fetching user:', error);
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
     };
     getUser();
-    
-    const loadPurchaseOrders = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("purchase_orders")
-          .select("*")
-          .in("status", ["approved", "pending"])
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        setPurchaseOrders(data ?? []);
-      } catch (error) {
-        console.error('Error loading purchase orders:', error);
-        setPurchaseOrders([]);
-      }
-    };
-    loadPurchaseOrders();
-    loadLots();
 
-    const channel = supabase
-      .channel("material-lots-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "material_lots" },
-        () => loadLots()
-      )
-      .subscribe();
+    loadApprovedRPOs();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    // Check if RPO is pre-selected from URL
+    const rpoId = searchParams.get("rpo_id");
+    if (rpoId) {
+      loadSpecificRPO(rpoId);
+    }
   }, []);
+
+  const loadApprovedRPOs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("raw_purchase_orders")
+        .select(`
+          *,
+          suppliers(name),
+          work_orders(wo_id)
+        `)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setApprovedRPOs(data || []);
+    } catch (error: any) {
+      console.error("Error loading RPOs:", error);
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
+  const loadSpecificRPO = async (rpoId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("raw_purchase_orders")
+        .select(`
+          *,
+          suppliers(name),
+          work_orders(wo_id)
+        `)
+        .eq("id", rpoId)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        handleRPOSelection(data);
+      }
+    } catch (error: any) {
+      console.error("Error loading RPO:", error);
+    }
+  };
+
+  const handleRPOSelection = (rpo: RPO) => {
+    setSelectedRPO(rpo);
+    setFormData({
+      ...formData,
+      rate_on_invoice: rpo.rate_per_kg.toString()
+    });
+    setRpoSearchOpen(false);
+  };
+
+  const filteredRPOs = approvedRPOs.filter(rpo => {
+    const search = rpoSearch.toLowerCase();
+    return (
+      rpo.rpo_no.toLowerCase().includes(search) ||
+      rpo.work_orders?.wo_id.toLowerCase().includes(search) ||
+      rpo.suppliers?.name.toLowerCase().includes(search) ||
+      rpo.material_size_mm.includes(search) ||
+      rpo.alloy.toLowerCase().includes(search)
+    );
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Validate input data
-      const validationResult = materialLotSchema.safeParse(formData);
-      if (!validationResult.success) {
-        toast({
-          variant: "destructive",
-          title: "Validation Error",
-          description: validationResult.error.errors[0].message,
-        });
+      if (!selectedRPO) {
+        toast({ variant: "destructive", description: "Please select an RPO" });
         setLoading(false);
         return;
       }
 
-      let mtcFileUrl = "";
-      
-      if (formData.mtc_file) {
-        // Sanitize file name to prevent path traversal attacks
-        const fileExt = formData.mtc_file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf';
-        const sanitizedLotId = formData.lot_id.replace(/[^A-Z0-9-]/gi, '');
-        const fileName = `material_lots/${sanitizedLotId}/mtc_${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from("documents")
-          .upload(fileName, formData.mtc_file);
-        
-        if (uploadError) throw uploadError;
-        mtcFileUrl = fileName;
+      if (!formData.qty_received_kg || parseFloat(formData.qty_received_kg) <= 0) {
+        toast({ variant: "destructive", description: "Quantity received must be greater than 0" });
+        setLoading(false);
+        return;
       }
 
-      const { data: lotData, error: lotError } = await supabase
-        .from("material_lots")
+      if (!formData.heat_no) {
+        toast({ variant: "destructive", description: "Heat number is required" });
+        setLoading(false);
+        return;
+      }
+
+      const qtyReceived = parseFloat(formData.qty_received_kg);
+      const rateOnInvoice = parseFloat(formData.rate_on_invoice || "0");
+
+      // Upload invoice if provided
+      let invoiceUrl = "";
+      if (formData.invoice_file) {
+        const fileExt = formData.invoice_file.name.split('.').pop();
+        const fileName = `invoices/${selectedRPO.rpo_no}_${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from("documents")
+          .upload(fileName, formData.invoice_file);
+        
+        if (uploadError) throw uploadError;
+        invoiceUrl = fileName;
+      }
+
+      // 1. Create raw_po_receipts entry
+      const { data: receiptData, error: receiptError } = await supabase
+        .from("raw_po_receipts")
         .insert({
-          lot_id: formData.lot_id,
-          heat_no: formData.heat_no,
-          alloy: formData.alloy,
-          supplier: formData.supplier,
-          material_size_mm: formData.material_size_mm || null,
-          gross_weight: parseFloat(formData.gross_weight),
-          net_weight: parseFloat(formData.net_weight),
-          bin_location: formData.bin_location,
-          mtc_file: mtcFileUrl,
-          received_by: user?.id,
-          po_id: formData.po_id || null,
-          qc_status: "pending"
+          rpo_id: selectedRPO.id,
+          received_date: new Date().toISOString().split('T')[0],
+          qty_received_kg: qtyReceived,
+          supplier_invoice_no: formData.supplier_invoice_no || null,
+          supplier_invoice_date: formData.supplier_invoice_date || null,
+          rate_on_invoice: rateOnInvoice,
+          amount_on_invoice: formData.supplier_invoice_no ? qtyReceived * rateOnInvoice : null,
+          lr_no: formData.lr_no || null,
+          transporter: formData.transporter || null,
+          notes: formData.notes || null
         })
         .select()
         .single();
 
-      if (lotError) throw lotError;
+      if (receiptError) throw receiptError;
 
-      // Create scan event for material receipt with QC status
-      await supabase.from("scan_events").insert({
-        entity_type: "material_lot",
-        entity_id: formData.lot_id,
-        to_stage: "received_pending_qc",
-        quantity: parseFloat(formData.net_weight),
-        owner_id: user?.id,
-        remarks: `Received from ${formData.supplier}. QC Status: Pending`
-      });
-
-      // Mark PO as received
-      if (selectedPO) {
-        await supabase
-          .from("purchase_orders")
-          .update({ status: "received" })
-          .eq("id", selectedPO);
-      }
-
-      // Notify QC team
-      const qcUsers = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "quality");
-      
-      if (qcUsers.data) {
-        await supabase.rpc("notify_users", {
-          _user_ids: qcUsers.data.map(u => u.user_id),
-          _type: "material_received",
-          _title: "New Material for Incoming QC",
-          _message: `Lot ${formData.lot_id} requires incoming inspection`,
-          _entity_type: "material_lot",
-          _entity_id: lotData.id
+      // 2. Create inventory_lots entry (auto-generates lot_id)
+      const autoLotId = `LOT-${selectedRPO.rpo_no}-${Date.now()}`;
+      const { error: invError } = await supabase
+        .from("inventory_lots")
+        .insert({
+          lot_id: autoLotId,
+          material_size_mm: selectedRPO.material_size_mm,
+          alloy: selectedRPO.alloy,
+          qty_kg: qtyReceived,
+          supplier_id: selectedRPO.supplier_id,
+          rpo_id: selectedRPO.id,
+          heat_no: formData.heat_no,
+          cost_rate: rateOnInvoice,
+          received_date: new Date().toISOString().split('T')[0]
         });
+
+      if (invError) throw invError;
+
+      // 3. Get total received for this RPO
+      const { data: receipts, error: receiptsError } = await supabase
+        .from("raw_po_receipts")
+        .select("qty_received_kg")
+        .eq("rpo_id", selectedRPO.id);
+
+      if (receiptsError) throw receiptsError;
+
+      const totalReceived = (receipts || []).reduce((sum, r) => sum + r.qty_received_kg, 0);
+      const qtyOrdered = selectedRPO.qty_ordered_kg;
+
+      // 4. Auto-reconciliation logic
+      const qtyDelta = totalReceived - qtyOrdered;
+      const rateDelta = rateOnInvoice - selectedRPO.rate_per_kg;
+      const remainingToOrder = Math.max(0, qtyOrdered - (totalReceived - qtyReceived));
+      const amountDelta = (qtyReceived * rateOnInvoice) - (Math.min(qtyReceived, remainingToOrder) * selectedRPO.rate_per_kg);
+
+      // Create reconciliation if any delta exists
+      if (qtyDelta !== 0 || rateDelta !== 0 || Math.abs(amountDelta) > 0.01) {
+        let reason = "other";
+        if (totalReceived < qtyOrdered) {
+          reason = "short_supply";
+        } else if (totalReceived > qtyOrdered) {
+          reason = "excess_supply";
+        } else if (rateDelta !== 0) {
+          reason = "rate_variance";
+        }
+
+        await supabase
+          .from("raw_po_reconciliations")
+          .insert({
+            rpo_id: selectedRPO.id,
+            qty_delta_kg: qtyDelta,
+            rate_delta: rateDelta,
+            amount_delta: amountDelta,
+            reason: reason as any,
+            resolution: "pending" as any,
+            notes: `Auto-created on receipt. Qty received: ${qtyReceived} kg, Rate: ${rateOnInvoice}`
+          } as any);
       }
 
-      toast({ description: "Material received successfully. QC team notified." });
-      
-      // Show QR code
-      const qrDialog = document.getElementById(`qr-trigger-${lotData.lot_id}`);
-      if (qrDialog) (qrDialog as HTMLButtonElement).click();
-      
+      // 5. Update RPO status
+      type RPOStatus = "draft" | "pending_approval" | "approved" | "part_received" | "closed" | "cancelled";
+      let newStatus: RPOStatus = "approved";
+      if (totalReceived === 0) {
+        newStatus = "approved";
+      } else if (totalReceived < qtyOrdered) {
+        newStatus = "part_received";
+      } else if (totalReceived >= qtyOrdered) {
+        newStatus = "closed";
+      }
+
+      await supabase
+        .from("raw_purchase_orders")
+        .update({ status: newStatus })
+        .eq("id", selectedRPO.id);
+
+      toast({ title: "Success", description: `Material receipt recorded. RPO status: ${newStatus}` });
+
+      // Reset form
+      setSelectedRPO(null);
       setFormData({
-        lot_id: "", heat_no: "", alloy: "", supplier: "",
-        material_size_mm: "", gross_weight: "", net_weight: "", bin_location: "", mtc_file: null, po_id: ""
+        qty_received_kg: "",
+        heat_no: "",
+        supplier_invoice_no: "",
+        supplier_invoice_date: "",
+        rate_on_invoice: "",
+        lr_no: "",
+        transporter: "",
+        notes: "",
+        invoice_file: null
       });
-      setSelectedPO("");
-    } catch (error) {
-      toast({ variant: "destructive", description: "Failed to receive material" });
+
+      loadApprovedRPOs();
+    } catch (error: any) {
+      console.error("Error saving receipt:", error);
+      toast({ variant: "destructive", description: error.message });
     } finally {
       setLoading(false);
     }
   };
 
-  const [lastCreatedLot, setLastCreatedLot] = useState<any>(null);
-
-  useEffect(() => {
-    if (lastCreatedLot) {
-      toast({ description: "Material received successfully. QC team notified." });
-    }
-  }, [lastCreatedLot]);
-
-  const handlePrintLabel = () => {
-    toast({
-      title: "Printing label",
-      description: "QR code label for " + formData.lot_id,
-    });
-    // In production, this would trigger actual label printing
-  };
-
-  const openView = (lot: any) => {
-    setViewLot(lot);
-    setViewOpen(true);
-  };
-
-  const openEdit = (lot: any) => {
-    setSelectedLot(lot);
-    setEditForm({
-      material_size_mm: lot.material_size_mm != null ? String(lot.material_size_mm) : "",
-      gross_weight: lot.gross_weight != null ? String(lot.gross_weight) : "",
-      net_weight: lot.net_weight != null ? String(lot.net_weight) : "",
-      bin_location: lot.bin_location ?? "",
-      supplier: lot.supplier ?? "",
-    });
-    setEditOpen(true);
-  };
-
-  const handleEditFromView = () => {
-    setViewOpen(false);
-    if (viewLot) {
-      openEdit(viewLot);
-    }
-  };
-
-  const saveEdit = async () => {
-    if (!selectedLot) return;
-    try {
-      const { error } = await supabase
-        .from("material_lots")
-        .update({
-          material_size_mm: editForm.material_size_mm || null,
-          gross_weight: editForm.gross_weight ? parseFloat(editForm.gross_weight) : null,
-          net_weight: editForm.net_weight ? parseFloat(editForm.net_weight) : null,
-          bin_location: editForm.bin_location || null,
-          supplier: editForm.supplier || null,
-        })
-        .eq("id", selectedLot.id);
-      if (error) throw error;
-      toast({ description: "Lot updated" });
-      setEditOpen(false);
-      setSelectedLot(null);
-      loadLots();
-    } catch (e: any) {
-      toast({ variant: "destructive", description: e?.message || "Update failed" });
-    }
-  };
-
-  const handleDeleteLot = async (lotId: string, lotName: string) => {
-    if (!confirm(`Are you sure you want to delete material lot ${lotName}? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from("material_lots")
-        .delete()
-        .eq("id", lotId);
-      
-      if (error) throw error;
-      
-      toast({ description: `Material lot ${lotName} deleted successfully` });
-      loadLots();
-    } catch (e: any) {
-      toast({ variant: "destructive", description: e?.message || "Delete failed" });
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Goods In - Material Inwards" subtitle="Receive new material lots" />
+      <NavigationHeader title="Material Inwards - Goods In" subtitle="Receive raw materials and link to RPOs" />
       
-      <div className="max-w-3xl mx-auto p-4 space-y-6">
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              New Material Receipt
-            </CardTitle>
-            <CardDescription>
-              Create a new material lot and assign bin location
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="po_select">Purchase Order *</Label>
-                <Select value={selectedPO} onValueChange={(value) => {
-                  setSelectedPO(value);
-                  // Auto-fill fields from PO
-                  const po = purchaseOrders.find(p => p.id === value);
-                  if (po) {
-                    setFormData({
-                      ...formData,
-                      supplier: po.supplier || "",
-                      material_size_mm: po.material_size_mm || "",
-                      alloy: po.material_spec?.alloy || "",
-                      po_id: value
-                    });
-                  }
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an approved PO" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {purchaseOrders.map(po => {
-                      const pendingQty = (po.quantity_kg || 0) - (po.quantity_received_kg || 0);
-                      return (
-                        <SelectItem key={po.id} value={po.id}>
-                          {po.po_id} - {po.supplier} - {po.material_size_mm || 'N/A'} - 
-                          Pending: {pendingQty.toFixed(2)} kg
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Select the PO for this material receipt. Supplier and material details will be auto-filled.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="lot_id">Lot ID *</Label>
-                  <Input
-                    id="lot_id"
-                    value={formData.lot_id}
-                    onChange={(e) => setFormData({ ...formData, lot_id: e.target.value })}
-                    placeholder="LOT-2025-001"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="heat_no">Heat Number *</Label>
-                  <Input
-                    id="heat_no"
-                    value={formData.heat_no}
-                    onChange={(e) => setFormData({ ...formData, heat_no: e.target.value })}
-                    placeholder="HT-123456"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="alloy">Alloy *</Label>
-                  <Input
-                    id="alloy"
-                    value={formData.alloy}
-                    onChange={(e) => setFormData({ ...formData, alloy: e.target.value })}
-                    placeholder="SS304"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="supplier">Supplier *</Label>
-                  <Input
-                    id="supplier"
-                    value={formData.supplier}
-                    onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                    placeholder="ABC Metals Ltd"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="material_size_mm">Material Size/Type</Label>
-                <Input
-                  id="material_size_mm"
-                  value={formData.material_size_mm}
-                  onChange={(e) => setFormData({ ...formData, material_size_mm: e.target.value })}
-                  placeholder="e.g., Round 12mm, Hex 25mm, Forged"
-                />
-                <p className="text-xs text-muted-foreground">Enter material type and size (Hex, Round, Rectangle, Hollow, Forged)</p>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gross_weight">Gross Weight (kg) *</Label>
-                  <Input
-                    id="gross_weight"
-                    type="number"
-                    step="0.001"
-                    value={formData.gross_weight}
-                    onChange={(e) => setFormData({ ...formData, gross_weight: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="net_weight">Net Weight (kg) *</Label>
-                  <Input
-                    id="net_weight"
-                    type="number"
-                    step="0.001"
-                    value={formData.net_weight}
-                    onChange={(e) => setFormData({ ...formData, net_weight: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bin_location">Bin Location</Label>
-                  <Input
-                    id="bin_location"
-                    value={formData.bin_location}
-                    onChange={(e) => setFormData({ ...formData, bin_location: e.target.value })}
-                    placeholder="A-12-03"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="mtc_file">MTC File (EN 10204)</Label>
-                <Input
-                  id="mtc_file"
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => setFormData({ ...formData, mtc_file: e.target.files?.[0] || null })}
-                />
-                <p className="text-xs text-muted-foreground">Upload Material Test Certificate</p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button type="submit" disabled={loading} className="flex-1">
-                  <Package className="h-4 w-4 mr-2" />
-                  Receive Material
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handlePrintLabel}
-                  disabled={!formData.lot_id}
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Print Label
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Material Receipts</CardTitle>
-            <CardDescription>Last 50 lots received</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Lot ID</TableHead>
-                  <TableHead>PO Number</TableHead>
-                  <TableHead>Size (mm)</TableHead>
-                  <TableHead>Gross (kg)</TableHead>
-                  <TableHead>Net (kg)</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>QC</TableHead>
-                  <TableHead>Received</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lotsLoading ? (
-                  <TableRow><TableCell colSpan={10} className="text-center">Loading...</TableCell></TableRow>
-                ) : lotsError ? (
-                  <TableRow><TableCell colSpan={10} className="text-destructive">{lotsError}</TableCell></TableRow>
-                ) : lots.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center">No Data Available</TableCell></TableRow>
+      <div className="p-6">
+        <form onSubmit={handleSubmit}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Material Receipt</CardTitle>
+              <CardDescription>Select an approved RPO and record material receipt details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* RPO Selection */}
+              <div>
+                <Label>Select Approved RPO *</Label>
+                {selectedRPO ? (
+                  <div className="mt-2 p-4 border rounded-lg bg-accent">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold text-lg">{selectedRPO.rpo_no}</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-sm">
+                          <div><span className="text-muted-foreground">WO:</span> {selectedRPO.work_orders?.wo_id || "N/A"}</div>
+                          <div><span className="text-muted-foreground">Supplier:</span> {selectedRPO.suppliers?.name}</div>
+                          <div><span className="text-muted-foreground">Size:</span> {selectedRPO.material_size_mm} mm</div>
+                          <div><span className="text-muted-foreground">Alloy:</span> {selectedRPO.alloy}</div>
+                          <div><span className="text-muted-foreground">Qty Ordered:</span> {selectedRPO.qty_ordered_kg.toFixed(3)} kg</div>
+                          <div><span className="text-muted-foreground">Rate:</span> ₹{selectedRPO.rate_per_kg.toFixed(2)}/kg</div>
+                        </div>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRPO(null)}>
+                        Change
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
-                  lots.map((lot) => {
-                    const linkedPO = purchaseOrders.find(po => po.id === lot.po_id);
-                    return (
-                      <TableRow key={lot.id}>
-                        <TableCell className="font-medium">{lot.lot_id}</TableCell>
-                        <TableCell>
-                          {linkedPO ? (
-                            <Button
-                              variant="link"
-                              className="p-0 h-auto font-normal text-blue-600 hover:text-blue-800"
-                              onClick={() => navigate(`/purchase?po_id=${linkedPO.po_id}`)}
-                            >
-                              {linkedPO.po_id}
-                            </Button>
-                          ) : (
-                            <span className="text-muted-foreground">No PO</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{lot.material_size_mm ?? 'N/A'}</TableCell>
-                        <TableCell>{Number(lot.gross_weight ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>{Number(lot.net_weight ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>{lot.supplier || 'unknown'}</TableCell>
-                        <TableCell>{lot.status}</TableCell>
-                        <TableCell>{lot.qc_status || 'pending'}</TableCell>
-                        <TableCell>{new Date(lot.received_date_time).toLocaleString()}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => openView(lot)}>
-                              <Eye className="h-3 w-3" />
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => openEdit(lot)}>Edit</Button>
-                            <Button 
-                              variant="destructive" 
-                              size="sm" 
-                              onClick={() => handleDeleteLot(lot.id, lot.lot_id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+                  <Button type="button" variant="outline" className="w-full mt-2" onClick={() => setRpoSearchOpen(true)}>
+                    <Search className="mr-2 h-4 w-4" />
+                    Search & Select RPO
+                  </Button>
                 )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              </div>
 
-        <HistoricalDataDialog
-          open={viewOpen}
-          onOpenChange={setViewOpen}
-          data={viewLot}
-          type="material_lot"
-          onEdit={handleEditFromView}
-        />
+              {selectedRPO && (
+                <>
+                  {/* Receipt Details */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="qty_received_kg">Quantity Received (kg) *</Label>
+                      <Input
+                        id="qty_received_kg"
+                        type="number"
+                        step="0.001"
+                        value={formData.qty_received_kg}
+                        onChange={(e) => setFormData({...formData, qty_received_kg: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="heat_no">Heat Number *</Label>
+                      <Input
+                        id="heat_no"
+                        value={formData.heat_no}
+                        onChange={(e) => setFormData({...formData, heat_no: e.target.value})}
+                        required
+                      />
+                    </div>
+                  </div>
 
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Lot {selectedLot?.lot_id}</DialogTitle>
-              <DialogDescription>Update material lot information</DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Size (mm)</Label>
-                <Input value={editForm.material_size_mm} onChange={(e)=>setEditForm({...editForm, material_size_mm: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <Label>Gross (kg)</Label>
-                <Input value={editForm.gross_weight} onChange={(e)=>setEditForm({...editForm, gross_weight: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <Label>Net (kg)</Label>
-                <Input value={editForm.net_weight} onChange={(e)=>setEditForm({...editForm, net_weight: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <Label>Bin Location</Label>
-                <Input value={editForm.bin_location} onChange={(e)=>setEditForm({...editForm, bin_location: e.target.value})} />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label>Supplier</Label>
-                <Input value={editForm.supplier} onChange={(e)=>setEditForm({...editForm, supplier: e.target.value})} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button onClick={saveEdit}>Save</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+                  {/* Invoice Details */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="supplier_invoice_no">Supplier Invoice No</Label>
+                      <Input
+                        id="supplier_invoice_no"
+                        value={formData.supplier_invoice_no}
+                        onChange={(e) => setFormData({...formData, supplier_invoice_no: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="supplier_invoice_date">Invoice Date</Label>
+                      <Input
+                        id="supplier_invoice_date"
+                        type="date"
+                        value={formData.supplier_invoice_date}
+                        onChange={(e) => setFormData({...formData, supplier_invoice_date: e.target.value})}
+                      />
+                    </div>
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="rate_on_invoice">Rate on Invoice (per kg)</Label>
+                      <Input
+                        id="rate_on_invoice"
+                        type="number"
+                        step="0.01"
+                        value={formData.rate_on_invoice}
+                        onChange={(e) => setFormData({...formData, rate_on_invoice: e.target.value})}
+                      />
+                      {formData.rate_on_invoice && parseFloat(formData.rate_on_invoice) !== selectedRPO.rate_per_kg && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Rate variance: ₹{(parseFloat(formData.rate_on_invoice) - selectedRPO.rate_per_kg).toFixed(2)}/kg
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="lr_no">LR Number</Label>
+                      <Input
+                        id="lr_no"
+                        value={formData.lr_no}
+                        onChange={(e) => setFormData({...formData, lr_no: e.target.value})}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="transporter">Transporter</Label>
+                    <Input
+                      id="transporter"
+                      value={formData.transporter}
+                      onChange={(e) => setFormData({...formData, transporter: e.target.value})}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="invoice_file">Upload Invoice (PDF/Photo)</Label>
+                    <Input
+                      id="invoice_file"
+                      type="file"
+                      accept="application/pdf,image/*"
+                      onChange={(e) => setFormData({...formData, invoice_file: e.target.files?.[0] || null})}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="notes">Notes</Label>
+                    <Input
+                      id="notes"
+                      value={formData.notes}
+                      onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                    />
+                  </div>
+
+                  <Button type="submit" disabled={loading} className="w-full">
+                    <Package className="mr-2 h-4 w-4" />
+                    {loading ? "Saving..." : "Record Receipt"}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </form>
       </div>
+
+      {/* RPO Search Dialog */}
+      <Dialog open={rpoSearchOpen} onOpenChange={setRpoSearchOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Select Approved RPO</DialogTitle>
+          </DialogHeader>
+
+          <div className="mb-4">
+            <Input
+              placeholder="Search by RPO No, WO, Supplier, Size, Alloy..."
+              value={rpoSearch}
+              onChange={(e) => setRpoSearch(e.target.value)}
+            />
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>RPO No</TableHead>
+                <TableHead>WO</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Size/Alloy</TableHead>
+                <TableHead>Qty (kg)</TableHead>
+                <TableHead>Rate</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredRPOs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    No approved RPOs found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredRPOs.map(rpo => (
+                  <TableRow key={rpo.id}>
+                    <TableCell className="font-medium">{rpo.rpo_no}</TableCell>
+                    <TableCell>
+                      {rpo.work_orders ? (
+                        <Badge variant="secondary">{rpo.work_orders.wo_id}</Badge>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell>{rpo.suppliers?.name}</TableCell>
+                    <TableCell>
+                      {rpo.material_size_mm} mm
+                      <br />
+                      <span className="text-xs text-muted-foreground">{rpo.alloy}</span>
+                    </TableCell>
+                    <TableCell>{rpo.qty_ordered_kg.toFixed(3)}</TableCell>
+                    <TableCell>₹{rpo.rate_per_kg.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Button size="sm" onClick={() => handleRPOSelection(rpo)}>
+                        Select
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-};
-
-export default MaterialInwards;
+}
