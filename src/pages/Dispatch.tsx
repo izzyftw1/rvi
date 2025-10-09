@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Download, ClipboardCheck } from "lucide-react";
+import { Truck, Download, ClipboardCheck, FileText, MapPin } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { ShipmentTimeline } from "@/components/ShipmentTimeline";
+import { ShipmentDetailsDialog } from "@/components/ShipmentDetailsDialog";
 
 export default function Dispatch() {
   const navigate = useNavigate();
@@ -17,6 +19,8 @@ export default function Dispatch() {
   const [palletId, setPalletId] = useState("");
   const [palletData, setPalletData] = useState<any>(null);
   const [shipments, setShipments] = useState<any[]>([]);
+  const [selectedShipment, setSelectedShipment] = useState<string | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -281,6 +285,9 @@ export default function Dispatch() {
       // Download both documents
       invoicePdf.save(`${invoiceNo}-Commercial-Invoice.pdf`);
       packingListPdf.save(`${invoiceNo}-Packing-List.pdf`);
+
+      // Note: Document storage in shipments.documents will be available after migration
+      // For now, documents are downloaded locally
       
       toast({ description: "✅ Commercial Invoice & Packing List generated successfully" });
     } catch (error: any) {

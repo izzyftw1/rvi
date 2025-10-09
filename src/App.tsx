@@ -13,6 +13,7 @@ import QCIncoming from "./pages/QCIncoming";
 import Quality from "./pages/Quality";
 import Packing from "./pages/Packing";
 import Dispatch from "./pages/Dispatch";
+import Logistics from "./pages/Logistics";
 import DispatchQCReport from "./pages/DispatchQCReport";
 import Genealogy from "./pages/Genealogy";
 import FloorDashboard from "./pages/FloorDashboard";
@@ -95,8 +96,9 @@ const App = () => (
         <Route path="/finance/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
         <Route path="/finance/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
         <Route path="/finance/aging" element={<ProtectedRoute><Aging /></ProtectedRoute>} />
-        <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
+          <Route path="/logistics" element={<ProtectedRoute><Logistics /></ProtectedRoute>} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

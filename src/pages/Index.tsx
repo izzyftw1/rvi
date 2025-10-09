@@ -22,7 +22,8 @@ import {
   Activity,
   FileSpreadsheet,
   AlertCircle,
-  DollarSign
+  DollarSign,
+  PackageCheck
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -401,6 +402,10 @@ const Index = () => {
               <Button onClick={() => navigate("/finance/dashboard")} variant="secondary" className="h-auto py-4 flex-col gap-2 bg-green-500 hover:bg-green-600 text-white">
                 <DollarSign className="h-6 w-6" />
                 <span className="text-sm font-bold">Finance</span>
+              </Button>
+              <Button onClick={() => navigate("/logistics")} variant="secondary" className="h-auto py-4 flex-col gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+                <PackageCheck className="h-6 w-6" />
+                <span className="text-sm font-bold">Logistics</span>
               </Button>
               <Button onClick={() => navigate("/reports")} variant="outline" className="h-auto py-4 flex-col gap-2">
                 <BarChart3 className="h-6 w-6" />
