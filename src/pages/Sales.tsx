@@ -235,7 +235,7 @@ export default function Sales() {
 
       const { subtotal, gstAmount, total } = calculateTotals();
 
-      // Create sales order (using existing schema - migration pending)
+      // Create sales order (auto-approved to trigger work order generation)
       const { data: newOrder, error: orderError } = await supabase
         .from("sales_orders")
         .insert([{
@@ -245,7 +245,7 @@ export default function Sales() {
           po_number: formData.po_number,
           po_date: formData.po_date,
           items: [], // Legacy field
-          status: "pending",
+          status: "approved", // Auto-approve to skip manual approval step
           created_by: user?.id,
           material_rod_forging_size_mm: null,
           gross_weight_per_pc_grams: null,
@@ -257,7 +257,7 @@ export default function Sales() {
 
       if (orderError) throw orderError;
 
-      // Create line items
+      // Create line items (auto-approved to trigger work order generation)
       const lineItemsToInsert = lineItems.map(item => ({
         sales_order_id: newOrder.id,
         line_number: item.line_number,
@@ -270,7 +270,10 @@ export default function Sales() {
         cycle_time_seconds: null,
         due_date: item.due_date,
         notes: null,
-        status: 'pending'
+        status: 'approved', // Auto-approve to trigger work order generation
+        price_per_pc: item.price_per_pc || 0,
+        line_amount: item.line_amount || 0,
+        drawing_number: item.drawing_number || formData.drawing_number || null
       }));
 
       const { error: lineItemsError } = await supabase
