@@ -269,21 +269,32 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          site_id: string | null
           type: Database["public"]["Enums"]["department_type"]
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          site_id?: string | null
           type: Database["public"]["Enums"]["department_type"]
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          site_id?: string | null
           type?: Database["public"]["Enums"]["department_type"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "departments_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       design_files: {
         Row: {
@@ -562,6 +573,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hourly_qc_checks_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
           },
           {
             foreignKeyName: "hourly_qc_checks_wo_id_fkey"
@@ -915,6 +933,85 @@ export type Database = {
           },
         ]
       }
+      machine_daily_metrics: {
+        Row: {
+          actual_run_minutes: number
+          availability_pct: number | null
+          created_at: string
+          date: string
+          downtime_minutes: number
+          id: string
+          machine_id: string
+          oee_pct: number | null
+          performance_pct: number | null
+          planned_minutes: number
+          qty_ok: number
+          qty_scrap: number
+          quality_pct: number | null
+          site_id: string
+          target_qty: number
+          updated_at: string
+        }
+        Insert: {
+          actual_run_minutes?: number
+          availability_pct?: number | null
+          created_at?: string
+          date: string
+          downtime_minutes?: number
+          id?: string
+          machine_id: string
+          oee_pct?: number | null
+          performance_pct?: number | null
+          planned_minutes?: number
+          qty_ok?: number
+          qty_scrap?: number
+          quality_pct?: number | null
+          site_id: string
+          target_qty?: number
+          updated_at?: string
+        }
+        Update: {
+          actual_run_minutes?: number
+          availability_pct?: number | null
+          created_at?: string
+          date?: string
+          downtime_minutes?: number
+          id?: string
+          machine_id?: string
+          oee_pct?: number | null
+          performance_pct?: number | null
+          planned_minutes?: number
+          qty_ok?: number
+          qty_scrap?: number
+          quality_pct?: number | null
+          site_id?: string
+          target_qty?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machine_daily_metrics_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machine_daily_metrics_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "machine_daily_metrics_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       machines: {
         Row: {
           created_at: string
@@ -928,6 +1025,7 @@ export type Database = {
           machine_id: string
           name: string
           operator_id: string | null
+          site_id: string | null
           status: string | null
           updated_at: string
         }
@@ -943,6 +1041,7 @@ export type Database = {
           machine_id: string
           name: string
           operator_id?: string | null
+          site_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -958,6 +1057,7 @@ export type Database = {
           machine_id?: string
           name?: string
           operator_id?: string | null
+          site_id?: string | null
           status?: string | null
           updated_at?: string
         }
@@ -988,6 +1088,20 @@ export type Database = {
             columns: ["operator_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machines_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
+            foreignKeyName: "machines_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]
@@ -1030,6 +1144,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
           },
         ]
       }
@@ -1378,6 +1499,128 @@ export type Database = {
         }
         Relationships: []
       }
+      operator_daily_metrics: {
+        Row: {
+          created_at: string
+          date: string
+          efficiency_pct: number | null
+          id: string
+          operator_id: string
+          qty_ok: number
+          run_minutes: number
+          scrap: number
+          site_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          efficiency_pct?: number | null
+          id?: string
+          operator_id: string
+          qty_ok?: number
+          run_minutes?: number
+          scrap?: number
+          site_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          efficiency_pct?: number | null
+          id?: string
+          operator_id?: string
+          qty_ok?: number
+          run_minutes?: number
+          scrap?: number
+          site_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_daily_metrics_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_daily_metrics_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
+            foreignKeyName: "operator_daily_metrics_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operator_shifts: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          operator_id: string
+          remarks: string | null
+          scheduled_minutes: number
+          shift: Database["public"]["Enums"]["shift_type"]
+          site_id: string
+          updated_at: string
+          worked_minutes: number
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          operator_id: string
+          remarks?: string | null
+          scheduled_minutes?: number
+          shift: Database["public"]["Enums"]["shift_type"]
+          site_id: string
+          updated_at?: string
+          worked_minutes?: number
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          operator_id?: string
+          remarks?: string | null
+          scheduled_minutes?: number
+          shift?: Database["public"]["Enums"]["shift_type"]
+          site_id?: string
+          updated_at?: string
+          worked_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_shifts_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_shifts_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
+            foreignKeyName: "operator_shifts_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pallet_cartons: {
         Row: {
           carton_id: string
@@ -1572,39 +1815,63 @@ export type Database = {
       }
       production_logs: {
         Row: {
+          actions_taken: string | null
           created_at: string
+          downtime_minutes: number
           id: string
           log_timestamp: string
           machine_id: string
+          operation_code: string | null
           operator_id: string | null
+          operator_type: Database["public"]["Enums"]["operator_type"]
+          planned_minutes: number | null
           quantity_completed: number
           quantity_scrap: number
           remarks: string | null
+          run_state: Database["public"]["Enums"]["run_state"]
+          setup_no: string | null
           shift: string | null
+          target_qty: number | null
           wo_id: string
         }
         Insert: {
+          actions_taken?: string | null
           created_at?: string
+          downtime_minutes?: number
           id?: string
           log_timestamp?: string
           machine_id: string
+          operation_code?: string | null
           operator_id?: string | null
+          operator_type?: Database["public"]["Enums"]["operator_type"]
+          planned_minutes?: number | null
           quantity_completed?: number
           quantity_scrap?: number
           remarks?: string | null
+          run_state?: Database["public"]["Enums"]["run_state"]
+          setup_no?: string | null
           shift?: string | null
+          target_qty?: number | null
           wo_id: string
         }
         Update: {
+          actions_taken?: string | null
           created_at?: string
+          downtime_minutes?: number
           id?: string
           log_timestamp?: string
           machine_id?: string
+          operation_code?: string | null
           operator_id?: string | null
+          operator_type?: Database["public"]["Enums"]["operator_type"]
+          planned_minutes?: number | null
           quantity_completed?: number
           quantity_scrap?: number
           remarks?: string | null
+          run_state?: Database["public"]["Enums"]["run_state"]
+          setup_no?: string | null
           shift?: string | null
+          target_qty?: number | null
           wo_id?: string
         }
         Relationships: [
@@ -1614,6 +1881,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
           },
           {
             foreignKeyName: "production_logs_wo_id_fkey"
@@ -1949,6 +2223,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "raw_po_reconciliations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
             foreignKeyName: "raw_po_reconciliations_rpo_id_fkey"
             columns: ["rpo_id"]
             isOneToOne: false
@@ -2030,11 +2311,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "raw_purchase_orders_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
             foreignKeyName: "raw_purchase_orders_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
           },
           {
             foreignKeyName: "raw_purchase_orders_so_id_fkey"
@@ -2333,11 +2628,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sales_order_line_items_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
             foreignKeyName: "sales_order_line_items_rejected_by_fkey"
             columns: ["rejected_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_rejected_by_fkey"
+            columns: ["rejected_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
           },
           {
             foreignKeyName: "sales_order_line_items_sales_order_id_fkey"
@@ -2720,6 +3029,30 @@ export type Database = {
           },
         ]
       }
+      sites: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           contact_name: string | null
@@ -2973,11 +3306,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "wo_machine_assignments_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
             foreignKeyName: "wo_machine_assignments_override_applied_by_fkey"
             columns: ["override_applied_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_machine_assignments_override_applied_by_fkey"
+            columns: ["override_applied_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
           },
           {
             foreignKeyName: "wo_machine_assignments_wo_id_fkey"
@@ -3129,6 +3476,7 @@ export type Database = {
           quantity: number
           revision: string | null
           sales_order: string | null
+          site_id: string | null
           so_id: string | null
           status: Database["public"]["Enums"]["wo_status"]
           updated_at: string
@@ -3161,6 +3509,7 @@ export type Database = {
           quantity: number
           revision?: string | null
           sales_order?: string | null
+          site_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
@@ -3193,12 +3542,20 @@ export type Database = {
           quantity?: number
           revision?: string | null
           sales_order?: string | null
+          site_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
           wo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_orders_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_orders_so_id_fkey"
             columns: ["so_id"]
@@ -3210,6 +3567,52 @@ export type Database = {
       }
     }
     Views: {
+      v_machine_daily: {
+        Row: {
+          date: string | null
+          log_count: number | null
+          machine_id: string | null
+          machine_name: string | null
+          site_id: string | null
+          site_name: string | null
+          total_downtime: number | null
+          total_planned_minutes: number | null
+          total_qty_ok: number | null
+          total_run_minutes: number | null
+          total_scrap: number | null
+          total_target_qty: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machines_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_operator_daily: {
+        Row: {
+          date: string | null
+          operator_id: string | null
+          operator_name: string | null
+          site_id: string | null
+          site_name: string | null
+          total_qty_ok: number | null
+          total_run_minutes: number | null
+          total_scrap: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machines_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders_restricted: {
         Row: {
           bom: Json | null
@@ -3343,6 +3746,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      get_user_site_id: {
+        Args: { _user_id: string }
+        Returns: string
+      }
       get_wo_progress: {
         Args: { _wo_id: string }
         Returns: {
@@ -3454,6 +3861,7 @@ export type Database = {
         | "H"
         | "I"
         | "J"
+      operator_type: "RVI" | "CONTRACTOR"
       payment_method:
         | "bank_transfer"
         | "cheque"
@@ -3487,6 +3895,12 @@ export type Database = {
         | "part_received"
         | "closed"
         | "cancelled"
+      run_state:
+        | "running"
+        | "stopped"
+        | "material_wait"
+        | "maintenance"
+        | "setup"
       sales_order_status:
         | "draft"
         | "pending_approval"
@@ -3494,6 +3908,7 @@ export type Database = {
         | "invoiced"
         | "closed"
         | "cancelled"
+      shift_type: "DAY" | "NIGHT"
       shipment_event_type:
         | "label_created"
         | "picked"
@@ -3682,6 +4097,7 @@ export const Constants = {
       material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_status: ["received", "issued", "in_use", "consumed"],
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+      operator_type: ["RVI", "CONTRACTOR"],
       payment_method: [
         "bank_transfer",
         "cheque",
@@ -3720,6 +4136,13 @@ export const Constants = {
         "closed",
         "cancelled",
       ],
+      run_state: [
+        "running",
+        "stopped",
+        "material_wait",
+        "maintenance",
+        "setup",
+      ],
       sales_order_status: [
         "draft",
         "pending_approval",
@@ -3728,6 +4151,7 @@ export const Constants = {
         "closed",
         "cancelled",
       ],
+      shift_type: ["DAY", "NIGHT"],
       shipment_event_type: [
         "label_created",
         "picked",
