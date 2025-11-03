@@ -3788,14 +3788,8 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
-      generate_rpo_number: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      get_user_site_id: {
-        Args: { _user_id: string }
-        Returns: string
-      }
+      generate_rpo_number: { Args: never; Returns: string }
+      get_user_site_id: { Args: { _user_id: string }; Returns: string }
       get_wo_progress: {
         Args: { _wo_id: string }
         Returns: {
@@ -3818,10 +3812,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_finance_role: {
-        Args: { _user_id: string }
-        Returns: boolean
-      }
+      is_finance_role: { Args: { _user_id: string }; Returns: boolean }
       manage_user_role: {
         Args: {
           _action: string
@@ -3830,10 +3821,7 @@ export type Database = {
         }
         Returns: undefined
       }
-      mark_overdue_invoices: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      mark_overdue_invoices: { Args: never; Returns: undefined }
       notify_users: {
         Args: {
           _entity_id?: string
