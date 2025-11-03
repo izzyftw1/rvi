@@ -326,7 +326,7 @@ export default function Sales() {
 
       if (orderError) throw orderError;
 
-      // Create line items (auto-approved to trigger work order generation)
+      // Create line items (auto-approved to trigger work order generation after status update)
       const lineItemsToInsert = lineItems.map(item => ({
         sales_order_id: newOrder.id,
         line_number: item.line_number,

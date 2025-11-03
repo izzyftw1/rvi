@@ -3602,13 +3602,6 @@ export type Database = {
             referencedRelation: "sites"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "work_orders_so_id_fkey"
-            columns: ["so_id"]
-            isOneToOne: false
-            referencedRelation: "sales_orders"
-            referencedColumns: ["id"]
-          },
         ]
       }
     }
@@ -3756,15 +3749,7 @@ export type Database = {
           updated_at?: string | null
           wo_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "work_orders_so_id_fkey"
-            columns: ["so_id"]
-            isOneToOne: false
-            referencedRelation: "sales_orders"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Functions: {
