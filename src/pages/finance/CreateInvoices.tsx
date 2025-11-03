@@ -131,23 +131,32 @@ export default function CreateInvoices() {
 
         // Create invoice items from sales order items
         if (order.items && invoice) {
-          const items = JSON.parse(order.items);
+          const items = typeof order.items === 'string' 
+            ? JSON.parse(order.items) 
+            : Array.isArray(order.items) 
+            ? order.items 
+            : [];
+          
           for (const item of items) {
-            const itemSubtotal = Number(item.line_amount) || (Number(item.quantity) * Number(item.price_per_pc));
+            const itemSubtotal = Number(item.line_amount) || (Number(item.quantity) * Number(item.price_per_pc || 0));
             const itemGst = (itemSubtotal * gstPercent) / 100;
             
-            await supabase
+            const { error: itemError } = await supabase
               .from("invoice_items")
               .insert({
                 invoice_id: invoice.id,
-                description: `${item.item_code} - ${item.drawing_number || ''}`,
-                quantity: item.quantity,
+                description: `${item.item_code || 'Item'} - ${item.drawing_number || ''}`,
+                quantity: item.quantity || 0,
                 rate: item.price_per_pc || 0,
                 amount: itemSubtotal,
                 gst_percent: gstPercent,
                 gst_amount: itemGst,
                 total_line: itemSubtotal + itemGst
               });
+            
+            if (itemError) {
+              console.error("Error creating invoice item:", itemError);
+            }
           }
         }
       }

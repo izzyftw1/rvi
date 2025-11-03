@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ProformaInvoiceData {
   proformaNo: string;
@@ -101,7 +101,7 @@ export const generateProformaInvoice = (data: ProformaInvoiceData): jsPDF => {
   tableData.push(['', '', '', '', 'Total Amount', `$ ${totalAmount.toFixed(2)}`]);
   tableData.push(['', '', '', '', data.paymentTerms, `$ ${totalAmount.toFixed(2)}`]);
   
-  (doc as any).autoTable({
+  autoTable(doc, {
     head: tableHeaders,
     body: tableData,
     startY: yPos,
@@ -119,7 +119,7 @@ export const generateProformaInvoice = (data: ProformaInvoiceData): jsPDF => {
   });
   
   // Terms Section
-  yPos = (doc as any).lastAutoTable.finalY + 10;
+  yPos = doc.lastAutoTable.finalY + 10;
   
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
@@ -184,10 +184,20 @@ export const generateProformaFromSalesOrder = (salesOrder: any, customer: any): 
   // Generate proforma number from SO
   const proformaNo = `${salesOrder.so_id}-PI`;
   
-  // Parse items
-  const items = typeof salesOrder.items === 'string' 
-    ? JSON.parse(salesOrder.items) 
-    : salesOrder.items;
+  // Parse items - handle both string and array formats
+  let items = [];
+  if (salesOrder.items) {
+    if (typeof salesOrder.items === 'string') {
+      try {
+        items = JSON.parse(salesOrder.items);
+      } catch (e) {
+        console.error("Failed to parse items:", e);
+        items = [];
+      }
+    } else if (Array.isArray(salesOrder.items)) {
+      items = salesOrder.items;
+    }
+  }
   
   const proformaItems = items.map((item: any, index: number) => ({
     srNo: index + 1,
@@ -202,14 +212,18 @@ export const generateProformaFromSalesOrder = (salesOrder: any, customer: any): 
     proformaNo: proformaNo,
     date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     customer: {
-      name: customer?.customer_name || salesOrder.customer,
-      address: customer?.city || '',
-      city: `${customer?.state || ''}, ${customer?.country || ''}`.trim().replace(/^,\s*/, ''),
+      name: customer?.customer_name || salesOrder.customer || 'Customer Name',
+      address: customer?.city || salesOrder.customer || '',
+      city: customer?.state && customer?.country 
+        ? `${customer.state}, ${customer.country}`.trim() 
+        : '',
       attention: customer?.primary_contact_name,
       phone: customer?.primary_contact_phone
     },
-    poNumber: salesOrder.po_number,
-    poDate: new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-'),
+    poNumber: salesOrder.po_number || 'N/A',
+    poDate: salesOrder.po_date 
+      ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-')
+      : new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     items: proformaItems,
     currency: salesOrder.currency || 'USD',
     paymentTerms: salesOrder.payment_terms_days 

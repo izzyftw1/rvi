@@ -398,20 +398,30 @@ export default function Sales() {
 
   const handleDownloadProforma = async (order: any) => {
     try {
-      // Fetch customer details
-      const { data: customer } = await supabase
-        .from("customer_master")
-        .select("*")
-        .eq("id", order.customer_id)
-        .single();
+      // Fetch customer details if customer_id exists
+      let customer = null;
+      if (order.customer_id) {
+        const { data } = await supabase
+          .from("customer_master")
+          .select("*")
+          .eq("id", order.customer_id)
+          .maybeSingle();
+        customer = data;
+      }
 
+      console.log("Generating proforma for order:", order);
+      console.log("Customer data:", customer);
+      
       const pdf = generateProformaFromSalesOrder(order, customer);
       pdf.save(`Proforma_${order.so_id}.pdf`);
       
       toast({ description: `Proforma invoice downloaded for ${order.so_id}` });
     } catch (error: any) {
       console.error("Error generating proforma:", error);
-      toast({ variant: "destructive", description: "Failed to generate proforma invoice" });
+      toast({ 
+        variant: "destructive", 
+        description: `Failed to generate proforma: ${error.message || 'Unknown error'}` 
+      });
     }
   };
 
