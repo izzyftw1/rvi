@@ -111,25 +111,49 @@ export default function FinanceReports() {
   };
 
   const loadSalesByRegion = async () => {
-    const { data: invoices } = await supabase
-      .from('invoices')
-      .select(`
-        total_amount,
-        customer:customer_master(customer_name, city, state, country)
-      `)
-      .eq('status', 'paid');
+    try {
+      // Get all invoices with customer info
+      const { data: invoices, error: invError } = await supabase
+        .from('invoices')
+        .select('customer_id, total_amount, status')
+        .eq('status', 'paid');
 
-    const grouped = (invoices || []).reduce((acc: any, inv: any) => {
-      const key = inv.customer?.[salesGroupBy] || 'Unknown';
-      if (!acc[key]) {
-        acc[key] = { region: key, total: 0, count: 0 };
-      }
-      acc[key].total += Number(inv.total_amount) || 0;
-      acc[key].count += 1;
-      return acc;
-    }, {});
+      if (invError) throw invError;
 
-    setSalesByRegion(Object.values(grouped));
+      // Get unique customer IDs
+      const customerIds = [...new Set(invoices?.map(i => i.customer_id).filter(Boolean))];
+
+      // Get customer details
+      const { data: customers, error: custError } = await supabase
+        .from('customer_master')
+        .select('id, customer_name, city, state, country')
+        .in('id', customerIds);
+
+      if (custError) throw custError;
+
+      // Create customer lookup
+      const customerMap: any = {};
+      customers?.forEach(c => {
+        customerMap[c.id] = c;
+      });
+
+      // Group by selected region
+      const grouped = (invoices || []).reduce((acc: any, inv: any) => {
+        const customer = customerMap[inv.customer_id];
+        const key = customer?.[salesGroupBy] || 'Unknown';
+        if (!acc[key]) {
+          acc[key] = { region: key, total: 0, count: 0 };
+        }
+        acc[key].total += Number(inv.total_amount) || 0;
+        acc[key].count += 1;
+        return acc;
+      }, {});
+
+      setSalesByRegion(Object.values(grouped));
+    } catch (error: any) {
+      console.error("Sales by region error:", error);
+      toast({ title: 'Error loading sales by region', description: error.message, variant: 'destructive' });
+    }
   };
 
   const loadReconciliationReport = async () => {

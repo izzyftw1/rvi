@@ -22,12 +22,7 @@ const FinanceReports = () => {
     try {
       const { data, error } = await supabase
         .from("material_costs")
-        .select(`
-          total_cost,
-          lme_copper_price,
-          created_at,
-          lot:material_lots(alloy)
-        `)
+        .select("total_cost, lme_copper_price, created_at, currency")
         .order("created_at", { ascending: false })
         .limit(30);
 
@@ -41,23 +36,36 @@ const FinanceReports = () => {
 
       setMaterialSpend(spendData || []);
     } catch (error: any) {
+      console.error("Material spend error:", error);
       toast({ title: "Error loading material spend", description: error.message, variant: "destructive" });
     }
   };
 
   const loadSupplierComparison = async () => {
     try {
-      const { data, error } = await supabase
+      // Get material lots with their suppliers
+      const { data: lots, error: lotsError } = await supabase
+        .from("material_lots")
+        .select("id, supplier");
+
+      if (lotsError) throw lotsError;
+
+      // Get material costs
+      const { data: costs, error: costsError } = await supabase
         .from("material_costs")
-        .select(`
-          cost_per_kg,
-          lot:material_lots(supplier, alloy)
-        `);
+        .select("lot_id, cost_per_kg");
 
-      if (error) throw error;
+      if (costsError) throw costsError;
 
-      const suppliers = data?.reduce((acc: any, mc) => {
-        const supplier = mc.lot?.supplier || "Unknown";
+      // Create lookup map
+      const lotSupplierMap: any = {};
+      lots?.forEach(lot => {
+        lotSupplierMap[lot.id] = lot.supplier || "Unknown";
+      });
+
+      // Aggregate by supplier
+      const suppliers = costs?.reduce((acc: any, mc) => {
+        const supplier = lotSupplierMap[mc.lot_id] || "Unknown";
         if (!acc[supplier]) {
           acc[supplier] = { supplier, avgCostPerKg: 0, count: 0 };
         }
@@ -73,6 +81,7 @@ const FinanceReports = () => {
 
       setSupplierComparison(supplierData);
     } catch (error: any) {
+      console.error("Supplier comparison error:", error);
       toast({ title: "Error loading supplier comparison", description: error.message, variant: "destructive" });
     }
   };
@@ -116,58 +125,69 @@ const FinanceReports = () => {
 
   const loadCustomerProfitability = async () => {
     try {
-      // Get material costs by customer via work orders
-      const { data: materialIssues } = await supabase
-        .from("material_issues")
-        .select(`
-          quantity_kg,
-          wo:work_orders(customer),
-          lot:material_lots(id)
-        `);
+      // Get work orders with customer info
+      const { data: workOrders, error: woError } = await supabase
+        .from("work_orders")
+        .select("id, customer");
+
+      if (woError) throw woError;
+
+      // Get material issues
+      const { data: materialIssues, error: miError } = await supabase
+        .from("wo_material_issues")
+        .select("wo_id, lot_id, quantity_kg");
+
+      if (miError) throw miError;
 
       // Get material costs
-      const { data: materialCosts } = await supabase
+      const { data: materialCosts, error: mcError } = await supabase
         .from("material_costs")
         .select("lot_id, cost_per_kg");
 
-      // Get processing costs by customer
-      const { data: processingCosts } = await supabase
+      if (mcError) throw mcError;
+
+      // Get processing costs
+      const { data: processingCosts, error: pcError } = await supabase
         .from("processing_costs")
-        .select(`
-          cost_amount,
-          wo:work_orders(customer)
-        `);
+        .select("wo_id, cost_amount");
+
+      if (pcError) throw pcError;
 
       const customerData: any = {};
 
-      // Build cost per kg lookup
+      // Build lookups
+      const woCustomerMap: any = {};
+      workOrders?.forEach(wo => {
+        woCustomerMap[wo.id] = wo.customer || "Unknown";
+      });
+
       const costLookup: any = {};
       materialCosts?.forEach(mc => {
         costLookup[mc.lot_id] = mc.cost_per_kg;
       });
 
+      // Aggregate material costs by customer
       materialIssues?.forEach((mi: any) => {
-        const customer = mi.wo?.customer || "Unknown";
+        const customer = woCustomerMap[mi.wo_id] || "Unknown";
         if (!customerData[customer]) {
           customerData[customer] = {
             customer,
             materialCost: 0,
             processingCost: 0,
-            logisticsCost: 0,
           };
         }
-        const costPerKg = Number(costLookup[mi.lot?.id] || 0);
+        const costPerKg = Number(costLookup[mi.lot_id] || 0);
         customerData[customer].materialCost += Number(mi.quantity_kg || 0) * costPerKg;
       });
 
+      // Aggregate processing costs by customer
       processingCosts?.forEach((pc: any) => {
-        const customer = pc.wo?.customer || "Unknown";
+        const customer = woCustomerMap[pc.wo_id] || "Unknown";
         if (!customerData[customer]) {
           customerData[customer] = {
             customer,
             materialCost: 0,
             processingCost: 0,
-            logisticsCost: 0,
           };
         }
         customerData[customer].processingCost += Number(pc.cost_amount);
@@ -175,6 +195,7 @@ const FinanceReports = () => {
 
       setCustomerProfitability(Object.values(customerData));
     } catch (error: any) {
+      console.error("Customer profitability error:", error);
       toast({ title: "Error loading customer profitability", description: error.message, variant: "destructive" });
     }
   };
