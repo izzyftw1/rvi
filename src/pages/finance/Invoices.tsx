@@ -104,9 +104,11 @@ export default function Invoices() {
           <CardHeader className="space-y-4">
             <div className="flex flex-row items-center justify-between">
               <CardTitle>All Invoices</CardTitle>
-              <Button disabled>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Invoice
+              <Button asChild>
+                <Link to="/finance/invoices/create">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Invoices
+                </Link>
               </Button>
             </div>
 

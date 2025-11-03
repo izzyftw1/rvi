@@ -128,9 +128,14 @@ export default function FinanceDashboard() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <Button variant="outline" asChild>
-            <Link to="/finance/reports">View Reports</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/finance/invoices/create">Create Invoices</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/finance/reports">View Reports</Link>
+            </Button>
+          </div>
         </div>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
