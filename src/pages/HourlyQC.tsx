@@ -130,7 +130,14 @@ const HourlyQC = () => {
         }
       });
 
-      const status = outOfToleranceDimensions.length === 0 ? "pass" : "fail";
+      // Fail if any dimensions are out of tolerance OR any binary checks are "Not OK"
+      const hasFailedBinaryCheck = 
+        threadStatus === "Not OK" || 
+        visualStatus === "Not OK" || 
+        platingStatus === "Not OK" || 
+        platingThicknessStatus === "Not OK";
+
+      const status = (outOfToleranceDimensions.length === 0 && !hasFailedBinaryCheck) ? "pass" : "fail";
 
       const { error } = await supabase.from("hourly_qc_checks").insert({
         wo_id: selectedWO,
