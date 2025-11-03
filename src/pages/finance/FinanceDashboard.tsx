@@ -3,16 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { OverdueInvoicesWidget } from "@/components/finance/OverdueInvoicesWidget";
 import { CashflowProjection } from "@/components/finance/CashflowProjection";
 import { FollowupsTodayWidget } from "@/components/finance/FollowupsTodayWidget";
-import { DollarSign, TrendingUp, AlertCircle, Clock, Home } from "lucide-react";
+import { DollarSign, TrendingUp, AlertCircle, Clock, Home, Package } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { convertToINR, formatINR } from "@/lib/currencyConverter";
 
 export default function FinanceDashboard() {
   const [stats, setStats] = useState({
+    totalBookings: 0,
     totalAR: 0,
     overdueAR: 0,
     dso: 0,
@@ -27,21 +29,35 @@ export default function FinanceDashboard() {
 
   const loadDashboardStats = async () => {
     try {
-      // Total AR (all unpaid invoices)
+      // Total Sales Bookings (Approved SOs) - converted to INR
+      const { data: bookingsData } = await supabase
+        .from("sales_bookings")
+        .select("total_value, currency")
+        .eq("status", "booked");
+      
+      const totalBookings = bookingsData?.reduce((sum, booking) => {
+        return sum + convertToINR(Number(booking.total_value), booking.currency);
+      }, 0) || 0;
+
+      // Total AR (all unpaid invoices) - converted to INR
       const { data: arData } = await supabase
         .from("invoices")
-        .select("balance_amount")
+        .select("balance_amount, currency")
         .in("status", ["issued", "part_paid", "overdue"]);
       
-      const totalAR = arData?.reduce((sum, inv) => sum + Number(inv.balance_amount), 0) || 0;
+      const totalAR = arData?.reduce((sum, inv) => {
+        return sum + convertToINR(Number(inv.balance_amount), inv.currency);
+      }, 0) || 0;
 
-      // Overdue AR
+      // Overdue AR - converted to INR
       const { data: overdueData } = await supabase
         .from("invoices")
-        .select("balance_amount")
+        .select("balance_amount, currency")
         .eq("status", "overdue");
       
-      const overdueAR = overdueData?.reduce((sum, inv) => sum + Number(inv.balance_amount), 0) || 0;
+      const overdueAR = overdueData?.reduce((sum, inv) => {
+        return sum + convertToINR(Number(inv.balance_amount), inv.currency);
+      }, 0) || 0;
 
       // Cash collected last 30 days
       const date30DaysAgo = new Date();
@@ -49,10 +65,13 @@ export default function FinanceDashboard() {
       
       const { data: payments30 } = await supabase
         .from("payments")
-        .select("amount")
+        .select("amount, invoices!inner(currency)")
         .gte("payment_date", date30DaysAgo.toISOString().split('T')[0]);
       
-      const cashCollected30 = payments30?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+      const cashCollected30 = payments30?.reduce((sum, p: any) => {
+        const currency = p.invoices?.currency || 'INR';
+        return sum + convertToINR(Number(p.amount), currency);
+      }, 0) || 0;
 
       // Cash collected last 90 days
       const date90DaysAgo = new Date();
@@ -60,22 +79,28 @@ export default function FinanceDashboard() {
       
       const { data: payments90 } = await supabase
         .from("payments")
-        .select("amount")
+        .select("amount, invoices!inner(currency)")
         .gte("payment_date", date90DaysAgo.toISOString().split('T')[0]);
       
-      const cashCollected90 = payments90?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+      const cashCollected90 = payments90?.reduce((sum, p: any) => {
+        const currency = p.invoices?.currency || 'INR';
+        return sum + convertToINR(Number(p.amount), currency);
+      }, 0) || 0;
 
-      // DSO calculation (simplified: Total AR / (Total Sales / 90))
+      // DSO calculation (simplified: Total AR / (Total Sales / 90)) - in INR
       const { data: recentInvoices } = await supabase
         .from("invoices")
-        .select("total_amount")
+        .select("total_amount, currency")
         .gte("invoice_date", date90DaysAgo.toISOString().split('T')[0]);
       
-      const totalSales90 = recentInvoices?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0;
+      const totalSales90 = recentInvoices?.reduce((sum, inv) => {
+        return sum + convertToINR(Number(inv.total_amount), inv.currency);
+      }, 0) || 0;
       const avgDailySales = totalSales90 / 90;
       const dso = avgDailySales > 0 ? Math.round(totalAR / avgDailySales) : 0;
 
       setStats({
+        totalBookings,
         totalAR,
         overdueAR,
         dso,
@@ -138,14 +163,25 @@ export default function FinanceDashboard() {
           </div>
         </div>
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sales Bookings</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{loading ? "—" : formatINR(stats.totalBookings)}</div>
+              <p className="text-xs text-muted-foreground">Approved SOs (pending invoice)</p>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total AR</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${loading ? "—" : stats.totalAR.toFixed(0)}</div>
+              <div className="text-2xl font-bold">{loading ? "—" : formatINR(stats.totalAR)}</div>
               <p className="text-xs text-muted-foreground">Outstanding receivables</p>
             </CardContent>
           </Card>
@@ -157,10 +193,10 @@ export default function FinanceDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-destructive">
-                ${loading ? "—" : stats.overdueAR.toFixed(0)}
+                {loading ? "—" : formatINR(stats.overdueAR)}
               </div>
               <p className="text-xs text-muted-foreground">
-                {loading ? "—" : ((stats.overdueAR / stats.totalAR) * 100).toFixed(1)}% of total AR
+                {loading || stats.totalAR === 0 ? "—" : ((stats.overdueAR / stats.totalAR) * 100).toFixed(1)}% of total AR
               </p>
             </CardContent>
           </Card>
@@ -183,10 +219,10 @@ export default function FinanceDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                ${loading ? "—" : stats.cashCollected30.toFixed(0)}
+                {loading ? "—" : formatINR(stats.cashCollected30)}
               </div>
               <p className="text-xs text-muted-foreground">
-                Last 90d: ${loading ? "—" : stats.cashCollected90.toFixed(0)}
+                Last 90d: {loading ? "—" : formatINR(stats.cashCollected90)}
               </p>
             </CardContent>
           </Card>

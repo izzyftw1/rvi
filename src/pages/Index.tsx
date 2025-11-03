@@ -25,6 +25,7 @@ import { FloorKanban } from "@/components/dashboard/FloorKanban";
 import { TodayTimeline } from "@/components/dashboard/TodayTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { convertToINR, formatINR } from "@/lib/currencyConverter";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -124,13 +125,28 @@ const Index = () => {
   };
 
   const loadKPIs = async () => {
-    // Revenue YTD (from invoices)
+    // Revenue YTD (from sales bookings + invoices, converted to INR)
+    const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+    
+    const { data: bookings } = await supabase
+      .from('sales_bookings')
+      .select('total_value, currency')
+      .gte('booking_date', yearStart);
+    
     const { data: invoices } = await supabase
       .from('invoices')
-      .select('total_amount')
-      .gte('invoice_date', new Date(new Date().getFullYear(), 0, 1).toISOString());
+      .select('total_amount, currency')
+      .gte('invoice_date', yearStart);
     
-    const revenueYTD = invoices?.reduce((sum, inv) => sum + (inv.total_amount || 0), 0) || 0;
+    const revenueFromBookings = bookings?.reduce((sum, b) => {
+      return sum + convertToINR(Number(b.total_value), b.currency);
+    }, 0) || 0;
+    
+    const revenueFromInvoices = invoices?.reduce((sum, inv) => {
+      return sum + convertToINR(Number(inv.total_amount), inv.currency);
+    }, 0) || 0;
+    
+    const revenueYTD = revenueFromBookings + revenueFromInvoices;
 
     // Orders in Pipeline (pending/approved sales orders)
     const { count: pipeline } = await supabase
@@ -152,13 +168,15 @@ const Index = () => {
       .lt('due_date', today)
       .neq('status', 'completed');
 
-    // Late Payments (overdue invoices)
+    // Late Payments (overdue invoices, converted to INR)
     const { data: overdueInvoices } = await supabase
       .from('invoices')
-      .select('balance_amount')
+      .select('balance_amount, currency')
       .eq('status', 'overdue');
     
-    const latePayments = overdueInvoices?.reduce((sum, inv) => sum + (inv.balance_amount || 0), 0) || 0;
+    const latePayments = overdueInvoices?.reduce((sum, inv) => {
+      return sum + convertToINR(Number(inv.balance_amount), inv.currency);
+    }, 0) || 0;
 
     setKpiMetrics({
       revenueYTD,
