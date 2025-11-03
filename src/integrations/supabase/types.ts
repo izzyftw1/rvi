@@ -2470,6 +2470,69 @@ export type Database = {
           },
         ]
       }
+      sales_bookings: {
+        Row: {
+          booking_date: string
+          created_at: string
+          currency: string
+          customer_id: string | null
+          expected_delivery_date: string | null
+          id: string
+          incoterm: string | null
+          payment_terms_days: number | null
+          po_number: string
+          so_id: string
+          status: string
+          total_value: number
+          updated_at: string
+        }
+        Insert: {
+          booking_date?: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          incoterm?: string | null
+          payment_terms_days?: number | null
+          po_number: string
+          so_id: string
+          status?: string
+          total_value?: number
+          updated_at?: string
+        }
+        Update: {
+          booking_date?: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          incoterm?: string | null
+          payment_terms_days?: number | null
+          po_number?: string
+          so_id?: string
+          status?: string
+          total_value?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_bookings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_bookings_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_order_items: {
         Row: {
           alloy: string | null

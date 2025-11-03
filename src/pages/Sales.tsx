@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Trash2, Plus, X, UserPlus, PackagePlus } from "lucide-react";
+import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download } from "lucide-react";
+import { generateProformaFromSalesOrder } from "@/lib/proformaGenerator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -395,6 +396,25 @@ export default function Sales() {
     }
   };
 
+  const handleDownloadProforma = async (order: any) => {
+    try {
+      // Fetch customer details
+      const { data: customer } = await supabase
+        .from("customer_master")
+        .select("*")
+        .eq("id", order.customer_id)
+        .single();
+
+      const pdf = generateProformaFromSalesOrder(order, customer);
+      pdf.save(`Proforma_${order.so_id}.pdf`);
+      
+      toast({ description: `Proforma invoice downloaded for ${order.so_id}` });
+    } catch (error: any) {
+      console.error("Error generating proforma:", error);
+      toast({ variant: "destructive", description: "Failed to generate proforma invoice" });
+    }
+  };
+
   const { subtotal, gstAmount, total } = calculateTotals();
 
   return (
@@ -706,6 +726,16 @@ export default function Sales() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {order.status === 'approved' && (
+                      <Button 
+                        size="sm" 
+                        variant="default"
+                        onClick={() => handleDownloadProforma(order)}
+                        title="Download Proforma Invoice"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => {
                       setSelectedOrder(order);
                       setIsViewDialogOpen(true);
