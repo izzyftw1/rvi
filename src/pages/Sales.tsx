@@ -5,12 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Trash2, Plus, X } from "lucide-react";
+import { Eye, Trash2, Plus, X, UserPlus, PackagePlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AddCustomerDialog } from "@/components/sales/AddCustomerDialog";
+import { AddItemDialog } from "@/components/sales/AddItemDialog";
 
 interface LineItem {
   line_number: number;
@@ -81,6 +83,8 @@ export default function Sales() {
 
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
+  const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -155,10 +159,8 @@ export default function Sales() {
 
   const handleItemCodeChange = (index: number, value: string) => {
     if (value === "__new__") {
-      // User wants to add a new item - just clear the field so they can type
-      const updated = [...lineItems];
-      updated[index] = { ...updated[index], item_code: "" };
-      setLineItems(updated);
+      // Open add item dialog
+      setIsAddItemDialogOpen(true);
       return;
     }
     
@@ -173,6 +175,7 @@ export default function Sales() {
     updated[index] = {
       ...updated[index],
       item_code: value,
+      // Auto-populate from item master first, then historical, then keep existing
       alloy: item?.alloy || historicalItem?.alloy || updated[index].alloy,
       material_size: item?.material_size_mm || historicalItem?.material_size_mm || updated[index].material_size,
       gross_weight_per_pc_g: item?.gross_weight_grams || historicalItem?.gross_weight_per_pc_grams || updated[index].gross_weight_per_pc_g,
@@ -187,6 +190,16 @@ export default function Sales() {
     }
     
     setLineItems(updated);
+  };
+
+  const handleCustomerAdded = (newCustomer: any) => {
+    setCustomers([newCustomer, ...customers]);
+    handleCustomerChange(newCustomer.id);
+  };
+
+  const handleItemAdded = (newItem: any) => {
+    setItems([newItem, ...items]);
+    // Don't auto-select, let user choose it from dropdown
   };
 
   const updateLineItemField = (index: number, field: keyof LineItem, value: any) => {
@@ -402,18 +415,29 @@ export default function Sales() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label>Customer *</Label>
-                    <Select value={formData.customer_id} onValueChange={handleCustomerChange} required>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-background z-50">
-                        {customers.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.customer_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select value={formData.customer_id} onValueChange={handleCustomerChange} required>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select customer" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          {customers.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.customer_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setIsAddCustomerDialogOpen(true)}
+                        title="Add new customer"
+                      >
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
@@ -553,19 +577,29 @@ export default function Sales() {
                         <TableRow key={idx}>
                           <TableCell>{item.line_number}</TableCell>
                           <TableCell>
-                            <Input 
-                              value={item.item_code} 
-                              onChange={(e) => updateLineItemField(idx, 'item_code', e.target.value.toUpperCase())}
-                              placeholder="Type or select"
-                              list={`item-codes-${idx}`}
-                              className="w-full"
-                              required
-                            />
-                            <datalist id={`item-codes-${idx}`}>
-                              {items.slice(0, 20).map((itm) => (
-                                <option key={itm.id} value={itm.item_code} />
-                              ))}
-                            </datalist>
+                            <div className="flex gap-2">
+                              <Select 
+                                value={item.item_code} 
+                                onValueChange={(v) => handleItemCodeChange(idx, v)}
+                              >
+                                <SelectTrigger className="flex-1">
+                                  <SelectValue placeholder="Select item" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-background z-50">
+                                  <SelectItem value="__new__">
+                                    <span className="flex items-center gap-2">
+                                      <PackagePlus className="h-4 w-4" />
+                                      Add New Item
+                                    </span>
+                                  </SelectItem>
+                                  {items.map((itm) => (
+                                    <SelectItem key={itm.id} value={itm.item_code}>
+                                      {itm.item_code}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Input type="number" value={item.quantity || ""} onChange={(e) => updateLineItemField(idx, 'quantity', parseInt(e.target.value) || 0)} required />
@@ -740,6 +774,20 @@ export default function Sales() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Add Customer Dialog */}
+      <AddCustomerDialog
+        open={isAddCustomerDialogOpen}
+        onOpenChange={setIsAddCustomerDialogOpen}
+        onCustomerAdded={handleCustomerAdded}
+      />
+
+      {/* Add Item Dialog */}
+      <AddItemDialog
+        open={isAddItemDialogOpen}
+        onOpenChange={setIsAddItemDialogOpen}
+        onItemAdded={handleItemAdded}
+      />
     </div>
   );
 }
