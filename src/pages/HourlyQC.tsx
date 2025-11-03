@@ -50,7 +50,7 @@ const HourlyQC = () => {
       const { data: machinesData, error: machinesError } = await supabase
         .from("machines")
         .select("*")
-        .eq("status", "available");
+        .order("name", { ascending: true });
 
       if (machinesError) throw machinesError;
       setMachines(machinesData || []);
