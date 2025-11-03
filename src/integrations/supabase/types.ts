@@ -3889,7 +3889,7 @@ export type Database = {
         | "card"
         | "other"
       qc_result: "pass" | "fail" | "rework" | "pending"
-      qc_type: "first_piece" | "in_process" | "final"
+      qc_type: "first_piece" | "in_process" | "final" | "incoming"
       reconciliation_reason:
         | "short_supply"
         | "excess_supply"
@@ -4126,7 +4126,7 @@ export const Constants = {
         "other",
       ],
       qc_result: ["pass", "fail", "rework", "pending"],
-      qc_type: ["first_piece", "in_process", "final"],
+      qc_type: ["first_piece", "in_process", "final", "incoming"],
       reconciliation_reason: [
         "short_supply",
         "excess_supply",
