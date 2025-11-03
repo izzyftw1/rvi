@@ -174,7 +174,7 @@ export default function QCIncoming() {
       <TableBody>
         {data.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center text-muted-foreground">
+            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
               No work orders in this category
             </TableCell>
           </TableRow>
@@ -195,7 +195,7 @@ export default function QCIncoming() {
                     <>
                       <CheckCircle2 className="w-4 h-4 text-success" />
                       <span className="text-sm">
-                        {wo.material_alloy} ({wo.total_material_lots} lots)
+                        {wo.material_alloy || "Material"} ({wo.total_material_lots} lots)
                       </span>
                     </>
                   ) : (
@@ -232,6 +232,25 @@ export default function QCIncoming() {
     </Table>
   );
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <NavigationHeader 
+          title="Incoming Material QC Dashboard" 
+          subtitle="Comprehensive view of all work orders and their material QC status" 
+        />
+        <div className="p-6">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Clock className="w-8 h-8 animate-spin mx-auto mb-2 text-primary" />
+              <p className="text-muted-foreground">Loading work orders...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader 
@@ -240,7 +259,19 @@ export default function QCIncoming() {
       />
       
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Orders</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-primary" />
+                <span className="text-2xl font-bold">{workOrders.length}</span>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Pending QC</CardTitle>
@@ -295,8 +326,11 @@ export default function QCIncoming() {
             <CardTitle>Work Orders by QC Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="pending" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+            <Tabs defaultValue="all" className="w-full">
+              <TabsList className="grid w-full grid-cols-5">
+                <TabsTrigger value="all">
+                  All Orders ({workOrders.length})
+                </TabsTrigger>
                 <TabsTrigger value="pending">
                   Pending QC ({pendingQC.length})
                 </TabsTrigger>
@@ -310,6 +344,10 @@ export default function QCIncoming() {
                   Failed/Hold ({failedQC.length})
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="all" className="mt-4">
+                {renderTable(workOrders)}
+              </TabsContent>
 
               <TabsContent value="pending" className="mt-4">
                 {renderTable(pendingQC)}
