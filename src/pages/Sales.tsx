@@ -337,7 +337,7 @@ export default function Sales() {
         net_weight_per_pc_grams: item.net_weight_per_pc_g || null,
         gross_weight_per_pc_grams: item.gross_weight_per_pc_g || null,
         cycle_time_seconds: null,
-        due_date: item.due_date
+        due_date: item.due_date || null
       }));
 
       const { error: lineItemsError } = await supabase
