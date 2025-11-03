@@ -3888,7 +3888,7 @@ export type Database = {
         | "upi"
         | "card"
         | "other"
-      qc_result: "pass" | "fail" | "rework"
+      qc_result: "pass" | "fail" | "rework" | "pending"
       qc_type: "first_piece" | "in_process" | "final"
       reconciliation_reason:
         | "short_supply"
@@ -4125,7 +4125,7 @@ export const Constants = {
         "card",
         "other",
       ],
-      qc_result: ["pass", "fail", "rework"],
+      qc_result: ["pass", "fail", "rework", "pending"],
       qc_type: ["first_piece", "in_process", "final"],
       reconciliation_reason: [
         "short_supply",
