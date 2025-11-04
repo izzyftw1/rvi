@@ -533,11 +533,15 @@ export type Database = {
           operation: Database["public"]["Enums"]["operation_letter"]
           operator_id: string | null
           out_of_tolerance_dimensions: string[] | null
+          plating_applicable: boolean | null
           plating_status: string | null
+          plating_thickness_applicable: boolean | null
           plating_thickness_status: string | null
           remarks: string | null
           status: string
+          thread_applicable: boolean | null
           thread_status: string | null
+          visual_applicable: boolean | null
           visual_status: string | null
           wo_id: string
         }
@@ -550,11 +554,15 @@ export type Database = {
           operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
+          plating_applicable?: boolean | null
           plating_status?: string | null
+          plating_thickness_applicable?: boolean | null
           plating_thickness_status?: string | null
           remarks?: string | null
           status?: string
+          thread_applicable?: boolean | null
           thread_status?: string | null
+          visual_applicable?: boolean | null
           visual_status?: string | null
           wo_id: string
         }
@@ -567,11 +575,15 @@ export type Database = {
           operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
           out_of_tolerance_dimensions?: string[] | null
+          plating_applicable?: boolean | null
           plating_status?: string | null
+          plating_thickness_applicable?: boolean | null
           plating_thickness_status?: string | null
           remarks?: string | null
           status?: string
+          thread_applicable?: boolean | null
           thread_status?: string | null
+          visual_applicable?: boolean | null
           visual_status?: string | null
           wo_id?: string
         }

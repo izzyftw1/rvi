@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,45 +6,43 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import React from "react";
 
-const OPERATIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const;
+const OPERATIONS = ['A', 'B', 'C', 'D'] as const;
 
 interface DimensionTolerance {
-  min: number;
-  max: number;
-  label: string;
+  id?: string;
+  item_code: string;
+  revision: string;
+  operation: string;
+  dimensions: Record<string, { name: string; min: number; max: number }>;
+  created_at?: string;
 }
 
 const ToleranceSetup = () => {
-  const navigate = useNavigate();
-  const [tolerances, setTolerances] = useState<any[]>([]);
+  const [tolerances, setTolerances] = useState<DimensionTolerance[]>([]);
   const [itemCodes, setItemCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     item_code: "",
-    revision: "",
+    revision: "0",
     operation: "A" as typeof OPERATIONS[number],
   });
 
-  const [dimensions, setDimensions] = useState<Record<number, DimensionTolerance>>({});
+  const [dimensions, setDimensions] = useState<
+    Array<{ id: number; name: string; min: string; max: string }>
+  >([
+    { id: 1, name: '', min: '', max: '' },
+    { id: 2, name: '', min: '', max: '' },
+    { id: 3, name: '', min: '', max: '' },
+  ]);
   
   useEffect(() => {
     loadTolerances();
     loadItemCodes();
-  }, []);
-
-  useEffect(() => {
-    if (Object.keys(dimensions).length === 0) {
-      const initial: Record<number, DimensionTolerance> = {};
-      for (let i = 1; i <= 20; i++) {
-        initial[i] = { min: 0, max: 0, label: `Dimension ${i}` };
-      }
-      setDimensions(initial);
-    }
   }, []);
 
   const loadTolerances = async () => {
@@ -56,7 +53,7 @@ const ToleranceSetup = () => {
         .order("item_code", { ascending: true });
 
       if (error) throw error;
-      setTolerances(data || []);
+      setTolerances((data || []) as any);
     } catch (error: any) {
       toast.error("Failed to load tolerances: " + error.message);
     } finally {
@@ -73,7 +70,6 @@ const ToleranceSetup = () => {
 
       if (error) throw error;
       
-      // Get unique item codes
       const unique = Array.from(new Set(data?.map(wo => wo.item_code) || []));
       setItemCodes(unique);
     } catch (error: any) {
@@ -82,89 +78,106 @@ const ToleranceSetup = () => {
   };
 
   const addMoreDimensions = () => {
-    const currentCount = Object.keys(dimensions).length;
-    if (currentCount >= 100) {
+    if (dimensions.length >= 100) {
       toast.error("Maximum 100 dimensions allowed");
       return;
     }
-    const toAdd = Math.min(10, 100 - currentCount);
-    const newDimensions = { ...dimensions };
-    for (let i = 1; i <= toAdd; i++) {
-      const dimNum = currentCount + i;
-      newDimensions[dimNum] = { min: 0, max: 0, label: `Dimension ${dimNum}` };
-    }
-    setDimensions(newDimensions);
-    toast.success(`Added ${toAdd} more dimensions`);
+    const newId = Math.max(...dimensions.map(d => d.id)) + 1;
+    setDimensions([...dimensions, { id: newId, name: '', min: '', max: '' }]);
   };
 
-  const removeDimension = (dimNum: number) => {
-    if (Object.keys(dimensions).length <= 1) {
+  const removeDimension = (id: number) => {
+    if (dimensions.length <= 1) {
       toast.error("At least one dimension is required");
       return;
     }
-    const newDimensions = { ...dimensions };
-    delete newDimensions[dimNum];
-    setDimensions(newDimensions);
+    setDimensions(dimensions.filter(d => d.id !== id));
   };
 
   const handleSave = async () => {
-    try {
-      if (!formData.item_code) {
-        toast.error("Item code is required");
-        return;
-      }
+    if (!formData.item_code || !formData.operation) {
+      toast.error('Item Code and Operation are required');
+      return;
+    }
 
-      const payload = {
-        item_code: formData.item_code,
-        revision: formData.revision || null,
-        operation: formData.operation,
-        dimensions: dimensions as any,
+    const validDimensions = dimensions.filter(d => d.name && d.min && d.max);
+    if (validDimensions.length === 0) {
+      toast.error('At least one complete dimension (name, min, max) is required');
+      return;
+    }
+
+    const dimensionsObj = validDimensions.reduce((acc, dim) => {
+      acc[dim.id.toString()] = {
+        name: dim.name,
+        min: parseFloat(dim.min),
+        max: parseFloat(dim.max)
       };
+      return acc;
+    }, {} as Record<string, { name: string; min: number; max: number }>);
 
-      let error;
+    try {
       if (editingId) {
-        ({ error } = await supabase
-          .from("dimension_tolerances")
-          .update(payload)
-          .eq("id", editingId));
+        const { error } = await supabase
+          .from('dimension_tolerances')
+          .update({
+            item_code: formData.item_code,
+            revision: formData.revision || '0',
+            operation: formData.operation,
+            dimensions: dimensionsObj,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingId);
+
+        if (error) throw error;
       } else {
-        ({ error } = await supabase
-          .from("dimension_tolerances")
-          .insert([payload]));
+        const { error } = await supabase
+          .from('dimension_tolerances')
+          .insert({
+            item_code: formData.item_code,
+            revision: formData.revision || '0',
+            operation: formData.operation,
+            dimensions: dimensionsObj,
+            created_by: (await supabase.auth.getUser()).data.user?.id
+          });
+
+        if (error) throw error;
       }
 
-      if (error) throw error;
-
-      toast.success(editingId ? "Tolerance updated successfully" : "Tolerance created successfully");
+      await loadTolerances();
+      toast.success(editingId ? 'Tolerance updated!' : 'Tolerance saved!');
       resetForm();
-      loadTolerances();
     } catch (error: any) {
-      toast.error("Failed to save tolerance: " + error.message);
+      console.error('Error saving tolerance:', error);
+      toast.error(error.message || 'Failed to save tolerance');
     }
   };
 
-  const handleEdit = (tolerance: any) => {
-    setEditingId(tolerance.id);
+  const handleEdit = (tolerance: DimensionTolerance) => {
+    setEditingId(tolerance.id || null);
     setFormData({
       item_code: tolerance.item_code,
-      revision: tolerance.revision || "",
-      operation: tolerance.operation,
+      revision: tolerance.revision,
+      operation: tolerance.operation as typeof OPERATIONS[number]
     });
-    setDimensions(tolerance.dimensions || {});
+    
+    const dimensionsArray = Object.entries(tolerance.dimensions).map(([id, dim]) => ({
+      id: parseInt(id),
+      name: dim.name,
+      min: dim.min.toString(),
+      max: dim.max.toString()
+    }));
+    
+    setDimensions(dimensionsArray);
   };
 
   const resetForm = () => {
     setEditingId(null);
-    setFormData({
-      item_code: "",
-      revision: "",
-      operation: "A",
-    });
-    const initial: Record<number, DimensionTolerance> = {};
-    for (let i = 1; i <= 20; i++) {
-      initial[i] = { min: 0, max: 0, label: `Dimension ${i}` };
-    }
-    setDimensions(initial);
+    setFormData({ item_code: '', revision: '0', operation: 'A' });
+    setDimensions([
+      { id: 1, name: '', min: '', max: '' },
+      { id: 2, name: '', min: '', max: '' },
+      { id: 3, name: '', min: '', max: '' },
+    ]);
   };
 
   if (loading) {
@@ -182,7 +195,6 @@ const ToleranceSetup = () => {
       <NavigationHeader title="Tolerance Setup" subtitle="Define dimensional tolerances per part and operation" />
       
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-
         <Card>
           <CardHeader>
             <CardTitle>{editingId ? "Edit Tolerance" : "Add New Tolerance"}</CardTitle>
@@ -213,7 +225,7 @@ const ToleranceSetup = () => {
                   id="revision"
                   value={formData.revision}
                   onChange={(e) => setFormData({ ...formData, revision: e.target.value })}
-                  placeholder="e.g., A"
+                  placeholder="e.g., 0"
                 />
               </div>
               <div>
@@ -238,72 +250,67 @@ const ToleranceSetup = () => {
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">
-                  Dimension Tolerances ({Object.keys(dimensions).length}/100)
-                </h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addMoreDimensions}
-                  disabled={Object.keys(dimensions).length >= 100}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add More (+10)
+                <Label>Dimensions & Tolerances</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addMoreDimensions}>
+                  + Add Row
                 </Button>
               </div>
               
-              <div className="max-h-96 overflow-y-auto space-y-3 border rounded-lg p-4">
-                {Object.entries(dimensions)
-                  .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                  .map(([dimNum, dimData]) => (
-                    <div key={dimNum} className="grid grid-cols-[auto_1fr_1fr_auto] gap-3 items-end p-3 bg-muted/50 rounded">
-                      <div className="font-medium text-sm pt-6">
-                        {dimNum}
-                      </div>
-                      <div>
-                        <Label htmlFor={`dim_${dimNum}_min`} className="text-xs">Min</Label>
-                        <Input
-                          id={`dim_${dimNum}_min`}
-                          type="number"
-                          step="0.001"
-                          value={dimData.min}
-                          onChange={(e) =>
-                            setDimensions({
-                              ...dimensions,
-                              [dimNum]: { ...dimData, min: parseFloat(e.target.value) || 0 },
-                            })
-                          }
-                          placeholder="Min"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor={`dim_${dimNum}_max`} className="text-xs">Max</Label>
-                        <Input
-                          id={`dim_${dimNum}_max`}
-                          type="number"
-                          step="0.001"
-                          value={dimData.max}
-                          onChange={(e) =>
-                            setDimensions({
-                              ...dimensions,
-                              [dimNum]: { ...dimData, max: parseFloat(e.target.value) || 0 },
-                            })
-                          }
-                          placeholder="Max"
-                        />
-                      </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[2fr,1fr,1fr,auto] gap-2 text-sm font-medium text-muted-foreground">
+                  <div>Dimension Name</div>
+                  <div>Min</div>
+                  <div>Max</div>
+                  <div></div>
+                </div>
+                
+                {dimensions.map((dim, index) => (
+                  <div key={dim.id} className="grid grid-cols-[2fr,1fr,1fr,auto] gap-2">
+                    <Input
+                      type="text"
+                      placeholder="e.g. ID, OD, Thread Pitch, Overall Length"
+                      value={dim.name}
+                      onChange={(e) => {
+                        const newDimensions = [...dimensions];
+                        newDimensions[index].name = e.target.value;
+                        setDimensions(newDimensions);
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      placeholder="Min"
+                      value={dim.min}
+                      onChange={(e) => {
+                        const newDimensions = [...dimensions];
+                        newDimensions[index].min = e.target.value;
+                        setDimensions(newDimensions);
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      placeholder="Max"
+                      value={dim.max}
+                      onChange={(e) => {
+                        const newDimensions = [...dimensions];
+                        newDimensions[index].max = e.target.value;
+                        setDimensions(newDimensions);
+                      }}
+                    />
+                    {dimensions.length > 1 && (
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        onClick={() => removeDimension(parseInt(dimNum))}
-                        disabled={Object.keys(dimensions).length <= 1}
+                        size="sm"
+                        onClick={() => removeDimension(dim.id)}
+                        className="h-10 w-10 p-0"
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        ×
                       </Button>
-                    </div>
-                  ))}
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -326,28 +333,58 @@ const ToleranceSetup = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {tolerances.map((tolerance) => (
-                <div
-                  key={tolerance.id}
-                  className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/50"
-                >
-                  <div className="flex-1">
-                    <div className="font-medium">
-                      {tolerance.item_code} {tolerance.revision && `(Rev ${tolerance.revision})`}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Operation {tolerance.operation} • {Object.keys(tolerance.dimensions || {}).length} dimensions
-                    </div>
+              <h3 className="text-lg font-semibold">Existing Tolerances</h3>
+              
+              {Array.from(new Set(tolerances.map(t => t.item_code))).map(itemCode => {
+                const itemTolerances = tolerances.filter(t => t.item_code === itemCode);
+                return (
+                  <div key={itemCode} className="space-y-2">
+                    <h4 className="font-medium text-primary">{itemCode}</h4>
+                    
+                    {['A', 'B', 'C', 'D'].map(op => {
+                      const opTolerances = itemTolerances.filter(t => t.operation === op);
+                      if (opTolerances.length === 0) return null;
+                      
+                      return (
+                        <div key={op} className="ml-4">
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Operation {op}</p>
+                          {opTolerances.map(tolerance => (
+                            <Card key={tolerance.id} className="p-4 mb-2">
+                              <div className="flex items-center justify-between mb-4">
+                                <p className="text-sm text-muted-foreground">
+                                  Revision: {tolerance.revision}
+                                </p>
+                                <Button variant="outline" size="sm" onClick={() => handleEdit(tolerance)}>
+                                  Edit
+                                </Button>
+                              </div>
+                              
+                              <div className="grid grid-cols-3 gap-2 text-sm">
+                                <div className="font-medium">Dimension Name</div>
+                                <div className="font-medium">Min</div>
+                                <div className="font-medium">Max</div>
+                                
+                                {Object.entries(tolerance.dimensions).map(([id, dim]) => (
+                                  <React.Fragment key={id}>
+                                    <div>{dim.name || `Dimension ${id}`}</div>
+                                    <div>{dim.min}</div>
+                                    <div>{dim.max}</div>
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            </Card>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => handleEdit(tolerance)}>
-                    Edit
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
+              
               {tolerances.length === 0 && (
-                <div className="text-center text-muted-foreground py-8">
-                  No tolerances defined yet
-                </div>
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No tolerances defined yet. Create one using the form above.
+                </p>
               )}
             </div>
           </CardContent>

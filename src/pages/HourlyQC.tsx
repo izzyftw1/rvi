@@ -9,32 +9,50 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { NavigationHeader } from "@/components/NavigationHeader";
 
-const OPERATIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const;
+const OPERATIONS = ['A', 'B', 'C', 'D'] as const;
 
 const HourlyQC = () => {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
-  const [selectedWO, setSelectedWO] = useState<string>("");
-  const [selectedMachine, setSelectedMachine] = useState<string>("");
-  const [operation, setOperation] = useState<string>("A");
-  const [tolerances, setTolerances] = useState<any>(null);
+  const [selections, setSelections] = useState({
+    woId: "",
+    operation: "A" as typeof OPERATIONS[number],
+    machineId: ""
+  });
+  
+  const [tolerances, setTolerances] = useState<Array<{
+    id: string;
+    name: string;
+    min: number;
+    max: number;
+  }>>([]);
+  
   const [measurements, setMeasurements] = useState<Record<string, string>>({});
-  const [remarks, setRemarks] = useState("");
-  const [qcResults, setQcResults] = useState<any>(null);
-  const [threadStatus, setThreadStatus] = useState<string>("");
-  const [visualStatus, setVisualStatus] = useState<string>("");
-  const [platingStatus, setPlatingStatus] = useState<string>("");
-  const [platingThicknessStatus, setPlatingThicknessStatus] = useState<string>("");
+  const [binaryChecksEnabled, setBinaryChecksEnabled] = useState(false);
+  const [applicableChecks, setApplicableChecks] = useState({
+    thread: false,
+    visual: false,
+    plating: false,
+    platingThickness: false
+  });
+  
+  const [qcResults, setQcResults] = useState({
+    thread: 'ok',
+    visual: 'ok',
+    plating: 'ok',
+    platingThickness: 'ok',
+    remarks: ''
+  });
 
   useEffect(() => {
     loadData();
   }, []);
 
   useEffect(() => {
-    if (selectedWO && operation) {
-      loadTolerances(selectedWO, operation);
+    if (selections.woId && selections.operation) {
+      loadTolerances();
     }
-  }, [selectedWO, operation]);
+  }, [selections.woId, selections.operation]);
 
   const loadData = async () => {
     try {
@@ -59,348 +77,229 @@ const HourlyQC = () => {
     }
   };
 
-  const loadTolerances = async (woId: string, op: string) => {
+  const loadTolerances = async () => {
+    if (!selections.woId || !selections.operation) return;
+
     try {
-      const wo = workOrders.find((w) => w.id === woId);
-      if (!wo) return;
+      const { data: woData } = await supabase
+        .from('work_orders')
+        .select('item_code, revision')
+        .eq('id', selections.woId)
+        .single();
+
+      if (!woData) return;
 
       const { data, error } = await supabase
-        .from("dimension_tolerances")
-        .select("*")
-        .eq("item_code", wo.item_code)
-        .eq("operation", op as any)
-        .maybeSingle();
+        .from('dimension_tolerances')
+        .select('*')
+        .eq('item_code', woData.item_code)
+        .eq('operation', selections.operation)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
       if (error) throw error;
-      
-      if (data && data.dimensions) {
-        setTolerances(data);
-        const initMeasurements: Record<string, string> = {};
-        Object.keys(data.dimensions as any).forEach((dimNum) => {
-          initMeasurements[dimNum] = "";
+
+      if (data && data.length > 0) {
+        const dimensionsObj = data[0].dimensions as Record<string, { name: string; min: number; max: number }>;
+        const tolerancesArray = Object.entries(dimensionsObj).map(([id, dim]) => ({
+          id,
+          name: dim.name,
+          min: dim.min,
+          max: dim.max
+        }));
+        
+        setTolerances(tolerancesArray);
+        
+        const initialMeasurements: Record<string, string> = {};
+        tolerancesArray.forEach(t => {
+          initialMeasurements[t.id] = '';
         });
-        setMeasurements(initMeasurements);
+        setMeasurements(initialMeasurements);
       } else {
-        setTolerances(null);
+        setTolerances([]);
         setMeasurements({});
-        toast.warning(`No tolerances defined for ${wo.item_code} Operation ${op}`);
       }
-    } catch (error: any) {
-      toast.error("Failed to load tolerances: " + error.message);
+    } catch (error) {
+      console.error('Error loading tolerances:', error);
     }
   };
 
-  const checkTolerance = (dimNum: string, value: number): boolean => {
-    if (!tolerances || !tolerances.dimensions) return true;
-    const dims = tolerances.dimensions as any;
-    if (!dims[dimNum]) return true;
-    const { min, max } = dims[dimNum];
+  const checkTolerance = (value: number, min: number, max: number): boolean => {
     return value >= min && value <= max;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selections.woId || !selections.operation || !selections.machineId) {
+      toast.error('Please select Work Order, Operation, and Machine');
+      return;
+    }
+
     try {
-      if (!selectedWO || !selectedMachine || !operation) {
-        toast.error("Please select WO, Machine, and Operation");
-        return;
-      }
+      const outOfTolerance: string[] = [];
+      const dimensionsData: Record<string, number> = {};
 
-      if (!tolerances) {
-        toast.error("No tolerances defined for this part and operation");
-        return;
-      }
+      tolerances.forEach(tol => {
+        const measuredValue = parseFloat(measurements[tol.id] || '0');
+        dimensionsData[tol.id] = measuredValue;
 
-      if (!threadStatus || !visualStatus || !platingStatus || !platingThicknessStatus) {
-        toast.error("Please select OK/Not OK for all binary QC checks (Thread, Visual, Plating, Plating Thickness)");
-        return;
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      const outOfToleranceDimensions: string[] = [];
-      const dimensionValues: Record<string, number> = {};
-
-      Object.entries(measurements).forEach(([dimNum, valueStr]) => {
-        if (valueStr && valueStr.trim() !== "") {
-          const value = parseFloat(valueStr);
-          dimensionValues[dimNum] = value;
-          if (!checkTolerance(dimNum, value)) {
-            outOfToleranceDimensions.push(dimNum);
-          }
+        if (!checkTolerance(measuredValue, tol.min, tol.max)) {
+          outOfTolerance.push(tol.name);
         }
       });
 
-      // Fail if any dimensions are out of tolerance OR any binary checks are "Not OK"
-      const hasFailedBinaryCheck = 
-        threadStatus === "Not OK" || 
-        visualStatus === "Not OK" || 
-        platingStatus === "Not OK" || 
-        platingThicknessStatus === "Not OK";
+      let hasBinaryFailure = false;
+      if (binaryChecksEnabled) {
+        if (applicableChecks.thread && qcResults.thread !== 'ok' && qcResults.thread !== 'na') hasBinaryFailure = true;
+        if (applicableChecks.visual && qcResults.visual !== 'ok' && qcResults.visual !== 'na') hasBinaryFailure = true;
+        if (applicableChecks.plating && qcResults.plating !== 'ok' && qcResults.plating !== 'na') hasBinaryFailure = true;
+        if (applicableChecks.platingThickness && qcResults.platingThickness !== 'ok' && qcResults.platingThickness !== 'na') hasBinaryFailure = true;
+      }
 
-      const status = (outOfToleranceDimensions.length === 0 && !hasFailedBinaryCheck) ? "pass" : "fail";
+      const overallStatus = (outOfTolerance.length === 0 && !hasBinaryFailure) ? 'pass' : 'fail';
 
-      const { error } = await supabase.from("hourly_qc_checks").insert({
-        wo_id: selectedWO,
-        machine_id: selectedMachine,
-        operator_id: user?.id,
-        operation: operation as any,
-        dimensions: dimensionValues as any,
-        status: status,
-        out_of_tolerance_dimensions: outOfToleranceDimensions,
-        remarks: remarks || null,
-        thread_status: threadStatus,
-        visual_status: visualStatus,
-        plating_status: platingStatus,
-        plating_thickness_status: platingThicknessStatus,
+      const { error } = await supabase.from('hourly_qc_checks').insert({
+        wo_id: selections.woId,
+        machine_id: selections.machineId,
+        operator_id: (await supabase.auth.getUser()).data.user?.id,
+        operation: selections.operation,
+        dimensions: dimensionsData,
+        status: overallStatus,
+        out_of_tolerance_dimensions: outOfTolerance.length > 0 ? outOfTolerance : null,
+        thread_applicable: applicableChecks.thread,
+        thread_status: applicableChecks.thread ? qcResults.thread : null,
+        visual_applicable: applicableChecks.visual,
+        visual_status: applicableChecks.visual ? qcResults.visual : null,
+        plating_applicable: applicableChecks.plating,
+        plating_status: applicableChecks.plating ? qcResults.plating : null,
+        plating_thickness_applicable: applicableChecks.platingThickness,
+        plating_thickness_status: applicableChecks.platingThickness ? qcResults.platingThickness : null,
+        remarks: qcResults.remarks || null
       });
 
       if (error) throw error;
 
-      setQcResults({
-        status,
-        outOfToleranceDimensions,
-        measurements: dimensionValues,
-      });
-
-      toast.success(`QC Check ${status === "pass" ? "PASSED" : "FAILED"}`);
-      
-      const initMeasurements: Record<string, string> = {};
-      Object.keys(tolerances.dimensions as any).forEach((dimNum) => {
-        initMeasurements[dimNum] = "";
-      });
-      setMeasurements(initMeasurements);
-      setRemarks("");
-      setThreadStatus("");
-      setVisualStatus("");
-      setPlatingStatus("");
-      setPlatingThicknessStatus("");
+      toast.success(`QC Check submitted: ${overallStatus.toUpperCase()}`);
+      resetForm();
     } catch (error: any) {
-      toast.error("Failed to submit QC check: " + error.message);
+      console.error('Error submitting QC check:', error);
+      toast.error(error.message || 'Failed to submit QC check');
     }
   };
 
-  const selectedWOData = workOrders.find((wo) => wo.id === selectedWO);
+  const resetForm = () => {
+    setMeasurements({});
+    setQcResults({ thread: 'ok', visual: 'ok', plating: 'ok', platingThickness: 'ok', remarks: '' });
+    setBinaryChecksEnabled(false);
+    setApplicableChecks({ thread: false, visual: false, plating: false, platingThickness: false });
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Hourly Dimensional QC" subtitle="Record hourly quality control measurements" />
       
       <div className="max-w-4xl mx-auto p-4 space-y-6">
-
         <Card>
           <CardHeader>
             <CardTitle>QC Entry Form</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="wo">Work Order</Label>
-                <Select value={selectedWO} onValueChange={setSelectedWO}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select WO" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workOrders.map((wo) => (
-                      <SelectItem key={wo.id} value={wo.id}>
-                        {wo.wo_id} - {wo.item_code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="operation">Operation</Label>
-                <Select value={operation} onValueChange={setOperation}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {OPERATIONS.map((op) => (
-                      <SelectItem key={op} value={op}>
-                        Operation {op}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="machine">Machine</Label>
-                <Select value={selectedMachine} onValueChange={setSelectedMachine}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Machine" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {machines.map((machine) => (
-                      <SelectItem key={machine.id} value={machine.id}>
-                        {machine.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {selectedWO && tolerances && (
-              <div className="space-y-4">
-                <div className="p-3 bg-muted rounded">
-                  <div className="text-sm font-medium">Part: {selectedWOData?.item_code}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Operation {operation} • {Object.keys(tolerances.dimensions as any || {}).length} dimensions
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto p-4 border rounded">
-                  {Object.entries((tolerances.dimensions as any) || {})
-                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                    .map(([dimNum, dimData]: [string, any]) => {
-                      const valueStr = measurements[dimNum] || "";
-                      const value = valueStr ? parseFloat(valueStr) : 0;
-                      const isInTolerance = valueStr ? checkTolerance(dimNum, value) : true;
-                      
-                      return (
-                        <div key={dimNum} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor={`dim_${dimNum}`}>Dimension {dimNum}</Label>
-                            <span className="text-xs text-muted-foreground">
-                              {dimData.min.toFixed(3)} - {dimData.max.toFixed(3)}
-                            </span>
-                          </div>
-                          <Input
-                            id={`dim_${dimNum}`}
-                            type="number"
-                            step="0.001"
-                            value={valueStr}
-                            onChange={(e) =>
-                              setMeasurements({
-                                ...measurements,
-                                [dimNum]: e.target.value,
-                              })
-                            }
-                            className={
-                              valueStr && !isInTolerance
-                                ? "border-red-500 bg-red-50"
-                                : valueStr && isInTolerance
-                                ? "border-green-500 bg-green-50"
-                                : ""
-                            }
-                            placeholder="Enter value"
-                          />
-                        </div>
-                      );
-                    })}
-                </div>
-
-                <div className="border-t pt-4 mt-4">
-                  <h3 className="font-semibold mb-4">Binary QC Checks (Required)</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="thread">Thread</Label>
-                      <Select value={threadStatus} onValueChange={setThreadStatus}>
-                        <SelectTrigger className={!threadStatus ? "border-yellow-500" : ""}>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="OK">OK</SelectItem>
-                          <SelectItem value="Not OK">Not OK</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="visual">Visual</Label>
-                      <Select value={visualStatus} onValueChange={setVisualStatus}>
-                        <SelectTrigger className={!visualStatus ? "border-yellow-500" : ""}>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="OK">OK</SelectItem>
-                          <SelectItem value="Not OK">Not OK</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="plating">Plating</Label>
-                      <Select value={platingStatus} onValueChange={setPlatingStatus}>
-                        <SelectTrigger className={!platingStatus ? "border-yellow-500" : ""}>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="OK">OK</SelectItem>
-                          <SelectItem value="Not OK">Not OK</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="platingThickness">Plating Thickness</Label>
-                      <Select value={platingThicknessStatus} onValueChange={setPlatingThicknessStatus}>
-                        <SelectTrigger className={!platingThicknessStatus ? "border-yellow-500" : ""}>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="OK">OK</SelectItem>
-                          <SelectItem value="Not OK">Not OK</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="remarks">Remarks</Label>
-                  <Textarea
-                    id="remarks"
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                    placeholder="Any observations or issues..."
-                    rows={3}
-                  />
+                  <Label>Work Order</Label>
+                  <Select value={selections.woId} onValueChange={(v) => setSelections({...selections, woId: v})}>
+                    <SelectTrigger><SelectValue placeholder="Select WO" /></SelectTrigger>
+                    <SelectContent>
+                      {workOrders.map(wo => (
+                        <SelectItem key={wo.id} value={wo.id}>{wo.display_id} - {wo.item_code}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                <Button onClick={handleSubmit} className="w-full" size="lg">
-                  Submit QC Check
-                </Button>
+                <div>
+                  <Label>Operation</Label>
+                  <Select value={selections.operation} onValueChange={(v) => setSelections({...selections, operation: v as typeof OPERATIONS[number]})}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {OPERATIONS.map(op => <SelectItem key={op} value={op}>Operation {op}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Machine</Label>
+                  <Select value={selections.machineId} onValueChange={(v) => setSelections({...selections, machineId: v})}>
+                    <SelectTrigger><SelectValue placeholder="Select Machine" /></SelectTrigger>
+                    <SelectContent>
+                      {machines.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
 
-            {selectedWO && !tolerances && (
-              <div className="text-center py-8 text-muted-foreground">
-                No tolerances defined for this part and operation.
-                <br />
-                Please set up tolerances first.
-              </div>
-            )}
+              {tolerances.length > 0 && (
+                <>
+                  <div className="space-y-4">
+                    <Label className="text-base font-semibold">Dimensional Measurements</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {tolerances.map(tol => {
+                        const measuredValue = parseFloat(measurements[tol.id] || '0');
+                        const isOutOfTolerance = measurements[tol.id] && !checkTolerance(measuredValue, tol.min, tol.max);
+                        return (
+                          <div key={tol.id} className="space-y-2">
+                            <Label>{tol.name} <span className="text-xs text-muted-foreground">(Min: {tol.min}, Max: {tol.max})</span></Label>
+                            <Input type="number" step="0.001" value={measurements[tol.id] || ''} onChange={(e) => setMeasurements({...measurements, [tol.id]: e.target.value})} className={isOutOfTolerance ? 'border-destructive bg-destructive/10' : measurements[tol.id] ? 'border-green-500 bg-green-50' : ''} />
+                            {isOutOfTolerance && <p className="text-xs text-destructive">Out of tolerance!</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold">Binary QC Checks</Label>
+                      {!binaryChecksEnabled && <Button type="button" variant="outline" size="sm" onClick={() => setBinaryChecksEnabled(true)}>+ Add Binary QC Checks</Button>}
+                    </div>
+                    {binaryChecksEnabled && (
+                      <div className="space-y-4 border rounded-lg p-4">
+                        <div className="flex gap-4 flex-wrap">
+                          {['thread', 'visual', 'plating', 'platingThickness'].map(check => (
+                            <label key={check} className="flex items-center gap-2">
+                              <input type="checkbox" checked={applicableChecks[check as keyof typeof applicableChecks]} onChange={(e) => setApplicableChecks({...applicableChecks, [check]: e.target.checked})} />
+                              <span className="text-sm capitalize">{check.replace(/([A-Z])/g, ' $1')}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {Object.entries(applicableChecks).filter(([_, v]) => v).map(([check]) => (
+                          <div key={check}>
+                            <Label className="capitalize">{check.replace(/([A-Z])/g, ' $1')}</Label>
+                            <Select value={qcResults[check as keyof typeof qcResults]} onValueChange={(v) => setQcResults({...qcResults, [check]: v})}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ok">OK</SelectItem>
+                                <SelectItem value="not_ok">Not OK</SelectItem>
+                                <SelectItem value="na">N/A</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label>Remarks</Label>
+                    <Textarea value={qcResults.remarks} onChange={(e) => setQcResults({...qcResults, remarks: e.target.value})} placeholder="Any observations..." rows={3} />
+                  </div>
+
+                  <Button type="submit" className="w-full">Submit QC Check</Button>
+                </>
+              )}
+            </form>
           </CardContent>
         </Card>
-
-        {qcResults && (
-          <Card className={qcResults.status === "pass" ? "border-green-500" : "border-red-500"}>
-            <CardHeader>
-              <CardTitle className={qcResults.status === "pass" ? "text-green-600" : "text-red-600"}>
-                QC Result: {qcResults.status === "pass" ? "PASS" : "FAIL"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {qcResults.outOfToleranceDimensions.length > 0 && (
-                <div className="space-y-2">
-                  <div className="font-medium text-red-600">
-                    Out of Tolerance Dimensions:
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {qcResults.outOfToleranceDimensions.map((dim: string) => (
-                      <span key={dim} className="px-2 py-1 bg-red-100 text-red-700 rounded text-sm">
-                        Dimension {dim}: {qcResults.measurements[dim]?.toFixed(3)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
   );
