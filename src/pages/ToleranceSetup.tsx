@@ -43,6 +43,29 @@ const ToleranceSetup = () => {
   useEffect(() => {
     loadTolerances();
     loadItemCodes();
+
+    // Set up realtime subscriptions
+    const channel = supabase
+      .channel('tolerance-setup-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dimension_tolerances' }, () => {
+        console.log('Dimension tolerances updated - refreshing');
+        loadTolerances();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        console.log('Work orders updated - refreshing item codes');
+        loadItemCodes();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'item_master' }, () => {
+        console.log('Item master updated - refreshing item codes');
+        loadItemCodes();
+      })
+      .subscribe((status) => {
+        console.log('Tolerance Setup realtime subscription status:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const loadTolerances = async () => {
@@ -63,14 +86,27 @@ const ToleranceSetup = () => {
 
   const loadItemCodes = async () => {
     try {
-      const { data, error } = await supabase
-        .from("work_orders")
-        .select("item_code")
-        .order("item_code", { ascending: true });
+      // Load from both work_orders and item_master
+      const [woResult, itemResult] = await Promise.all([
+        supabase
+          .from("work_orders")
+          .select("item_code")
+          .order("item_code", { ascending: true }),
+        supabase
+          .from("item_master")
+          .select("item_code")
+          .order("item_code", { ascending: true })
+      ]);
 
-      if (error) throw error;
+      if (woResult.error) throw woResult.error;
+      if (itemResult.error) throw itemResult.error;
       
-      const unique = Array.from(new Set(data?.map(wo => wo.item_code) || []));
+      // Combine and deduplicate item codes from both sources
+      const woItems = woResult.data?.map(wo => wo.item_code) || [];
+      const masterItems = itemResult.data?.map(item => item.item_code) || [];
+      const allItems = [...woItems, ...masterItems];
+      const unique = Array.from(new Set(allItems.filter(Boolean)));
+      
       setItemCodes(unique);
     } catch (error: any) {
       toast.error("Failed to load item codes: " + error.message);

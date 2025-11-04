@@ -22,9 +22,20 @@ const WorkOrders = () => {
     const channel = supabase
       .channel('work_orders_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        console.log('Work orders updated - refreshing');
         loadWorkOrders();
       })
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => {
+        console.log('Sales orders updated - refreshing work orders');
+        loadWorkOrders();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_order_line_items' }, () => {
+        console.log('Sales order line items updated - refreshing work orders');
+        loadWorkOrders();
+      })
+      .subscribe((status) => {
+        console.log('Work Orders realtime subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
