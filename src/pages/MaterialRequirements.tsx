@@ -104,11 +104,29 @@ export default function MaterialRequirements() {
     // Set up realtime subscriptions
     const channel = supabase
       .channel('material-requirements-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => setTimeout(() => loadRequirements(), 0))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => setTimeout(() => loadRequirements(), 0))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, () => setTimeout(() => loadRequirements(), 0))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, () => setTimeout(() => loadRequirements(), 0))
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        console.log('Work orders updated - refreshing requirements');
+        loadRequirements();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => {
+        console.log('Sales orders updated - refreshing requirements');
+        loadRequirements();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, () => {
+        console.log('Inventory lots updated - refreshing requirements');
+        loadRequirements();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, () => {
+        console.log('Raw purchase orders updated - refreshing requirements');
+        loadRequirements();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+        console.log('Suppliers updated - refreshing requirements');
+        loadRequirements();
+      })
+      .subscribe((status) => {
+        console.log('Material Requirements realtime subscription status:', status);
+      });
 
     return () => {
       subscription.unsubscribe();
