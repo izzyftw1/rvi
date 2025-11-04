@@ -119,7 +119,7 @@ export default function MaterialInwards() {
           suppliers(name),
           work_orders(wo_id)
         `)
-        .eq("status", "approved")
+        .in("status", ["approved", "part_received"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;
