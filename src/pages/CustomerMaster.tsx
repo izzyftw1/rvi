@@ -6,15 +6,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, Search, Eye, BarChart3 } from "lucide-react";
+import { Plus, Edit, Trash2, Search, Eye, BarChart3, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
+
+const COUNTRIES = [
+  "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain",
+  "India", "China", "Japan", "South Korea", "Brazil", "Mexico", "Argentina", "Netherlands",
+  "Belgium", "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland", "Poland",
+  "Czech Republic", "Singapore", "Malaysia", "Thailand", "Vietnam", "Indonesia", "Philippines",
+  "United Arab Emirates", "Saudi Arabia", "South Africa", "Egypt", "Turkey", "Russia", "Other"
+];
 
 export default function CustomerMaster() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [lastOrderDates, setLastOrderDates] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -22,6 +34,9 @@ export default function CustomerMaster() {
   const [formData, setFormData] = useState({
     customer_name: "",
     party_code: "",
+    account_owner: "",
+    address_line_1: "",
+    pincode: "",
     city: "",
     state: "",
     country: "",
@@ -41,14 +56,37 @@ export default function CustomerMaster() {
 
   const loadCustomers = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    
+    // Load customers
+    const { data: customersData } = await supabase
       .from("customer_master")
       .select("*")
-      .order("last_used", { ascending: false });
+      .order("created_at", { ascending: false });
     
-    if (!error && data) {
-      setCustomers(data);
+    // Load last order dates from view
+    const { data: orderDates } = await supabase
+      .from("customer_last_order" as any)
+      .select("*");
+    
+    // Load users for account owner display
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name");
+    
+    if (customersData) setCustomers(customersData);
+    if (profilesData) setUsers(profilesData);
+    
+    // Map last order dates
+    if (orderDates) {
+      const dateMap: Record<string, string> = {};
+      orderDates.forEach((row: any) => {
+        if (row.last_order_date) {
+          dateMap[row.customer_id] = row.last_order_date;
+        }
+      });
+      setLastOrderDates(dateMap);
     }
+    
     setLoading(false);
   };
 
@@ -63,6 +101,9 @@ export default function CustomerMaster() {
     setFormData({
       customer_name: "",
       party_code: "",
+      account_owner: "",
+      address_line_1: "",
+      pincode: "",
       city: "",
       state: "",
       country: "",
@@ -83,6 +124,9 @@ export default function CustomerMaster() {
     setFormData({
       customer_name: customer.customer_name,
       party_code: customer.party_code || "",
+      account_owner: customer.account_owner || "",
+      address_line_1: customer.address_line_1 || "",
+      pincode: customer.pincode || "",
       city: customer.city || "",
       state: customer.state || "",
       country: customer.country || "",
@@ -104,11 +148,20 @@ export default function CustomerMaster() {
       return;
     }
 
+    // Validate that either city or country is filled
+    if (!formData.city?.trim() && !formData.country?.trim()) {
+      toast({ variant: "destructive", description: "Either city or country must be filled" });
+      return;
+    }
+
     setLoading(true);
     try {
       const dataToSave = {
         customer_name: formData.customer_name,
         party_code: formData.party_code || generatePartyCode(formData.customer_name),
+        account_owner: formData.account_owner || null,
+        address_line_1: formData.address_line_1 || null,
+        pincode: formData.pincode || null,
         city: formData.city || null,
         state: formData.state || null,
         country: formData.country || null,
@@ -120,7 +173,6 @@ export default function CustomerMaster() {
         primary_contact_name: formData.primary_contact_name || null,
         primary_contact_email: formData.primary_contact_email || null,
         primary_contact_phone: formData.primary_contact_phone || null,
-        last_used: new Date().toISOString()
       };
 
       if (editingCustomer) {
@@ -171,10 +223,14 @@ export default function CustomerMaster() {
     }
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.party_code?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCustomers = customers.filter(c => {
+    const accountOwnerName = users.find(u => u.id === c.account_owner)?.full_name || "";
+    return c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.party_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.country?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      accountOwnerName.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -203,7 +259,7 @@ export default function CustomerMaster() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search customers by name or party code..."
+                  placeholder="Search customers by name, party code, location, or account owner..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -219,73 +275,98 @@ export default function CustomerMaster() {
                 {searchTerm ? "No customers found" : "No customers yet. Add your first customer."}
               </p>
             ) : (
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer Name</TableHead>
-                    <TableHead>Party Code</TableHead>
-                    <TableHead>City</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>Country</TableHead>
-                    <TableHead>GST Type</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Last Used</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                     {filteredCustomers.map((customer) => (
-                      <TableRow key={customer.id}>
-                        <TableCell className="font-medium">{customer.customer_name}</TableCell>
-                        <TableCell>{customer.party_code || "—"}</TableCell>
-                        <TableCell>{customer.city || "—"}</TableCell>
-                        <TableCell>{customer.state || "—"}</TableCell>
-                        <TableCell>{customer.country || "—"}</TableCell>
-                        <TableCell>
-                          <span className="text-xs px-2 py-1 rounded-full bg-muted">
-                            {customer.gst_type === "domestic" ? "Domestic" : 
-                             customer.gst_type === "export" ? "Export" : "N/A"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {customer.primary_contact_name || customer.primary_contact_email || "—"}
-                        </TableCell>
-                        <TableCell>
-                          {customer.last_used 
-                            ? new Date(customer.last_used).toLocaleDateString()
-                            : "Never"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => navigate(`/customers/${customer.id}`)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEdit(customer)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(customer.id, customer.customer_name)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
+              <TooltipProvider>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer Name</TableHead>
+                        <TableHead>Account Owner</TableHead>
+                        <TableHead>Party Code</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>GST Type</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Last Order Date</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCustomers.map((customer) => {
+                        const accountOwner = users.find(u => u.id === customer.account_owner);
+                        const lastOrderDate = lastOrderDates[customer.id];
+                        
+                        return (
+                          <TableRow key={customer.id}>
+                            <TableCell className="font-medium">{customer.customer_name}</TableCell>
+                            <TableCell>
+                              {accountOwner ? accountOwner.full_name : "—"}
+                            </TableCell>
+                            <TableCell>{customer.party_code || "—"}</TableCell>
+                            <TableCell>
+                              {[customer.city, customer.state]
+                                .filter(Boolean)
+                                .join(", ") || "—"}
+                            </TableCell>
+                            <TableCell>{customer.country || "—"}</TableCell>
+                            <TableCell>
+                              <span className="text-xs px-2 py-1 rounded-full bg-muted">
+                                {customer.gst_type === "domestic" ? "Domestic" : 
+                                 customer.gst_type === "export" ? "Export" : "N/A"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {customer.primary_contact_name || customer.primary_contact_email || "—"}
+                            </TableCell>
+                            <TableCell>
+                              {lastOrderDate
+                                ? new Date(lastOrderDate).toLocaleDateString()
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => navigate(`/sales?customer=${customer.id}`)}
+                                    >
+                                      <ExternalLink className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View all orders</TooltipContent>
+                                </Tooltip>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => navigate(`/customers/${customer.id}`)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(customer)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDelete(customer.id, customer.customer_name)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TooltipProvider>
             )}
           </CardContent>
         </Card>
@@ -293,7 +374,7 @@ export default function CustomerMaster() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingCustomer ? "Edit Customer" : "Add Customer"}</DialogTitle>
           </DialogHeader>
@@ -323,18 +404,40 @@ export default function CustomerMaster() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>GST Type</Label>
-                <select
-                  value={formData.gst_type}
-                  onChange={(e) => setFormData({ ...formData, gst_type: e.target.value as any })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                <Label>Account Owner</Label>
+                <Select 
+                  value={formData.account_owner} 
+                  onValueChange={(value) => setFormData({...formData, account_owner: value})}
                 >
-                  <option value="not_applicable">Not Applicable</option>
-                  <option value="domestic">Domestic</option>
-                  <option value="export">Export</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="col-span-2 space-y-2">
+              <div className="space-y-2">
+                <Label>GST Type</Label>
+                <Select 
+                  value={formData.gst_type} 
+                  onValueChange={(value) => setFormData({ ...formData, gst_type: value as any })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_applicable">Not Applicable</SelectItem>
+                    <SelectItem value="domestic">Domestic</SelectItem>
+                    <SelectItem value="export">Export</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>GST Number</Label>
                 <Input
                   value={formData.gst_number}
@@ -345,8 +448,16 @@ export default function CustomerMaster() {
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-medium text-sm">Location</h4>
+              <h4 className="font-medium text-sm">Location (City or Country required)</h4>
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 space-y-2">
+                  <Label>Address Line 1</Label>
+                  <Input
+                    value={formData.address_line_1}
+                    onChange={(e) => setFormData({ ...formData, address_line_1: e.target.value })}
+                    placeholder="Street address, building number"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>City</Label>
                   <Input
@@ -356,20 +467,35 @@ export default function CustomerMaster() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>State</Label>
+                  <Label>Pincode</Label>
+                  <Input
+                    value={formData.pincode}
+                    onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                    placeholder="ZIP/Postal code"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>State/Province</Label>
                   <Input
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                     placeholder="State"
                   />
                 </div>
-                <div className="col-span-2 space-y-2">
+                <div className="space-y-2">
                   <Label>Country</Label>
-                  <Input
-                    value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    placeholder="Country"
-                  />
+                  <Select value={formData.country} onValueChange={(value) => setFormData({...formData, country: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {COUNTRIES.map((country) => (
+                        <SelectItem key={country} value={country}>
+                          {country}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -397,22 +523,23 @@ export default function CustomerMaster() {
                 </div>
                 <div className="space-y-2">
                   <Label>Currency</Label>
-                  <select
-                    value={formData.credit_limit_currency}
-                    onChange={(e) => setFormData({ ...formData, credit_limit_currency: e.target.value })}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="INR">INR</option>
-                    <option value="GBP">GBP</option>
-                  </select>
+                  <Select value={formData.credit_limit_currency} onValueChange={(value) => setFormData({...formData, credit_limit_currency: value})}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                      <SelectItem value="INR">INR</SelectItem>
+                      <SelectItem value="GBP">GBP</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-medium text-sm">Primary Contact</h4>
+              <h4 className="font-medium text-sm">Primary Contact (Optional)</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-2">
                   <Label>Contact Name</Label>
@@ -447,7 +574,7 @@ export default function CustomerMaster() {
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={loading}>
-                {editingCustomer ? "Update" : "Add"}
+                {editingCustomer ? "Update" : "Add"} Customer
               </Button>
             </div>
           </div>

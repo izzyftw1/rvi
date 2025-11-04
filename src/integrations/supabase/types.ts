@@ -206,6 +206,8 @@ export type Database = {
       }
       customer_master: {
         Row: {
+          account_owner: string | null
+          address_line_1: string | null
           city: string | null
           country: string | null
           created_at: string | null
@@ -218,6 +220,7 @@ export type Database = {
           last_used: string | null
           party_code: string | null
           payment_terms_days: number | null
+          pincode: string | null
           primary_contact_email: string | null
           primary_contact_name: string | null
           primary_contact_phone: string | null
@@ -225,6 +228,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          account_owner?: string | null
+          address_line_1?: string | null
           city?: string | null
           country?: string | null
           created_at?: string | null
@@ -237,6 +242,7 @@ export type Database = {
           last_used?: string | null
           party_code?: string | null
           payment_terms_days?: number | null
+          pincode?: string | null
           primary_contact_email?: string | null
           primary_contact_name?: string | null
           primary_contact_phone?: string | null
@@ -244,6 +250,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          account_owner?: string | null
+          address_line_1?: string | null
           city?: string | null
           country?: string | null
           created_at?: string | null
@@ -256,6 +264,7 @@ export type Database = {
           last_used?: string | null
           party_code?: string | null
           payment_terms_days?: number | null
+          pincode?: string | null
           primary_contact_email?: string | null
           primary_contact_name?: string | null
           primary_contact_phone?: string | null
@@ -788,6 +797,13 @@ export type Database = {
           wo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
           {
             foreignKeyName: "invoices_customer_id_fkey"
             columns: ["customer_id"]
@@ -2521,6 +2537,13 @@ export type Database = {
             foreignKeyName: "sales_bookings_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "sales_bookings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
             referencedRelation: "customer_master"
             referencedColumns: ["id"]
           },
@@ -2833,6 +2856,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "sales_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
           {
             foreignKeyName: "sales_orders_customer_id_fkey"
             columns: ["customer_id"]
@@ -3655,6 +3685,13 @@ export type Database = {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "work_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
             referencedRelation: "customer_master"
             referencedColumns: ["id"]
           },
@@ -3669,6 +3706,13 @@ export type Database = {
       }
     }
     Views: {
+      customer_last_order: {
+        Row: {
+          customer_id: string | null
+          last_order_date: string | null
+        }
+        Relationships: []
+      }
       v_machine_daily: {
         Row: {
           date: string | null

@@ -1,10 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+const COUNTRIES = [
+  "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain",
+  "India", "China", "Japan", "South Korea", "Brazil", "Mexico", "Argentina", "Netherlands",
+  "Belgium", "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland", "Poland",
+  "Czech Republic", "Singapore", "Malaysia", "Thailand", "Vietnam", "Indonesia", "Philippines",
+  "United Arab Emirates", "Saudi Arabia", "South Africa", "Egypt", "Turkey", "Russia", "Other"
+];
 
 interface AddCustomerDialogProps {
   open: boolean;
@@ -15,9 +24,13 @@ interface AddCustomerDialogProps {
 export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCustomerDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     customer_name: "",
     party_code: "",
+    account_owner: "",
+    address_line_1: "",
+    pincode: "",
     city: "",
     state: "",
     country: "",
@@ -31,6 +44,19 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
     primary_contact_phone: "",
   });
 
+  useEffect(() => {
+    if (open) {
+      loadUsers();
+    }
+  }, [open]);
+
+  const loadUsers = async () => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, full_name");
+    if (data) setUsers(data);
+  };
+
   const generatePartyCode = (name: string) => {
     const prefix = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
     const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -43,11 +69,20 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
       return;
     }
 
+    // Validate that either city or country is filled
+    if (!formData.city?.trim() && !formData.country?.trim()) {
+      toast({ variant: "destructive", description: "Either city or country must be filled" });
+      return;
+    }
+
     setLoading(true);
     try {
       const dataToSave = {
         customer_name: formData.customer_name,
         party_code: formData.party_code || generatePartyCode(formData.customer_name),
+        account_owner: formData.account_owner || null,
+        address_line_1: formData.address_line_1 || null,
+        pincode: formData.pincode || null,
         city: formData.city || null,
         state: formData.state || null,
         country: formData.country || null,
@@ -59,7 +94,6 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
         primary_contact_name: formData.primary_contact_name || null,
         primary_contact_email: formData.primary_contact_email || null,
         primary_contact_phone: formData.primary_contact_phone || null,
-        last_used: new Date().toISOString()
       };
 
       const { data, error } = await supabase
@@ -78,6 +112,9 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
       setFormData({
         customer_name: "",
         party_code: "",
+        account_owner: "",
+        address_line_1: "",
+        pincode: "",
         city: "",
         state: "",
         country: "",
@@ -99,7 +136,7 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Customer</DialogTitle>
         </DialogHeader>
@@ -129,18 +166,34 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
               />
             </div>
             <div className="space-y-2">
-              <Label>GST Type</Label>
-              <select
-                value={formData.gst_type}
-                onChange={(e) => setFormData({ ...formData, gst_type: e.target.value as any })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="not_applicable">Not Applicable</option>
-                <option value="domestic">Domestic</option>
-                <option value="export">Export</option>
-              </select>
+              <Label>Account Owner</Label>
+              <Select value={formData.account_owner} onValueChange={(value) => setFormData({...formData, account_owner: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2">
+              <Label>GST Type</Label>
+              <Select value={formData.gst_type} onValueChange={(value) => setFormData({ ...formData, gst_type: value as any })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="not_applicable">Not Applicable</SelectItem>
+                  <SelectItem value="domestic">Domestic</SelectItem>
+                  <SelectItem value="export">Export</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>GST Number</Label>
               <Input
                 value={formData.gst_number}
@@ -151,8 +204,16 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
           </div>
 
           <div className="space-y-3">
-            <h4 className="font-medium text-sm">Location</h4>
+            <h4 className="font-medium text-sm">Location (City or Country required)</h4>
             <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 space-y-2">
+                <Label>Address Line 1</Label>
+                <Input
+                  value={formData.address_line_1}
+                  onChange={(e) => setFormData({ ...formData, address_line_1: e.target.value })}
+                  placeholder="Street address, building number"
+                />
+              </div>
               <div className="space-y-2">
                 <Label>City</Label>
                 <Input
@@ -162,20 +223,35 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                 />
               </div>
               <div className="space-y-2">
-                <Label>State</Label>
+                <Label>Pincode</Label>
+                <Input
+                  value={formData.pincode}
+                  onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                  placeholder="ZIP/Postal code"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>State/Province</Label>
                 <Input
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                   placeholder="State"
                 />
               </div>
-              <div className="col-span-2 space-y-2">
+              <div className="space-y-2">
                 <Label>Country</Label>
-                <Input
-                  value={formData.country}
-                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                  placeholder="Country"
-                />
+                <Select value={formData.country} onValueChange={(value) => setFormData({...formData, country: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select country" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {COUNTRIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
@@ -203,22 +279,23 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
               </div>
               <div className="space-y-2">
                 <Label>Currency</Label>
-                <select
-                  value={formData.credit_limit_currency}
-                  onChange={(e) => setFormData({ ...formData, credit_limit_currency: e.target.value })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="INR">INR</option>
-                  <option value="GBP">GBP</option>
-                </select>
+                <Select value={formData.credit_limit_currency} onValueChange={(value) => setFormData({...formData, credit_limit_currency: value})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="INR">INR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
 
           <div className="space-y-3">
-            <h4 className="font-medium text-sm">Primary Contact</h4>
+            <h4 className="font-medium text-sm">Primary Contact (Optional)</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-2">
                 <Label>Contact Name</Label>
