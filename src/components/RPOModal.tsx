@@ -36,6 +36,7 @@ export function RPOModal({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
   
   // Form state
   const [selectedWO, setSelectedWO] = useState<string>("");
@@ -47,6 +48,13 @@ export function RPOModal({
   const [ratePerKg, setRatePerKg] = useState<string>("");
   const [expectedDelivery, setExpectedDelivery] = useState<string>("");
   const [remarks, setRemarks] = useState<string>("");
+  
+  // New supplier form state
+  const [newSupplierName, setNewSupplierName] = useState<string>("");
+  const [newSupplierContact, setNewSupplierContact] = useState<string>("");
+  const [newSupplierEmail, setNewSupplierEmail] = useState<string>("");
+  const [newSupplierPhone, setNewSupplierPhone] = useState<string>("");
+  const [addingSupplier, setAddingSupplier] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -108,6 +116,54 @@ export function RPOModal({
   const handleSubmitForApproval = async () => {
     if (!validateForm()) return;
     await saveRPO("pending_approval");
+  };
+
+  const handleAddSupplier = async () => {
+    if (!newSupplierName.trim()) {
+      toast({ variant: "destructive", description: "Supplier name is required" });
+      return;
+    }
+    
+    setAddingSupplier(true);
+    try {
+      const { data, error } = await supabase
+        .from("suppliers")
+        .insert({
+          name: newSupplierName.trim(),
+          contact_name: newSupplierContact.trim() || null,
+          email: newSupplierEmail.trim() || null,
+          phone: newSupplierPhone.trim() || null
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Supplier Added",
+        description: `${newSupplierName} has been added successfully`
+      });
+      
+      // Reload suppliers and select the new one
+      await loadSuppliers();
+      setSupplierId(data.id);
+      
+      // Reset form and close
+      setNewSupplierName("");
+      setNewSupplierContact("");
+      setNewSupplierEmail("");
+      setNewSupplierPhone("");
+      setShowAddSupplier(false);
+    } catch (error: any) {
+      console.error("Error adding supplier:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to Add Supplier",
+        description: error.message
+      });
+    } finally {
+      setAddingSupplier(false);
+    }
   };
 
   const saveRPO = async (status: "draft" | "pending_approval") => {
@@ -266,25 +322,93 @@ export function RPOModal({
           {/* Supplier */}
           <div>
             <Label>Supplier *</Label>
-            <Select value={supplierId} onValueChange={setSupplierId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Supplier" />
-              </SelectTrigger>
-              <SelectContent className="z-[100] bg-background">
-                {suppliers.length === 0 ? (
-                  <div className="px-4 py-2 text-sm text-muted-foreground">
-                    No suppliers found. Please add suppliers first.
-                  </div>
-                ) : (
-                  suppliers.map(sup => (
-                    <SelectItem key={sup.id} value={sup.id}>
-                      {sup.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={supplierId} onValueChange={setSupplierId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select Supplier" />
+                </SelectTrigger>
+                <SelectContent className="z-[100] bg-background">
+                  {suppliers.length === 0 ? (
+                    <div className="px-4 py-2 text-sm text-muted-foreground">
+                      No suppliers found
+                    </div>
+                  ) : (
+                    suppliers.map(sup => (
+                      <SelectItem key={sup.id} value={sup.id}>
+                        {sup.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddSupplier(true)}
+                className="shrink-0"
+              >
+                Add New
+              </Button>
+            </div>
           </div>
+          
+          {/* Add New Supplier Dialog */}
+          {showAddSupplier && (
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">Add New Supplier</h4>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddSupplier(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+              <div>
+                <Label className="text-xs">Supplier Name *</Label>
+                <Input
+                  value={newSupplierName}
+                  onChange={(e) => setNewSupplierName(e.target.value)}
+                  placeholder="Enter supplier name"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Contact Person</Label>
+                <Input
+                  value={newSupplierContact}
+                  onChange={(e) => setNewSupplierContact(e.target.value)}
+                  placeholder="Contact person name"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Email</Label>
+                <Input
+                  type="email"
+                  value={newSupplierEmail}
+                  onChange={(e) => setNewSupplierEmail(e.target.value)}
+                  placeholder="Email address"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Phone</Label>
+                <Input
+                  value={newSupplierPhone}
+                  onChange={(e) => setNewSupplierPhone(e.target.value)}
+                  placeholder="Phone number"
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={handleAddSupplier}
+                disabled={addingSupplier}
+                className="w-full"
+              >
+                {addingSupplier ? "Adding..." : "Add Supplier"}
+              </Button>
+            </div>
+          )}
 
           {/* Rate per kg */}
           <div>
