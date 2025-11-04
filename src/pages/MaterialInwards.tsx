@@ -27,6 +27,8 @@ interface RPO {
   status: string;
   suppliers: { name: string };
   work_orders: { wo_id: string };
+  qty_received?: number;
+  qty_remaining?: number;
 }
 
 export default function MaterialInwards() {
@@ -75,6 +77,39 @@ export default function MaterialInwards() {
     if (rpoId) {
       loadSpecificRPO(rpoId);
     }
+
+    // Realtime subscriptions
+    const channel = supabase
+      .channel('material-inwards-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'raw_purchase_orders' },
+        () => {
+          console.log('RPO changed, reloading...');
+          loadApprovedRPOs();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'raw_po_receipts' },
+        () => {
+          console.log('Receipts changed, reloading...');
+          loadApprovedRPOs();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_lots' },
+        () => {
+          console.log('Inventory changed, reloading...');
+          loadApprovedRPOs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const loadSettings = async () => {
@@ -123,7 +158,27 @@ export default function MaterialInwards() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setApprovedRPOs(data || []);
+
+      // Fetch received quantities for each RPO
+      const rposWithReceipts = await Promise.all(
+        (data || []).map(async (rpo) => {
+          const { data: receipts } = await supabase
+            .from("raw_po_receipts")
+            .select("qty_received_kg")
+            .eq("rpo_id", rpo.id);
+
+          const qtyReceived = (receipts || []).reduce((sum, r) => sum + r.qty_received_kg, 0);
+          const qtyRemaining = rpo.qty_ordered_kg - qtyReceived;
+
+          return {
+            ...rpo,
+            qty_received: qtyReceived,
+            qty_remaining: qtyRemaining
+          };
+        })
+      );
+
+      setApprovedRPOs(rposWithReceipts);
     } catch (error: any) {
       console.error("Error loading RPOs:", error);
       toast({ variant: "destructive", description: error.message });
@@ -390,6 +445,11 @@ export default function MaterialInwards() {
                           <div><span className="text-muted-foreground">Alloy:</span> {selectedRPO.alloy}</div>
                           <div><span className="text-muted-foreground">Qty Ordered:</span> {selectedRPO.qty_ordered_kg.toFixed(3)} kg</div>
                           <div><span className="text-muted-foreground">Rate:</span> ₹{selectedRPO.rate_per_kg.toFixed(2)}/kg</div>
+                          <div className="col-span-2 mt-2 pt-2 border-t">
+                            <span className="text-muted-foreground">Received:</span> <span className="font-semibold text-primary">{(selectedRPO.qty_received || 0).toFixed(3)} kg</span>
+                            {" / "}
+                            <span className="text-muted-foreground">Remaining:</span> <span className="font-semibold text-amber-600">{(selectedRPO.qty_remaining || selectedRPO.qty_ordered_kg).toFixed(3)} kg</span>
+                          </div>
                         </div>
                       </div>
                       <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRPO(null)}>
@@ -570,7 +630,9 @@ export default function MaterialInwards() {
                 <TableHead>WO</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Size/Alloy</TableHead>
-                <TableHead>Qty (kg)</TableHead>
+                <TableHead>Ordered</TableHead>
+                <TableHead>Received</TableHead>
+                <TableHead>Remaining</TableHead>
                 <TableHead>Rate</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
@@ -578,7 +640,7 @@ export default function MaterialInwards() {
             <TableBody>
               {filteredRPOs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
                     No approved RPOs found
                   </TableCell>
                 </TableRow>
@@ -597,7 +659,13 @@ export default function MaterialInwards() {
                       <br />
                       <span className="text-xs text-muted-foreground">{rpo.alloy}</span>
                     </TableCell>
-                    <TableCell>{rpo.qty_ordered_kg.toFixed(3)}</TableCell>
+                    <TableCell>{rpo.qty_ordered_kg.toFixed(3)} kg</TableCell>
+                    <TableCell>
+                      <span className="font-semibold text-primary">{(rpo.qty_received || 0).toFixed(3)} kg</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-semibold text-amber-600">{(rpo.qty_remaining || rpo.qty_ordered_kg).toFixed(3)} kg</span>
+                    </TableCell>
                     <TableCell>₹{rpo.rate_per_kg.toFixed(2)}</TableCell>
                     <TableCell>
                       <Button size="sm" onClick={() => handleRPOSelection(rpo)}>
