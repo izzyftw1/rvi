@@ -4,96 +4,125 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, AlertCircle, Trash2, Scissors, Hammer } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Plus, AlertCircle, Trash2, Scissors, Hammer, Send, Package, MoreVertical, Settings2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
+import { SendToExternalDialog } from "@/components/SendToExternalDialog";
+import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
+import { isPast, parseISO } from "date-fns";
+
+const COLUMNS_KEY = "workorders_visible_columns";
+const DEFAULT_COLUMNS = {
+  customer: true,
+  item: true,
+  qty: true,
+  due: true,
+  stage: true,
+  external: true,
+  overdue: true,
+  aging: false,
+};
 
 const WorkOrders = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  
+  // Column toggles
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem(COLUMNS_KEY);
+    return saved ? JSON.parse(saved) : DEFAULT_COLUMNS;
+  });
+  
+  // External processing
+  const [selectedWO, setSelectedWO] = useState<any>(null);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [selectedMove, setSelectedMove] = useState<any>(null);
 
   useEffect(() => {
     loadWorkOrders();
 
-    // Subscribe to realtime updates
     const channel = supabase
       .channel('work_orders_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
-        console.log('Work orders updated - refreshing');
-        loadWorkOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => {
-        console.log('Sales orders updated - refreshing work orders');
-        loadWorkOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_order_line_items' }, () => {
-        console.log('Sales order line items updated - refreshing work orders');
-        loadWorkOrders();
-      })
-      .subscribe((status) => {
-        console.log('Work Orders realtime subscription status:', status);
-      });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadWorkOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadWorkOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, loadWorkOrders)
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentPage]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [workOrders, searchQuery, stageFilter, statusFilter]);
+
+  useEffect(() => {
+    localStorage.setItem(COLUMNS_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
 
   const loadWorkOrders = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Load work orders
-      const { data: workOrders, error: queryError } = await supabase
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      // Load work orders with count
+      const { data: workOrders, error: queryError, count } = await supabase
         .from("work_orders")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select("*", { count: 'exact' })
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (queryError) throw queryError;
 
-      // Load related sales orders and line items
-      const salesOrderIds = [...new Set(workOrders?.map(wo => wo.sales_order).filter(Boolean))] as string[];
+      setTotalCount(count || 0);
+
+      // Load external moves for visible WOs
+      const woIds = (workOrders || []).map((wo: any) => wo.id);
+      let movesMap: Record<string, any[]> = {};
       
-      let salesOrdersMap: any = {};
-      let lineItemsMap: any = {};
-
-      if (salesOrderIds.length > 0) {
-        const { data: salesOrders } = await supabase
-          .from("sales_orders")
-          .select("id, so_id, customer")
-          .in("id", salesOrderIds);
+      if (woIds.length > 0) {
+        const { data: moves } = await supabase
+          .from("wo_external_moves" as any)
+          .select("id, work_order_id, process, qty_sent, status, expected_return_date, challan_no")
+          .in("work_order_id", woIds);
         
-        salesOrdersMap = Object.fromEntries((salesOrders || []).map(so => [so.id, so]));
-
-        const { data: lineItems } = await supabase
-          .from("sales_order_line_items" as any)
-          .select("*")
-          .in("sales_order_id", salesOrderIds);
-        
-        // Map line items by work_order_id
-        lineItemsMap = Object.fromEntries(
-          (lineItems || [])
-            .filter((li: any) => li.work_order_id)
-            .map((li: any) => [li.work_order_id, li])
-        );
+        (moves || []).forEach((move: any) => {
+          if (!movesMap[move.work_order_id]) movesMap[move.work_order_id] = [];
+          movesMap[move.work_order_id].push(move);
+        });
       }
 
       // Combine data
-      const data = workOrders?.map(wo => ({
+      const data = (workOrders || []).map((wo: any) => ({
         ...wo,
-        sales_order: wo.sales_order ? salesOrdersMap[wo.sales_order] : null,
-        line_item: wo.id ? lineItemsMap[wo.id] : null
-      }));
+        external_moves: movesMap[wo.id] || [],
+      })) as any[];
 
-      if (queryError) {
-        throw queryError;
-      }
-
-      setWorkOrders(data || []);
+      setWorkOrders(data);
     } catch (err: any) {
       console.error("Error loading work orders:", err);
       setError(err.message || "Failed to load work orders");
@@ -103,44 +132,66 @@ const WorkOrders = () => {
     }
   };
 
-  const getPriorityVariant = (priority: number) => {
-    if (priority <= 2) return "destructive";
-    return "secondary";
+  const applyFilters = () => {
+    let filtered = [...workOrders];
+
+    // Search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(wo =>
+        wo.display_id?.toLowerCase().includes(query) ||
+        wo.wo_id?.toLowerCase().includes(query) ||
+        wo.customer?.toLowerCase().includes(query) ||
+        wo.item_code?.toLowerCase().includes(query)
+      );
+    }
+
+    // Stage filter
+    if (stageFilter !== "all") {
+      if (["job_work", "plating", "buffing", "blasting", "forging"].includes(stageFilter)) {
+        // External stage
+        filtered = filtered.filter(wo =>
+          (wo.external_wip && wo.external_wip[stageFilter] > 0) ||
+          wo.external_moves?.some((m: any) => m.process === stageFilter && m.status !== 'received_full')
+        );
+      } else {
+        // Internal stage
+        filtered = filtered.filter(wo => wo.current_stage === stageFilter);
+      }
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(wo => wo.status === statusFilter);
+    }
+
+    setFilteredOrders(filtered);
   };
 
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "default";
-      case "in_progress":
-        return "secondary";
-      case "cancelled":
-        return "destructive";
-      default:
-        return "outline";
-    }
+  const getExternalWIPSummary = (wo: any) => {
+    if (!wo.external_wip || Object.keys(wo.external_wip).length === 0) return null;
+    return Object.entries(wo.external_wip)
+      .map(([process, qty]) => `${process.replace('_', ' ')}: ${qty}`)
+      .join(" / ");
   };
 
-  const getStatusLabel = (status: string) => {
-    // Map status values to display labels
-    switch (status) {
-      case "in_progress":
-        return "In Progress";
-      case "pending":
-        return "Pending";
-      case "completed":
-        return "Completed";
-      case "cancelled":
-        return "Cancelled";
-      default:
-        return status;
-    }
+  const hasOverdueReturns = (wo: any) => {
+    return wo.external_moves?.some((m: any) => 
+      m.expected_return_date && 
+      isPast(parseISO(m.expected_return_date)) && 
+      m.status !== 'received_full'
+    );
+  };
+
+  const getAging = (wo: any) => {
+    const created = new Date(wo.created_at);
+    const now = new Date();
+    const days = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+    return days;
   };
 
   const handleDeleteWorkOrder = async (woId: string, displayId: string) => {
-    if (!confirm(`Are you sure you want to delete Work Order ${displayId}? This action cannot be undone.`)) {
-      return;
-    }
+    if (!confirm(`Are you sure you want to delete Work Order ${displayId}?`)) return;
 
     setLoading(true);
     try {
@@ -150,7 +201,6 @@ const WorkOrders = () => {
         .eq("id", woId);
 
       if (error) throw error;
-
       toast({ description: `Work Order ${displayId} deleted successfully` });
       await loadWorkOrders();
     } catch (err: any) {
@@ -160,11 +210,17 @@ const WorkOrders = () => {
     }
   };
 
+  const toggleColumn = (column: string) => {
+    setVisibleColumns((prev: any) => ({ ...prev, [column]: !prev[column] }));
+  };
+
+  const totalPages = Math.ceil(totalCount / pageSize);
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader />
       
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
+      <div className="max-w-7xl mx-auto p-4 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Work Orders</h1>
@@ -176,6 +232,81 @@ const WorkOrders = () => {
           </Button>
         </div>
 
+        {/* Filters */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search WO, Customer, Item..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
+              <Select value={stageFilter} onValueChange={setStageFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Stages" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Stages</SelectItem>
+                  <SelectItem value="goods_in">Goods In</SelectItem>
+                  <SelectItem value="cutting_queue">Cutting Queue</SelectItem>
+                  <SelectItem value="cutting_in_progress">Cutting In Progress</SelectItem>
+                  <SelectItem value="forging_queue">Forging Queue</SelectItem>
+                  <SelectItem value="forging_in_progress">Forging In Progress</SelectItem>
+                  <SelectItem value="production">Production</SelectItem>
+                  <SelectItem value="qc">QC</SelectItem>
+                  <SelectItem value="packing">Packing</SelectItem>
+                  <SelectItem value="dispatch">Dispatch</SelectItem>
+                  <SelectItem value="job_work">Job Work (External)</SelectItem>
+                  <SelectItem value="plating">Plating (External)</SelectItem>
+                  <SelectItem value="buffing">Buffing (External)</SelectItem>
+                  <SelectItem value="blasting">Blasting (External)</SelectItem>
+                  <SelectItem value="forging">Forging (External)</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Settings2 className="h-4 w-4 mr-2" />
+                    Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {Object.entries(DEFAULT_COLUMNS).map(([key, _]) => (
+                    <DropdownMenuItem key={key} onSelect={(e) => e.preventDefault()}>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          checked={visibleColumns[key]}
+                          onCheckedChange={() => toggleColumn(key)}
+                        />
+                        <Label className="capitalize cursor-pointer">{key}</Label>
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </CardContent>
+        </Card>
+
         {error && (
           <Card className="border-destructive">
             <CardContent className="py-6">
@@ -184,19 +315,11 @@ const WorkOrders = () => {
                 <p className="font-medium">Error loading Work Orders</p>
               </div>
               <p className="text-sm text-muted-foreground mt-2">{error}</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={loadWorkOrders}
-                className="mt-4"
-              >
-                Try Again
-              </Button>
             </CardContent>
           </Card>
         )}
 
-        {loading && !error && (
+        {loading && (
           <Card>
             <CardContent className="py-12 text-center">
               <p className="text-muted-foreground">Loading work orders...</p>
@@ -204,102 +327,197 @@ const WorkOrders = () => {
           </Card>
         )}
 
-        {!loading && !error && workOrders.length === 0 && (
+        {!loading && !error && filteredOrders.length === 0 && (
           <Card>
-            <CardContent className="py-12 text-center space-y-2">
-              <p className="text-lg font-medium">No Work Orders Yet</p>
-              <p className="text-sm text-muted-foreground">
-                Work orders will appear here when created
-              </p>
-              <Button 
-                onClick={() => navigate("/work-orders/new")}
-                className="mt-4"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create First Work Order
-              </Button>
+            <CardContent className="py-12 text-center">
+              <p className="text-lg font-medium">No Work Orders Found</p>
             </CardContent>
           </Card>
         )}
 
-        {!loading && !error && workOrders.length > 0 && (
-          <div className="grid gap-4">
-            {workOrders.map((wo) => (
-              <Card
-                key={wo.id}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div onClick={() => navigate(`/work-orders/${wo.id}`)} className="flex-1 cursor-pointer">
-                      <CardTitle className="text-lg">
-                        {wo.display_id || wo.wo_id || "—"}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {wo.customer || "—"} • {wo.item_code || "—"}
-                        {wo.customer_po && ` • PO: ${wo.customer_po}`}
-                      </p>
-                      {wo.sales_order && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          From SO: {wo.sales_order.so_id}
-                          {wo.line_item && ` • Line #${wo.line_item.line_number}`}
-                        </p>
+        {!loading && !error && filteredOrders.length > 0 && (
+          <div className="space-y-4">
+            {filteredOrders.map((wo) => {
+              const externalWIP = getExternalWIPSummary(wo);
+              const overdueReturns = hasOverdueReturns(wo);
+              const aging = getAging(wo);
+
+              return (
+                <Card key={wo.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div onClick={() => navigate(`/work-orders/${wo.id}`)} className="flex-1 cursor-pointer">
+                        <CardTitle className="text-lg">
+                          {wo.display_id || wo.wo_id || "—"}
+                        </CardTitle>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {visibleColumns.stage && (
+                            <Badge variant="outline" className="capitalize">
+                              {wo.current_stage?.replace(/_/g, " ") || "—"}
+                            </Badge>
+                          )}
+                          {visibleColumns.external && externalWIP && (
+                            <Badge variant="secondary" className="cursor-pointer" onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/work-orders/${wo.id}?tab=external`);
+                            }}>
+                              <Package className="h-3 w-3 mr-1" />
+                              {externalWIP}
+                            </Badge>
+                          )}
+                          {visibleColumns.overdue && overdueReturns && (
+                            <Badge variant="destructive" className="cursor-pointer" onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/work-orders/${wo.id}?tab=external`);
+                            }}>
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              Overdue Returns
+                            </Badge>
+                          )}
+                          {wo.cutting_required && <Scissors className="h-4 w-4 text-orange-600" />}
+                          {wo.forging_required && <Hammer className="h-4 w-4 text-blue-600" />}
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedWO(wo);
+                            setSendDialogOpen(true);
+                          }}>
+                            <Send className="h-4 w-4 mr-2" />
+                            Send to External
+                          </DropdownMenuItem>
+                          {wo.external_moves?.length > 0 && (
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedMove(wo.external_moves[0]);
+                              setReceiptDialogOpen(true);
+                            }}>
+                              <Package className="h-4 w-4 mr-2" />
+                              Record Receipt
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => navigate(`/work-orders/${wo.id}?tab=external`)}>
+                            View External Timeline
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteWorkOrder(wo.id, wo.display_id || wo.wo_id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent onClick={() => navigate(`/work-orders/${wo.id}`)} className="cursor-pointer">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
+                      {visibleColumns.customer && (
+                        <div>
+                          <p className="text-muted-foreground">Customer</p>
+                          <p className="font-medium truncate">{wo.customer || "—"}</p>
+                        </div>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={getStatusVariant(wo.status || "pending")}>
-                        {getStatusLabel(wo.status || "pending")}
-                      </Badge>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteWorkOrder(wo.id, wo.display_id || wo.wo_id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent onClick={() => navigate(`/work-orders/${wo.id}`)} className="cursor-pointer">
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Quantity</p>
-                      <p className="font-medium">{wo.quantity || 0} pcs</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Due Date</p>
-                      <p className="font-medium">
-                        {wo.due_date 
-                          ? new Date(wo.due_date).toLocaleDateString() 
-                          : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Priority</p>
-                      <Badge variant={getPriorityVariant(wo.priority || 3)}>
-                        P{wo.priority || 3}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Stage</p>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium capitalize">
-                          {wo.current_stage?.replace(/_/g, " ") || "—"}
-                        </p>
-                        {wo.cutting_required && <Scissors className="h-4 w-4 text-orange-600" />}
-                        {wo.forging_required && <Hammer className="h-4 w-4 text-blue-600" />}
+                      {visibleColumns.item && (
+                        <div>
+                          <p className="text-muted-foreground">Item</p>
+                          <p className="font-medium truncate">{wo.item_code || "—"}</p>
+                        </div>
+                      )}
+                      {visibleColumns.qty && (
+                        <div>
+                          <p className="text-muted-foreground">Quantity</p>
+                          <p className="font-medium">{wo.quantity || 0} pcs</p>
+                        </div>
+                      )}
+                      {visibleColumns.due && (
+                        <div>
+                          <p className="text-muted-foreground">Due Date</p>
+                          <p className="font-medium">
+                            {wo.due_date ? new Date(wo.due_date).toLocaleDateString() : "—"}
+                          </p>
+                        </div>
+                      )}
+                      {visibleColumns.aging && (
+                        <div>
+                          <p className="text-muted-foreground">Age</p>
+                          <p className="font-medium">{aging} days</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-muted-foreground">Status</p>
+                        <Badge variant={wo.status === 'completed' ? 'default' : 'secondary'}>
+                          {wo.status?.replace('_', ' ')}
+                        </Badge>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} work orders
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {selectedWO && (
+        <SendToExternalDialog
+          open={sendDialogOpen}
+          onOpenChange={setSendDialogOpen}
+          workOrder={selectedWO}
+          onSuccess={() => {
+            loadWorkOrders();
+            setSendDialogOpen(false);
+          }}
+        />
+      )}
+
+      {selectedMove && (
+        <ExternalReceiptDialog
+          open={receiptDialogOpen}
+          onOpenChange={setReceiptDialogOpen}
+          move={selectedMove}
+          onSuccess={() => {
+            loadWorkOrders();
+            setReceiptDialogOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

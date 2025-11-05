@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,7 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-f
 const WorkOrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { isFinanceRole } = useUserRole();
   const [wo, setWo] = useState<any>(null);
@@ -841,7 +842,7 @@ const WorkOrderDetail = () => {
         )}
 
         {/* Tabs */}
-        <Tabs defaultValue="production" className="w-full">
+        <Tabs defaultValue={searchParams.get('tab') || "production"} className="w-full">
             <TabsList className="grid w-full grid-cols-11">
               <TabsTrigger value="production">Production</TabsTrigger>
               <TabsTrigger value="routing">Routing</TabsTrigger>
