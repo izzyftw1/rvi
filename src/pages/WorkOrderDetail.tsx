@@ -12,7 +12,9 @@ import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send } from "lucide-react";
+import { SendToExternalDialog } from "@/components/SendToExternalDialog";
+import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
@@ -51,6 +53,8 @@ const WorkOrderDetail = () => {
   const [overrideReason, setOverrideReason] = useState('');
   const [cuttingRecords, setCuttingRecords] = useState<any[]>([]);
   const [forgingRecords, setForgingRecords] = useState<any[]>([]);
+  const [showExternalDialog, setShowExternalDialog] = useState(false);
+  const [externalMoves, setExternalMoves] = useState<any[]>([]);
 
   useEffect(() => {
     loadWorkOrderData();
@@ -62,6 +66,9 @@ const WorkOrderDetail = () => {
         loadWorkOrderData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forging_records', filter: `work_order_id=eq.${id}` }, () => {
+        loadWorkOrderData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves', filter: `work_order_id=eq.${id}` }, () => {
         loadWorkOrderData();
       })
       .subscribe();
@@ -270,6 +277,15 @@ const WorkOrderDetail = () => {
         .order("created_at", { ascending: false });
       
       setForgingRecords(forgingData || []);
+
+      // Load external moves
+      const { data: movesData } = await supabase
+        .from("wo_external_moves")
+        .select("*")
+        .eq("work_order_id", id)
+        .order("dispatch_date", { ascending: false });
+      
+      setExternalMoves(movesData || []);
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -563,6 +579,14 @@ const WorkOrderDetail = () => {
           </div>
           <div className="flex items-center gap-2">
             <Button 
+              onClick={() => setShowExternalDialog(true)} 
+              variant="secondary"
+              size="sm"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send to External
+            </Button>
+            <Button 
               onClick={() => setShowAssignmentDialog(true)} 
               variant="default"
               disabled={qcGatesBlocked}
@@ -721,13 +745,58 @@ const WorkOrderDetail = () => {
 
         {/* Production Progress Card */}
         {woProgress && (
-          <WOProgressCard
-            targetQuantity={woProgress.target_quantity}
-            completedQuantity={woProgress.total_completed}
-            scrapQuantity={woProgress.total_scrap}
-            progressPercentage={woProgress.progress_percentage}
-            remainingQuantity={woProgress.remaining_quantity}
-          />
+          <div className="space-y-4">
+            <WOProgressCard
+              targetQuantity={woProgress.target_quantity}
+              completedQuantity={woProgress.total_completed}
+              scrapQuantity={woProgress.total_scrap}
+              progressPercentage={woProgress.progress_percentage}
+              remainingQuantity={woProgress.remaining_quantity}
+            />
+            
+            {/* External WIP Distribution */}
+            {wo.external_out_total > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">External Processing Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Total Sent:</span>
+                      <span className="font-semibold">{wo.external_out_total} pcs</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Total Returned:</span>
+                      <span className="font-semibold">{wo.external_in_total} pcs</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Currently Out:</span>
+                      <span className="font-semibold text-orange-600">
+                        {wo.external_out_total - wo.external_in_total} pcs
+                      </span>
+                    </div>
+                    
+                    {wo.external_wip && Object.keys(wo.external_wip).length > 0 && (
+                      <div className="mt-4 pt-3 border-t">
+                        <p className="text-xs text-muted-foreground mb-2">By Process:</p>
+                        <div className="space-y-2">
+                          {Object.entries(wo.external_wip).map(([process, qty]: [string, any]) => (
+                            <div key={process} className="flex justify-between items-center text-sm">
+                              <Badge variant="outline" className="capitalize">
+                                {process.replace('_', ' ')}
+                              </Badge>
+                              <span className="font-medium">{qty} pcs</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
 
         {/* OEE Widget for running WO */}
@@ -773,7 +842,7 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="production" className="w-full">
-            <TabsList className="grid w-full grid-cols-10">
+            <TabsList className="grid w-full grid-cols-11">
               <TabsTrigger value="production">Production</TabsTrigger>
               <TabsTrigger value="routing">Routing</TabsTrigger>
               <TabsTrigger value="stage-history">Stage History</TabsTrigger>
@@ -783,6 +852,7 @@ const WorkOrderDetail = () => {
               <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
               {wo.cutting_required && <TabsTrigger value="cutting">Cutting</TabsTrigger>}
               {wo.forging_required && <TabsTrigger value="forging">Forging</TabsTrigger>}
+              <TabsTrigger value="external">External</TabsTrigger>
               <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
           </TabsList>
 
@@ -1222,6 +1292,10 @@ const WorkOrderDetail = () => {
             </TabsContent>
           )}
 
+          <TabsContent value="external" className="space-y-4">
+            <ExternalProcessingTab workOrderId={id || ""} />
+          </TabsContent>
+
           <TabsContent value="genealogy" className="space-y-4">
             <Card>
               <CardHeader>
@@ -1408,6 +1482,14 @@ const WorkOrderDetail = () => {
             loadWorkOrderData();
             toast({ title: "Success", description: "Machines assigned to work order" });
           }}
+        />
+
+        {/* Send to External Dialog */}
+        <SendToExternalDialog
+          open={showExternalDialog}
+          onOpenChange={setShowExternalDialog}
+          workOrder={wo}
+          onSuccess={loadWorkOrderData}
         />
       </div>
     </div>
