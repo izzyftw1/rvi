@@ -273,6 +273,66 @@ export type Database = {
         }
         Relationships: []
       }
+      cutting_records: {
+        Row: {
+          created_at: string
+          end_date: string | null
+          id: string
+          item_code: string
+          operator_id: string | null
+          qty_cut: number | null
+          qty_required: number
+          remarks: string | null
+          start_date: string | null
+          status: string
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          item_code: string
+          operator_id?: string | null
+          qty_cut?: number | null
+          qty_required: number
+          remarks?: string | null
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          item_code?: string
+          operator_id?: string | null
+          qty_cut?: number | null
+          qty_required?: number
+          remarks?: string | null
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cutting_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cutting_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           created_at: string
@@ -522,6 +582,79 @@ export type Database = {
           working?: boolean | null
         }
         Relationships: []
+      }
+      forging_records: {
+        Row: {
+          created_at: string
+          forging_end_date: string | null
+          forging_start_date: string | null
+          forging_vendor: string | null
+          id: string
+          qc_approved: boolean | null
+          qc_record_id: string | null
+          qty_forged: number | null
+          qty_required: number
+          remarks: string | null
+          sample_sent: boolean | null
+          status: string
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          forging_end_date?: string | null
+          forging_start_date?: string | null
+          forging_vendor?: string | null
+          id?: string
+          qc_approved?: boolean | null
+          qc_record_id?: string | null
+          qty_forged?: number | null
+          qty_required: number
+          remarks?: string | null
+          sample_sent?: boolean | null
+          status?: string
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          forging_end_date?: string | null
+          forging_start_date?: string | null
+          forging_vendor?: string | null
+          id?: string
+          qc_approved?: boolean | null
+          qc_record_id?: string | null
+          qty_forged?: number | null
+          qty_required?: number
+          remarks?: string | null
+          sample_sent?: boolean | null
+          status?: string
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forging_records_qc_record_id_fkey"
+            columns: ["qc_record_id"]
+            isOneToOne: false
+            referencedRelation: "qc_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "forging_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "forging_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       hourly_qc_checks: {
         Row: {
@@ -3582,11 +3715,14 @@ export type Database = {
           customer: string
           customer_id: string | null
           customer_po: string | null
+          cutting_required: boolean | null
           cycle_time_seconds: number | null
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string
           financial_snapshot: Json | null
+          forging_required: boolean | null
+          forging_vendor: string | null
           gross_weight_per_pc: number | null
           hidden_financial: boolean | null
           id: string
@@ -3621,11 +3757,14 @@ export type Database = {
           customer: string
           customer_id?: string | null
           customer_po?: string | null
+          cutting_required?: boolean | null
           cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date: string
           financial_snapshot?: Json | null
+          forging_required?: boolean | null
+          forging_vendor?: string | null
           gross_weight_per_pc?: number | null
           hidden_financial?: boolean | null
           id?: string
@@ -3660,11 +3799,14 @@ export type Database = {
           customer?: string
           customer_id?: string | null
           customer_po?: string | null
+          cutting_required?: boolean | null
           cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string
           financial_snapshot?: Json | null
+          forging_required?: boolean | null
+          forging_vendor?: string | null
           gross_weight_per_pc?: number | null
           hidden_financial?: boolean | null
           id?: string
@@ -4054,7 +4196,18 @@ export type Database = {
         | "out_for_delivery"
         | "delivered"
         | "exception"
-      wo_stage: "goods_in" | "production" | "qc" | "packing" | "dispatch"
+      wo_stage:
+        | "goods_in"
+        | "production"
+        | "qc"
+        | "packing"
+        | "dispatch"
+        | "cutting_queue"
+        | "cutting_in_progress"
+        | "cutting_complete"
+        | "forging_queue"
+        | "forging_in_progress"
+        | "forging_complete"
       wo_status:
         | "pending"
         | "in_progress"
@@ -4298,7 +4451,19 @@ export const Constants = {
         "delivered",
         "exception",
       ],
-      wo_stage: ["goods_in", "production", "qc", "packing", "dispatch"],
+      wo_stage: [
+        "goods_in",
+        "production",
+        "qc",
+        "packing",
+        "dispatch",
+        "cutting_queue",
+        "cutting_in_progress",
+        "cutting_complete",
+        "forging_queue",
+        "forging_in_progress",
+        "forging_complete",
+      ],
       wo_status: [
         "pending",
         "in_progress",

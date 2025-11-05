@@ -54,6 +54,8 @@ import FinanceReports from "./pages/finance/FinanceReports";
 import CreateInvoices from "./pages/finance/CreateInvoices";
 import MachineRuntime from "./pages/reports/MachineRuntime";
 import WorkerEfficiency from "./pages/reports/WorkerEfficiency";
+import Cutting from "./pages/Cutting";
+import Forging from "./pages/Forging";
 
 
 const App = () => (
@@ -90,6 +92,8 @@ const App = () => (
           <Route path="/floor-dashboard" element={<ProtectedRoute><FloorDashboard /></ProtectedRoute>} />
           <Route path="/machine-status" element={<ProtectedRoute><MachineStatus /></ProtectedRoute>} />
           <Route path="/cnc-dashboard" element={<ProtectedRoute><CNCDashboard /></ProtectedRoute>} />
+          <Route path="/cutting" element={<ProtectedRoute><Cutting /></ProtectedRoute>} />
+          <Route path="/forging" element={<ProtectedRoute><Forging /></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
         <Route path="/tolerance-setup" element={<ProtectedRoute><ToleranceSetup /></ProtectedRoute>} />
         <Route path="/hourly-qc" element={<ProtectedRoute><HourlyQC /></ProtectedRoute>} />

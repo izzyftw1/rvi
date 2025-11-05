@@ -26,6 +26,8 @@ import { TodayTimeline } from "@/components/dashboard/TodayTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { convertToINR, formatINR } from "@/lib/currencyConverter";
+import { CuttingDashboard } from "@/components/dashboard/CuttingDashboard";
+import { ForgingDashboard } from "@/components/dashboard/ForgingDashboard";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -491,6 +493,15 @@ const Index = () => {
         <div>
           <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
           <QuickActionsAccordion />
+        </div>
+
+        {/* Department Dashboards */}
+        <div>
+          <h2 className="text-xl font-bold mb-4">Department Status</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <CuttingDashboard />
+            <ForgingDashboard />
+          </div>
         </div>
 
         {/* Floor Kanban */}
