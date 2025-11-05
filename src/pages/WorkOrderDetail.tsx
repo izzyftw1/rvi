@@ -12,7 +12,7 @@ import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
@@ -49,9 +49,26 @@ const WorkOrderDetail = () => {
   const [qcGatesBlocked, setQcGatesBlocked] = useState(false);
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
+  const [cuttingRecords, setCuttingRecords] = useState<any[]>([]);
+  const [forgingRecords, setForgingRecords] = useState<any[]>([]);
 
   useEffect(() => {
     loadWorkOrderData();
+
+    // Setup real-time subscriptions
+    const channel = supabase
+      .channel('work_order_details')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cutting_records', filter: `work_order_id=eq.${id}` }, () => {
+        loadWorkOrderData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forging_records', filter: `work_order_id=eq.${id}` }, () => {
+        loadWorkOrderData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -235,6 +252,24 @@ const WorkOrderDetail = () => {
       if (assignmentsData && assignmentsData.length > 0) {
         await loadWOOEE(assignmentsData);
       }
+
+      // Load cutting records
+      const { data: cuttingData } = await supabase
+        .from("cutting_records")
+        .select("*")
+        .eq("work_order_id", id)
+        .order("created_at", { ascending: false });
+      
+      setCuttingRecords(cuttingData || []);
+
+      // Load forging records
+      const { data: forgingData } = await supabase
+        .from("forging_records")
+        .select("*")
+        .eq("work_order_id", id)
+        .order("created_at", { ascending: false });
+      
+      setForgingRecords(forgingData || []);
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -738,7 +773,7 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="production" className="w-full">
-            <TabsList className="grid w-full grid-cols-8">
+            <TabsList className="grid w-full grid-cols-10">
               <TabsTrigger value="production">Production</TabsTrigger>
               <TabsTrigger value="routing">Routing</TabsTrigger>
               <TabsTrigger value="stage-history">Stage History</TabsTrigger>
@@ -746,6 +781,8 @@ const WorkOrderDetail = () => {
               <TabsTrigger value="materials">Materials</TabsTrigger>
               <TabsTrigger value="qc">QC Records</TabsTrigger>
               <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
+              {wo.cutting_required && <TabsTrigger value="cutting">Cutting</TabsTrigger>}
+              {wo.forging_required && <TabsTrigger value="forging">Forging</TabsTrigger>}
               <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
           </TabsList>
 
@@ -1031,6 +1068,160 @@ const WorkOrderDetail = () => {
             <QCRecordsTab records={hourlyQcRecords} woId={wo.wo_id} workOrder={wo} onUpdate={loadWorkOrderData} />
           </TabsContent>
 
+          {wo.cutting_required && (
+            <TabsContent value="cutting" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Cutting Records</CardTitle>
+                    <Button onClick={() => window.open('/cutting', '_blank')} variant="outline" size="sm">
+                      Open Cutting Dashboard
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {cuttingRecords.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No cutting records yet
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cuttingRecords.map((record) => (
+                        <div key={record.id} className="p-4 border rounded-lg">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="font-medium text-lg">{record.item_code}</p>
+                              <Badge variant={
+                                record.status === 'completed' ? 'default' : 
+                                record.status === 'in_progress' ? 'secondary' : 
+                                'outline'
+                              }>
+                                {record.status.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-muted-foreground">Progress</p>
+                              <p className="text-xl font-bold">
+                                {record.qty_cut}/{record.qty_required} kg
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Start Date</p>
+                              <p className="font-medium">
+                                {record.start_date ? new Date(record.start_date).toLocaleDateString() : '—'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">End Date</p>
+                              <p className="font-medium">
+                                {record.end_date ? new Date(record.end_date).toLocaleDateString() : '—'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Remaining</p>
+                              <p className="font-medium text-orange-600">
+                                {(record.qty_required - record.qty_cut).toFixed(2)} kg
+                              </p>
+                            </div>
+                          </div>
+                          {record.remarks && (
+                            <div className="mt-3 p-2 bg-secondary rounded">
+                              <p className="text-xs text-muted-foreground">Remarks</p>
+                              <p className="text-sm">{record.remarks}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          {wo.forging_required && (
+            <TabsContent value="forging" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Forging Records</CardTitle>
+                    <Button onClick={() => window.open('/forging', '_blank')} variant="outline" size="sm">
+                      Open Forging Dashboard
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {forgingRecords.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No forging records yet
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {forgingRecords.map((record) => (
+                        <div key={record.id} className="p-4 border rounded-lg">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="font-medium text-lg">{record.forging_vendor || 'No Vendor Assigned'}</p>
+                              <div className="flex gap-2 mt-1">
+                                <Badge variant={
+                                  record.status === 'completed' ? 'default' : 
+                                  record.status === 'in_progress' ? 'secondary' : 
+                                  'outline'
+                                }>
+                                  {record.status.replace('_', ' ').toUpperCase()}
+                                </Badge>
+                                {record.qc_approved && (
+                                  <Badge variant="default">QC Approved</Badge>
+                                )}
+                                {record.sample_sent && !record.qc_approved && (
+                                  <Badge variant="outline">Sample Sent</Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-muted-foreground">Progress</p>
+                              <p className="text-xl font-bold">
+                                {record.qty_forged || 0}/{record.qty_required} pcs
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Start Date</p>
+                              <p className="font-medium">
+                                {record.forging_start_date ? new Date(record.forging_start_date).toLocaleDateString() : '—'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">End Date</p>
+                              <p className="font-medium">
+                                {record.forging_end_date ? new Date(record.forging_end_date).toLocaleDateString() : '—'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Remaining</p>
+                              <p className="font-medium text-orange-600">
+                                {record.qty_required - (record.qty_forged || 0)} pcs
+                              </p>
+                            </div>
+                          </div>
+                          {record.remarks && (
+                            <div className="mt-3 p-2 bg-secondary rounded">
+                              <p className="text-xs text-muted-foreground">Remarks</p>
+                              <p className="text-sm">{record.remarks}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
           <TabsContent value="genealogy" className="space-y-4">
             <Card>
               <CardHeader>
@@ -1192,6 +1383,12 @@ const WorkOrderDetail = () => {
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   <SelectItem value="goods_in">Goods In</SelectItem>
+                  <SelectItem value="cutting_queue">Cutting Queue</SelectItem>
+                  <SelectItem value="cutting_in_progress">Cutting In Progress</SelectItem>
+                  <SelectItem value="cutting_complete">Cutting Complete</SelectItem>
+                  <SelectItem value="forging_queue">Forging Queue</SelectItem>
+                  <SelectItem value="forging_in_progress">Forging In Progress</SelectItem>
+                  <SelectItem value="forging_complete">Forging Complete</SelectItem>
                   <SelectItem value="production">Production</SelectItem>
                   <SelectItem value="qc">QC</SelectItem>
                   <SelectItem value="packing">Packing</SelectItem>

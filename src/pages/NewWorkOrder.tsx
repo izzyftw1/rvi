@@ -11,6 +11,7 @@ import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { workOrderSchema } from "@/lib/validationSchemas";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const NewWorkOrder = () => {
   const navigate = useNavigate();
@@ -28,6 +29,8 @@ const NewWorkOrder = () => {
     due_date: "",
     priority: "3",
     sales_order: "",
+    cutting_required: false,
+    forging_required: false,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,6 +64,8 @@ const NewWorkOrder = () => {
         priority: parseInt(formData.priority),
         sales_order: formData.sales_order || null,
         status: "pending",
+        cutting_required: formData.cutting_required,
+        forging_required: formData.forging_required,
       }).select().single();
 
       if (error) throw error;
@@ -194,6 +199,39 @@ const NewWorkOrder = () => {
                 </div>
               </div>
 
+              <div className="space-y-3 pt-4 border-t">
+                <Label>Processing Requirements</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="cutting_required"
+                    checked={formData.cutting_required}
+                    onCheckedChange={(checked) => 
+                      setFormData({ ...formData, cutting_required: checked as boolean })
+                    }
+                  />
+                  <label
+                    htmlFor="cutting_required"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Cutting Required
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="forging_required"
+                    checked={formData.forging_required}
+                    onCheckedChange={(checked) => 
+                      setFormData({ ...formData, forging_required: checked as boolean })
+                    }
+                  />
+                  <label
+                    htmlFor="forging_required"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Forging Required
+                  </label>
+                </div>
+              </div>
 
               <Button type="submit" disabled={loading} className="w-full">
                 Create Work Order

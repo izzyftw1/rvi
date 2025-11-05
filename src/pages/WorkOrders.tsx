@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, AlertCircle, Trash2 } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Scissors, Hammer } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 
@@ -285,9 +285,13 @@ const WorkOrders = () => {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Stage</p>
-                      <p className="font-medium capitalize">
-                        {wo.current_stage?.replace(/_/g, " ") || "—"}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium capitalize">
+                          {wo.current_stage?.replace(/_/g, " ") || "—"}
+                        </p>
+                        {wo.cutting_required && <Scissors className="h-4 w-4 text-orange-600" />}
+                        {wo.forging_required && <Hammer className="h-4 w-4 text-blue-600" />}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
