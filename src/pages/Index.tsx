@@ -8,31 +8,17 @@ import {
   Package, 
   Truck, 
   CheckCircle2,
-  Search,
   LogOut,
   Shield,
-  DollarSign,
-  CreditCard,
   AlertTriangle,
-  Box,
   ClipboardCheck,
   QrCode
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { KPIBanner } from "@/components/dashboard/KPIBanner";
-import { QuickActionsAccordion } from "@/components/dashboard/QuickActionsAccordion";
 import { FloorKanban } from "@/components/dashboard/FloorKanban";
-import { TodayTimeline } from "@/components/dashboard/TodayTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { convertToINR, formatINR } from "@/lib/currencyConverter";
-import { CuttingDashboard } from "@/components/dashboard/CuttingDashboard";
-import { ForgingDashboard } from "@/components/dashboard/ForgingDashboard";
-import { ComprehensiveDepartmentStatus } from "@/components/dashboard/ComprehensiveDepartmentStatus";
-import { SmartSummaryHeader } from "@/components/dashboard/SmartSummaryHeader";
 import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
 import { TodayGlanceTimeline } from "@/components/dashboard/TodayGlanceTimeline";
-import { EfficiencySnapshot } from "@/components/dashboard/EfficiencySnapshot";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -43,12 +29,12 @@ const Index = () => {
   
   // KPI Metrics
   const [kpiMetrics, setKpiMetrics] = useState({
-    revenueYTD: 0,
-    revenueTarget: 1000000,
     ordersPipeline: 0,
     ordersProduction: 0,
+    externalWIP: 0,
     lateDeliveries: 0,
-    latePayments: 0,
+    dueToday: 0,
+    ontimeRate7d: 0,
   });
 
   // Floor Stats
@@ -132,28 +118,8 @@ const Index = () => {
   };
 
   const loadKPIs = async () => {
-    // Revenue YTD (from sales bookings + invoices, converted to INR)
-    const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
-    
-    const { data: bookings } = await supabase
-      .from('sales_bookings')
-      .select('total_value, currency')
-      .gte('booking_date', yearStart);
-    
-    const { data: invoices } = await supabase
-      .from('invoices')
-      .select('total_amount, currency')
-      .gte('invoice_date', yearStart);
-    
-    const revenueFromBookings = bookings?.reduce((sum, b) => {
-      return sum + convertToINR(Number(b.total_value), b.currency);
-    }, 0) || 0;
-    
-    const revenueFromInvoices = invoices?.reduce((sum, inv) => {
-      return sum + convertToINR(Number(inv.total_amount), inv.currency);
-    }, 0) || 0;
-    
-    const revenueYTD = revenueFromBookings + revenueFromInvoices;
+    const today = new Date().toISOString().split('T')[0];
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // Orders in Pipeline (pending/approved sales orders)
     const { count: pipeline } = await supabase
@@ -167,31 +133,51 @@ const Index = () => {
       .select('*', { count: 'exact', head: true })
       .in('status', ['in_progress', 'pending']);
 
+    // External WIP (count pieces sent out but not returned)
+    const { data: externalMoves } = await supabase
+      .from('wo_external_moves' as any)
+      .select('qty_sent, qty_returned')
+      .is('returned_date', null);
+    
+    const externalWIP = externalMoves?.reduce((sum: number, move: any) => {
+      return sum + (move.qty_sent - (move.qty_returned || 0));
+    }, 0) || 0;
+
     // Late Deliveries
-    const today = new Date().toISOString().split('T')[0];
     const { count: late } = await supabase
       .from('work_orders')
       .select('*', { count: 'exact', head: true })
       .lt('due_date', today)
       .neq('status', 'completed');
 
-    // Late Payments (overdue invoices, converted to INR)
-    const { data: overdueInvoices } = await supabase
-      .from('invoices')
-      .select('balance_amount, currency')
-      .eq('status', 'overdue');
+    // Due Today
+    const { count: dueToday } = await supabase
+      .from('work_orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('due_date', today)
+      .neq('status', 'completed');
+
+    // On-time Rate 7d
+    const { data: completedLast7d } = await supabase
+      .from('work_orders')
+      .select('due_date, updated_at')
+      .eq('status', 'completed')
+      .gte('updated_at', sevenDaysAgo);
     
-    const latePayments = overdueInvoices?.reduce((sum, inv) => {
-      return sum + convertToINR(Number(inv.balance_amount), inv.currency);
-    }, 0) || 0;
+    const ontimeCount = completedLast7d?.filter(wo => {
+      return new Date(wo.updated_at) <= new Date(wo.due_date);
+    }).length || 0;
+    
+    const totalCompleted = completedLast7d?.length || 0;
+    const ontimeRate7d = totalCompleted > 0 ? Math.round((ontimeCount / totalCompleted) * 100) : 100;
 
     setKpiMetrics({
-      revenueYTD,
-      revenueTarget: 1000000,
       ordersPipeline: pipeline || 0,
       ordersProduction: production || 0,
+      externalWIP,
       lateDeliveries: late || 0,
-      latePayments,
+      dueToday: dueToday || 0,
+      ontimeRate7d,
     });
   };
 
@@ -350,16 +336,6 @@ const Index = () => {
   // Prepare KPI data
   const kpiData = [
     {
-      label: "Revenue YTD",
-      value: `₹${(kpiMetrics.revenueYTD / 100000).toFixed(1)}L`,
-      target: `₹${(kpiMetrics.revenueTarget / 100000).toFixed(1)}L`,
-      status: (kpiMetrics.revenueYTD >= kpiMetrics.revenueTarget * 0.8 ? 'good' : 
-              kpiMetrics.revenueYTD >= kpiMetrics.revenueTarget * 0.6 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      trend: 12,
-      icon: DollarSign,
-      onClick: () => navigate("/finance/dashboard")
-    },
-    {
       label: "Orders in Pipeline",
       value: kpiMetrics.ordersPipeline.toString(),
       status: 'good' as const,
@@ -374,20 +350,36 @@ const Index = () => {
       onClick: () => navigate("/production-progress")
     },
     {
+      label: "External WIP pcs",
+      value: kpiMetrics.externalWIP.toString(),
+      status: (kpiMetrics.externalWIP === 0 ? 'good' : 
+              kpiMetrics.externalWIP <= 500 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: Truck,
+      onClick: () => navigate("/logistics")
+    },
+    {
       label: "Late Deliveries",
       value: kpiMetrics.lateDeliveries.toString(),
       status: (kpiMetrics.lateDeliveries === 0 ? 'good' : 
               kpiMetrics.lateDeliveries <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
       icon: AlertTriangle,
-      onClick: () => navigate("/work-orders") // Could add a filter parameter later
+      onClick: () => navigate("/work-orders")
     },
     {
-      label: "Late Payments",
-      value: `₹${(kpiMetrics.latePayments / 100000).toFixed(1)}L`,
-      status: (kpiMetrics.latePayments === 0 ? 'good' : 
-              kpiMetrics.latePayments <= 50000 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: CreditCard,
-      onClick: () => navigate("/finance/invoices")
+      label: "Due Today",
+      value: kpiMetrics.dueToday.toString(),
+      status: (kpiMetrics.dueToday === 0 ? 'good' : 
+              kpiMetrics.dueToday <= 5 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: ClipboardCheck,
+      onClick: () => navigate("/work-orders")
+    },
+    {
+      label: "On-time Rate 7d",
+      value: `${kpiMetrics.ontimeRate7d}%`,
+      status: (kpiMetrics.ontimeRate7d >= 90 ? 'good' : 
+              kpiMetrics.ontimeRate7d >= 75 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: CheckCircle2,
+      onClick: () => navigate("/reports")
     }
   ];
 
@@ -438,32 +430,17 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Smart Summary Header */}
-        <SmartSummaryHeader />
-
         {/* Critical Alerts Bar */}
         <CriticalAlertsBar />
 
-        {/* KPI Banner */}
+        {/* KPI Banner - Compact 6 tiles */}
         <KPIBanner metrics={kpiData} />
-
-        {/* Quick Actions Accordion */}
-        <div>
-          <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-          <QuickActionsAccordion />
-        </div>
-
-        {/* Comprehensive Department Status */}
-        <ComprehensiveDepartmentStatus />
 
         {/* Live Floor Status - Kanban View */}
         <FloorKanban />
 
         {/* Today at a Glance Timeline */}
-        <TodayGlanceTimeline />
-
-        {/* Efficiency Snapshot */}
-        <EfficiencySnapshot />
+        <TodayGlanceTimeline limit={10} showViewAll={true} />
       </main>
     </div>
   );

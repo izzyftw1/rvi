@@ -10,7 +10,6 @@ import {
   Box, 
   Truck, 
   ArrowRight,
-  Users,
   Sparkles,
   Wind,
   Hammer,
@@ -18,6 +17,7 @@ import {
   AlertTriangle,
   Clock
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -160,7 +160,7 @@ export const FloorKanban = () => {
 
       // External Stages
       const externalStages = [
-        { type: 'job_work', label: 'Job Work', icon: Users },
+        { type: 'job_work', label: 'Job Work', icon: Factory },
         { type: 'plating', label: 'Plating', icon: Sparkles },
         { type: 'buffing', label: 'Buffing', icon: Wind },
         { type: 'blasting', label: 'Blasting', icon: Hammer },
@@ -303,29 +303,40 @@ export const FloorKanban = () => {
                               {stage.stage}
                             </CardTitle>
                           </CardHeader>
-                          <CardContent className="space-y-2">
-                            <div className="text-center">
-                              <p className="text-4xl font-bold text-primary">
-                                <AnimatedNumber value={stage.count} />
-                              </p>
-                              <p className="text-xs text-muted-foreground">Work Orders</p>
+                          <CardContent className="space-y-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Active Jobs</span>
+                                <span className="font-bold text-primary text-lg">
+                                  <AnimatedNumber value={stage.count} />
+                                </span>
+                              </div>
+                              {stage.totalPcs > 0 && (
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>Pcs</span>
+                                  <span className="font-semibold">
+                                    <AnimatedNumber value={stage.totalPcs} />
+                                  </span>
+                                </div>
+                              )}
+                              {stage.totalKg > 0 && (
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>Kg</span>
+                                  <span className="font-semibold">{stage.totalKg.toFixed(1)}</span>
+                                </div>
+                              )}
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t">
-                              <div>
-                                <p className="text-lg font-semibold">
-                                  <AnimatedNumber value={stage.totalPcs} />
+                            {stage.count > 0 && (
+                              <div className="space-y-1">
+                                <Progress 
+                                  value={(stage.breakdown?.activeJobs || 0) * 10} 
+                                  className="h-1"
+                                />
+                                <p className="text-xs text-muted-foreground text-center">
+                                  {stage.avgWaitHours.toFixed(1)}h avg wait
                                 </p>
-                                <p className="text-xs text-muted-foreground">Pcs</p>
                               </div>
-                              <div>
-                                <p className="text-lg font-semibold">{stage.totalKg.toFixed(1)}</p>
-                                <p className="text-xs text-muted-foreground">Kg</p>
-                              </div>
-                            </div>
-                            <div className="text-center pt-2 border-t">
-                              <p className="text-sm font-medium">{stage.avgWaitHours.toFixed(1)}h</p>
-                              <p className="text-xs text-muted-foreground">Avg Wait</p>
-                            </div>
+                            )}
                           </CardContent>
                         </Card>
                       </TooltipTrigger>
@@ -392,31 +403,40 @@ export const FloorKanban = () => {
                               {stage.stage}
                             </CardTitle>
                           </CardHeader>
-                          <CardContent className="space-y-2">
-                            <div className="text-center">
-                              <p className="text-4xl font-bold text-amber-600">
-                                <AnimatedNumber value={stage.count} />
-                              </p>
-                              <p className="text-xs text-muted-foreground">Active Moves</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t">
-                              <div>
-                                <p className="text-lg font-semibold">
-                                  <AnimatedNumber value={stage.totalPcs} />
-                                </p>
-                                <p className="text-xs text-muted-foreground">WIP Pcs</p>
+                          <CardContent className="space-y-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Active Jobs</span>
+                                <span className="font-bold text-amber-600 text-lg">
+                                  <AnimatedNumber value={stage.count} />
+                                </span>
                               </div>
-                              <div>
-                                <p className="text-lg font-semibold">
-                                  {stage.breakdown?.pendingReturns || 0}
+                              {stage.totalPcs > 0 && (
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>Pcs</span>
+                                  <span className="font-semibold">
+                                    <AnimatedNumber value={stage.totalPcs} />
+                                  </span>
+                                </div>
+                              )}
+                              {stage.totalKg > 0 && (
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>Kg</span>
+                                  <span className="font-semibold">{stage.totalKg.toFixed(1)}</span>
+                                </div>
+                              )}
+                            </div>
+                            {stage.count > 0 && (
+                              <div className="space-y-1">
+                                <Progress 
+                                  value={(stage.breakdown?.pendingReturns || 0) * 10} 
+                                  className="h-1"
+                                />
+                                <p className="text-xs text-muted-foreground text-center">
+                                  {stage.avgWaitHours.toFixed(1)}h avg wait
                                 </p>
-                                <p className="text-xs text-muted-foreground">Pending</p>
                               </div>
-                            </div>
-                            <div className="text-center pt-2 border-t">
-                              <p className="text-sm font-medium">{stage.avgWaitHours.toFixed(1)}h</p>
-                              <p className="text-xs text-muted-foreground">Avg Wait</p>
-                            </div>
+                            )}
                           </CardContent>
                         </Card>
                       </TooltipTrigger>

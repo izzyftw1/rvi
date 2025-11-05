@@ -36,7 +36,7 @@ export const KPIBanner = ({ metrics }: KPIBannerProps) => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
       {metrics.map((metric, idx) => {
         const Icon = metric.icon;
         return (

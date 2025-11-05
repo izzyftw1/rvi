@@ -29,9 +29,15 @@ interface TimeSlot {
   events: TimelineEvent[];
 }
 
-export const TodayGlanceTimeline = () => {
+interface TodayGlanceTimelineProps {
+  limit?: number;
+  showViewAll?: boolean;
+}
+
+export const TodayGlanceTimeline = ({ limit, showViewAll = false }: TodayGlanceTimelineProps) => {
   const navigate = useNavigate();
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [totalEventCount, setTotalEventCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -154,6 +160,8 @@ export const TodayGlanceTimeline = () => {
       });
       const overdue = events.filter(e => e.urgency === 'overdue');
 
+      setTotalEventCount(events.length);
+
       const slots: TimeSlot[] = [];
       
       if (overdue.length > 0) {
@@ -169,7 +177,25 @@ export const TodayGlanceTimeline = () => {
         slots.push({ label: 'Evening', icon: Sunset, events: evening });
       }
 
-      setTimeSlots(slots);
+      // Apply limit if specified
+      if (limit && limit > 0) {
+        let count = 0;
+        const limitedSlots: TimeSlot[] = [];
+        
+        for (const slot of slots) {
+          const remainingLimit = limit - count;
+          if (remainingLimit <= 0) break;
+          
+          const limitedEvents = slot.events.slice(0, remainingLimit);
+          limitedSlots.push({ ...slot, events: limitedEvents });
+          count += limitedEvents.length;
+        }
+        
+        setTimeSlots(limitedSlots);
+      } else {
+        setTimeSlots(slots);
+      }
+
       setLoading(false);
     } catch (error) {
       console.error('Error loading today events:', error);
@@ -227,6 +253,8 @@ export const TodayGlanceTimeline = () => {
     );
   }
 
+  const displayedCount = timeSlots.reduce((sum, slot) => sum + slot.events.length, 0);
+
   return (
     <Card>
       <CardHeader>
@@ -235,9 +263,19 @@ export const TodayGlanceTimeline = () => {
             <Clock className="h-5 w-5" />
             Today at a Glance
           </CardTitle>
-          <Badge variant="secondary">
-            {timeSlots.reduce((sum, slot) => sum + slot.events.length, 0)} events
-          </Badge>
+          {showViewAll && totalEventCount > displayedCount ? (
+            <Badge 
+              variant="secondary" 
+              className="cursor-pointer hover:bg-secondary/80"
+              onClick={() => navigate('/work-orders')}
+            >
+              View all ({totalEventCount})
+            </Badge>
+          ) : (
+            <Badge variant="secondary">
+              {displayedCount} events
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent>
