@@ -14,6 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send } from "lucide-react";
 import { WorkOrderStageFlow } from "@/components/WorkOrderStageFlow";
+import { EnhancedProductionTab } from "@/components/EnhancedProductionTab";
+import { EnhancedStageHistory } from "@/components/EnhancedStageHistory";
+import { EnhancedQCRecords } from "@/components/EnhancedQCRecords";
+import { WOVersionLog } from "@/components/WOVersionLog";
+import { EnhancedExternalTab } from "@/components/EnhancedExternalTab";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
 import { ExternalMovementsTab } from "@/components/ExternalMovementsTab";
@@ -866,89 +871,39 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue={searchParams.get('tab') || "production"} className="w-full">
-            <TabsList className="grid w-full grid-cols-12">
-              <TabsTrigger value="production">Production</TabsTrigger>
-              <TabsTrigger value="routing">Routing</TabsTrigger>
-              <TabsTrigger value="stage-history">Stage History</TabsTrigger>
-              <TabsTrigger value="design">Design Files</TabsTrigger>
-              <TabsTrigger value="materials">Materials</TabsTrigger>
-              <TabsTrigger value="qc">QC Records</TabsTrigger>
-              <TabsTrigger value="hourly-qc">Hourly QC</TabsTrigger>
-              {wo.cutting_required && <TabsTrigger value="cutting">Cutting</TabsTrigger>}
-              {wo.forging_required && <TabsTrigger value="forging">Forging</TabsTrigger>}
-              <TabsTrigger value="external">External</TabsTrigger>
-              <TabsTrigger value="ext-history">Ext History</TabsTrigger>
-              <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="production">🏭 Production</TabsTrigger>
+              <TabsTrigger value="stage-history">🔁 Stage History</TabsTrigger>
+              <TabsTrigger value="qc">⚙️ QC Records</TabsTrigger>
+              <TabsTrigger value="genealogy">🧾 Version Log</TabsTrigger>
+              <TabsTrigger value="external">🔗 External</TabsTrigger>
+              <TabsTrigger value="materials">📦 Materials</TabsTrigger>
           </TabsList>
 
           <TabsContent value="production" className="space-y-4">
-            <ProductionLogsTable woId={id || ""} />
-          </TabsContent>
-
-          <TabsContent value="routing" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Routing Timeline</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {routingSteps.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No routing steps defined
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {routingSteps.map((step, index) => (
-                      <div key={step.id} className="flex items-start gap-4">
-                        <div className="flex flex-col items-center">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              step.status === "completed"
-                                ? "bg-success text-success-foreground"
-                                : step.status === "in_progress"
-                                ? "bg-warning text-warning-foreground"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {step.status === "completed" ? (
-                              <CheckCircle2 className="h-4 w-4" />
-                            ) : step.status === "in_progress" ? (
-                              <Clock className="h-4 w-4" />
-                            ) : (
-                              <span className="text-xs">{index + 1}</span>
-                            )}
-                          </div>
-                          {index < routingSteps.length - 1 && (
-                            <div className="w-0.5 h-12 bg-border" />
-                          )}
-                        </div>
-                        <div className="flex-1 pb-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">{step.name}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {step.departments?.name || "Unassigned"}
-                              </p>
-                            </div>
-                            <Badge variant="outline">{step.status}</Badge>
-                          </div>
-                          {step.actual_start && (
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Started: {new Date(step.actual_start).toLocaleString()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <EnhancedProductionTab woId={id || ""} workOrder={wo} />
           </TabsContent>
 
           <TabsContent value="stage-history" className="space-y-4">
+            <EnhancedStageHistory stageHistory={stageHistory} routingSteps={routingSteps} />
+          </TabsContent>
+
+          <TabsContent value="qc" className="space-y-4">
+            <EnhancedQCRecords qcRecords={qcRecords} workOrder={wo} />
+          </TabsContent>
+
+          <TabsContent value="genealogy" className="space-y-4">
+            <WOVersionLog woId={id || ""} />
+          </TabsContent>
+
+          <TabsContent value="external" className="space-y-4">
+            <EnhancedExternalTab workOrderId={id || ""} />
+          </TabsContent>
+
+          <TabsContent value="materials" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Stage Transition History</CardTitle>
+                <CardTitle>Material Issues</CardTitle>
               </CardHeader>
               <CardContent>
                 {stageHistory.length === 0 ? (
