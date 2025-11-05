@@ -15,7 +15,16 @@ import {
   ClipboardCheck,
   QrCode,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Settings,
+  Users,
+  Building2,
+  Handshake,
+  Store,
+  Wrench,
+  FileText,
+  Award,
+  ScrollText
 } from "lucide-react";
 import { KPIBanner } from "@/components/dashboard/KPIBanner";
 import { FloorKanban } from "@/components/dashboard/FloorKanban";
@@ -28,6 +37,15 @@ import { LogisticsAlertsWidget } from "@/components/dashboard/LogisticsAlertsWid
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickActionsAccordion } from "@/components/dashboard/QuickActionsAccordion";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -405,12 +423,116 @@ const Index = () => {
                 <p className="text-sm font-medium">{profile?.full_name}</p>
                 <p className="text-xs text-muted-foreground capitalize">{profile?.role?.replace('_', ' ')}</p>
               </div>
+              
+              {/* Settings Dropdown - Only for Admin/Super Admin */}
               {isSuperAdmin() && (
-                <Button variant="ghost" onClick={() => navigate("/admin")} className="hidden sm:inline-flex gap-2">
-                  <Shield className="h-5 w-5" />
-                  Admin
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <DropdownMenu>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="relative">
+                            <Settings className="h-5 w-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>System Settings</p>
+                      </TooltipContent>
+                      <DropdownMenuContent 
+                        align="end" 
+                        className="w-56 bg-card shadow-lg border z-50"
+                      >
+                        <DropdownMenuLabel>System Settings</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/admin")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Shield className="h-4 w-4 mr-2" />
+                          Admin Panel
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/admin/roles")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Users className="h-4 w-4 mr-2" />
+                          User Roles
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/admin/departments")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Departments
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/external-partners")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Handshake className="h-4 w-4 mr-2" />
+                          External Partners
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/vendors")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Store className="h-4 w-4 mr-2" />
+                          Vendors
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/external-config")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Wrench className="h-4 w-4 mr-2" />
+                          Job Work / Plating Config
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuSeparator />
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/system-logs")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          System Logs
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/settings")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          Company Settings
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/certificates")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <Award className="h-4 w-4 mr-2" />
+                          Certificates & Compliance
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuItem 
+                          onClick={() => navigate("/audit")}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <ScrollText className="h-4 w-4 mr-2" />
+                          Audit Trail
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </Tooltip>
+                </TooltipProvider>
               )}
+              
               <Button variant="ghost" size="icon" onClick={handleLogout}>
                 <LogOut className="h-5 w-5" />
               </Button>
