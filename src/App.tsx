@@ -14,6 +14,8 @@ import Quality from "./pages/Quality";
 import Packing from "./pages/Packing";
 import Dispatch from "./pages/Dispatch";
 import Logistics from "./pages/Logistics";
+import LogisticsDashboard from "./pages/LogisticsDashboard";
+import Partners from "./pages/Partners";
 import DispatchQCReport from "./pages/DispatchQCReport";
 import Genealogy from "./pages/Genealogy";
 import FloorDashboard from "./pages/FloorDashboard";
@@ -116,6 +118,8 @@ const App = () => (
           <Route path="/reports/worker-efficiency" element={<ProtectedRoute><WorkerEfficiency /></ProtectedRoute>} />
           <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
           <Route path="/logistics" element={<ProtectedRoute><Logistics /></ProtectedRoute>} />
+          <Route path="/logistics-dashboard" element={<ProtectedRoute><LogisticsDashboard /></ProtectedRoute>} />
+          <Route path="/partners" element={<ProtectedRoute><Partners /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
