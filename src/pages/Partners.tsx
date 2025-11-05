@@ -32,21 +32,15 @@ const PROCESS_OPTIONS = ["Plating", "Job Work", "Buffing", "Blasting", "Forging"
 
 interface Partner {
   id: string;
-  partner_name: string;
-  process_type: string[];
+  name: string;
+  process_type: string | null;
+  default_lead_time_days: number | null;
+  is_active: boolean;
+  address: string | null;
   contact_person: string | null;
   phone: string | null;
   email: string | null;
-  address_line1: string | null;
-  city: string | null;
-  state: string | null;
-  country: string | null;
-  gst_number: string | null;
-  lead_time_days: number;
-  is_active: boolean;
-  remarks: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 const Partners = () => {
@@ -60,19 +54,14 @@ const Partners = () => {
   
   // Form state
   const [formData, setFormData] = useState({
-    partner_name: "",
-    process_type: [] as string[],
+    name: "",
+    process_type: "",
+    default_lead_time_days: 7,
     contact_person: "",
     phone: "",
     email: "",
-    address_line1: "",
-    city: "",
-    state: "",
-    country: "India",
-    gst_number: "",
-    lead_time_days: 7,
+    address: "",
     is_active: true,
-    remarks: "",
   });
 
   const { toast } = useToast();
@@ -84,7 +73,7 @@ const Partners = () => {
       const { data, error } = await supabase
         .from("external_partners")
         .select("*")
-        .order("partner_name");
+        .order("name");
 
       if (error) throw error;
       setPartners(data || []);
@@ -127,11 +116,11 @@ const Partners = () => {
     return partners.filter((partner) => {
       const matchesSearch =
         searchQuery === "" ||
-        partner.partner_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        partner.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         partner.contact_person?.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesProcess =
-        !processFilter || partner.process_type.includes(processFilter);
+        !processFilter || partner.process_type === processFilter;
 
       const matchesStatus =
         statusFilter === "all" ||
@@ -145,10 +134,8 @@ const Partners = () => {
   const processCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     partners.forEach((partner) => {
-      if (partner.is_active) {
-        partner.process_type.forEach((process) => {
-          counts[process] = (counts[process] || 0) + 1;
-        });
+      if (partner.is_active && partner.process_type) {
+        counts[partner.process_type] = (counts[partner.process_type] || 0) + 1;
       }
     });
     return counts;
@@ -158,55 +145,36 @@ const Partners = () => {
     if (partner) {
       setEditingPartner(partner);
       setFormData({
-        partner_name: partner.partner_name,
-        process_type: partner.process_type,
+        name: partner.name,
+        process_type: partner.process_type || "",
+        default_lead_time_days: partner.default_lead_time_days || 7,
         contact_person: partner.contact_person || "",
         phone: partner.phone || "",
         email: partner.email || "",
-        address_line1: partner.address_line1 || "",
-        city: partner.city || "",
-        state: partner.state || "",
-        country: partner.country || "India",
-        gst_number: partner.gst_number || "",
-        lead_time_days: partner.lead_time_days,
+        address: partner.address || "",
         is_active: partner.is_active,
-        remarks: partner.remarks || "",
       });
     } else {
       setEditingPartner(null);
       setFormData({
-        partner_name: "",
-        process_type: [],
+        name: "",
+        process_type: "",
+        default_lead_time_days: 7,
         contact_person: "",
         phone: "",
         email: "",
-        address_line1: "",
-        city: "",
-        state: "",
-        country: "India",
-        gst_number: "",
-        lead_time_days: 7,
+        address: "",
         is_active: true,
-        remarks: "",
       });
     }
     setDialogOpen(true);
   };
 
   const handleSavePartner = async () => {
-    if (!formData.partner_name.trim()) {
+    if (!formData.name.trim()) {
       toast({
         title: "Validation Error",
         description: "Partner name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.process_type.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "At least one process type is required",
         variant: "destructive",
       });
       return;
@@ -216,7 +184,16 @@ const Partners = () => {
       if (editingPartner) {
         const { error } = await supabase
           .from("external_partners")
-          .update(formData)
+          .update({
+            name: formData.name.trim(),
+            process_type: formData.process_type.trim() || null,
+            default_lead_time_days: formData.default_lead_time_days,
+            contact_person: formData.contact_person.trim() || null,
+            phone: formData.phone.trim() || null,
+            email: formData.email.trim() || null,
+            address: formData.address.trim() || null,
+            is_active: formData.is_active,
+          })
           .eq("id", editingPartner.id);
 
         if (error) throw error;
@@ -227,7 +204,16 @@ const Partners = () => {
       } else {
         const { error } = await supabase
           .from("external_partners")
-          .insert([formData]);
+          .insert([{
+            name: formData.name.trim(),
+            process_type: formData.process_type.trim() || null,
+            default_lead_time_days: formData.default_lead_time_days,
+            contact_person: formData.contact_person.trim() || null,
+            phone: formData.phone.trim() || null,
+            email: formData.email.trim() || null,
+            address: formData.address.trim() || null,
+            is_active: formData.is_active,
+          }]);
 
         if (error) throw error;
         toast({
@@ -247,14 +233,6 @@ const Partners = () => {
     }
   };
 
-  const toggleProcessType = (process: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      process_type: prev.process_type.includes(process)
-        ? prev.process_type.filter((p) => p !== process)
-        : [...prev.process_type, process],
-    }));
-  };
 
   if (loading) {
     return (
@@ -332,7 +310,7 @@ const Partners = () => {
             <div className="text-2xl font-bold">
               {partners.length > 0
                 ? Math.round(
-                    partners.reduce((sum, p) => sum + p.lead_time_days, 0) /
+                    partners.reduce((sum, p) => sum + (p.default_lead_time_days || 7), 0) /
                       partners.length
                   )
                 : 0}{" "}
@@ -445,18 +423,18 @@ const Partners = () => {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-muted-foreground" />
-                        {partner.partner_name}
+                        {partner.name}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {partner.process_type.map((process) => (
-                          <Badge key={process} variant="secondary" className="text-xs">
-                            <Package className="h-3 w-3 mr-1" />
-                            {process}
-                          </Badge>
-                        ))}
-                      </div>
+                      {partner.process_type ? (
+                        <Badge variant="secondary" className="text-xs">
+                          <Package className="h-3 w-3 mr-1" />
+                          {partner.process_type}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1 text-sm">
@@ -482,15 +460,13 @@ const Partners = () => {
                     <TableCell>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <MapPin className="h-3 w-3" />
-                        {[partner.city, partner.state, partner.country]
-                          .filter(Boolean)
-                          .join(", ") || "—"}
+                        {partner.address || "—"}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3 text-muted-foreground" />
-                        {partner.lead_time_days} days
+                        {partner.default_lead_time_days || 7} days
                       </div>
                     </TableCell>
                     <TableCell>
@@ -534,38 +510,37 @@ const Partners = () => {
           <div className="space-y-4">
             {/* Partner Name */}
             <div>
-              <Label htmlFor="partner_name">
+              <Label htmlFor="name">
                 Partner Name <span className="text-destructive">*</span>
               </Label>
               <Input
-                id="partner_name"
-                value={formData.partner_name}
+                id="name"
+                value={formData.name}
                 onChange={(e) =>
-                  setFormData({ ...formData, partner_name: e.target.value })
+                  setFormData({ ...formData, name: e.target.value })
                 }
                 placeholder="Enter partner name"
               />
             </div>
 
-            {/* Process Types */}
+            {/* Process Type */}
             <div>
-              <Label>
-                Process Types <span className="text-destructive">*</span>
-              </Label>
-              <div className="flex flex-wrap gap-2 mt-2">
+              <Label htmlFor="process_type">Process Type</Label>
+              <select
+                id="process_type"
+                value={formData.process_type}
+                onChange={(e) =>
+                  setFormData({ ...formData, process_type: e.target.value })
+                }
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">Select process type</option>
                 {PROCESS_OPTIONS.map((process) => (
-                  <Badge
-                    key={process}
-                    variant={
-                      formData.process_type.includes(process) ? "default" : "outline"
-                    }
-                    className="cursor-pointer"
-                    onClick={() => toggleProcessType(process)}
-                  >
+                  <option key={process} value={process}>
                     {process}
-                  </Badge>
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
             {/* Contact Details */}
@@ -608,94 +583,33 @@ const Partners = () => {
 
             {/* Address */}
             <div>
-              <Label htmlFor="address_line1">Address</Label>
-              <Input
-                id="address_line1"
-                value={formData.address_line1}
+              <Label htmlFor="address">Address</Label>
+              <Textarea
+                id="address"
+                value={formData.address}
                 onChange={(e) =>
-                  setFormData({ ...formData, address_line1: e.target.value })
+                  setFormData({ ...formData, address: e.target.value })
                 }
-                placeholder="Street address"
+                placeholder="Complete address"
+                rows={3}
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  value={formData.city}
-                  onChange={(e) =>
-                    setFormData({ ...formData, city: e.target.value })
-                  }
-                  placeholder="City"
-                />
-              </div>
-              <div>
-                <Label htmlFor="state">State</Label>
-                <Input
-                  id="state"
-                  value={formData.state}
-                  onChange={(e) =>
-                    setFormData({ ...formData, state: e.target.value })
-                  }
-                  placeholder="State"
-                />
-              </div>
-              <div>
-                <Label htmlFor="country">Country</Label>
-                <Input
-                  id="country"
-                  value={formData.country}
-                  onChange={(e) =>
-                    setFormData({ ...formData, country: e.target.value })
-                  }
-                  placeholder="Country"
-                />
-              </div>
-            </div>
-
-            {/* GST & Lead Time */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="gst_number">GST Number</Label>
-                <Input
-                  id="gst_number"
-                  value={formData.gst_number}
-                  onChange={(e) =>
-                    setFormData({ ...formData, gst_number: e.target.value })
-                  }
-                  placeholder="29XXXXX1234X1ZX"
-                />
-              </div>
-              <div>
-                <Label htmlFor="lead_time_days">Lead Time (Days)</Label>
-                <Input
-                  id="lead_time_days"
-                  type="number"
-                  value={formData.lead_time_days}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      lead_time_days: parseInt(e.target.value) || 7,
-                    })
-                  }
-                  min={1}
-                />
-              </div>
-            </div>
-
-            {/* Remarks */}
+            {/* Lead Time */}
             <div>
-              <Label htmlFor="remarks">Remarks</Label>
-              <Textarea
-                id="remarks"
-                value={formData.remarks}
+              <Label htmlFor="default_lead_time_days">Default Lead Time (Days)</Label>
+              <Input
+                id="default_lead_time_days"
+                type="number"
+                value={formData.default_lead_time_days}
                 onChange={(e) =>
-                  setFormData({ ...formData, remarks: e.target.value })
+                  setFormData({
+                    ...formData,
+                    default_lead_time_days: parseInt(e.target.value) || 7,
+                  })
                 }
-                placeholder="Additional notes..."
-                rows={3}
+                min={1}
+                placeholder="7"
               />
             </div>
 

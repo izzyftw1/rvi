@@ -504,61 +504,40 @@ export type Database = {
       }
       external_partners: {
         Row: {
-          address_line1: string | null
-          city: string | null
+          address: string | null
           contact_person: string | null
-          country: string | null
           created_at: string | null
           default_lead_time_days: number | null
           email: string | null
-          gst_number: string | null
           id: string
           is_active: boolean | null
-          lead_time_days: number | null
-          partner_name: string
+          name: string
           phone: string | null
-          process_type: string[]
-          remarks: string | null
-          state: string | null
-          updated_at: string | null
+          process_type: string | null
         }
         Insert: {
-          address_line1?: string | null
-          city?: string | null
+          address?: string | null
           contact_person?: string | null
-          country?: string | null
           created_at?: string | null
           default_lead_time_days?: number | null
           email?: string | null
-          gst_number?: string | null
           id?: string
           is_active?: boolean | null
-          lead_time_days?: number | null
-          partner_name: string
+          name: string
           phone?: string | null
-          process_type?: string[]
-          remarks?: string | null
-          state?: string | null
-          updated_at?: string | null
+          process_type?: string | null
         }
         Update: {
-          address_line1?: string | null
-          city?: string | null
+          address?: string | null
           contact_person?: string | null
-          country?: string | null
           created_at?: string | null
           default_lead_time_days?: number | null
           email?: string | null
-          gst_number?: string | null
           id?: string
           is_active?: boolean | null
-          lead_time_days?: number | null
-          partner_name?: string
+          name?: string
           phone?: string | null
-          process_type?: string[]
-          remarks?: string | null
-          state?: string | null
-          updated_at?: string | null
+          process_type?: string | null
         }
         Relationships: []
       }
@@ -3588,9 +3567,9 @@ export type Database = {
           expected_return_date: string | null
           id: string
           partner_id: string | null
-          process: string
+          process: string | null
           qty_returned: number | null
-          quantity_sent: number
+          qty_sent: number
           remarks: string | null
           returned_date: string | null
           status: string | null
@@ -3605,9 +3584,9 @@ export type Database = {
           expected_return_date?: string | null
           id?: string
           partner_id?: string | null
-          process: string
+          process?: string | null
           qty_returned?: number | null
-          quantity_sent: number
+          qty_sent: number
           remarks?: string | null
           returned_date?: string | null
           status?: string | null
@@ -3622,9 +3601,9 @@ export type Database = {
           expected_return_date?: string | null
           id?: string
           partner_id?: string | null
-          process?: string
+          process?: string | null
           qty_returned?: number | null
-          quantity_sent?: number
+          qty_sent?: number
           remarks?: string | null
           returned_date?: string | null
           status?: string | null
@@ -3632,6 +3611,20 @@ export type Database = {
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "wo_external_moves_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_moves_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
           {
             foreignKeyName: "wo_external_moves_partner_id_fkey"
             columns: ["partner_id"]
@@ -3690,6 +3683,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "wo_external_moves"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_receipts_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_receipts_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
           },
         ]
       }

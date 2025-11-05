@@ -14,21 +14,15 @@ import { Textarea } from "@/components/ui/textarea";
 
 interface ExternalPartner {
   id: string;
-  partner_name: string;
-  process_type: string[];
+  name: string;
+  process_type: string | null;
+  default_lead_time_days: number | null;
+  is_active: boolean;
+  address: string | null;
   contact_person: string | null;
   phone: string | null;
   email: string | null;
-  address_line1: string | null;
-  city: string | null;
-  state: string | null;
-  country: string | null;
-  gst_number: string | null;
-  lead_time_days: number | null;
-  is_active: boolean;
-  remarks: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 const PROCESS_OPTIONS = [
@@ -38,7 +32,7 @@ const PROCESS_OPTIONS = [
   "Blasting",
   "Forging",
   "Heat Treatment",
-];
+] as const;
 
 export const ExternalPartnersManagement = () => {
   const { toast } = useToast();
@@ -52,12 +46,13 @@ export const ExternalPartnersManagement = () => {
   
   // Form state
   const [formData, setFormData] = useState({
-    partner_name: "",
-    process_type: [] as string[],
+    name: "",
+    process_type: "",
+    default_lead_time_days: 7,
     contact_person: "",
     phone: "",
     email: "",
-    address_line1: "",
+    address: "",
     is_active: true,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -75,8 +70,8 @@ export const ExternalPartnersManagement = () => {
     try {
       const { data, error } = await supabase
         .from("external_partners")
-        .select("id, partner_name, process_type, contact_person, phone, email, address_line1, city, state, country, gst_number, lead_time_days, is_active, remarks, created_at, updated_at")
-        .order("partner_name");
+        .select("*")
+        .order("name");
 
       if (error) throw error;
       setPartners(data || []);
@@ -98,7 +93,7 @@ export const ExternalPartnersManagement = () => {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (p) =>
-          p.partner_name.toLowerCase().includes(search) ||
+          p.name.toLowerCase().includes(search) ||
           p.contact_person?.toLowerCase().includes(search) ||
           p.email?.toLowerCase().includes(search) ||
           p.phone?.includes(search)
@@ -106,7 +101,7 @@ export const ExternalPartnersManagement = () => {
     }
 
     if (processFilter) {
-      filtered = filtered.filter((p) => p.process_type.includes(processFilter));
+      filtered = filtered.filter((p) => p.process_type === processFilter);
     }
 
     setFilteredPartners(filtered);
@@ -115,12 +110,8 @@ export const ExternalPartnersManagement = () => {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.partner_name.trim()) {
-      newErrors.partner_name = "Partner name is required";
-    }
-
-    if (formData.process_type.length === 0) {
-      newErrors.process_type = "At least one process type is required";
+    if (!formData.name.trim()) {
+      newErrors.name = "Partner name is required";
     }
 
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
@@ -147,12 +138,13 @@ export const ExternalPartnersManagement = () => {
         const { error } = await supabase
           .from("external_partners")
           .update({
-            partner_name: formData.partner_name.trim(),
-            process_type: formData.process_type,
+            name: formData.name.trim(),
+            process_type: formData.process_type.trim() || null,
+            default_lead_time_days: formData.default_lead_time_days,
             contact_person: formData.contact_person.trim() || null,
             phone: formData.phone.trim() || null,
             email: formData.email.trim() || null,
-            address_line1: formData.address_line1.trim() || null,
+            address: formData.address.trim() || null,
             is_active: formData.is_active,
           })
           .eq("id", editingPartner.id);
@@ -166,12 +158,13 @@ export const ExternalPartnersManagement = () => {
       } else {
         const { error } = await supabase.from("external_partners").insert([
           {
-            partner_name: formData.partner_name.trim(),
-            process_type: formData.process_type,
+            name: formData.name.trim(),
+            process_type: formData.process_type.trim() || null,
+            default_lead_time_days: formData.default_lead_time_days,
             contact_person: formData.contact_person.trim() || null,
             phone: formData.phone.trim() || null,
             email: formData.email.trim() || null,
-            address_line1: formData.address_line1.trim() || null,
+            address: formData.address.trim() || null,
             is_active: formData.is_active,
           },
         ]);
@@ -201,12 +194,13 @@ export const ExternalPartnersManagement = () => {
   const handleEdit = (partner: ExternalPartner) => {
     setEditingPartner(partner);
     setFormData({
-      partner_name: partner.partner_name,
-      process_type: partner.process_type,
+      name: partner.name,
+      process_type: partner.process_type || "",
+      default_lead_time_days: partner.default_lead_time_days || 7,
       contact_person: partner.contact_person || "",
       phone: partner.phone || "",
       email: partner.email || "",
-      address_line1: partner.address_line1 || "",
+      address: partner.address || "",
       is_active: partner.is_active,
     });
     setErrors({});
@@ -241,27 +235,19 @@ export const ExternalPartnersManagement = () => {
 
   const resetForm = () => {
     setFormData({
-      partner_name: "",
-      process_type: [],
+      name: "",
+      process_type: "",
+      default_lead_time_days: 7,
       contact_person: "",
       phone: "",
       email: "",
-      address_line1: "",
+      address: "",
       is_active: true,
     });
     setEditingPartner(null);
     setErrors({});
   };
 
-  const toggleProcessType = (processType: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      process_type: prev.process_type.includes(processType)
-        ? prev.process_type.filter((p) => p !== processType)
-        : [...prev.process_type, processType],
-    }));
-    setErrors((prev) => ({ ...prev, process_type: "" }));
-  };
 
   return (
     <Card>
@@ -327,15 +313,15 @@ export const ExternalPartnersManagement = () => {
               ) : (
                 filteredPartners.map((partner) => (
                   <TableRow key={partner.id}>
-                    <TableCell className="font-medium">{partner.partner_name}</TableCell>
+                    <TableCell className="font-medium">{partner.name}</TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {partner.process_type.map((pt) => (
-                          <Badge key={pt} variant="secondary" className="text-xs">
-                            {pt}
-                          </Badge>
-                        ))}
-                      </div>
+                      {partner.process_type ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {partner.process_type}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>{partner.contact_person || "-"}</TableCell>
                     <TableCell>{partner.phone || "-"}</TableCell>
@@ -397,48 +383,53 @@ export const ExternalPartnersManagement = () => {
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="partner_name">
+              <Label htmlFor="name">
                 Partner Name <span className="text-destructive">*</span>
               </Label>
               <Input
-                id="partner_name"
-                value={formData.partner_name}
+                id="name"
+                value={formData.name}
                 onChange={(e) => {
-                  setFormData({ ...formData, partner_name: e.target.value });
-                  setErrors({ ...errors, partner_name: "" });
+                  setFormData({ ...formData, name: e.target.value });
+                  setErrors({ ...errors, name: "" });
                 }}
                 placeholder="Enter partner name"
-                className={errors.partner_name ? "border-destructive" : ""}
+                className={errors.name ? "border-destructive" : ""}
               />
-              {errors.partner_name && (
-                <p className="text-sm text-destructive">{errors.partner_name}</p>
+              {errors.name && (
+                <p className="text-sm text-destructive">{errors.name}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label>
-                Process Types <span className="text-destructive">*</span>
-              </Label>
-              <div className="grid grid-cols-2 gap-2">
+              <Label htmlFor="process_type">Process Type</Label>
+              <select
+                id="process_type"
+                value={formData.process_type}
+                onChange={(e) => setFormData({ ...formData, process_type: e.target.value })}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">Select process type</option>
                 {PROCESS_OPTIONS.map((process) => (
-                  <div key={process} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`process-${process}`}
-                      checked={formData.process_type.includes(process)}
-                      onCheckedChange={() => toggleProcessType(process)}
-                    />
-                    <Label
-                      htmlFor={`process-${process}`}
-                      className="cursor-pointer font-normal"
-                    >
-                      {process}
-                    </Label>
-                  </div>
+                  <option key={process} value={process}>
+                    {process}
+                  </option>
                 ))}
-              </div>
-              {errors.process_type && (
-                <p className="text-sm text-destructive">{errors.process_type}</p>
-              )}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="default_lead_time_days">Default Lead Time (Days)</Label>
+              <Input
+                id="default_lead_time_days"
+                type="number"
+                min="1"
+                value={formData.default_lead_time_days}
+                onChange={(e) =>
+                  setFormData({ ...formData, default_lead_time_days: parseInt(e.target.value) || 7 })
+                }
+                placeholder="7"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -484,11 +475,11 @@ export const ExternalPartnersManagement = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="address_line1">Address</Label>
+              <Label htmlFor="address">Address</Label>
               <Textarea
-                id="address_line1"
-                value={formData.address_line1}
-                onChange={(e) => setFormData({ ...formData, address_line1: e.target.value })}
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Complete address"
                 rows={3}
               />
