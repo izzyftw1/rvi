@@ -68,8 +68,8 @@ export const ExternalPartnersManagement = () => {
   const loadPartners = async () => {
     setLoading(true);
     try {
-      const { data, error } = await (supabase as any)
-        .from("wo_external_partners")
+      const { data, error } = await supabase
+        .from("external_partners")
         .select("*")
         .order("name");
 
@@ -135,15 +135,15 @@ export const ExternalPartnersManagement = () => {
     setLoading(true);
     try {
       if (editingPartner) {
-        const { error } = await (supabase as any)
-          .from("wo_external_partners")
+        const { error } = await supabase
+          .from("external_partners")
           .update({
             name: formData.name.trim(),
-            process_type: formData.process_type.trim() || null,
+            process_type: formData.process_type.trim(),
             default_lead_time_days: formData.default_lead_time_days,
-            contact_person: formData.contact_person.trim() || null,
-            phone: formData.phone.trim() || null,
-            email: formData.email.trim() || null,
+            contact_name: formData.contact_person.trim() || null,
+            contact_phone: formData.phone.trim() || null,
+            contact_email: formData.email.trim() || null,
             address: formData.address.trim() || null,
             is_active: formData.is_active,
           })
@@ -156,14 +156,14 @@ export const ExternalPartnersManagement = () => {
           description: "External partner updated successfully",
         });
       } else {
-        const { error } = await (supabase as any).from("wo_external_partners").insert([
+        const { error } = await supabase.from("external_partners").insert([
           {
             name: formData.name.trim(),
-            process_type: formData.process_type.trim() || null,
+            process_type: formData.process_type.trim(),
             default_lead_time_days: formData.default_lead_time_days,
-            contact_person: formData.contact_person.trim() || null,
-            phone: formData.phone.trim() || null,
-            email: formData.email.trim() || null,
+            contact_name: formData.contact_person.trim() || null,
+            contact_phone: formData.phone.trim() || null,
+            contact_email: formData.email.trim() || null,
             address: formData.address.trim() || null,
             is_active: formData.is_active,
           },
@@ -210,8 +210,8 @@ export const ExternalPartnersManagement = () => {
   const handleDeactivate = async (partnerId: string, currentStatus: boolean) => {
     setLoading(true);
     try {
-      const { error } = await (supabase as any)
-        .from("wo_external_partners")
+      const { error } = await supabase
+        .from("external_partners")
         .update({ is_active: !currentStatus })
         .eq("id", partnerId);
 

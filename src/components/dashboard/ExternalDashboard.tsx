@@ -94,10 +94,10 @@ export const ExternalDashboard = () => {
 
       // Fetch external moves with partner info and receipts
       const [movesResult, receiptsResult, workOrdersResult, partnersResult] = await Promise.all([
-        (supabase as any).from('wo_external_moves').select('*'),
-        (supabase as any).from('wo_external_receipts').select('*'),
+        supabase.from('wo_external_moves').select('*'),
+        supabase.from('wo_external_receipts').select('*'),
         supabase.from('work_orders').select('id, display_id, wo_id, gross_weight_per_pc'),
-        (supabase as any).from('wo_external_partners').select('id, name')
+        supabase.from('external_partners').select('id, name')
       ]);
 
       if (movesResult.error) {

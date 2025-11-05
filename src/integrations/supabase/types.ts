@@ -3566,15 +3566,16 @@ export type Database = {
           dispatch_date: string | null
           expected_return_date: string | null
           id: string
+          operation_tag: string | null
           partner_id: string | null
-          process: string | null
-          qty_returned: number | null
-          qty_sent: number
+          process: string
+          quantity_returned: number | null
+          quantity_sent: number
           remarks: string | null
           returned_date: string | null
           status: string | null
           updated_at: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           challan_no?: string | null
@@ -3583,15 +3584,16 @@ export type Database = {
           dispatch_date?: string | null
           expected_return_date?: string | null
           id?: string
+          operation_tag?: string | null
           partner_id?: string | null
-          process?: string | null
-          qty_returned?: number | null
-          qty_sent: number
+          process: string
+          quantity_returned?: number | null
+          quantity_sent: number
           remarks?: string | null
           returned_date?: string | null
           status?: string | null
           updated_at?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           challan_no?: string | null
@@ -3600,36 +3602,30 @@ export type Database = {
           dispatch_date?: string | null
           expected_return_date?: string | null
           id?: string
+          operation_tag?: string | null
           partner_id?: string | null
-          process?: string | null
-          qty_returned?: number | null
-          qty_sent?: number
+          process?: string
+          quantity_returned?: number | null
+          quantity_sent?: number
           remarks?: string | null
           returned_date?: string | null
           status?: string | null
           updated_at?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "wo_external_moves_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "wo_external_moves_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "v_operator_daily"
-            referencedColumns: ["operator_id"]
-          },
           {
             foreignKeyName: "wo_external_moves_partner_id_fkey"
             columns: ["partner_id"]
             isOneToOne: false
             referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_moves_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
             referencedColumns: ["id"]
           },
           {
@@ -3651,29 +3647,32 @@ export type Database = {
       wo_external_receipts: {
         Row: {
           created_at: string | null
+          grn_no: string | null
           id: string
-          move_id: string | null
+          move_id: string
+          quantity_received: number
+          received_at: string | null
           received_by: string | null
-          received_date: string | null
-          received_qty: number
           remarks: string | null
         }
         Insert: {
           created_at?: string | null
+          grn_no?: string | null
           id?: string
-          move_id?: string | null
+          move_id: string
+          quantity_received: number
+          received_at?: string | null
           received_by?: string | null
-          received_date?: string | null
-          received_qty: number
           remarks?: string | null
         }
         Update: {
           created_at?: string | null
+          grn_no?: string | null
           id?: string
-          move_id?: string | null
+          move_id?: string
+          quantity_received?: number
+          received_at?: string | null
           received_by?: string | null
-          received_date?: string | null
-          received_qty?: number
           remarks?: string | null
         }
         Relationships: [
@@ -3683,20 +3682,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "wo_external_moves"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "wo_external_receipts_received_by_fkey"
-            columns: ["received_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "wo_external_receipts_received_by_fkey"
-            columns: ["received_by"]
-            isOneToOne: false
-            referencedRelation: "v_operator_daily"
-            referencedColumns: ["operator_id"]
           },
         ]
       }
@@ -4132,6 +4117,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      wo_external_partners: {
+        Row: {
+          address: string | null
+          contact_person: string | null
+          created_at: string | null
+          default_lead_time_days: number | null
+          email: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          phone: string | null
+          process_type: string | null
+        }
+        Insert: {
+          address?: string | null
+          contact_person?: string | null
+          created_at?: string | null
+          default_lead_time_days?: number | null
+          email?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          phone?: string | null
+          process_type?: string | null
+        }
+        Update: {
+          address?: string | null
+          contact_person?: string | null
+          created_at?: string | null
+          default_lead_time_days?: number | null
+          email?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          phone?: string | null
+          process_type?: string | null
+        }
+        Relationships: []
       }
       work_orders_restricted: {
         Row: {

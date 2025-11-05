@@ -46,14 +46,15 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const [loading, setLoading] = useState(false);
   
   const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
-  const [process, setProcess] = useState<string>("");
-  const [partnerId, setPartnerId] = useState<string>("");
+  const [process, setProcess] = useState<string | undefined>(undefined);
+  const [partnerId, setPartnerId] = useState<string | undefined>(undefined);
   const [qtySent, setQtySent] = useState<string>("");
   const [expectedReturnDate, setExpectedReturnDate] = useState<string>("");
   const [remarks, setRemarks] = useState<string>("");
-  const [operationTag, setOperationTag] = useState<string>("");
+  const [operationTag, setOperationTag] = useState<string | undefined>(undefined);
   const [partners, setPartners] = useState<ExternalPartner[]>([]);
   const [filteredPartners, setFilteredPartners] = useState<ExternalPartner[]>([]);
+  const [partnersError, setPartnersError] = useState<string | null>(null);
   
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -74,35 +75,37 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   useEffect(() => {
     if (process && partners.length > 0) {
       const filtered = partners.filter(p => p.process_type === process);
+      console.log(`Filtered partners for ${process}:`, filtered.length);
       setFilteredPartners(filtered);
-      setPartnerId("");
+      setPartnerId(undefined);
       setExpectedReturnDate("");
       setErrors({});
+    } else {
+      setFilteredPartners([]);
     }
   }, [process, partners]);
 
   const loadPartners = async () => {
     try {
-      const { data, error } = await (supabase as any)
-        .from("wo_external_partners")
+      setPartnersError(null);
+      const { data, error } = await supabase
+        .from("external_partners")
         .select("id, name, process_type, default_lead_time_days, is_active")
         .eq("is_active", true)
         .order("name");
       
       if (error) {
-        console.warn("Failed to load external partners:", error);
-        toast({
-          title: "Warning",
-          description: "Could not load external partners. Please refresh the page.",
-          variant: "destructive",
-        });
+        console.error("Failed to load external partners:", error);
+        setPartnersError("Could not load external partners. Please try again.");
         setPartners([]);
         return;
       }
       
+      console.log("Loaded partners:", (data || []).length);
       setPartners((data || []) as ExternalPartner[]);
     } catch (err) {
-      console.warn("Error loading partners:", err);
+      console.error("Error loading partners:", err);
+      setPartnersError("Could not load external partners. Please try again.");
       setPartners([]);
     }
   };
@@ -213,7 +216,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { data: moveData, error } = await (supabase as any)
+      const { data: moveData, error } = await supabase
         .from("wo_external_moves")
         .insert([{
           work_order_id: workOrder.id,
@@ -223,7 +226,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           expected_return_date: expectedReturnDate,
           challan_no: challanNo,
           remarks: remarks.trim() || null,
-          operation_tag: operationTag.trim() || null,
+          operation_tag: operationTag?.trim() || null,
           created_by: user?.id,
         }])
         .select()
@@ -273,13 +276,14 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   };
 
   const resetForm = () => {
-    setProcess("");
-    setPartnerId("");
+    setProcess(undefined);
+    setPartnerId(undefined);
     setQtySent("");
     setExpectedReturnDate("");
     setRemarks("");
-    setOperationTag("");
+    setOperationTag(undefined);
     setErrors({});
+    setPartnersError(null);
   };
 
   return (
@@ -299,6 +303,19 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 No quantity available for external processing. All items are already sent or completed.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Partners Error Alert */}
+          {partnersError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="flex justify-between items-center">
+                <span>{partnersError}</span>
+                <Button variant="outline" size="sm" onClick={loadPartners}>
+                  Retry
+                </Button>
               </AlertDescription>
             </Alert>
           )}
@@ -344,15 +361,15 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                   !process 
                     ? "Select process first" 
                     : filteredPartners.length === 0 
-                      ? "No external partners found. Add one in Admin > External Partners." 
+                      ? "No partners found for this process" 
                       : "Select partner"
                 } />
               </SelectTrigger>
               <SelectContent>
-                {filteredPartners.length === 0 && process ? (
-                  <div className="p-2 text-sm text-muted-foreground text-center">
-                    No partners available for {process}. Add one in Partners page.
-                  </div>
+                {filteredPartners.length === 0 ? (
+                  <SelectItem value="__no_partners" disabled>
+                    {process ? `No partners available for ${process}` : "Select a process first"}
+                  </SelectItem>
                 ) : (
                   filteredPartners.map(p => (
                     <SelectItem key={p.id} value={p.id}>
@@ -425,12 +442,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           {process === 'Job Work' && (
             <div className="space-y-2">
               <Label htmlFor="operation">Operation (Optional)</Label>
-              <Select value={operationTag || ""} onValueChange={setOperationTag}>
+              <Select value={operationTag} onValueChange={setOperationTag}>
                 <SelectTrigger id="operation">
                   <SelectValue placeholder="Select operation if applicable" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="__none">None</SelectItem>
                   <SelectItem value="Op-A">Operation A</SelectItem>
                   <SelectItem value="Op-B">Operation B</SelectItem>
                   <SelectItem value="Op-C">Operation C</SelectItem>
