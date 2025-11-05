@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { MainLayout } from "@/components/MainLayout";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import WorkOrders from "./pages/WorkOrders";
@@ -67,63 +68,68 @@ const App = () => (
     <Sonner />
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Index />} />
+        {/* Public routes without layout */}
         <Route path="/auth" element={<Auth />} />
-        <Route path="/scan" element={<ProtectedRoute><Scan /></ProtectedRoute>} />
-        <Route path="/scan-console" element={<ProtectedRoute><ScanConsole /></ProtectedRoute>} />
-        <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
-        <Route path="/customers" element={<ProtectedRoute><CustomerMaster /></ProtectedRoute>} />
-        <Route path="/customers/:id" element={<ProtectedRoute><CustomerDetail /></ProtectedRoute>} />
-        <Route path="/customers/reports" element={<ProtectedRoute><CustomerReports /></ProtectedRoute>} />
-        <Route path="/items" element={<ProtectedRoute><ItemMaster /></ProtectedRoute>} />
-        <Route path="/purchase" element={<ProtectedRoute><Purchase /></ProtectedRoute>} />
-        <Route path="/purchase/raw-po" element={<ProtectedRoute><RawPurchaseOrders /></ProtectedRoute>} />
-        <Route path="/purchase/settings" element={<ProtectedRoute><PurchaseSettings /></ProtectedRoute>} />
-        <Route path="/purchase/dashboard" element={<ProtectedRoute><MaterialProcurementDashboard /></ProtectedRoute>} />
-        <Route path="/reports/rpo-inventory" element={<ProtectedRoute><RPOInventoryReport /></ProtectedRoute>} />
-        <Route path="/reports/reconciliation" element={<ProtectedRoute><ReconciliationReport /></ProtectedRoute>} />
-        <Route path="/suppliers/:id/ledger" element={<ProtectedRoute><SupplierLedger /></ProtectedRoute>} />
-        <Route path="/materials/inwards" element={<ProtectedRoute><MaterialInwards /></ProtectedRoute>} />
-        <Route path="/qc/incoming" element={<ProtectedRoute><QCIncoming /></ProtectedRoute>} />
-        <Route path="/work-orders" element={<ProtectedRoute><WorkOrders /></ProtectedRoute>} />
-        <Route path="/work-orders/new" element={<ProtectedRoute><NewWorkOrder /></ProtectedRoute>} />
-        <Route path="/work-orders/:id" element={<ProtectedRoute><WorkOrderDetail /></ProtectedRoute>} />
-        <Route path="/quality" element={<ProtectedRoute><Quality /></ProtectedRoute>} />
-        <Route path="/packing" element={<ProtectedRoute><Packing /></ProtectedRoute>} />
-        <Route path="/dispatch" element={<ProtectedRoute><Dispatch /></ProtectedRoute>} />
-          <Route path="/genealogy" element={<ProtectedRoute><Genealogy /></ProtectedRoute>} />
-          <Route path="/floor-dashboard" element={<ProtectedRoute><FloorDashboard /></ProtectedRoute>} />
-          <Route path="/machine-status" element={<ProtectedRoute><MachineStatus /></ProtectedRoute>} />
-          <Route path="/cnc-dashboard" element={<ProtectedRoute><CNCDashboard /></ProtectedRoute>} />
-          <Route path="/cutting" element={<ProtectedRoute><Cutting /></ProtectedRoute>} />
-          <Route path="/forging" element={<ProtectedRoute><Forging /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-        <Route path="/tolerance-setup" element={<ProtectedRoute><ToleranceSetup /></ProtectedRoute>} />
-        <Route path="/hourly-qc" element={<ProtectedRoute><HourlyQC /></ProtectedRoute>} />
-        <Route path="/dispatch-qc-report/:woId" element={<ProtectedRoute><DispatchQCReport /></ProtectedRoute>} />
-        <Route path="/department/:departmentName" element={<ProtectedRoute><DepartmentDetail /></ProtectedRoute>} />
-        <Route path="/material-requirements" element={<ProtectedRoute><MaterialRequirements /></ProtectedRoute>} />
-        <Route path="/stage/:stage" element={<ProtectedRoute><StageDetailView /></ProtectedRoute>} />
-        <Route path="/maintenance" element={<ProtectedRoute><Maintenance /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-        <Route path="/factory-calendar" element={<ProtectedRoute><FactoryCalendar /></ProtectedRoute>} />
-        <Route path="/production-progress" element={<ProtectedRoute><ProductionProgress /></ProtectedRoute>} />
-        <Route path="/finance/dashboard" element={<ProtectedRoute><FinanceDashboard /></ProtectedRoute>} />
-        <Route path="/finance/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
-        <Route path="/finance/invoices/create" element={<ProtectedRoute><CreateInvoices /></ProtectedRoute>} />
-        <Route path="/finance/invoices/:id" element={<ProtectedRoute><InvoiceDetail /></ProtectedRoute>} />
-        <Route path="/finance/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
-        <Route path="/finance/aging" element={<ProtectedRoute><Aging /></ProtectedRoute>} />
-        <Route path="/finance/reports" element={<ProtectedRoute><FinanceReports /></ProtectedRoute>} />
-          <Route path="/reports/machine-runtime" element={<ProtectedRoute><MachineRuntime /></ProtectedRoute>} />
-          <Route path="/reports/worker-efficiency" element={<ProtectedRoute><WorkerEfficiency /></ProtectedRoute>} />
-          <Route path="/finance/settings" element={<ProtectedRoute><FinanceSettings /></ProtectedRoute>} />
-          <Route path="/logistics" element={<ProtectedRoute><Logistics /></ProtectedRoute>} />
-          <Route path="/logistics-dashboard" element={<ProtectedRoute><LogisticsDashboard /></ProtectedRoute>} />
-          <Route path="/partners" element={<ProtectedRoute><Partners /></ProtectedRoute>} />
-          <Route path="/partner-performance" element={<ProtectedRoute><PartnerPerformance /></ProtectedRoute>} />
+        
+        {/* All protected routes with MainLayout */}
+        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+          <Route path="/" element={<Index />} />
+          <Route path="/scan" element={<Scan />} />
+          <Route path="/scan-console" element={<ScanConsole />} />
+          <Route path="/sales" element={<Sales />} />
+          <Route path="/customers" element={<CustomerMaster />} />
+          <Route path="/customers/:id" element={<CustomerDetail />} />
+          <Route path="/customers/reports" element={<CustomerReports />} />
+          <Route path="/items" element={<ItemMaster />} />
+          <Route path="/purchase" element={<Purchase />} />
+          <Route path="/purchase/raw-po" element={<RawPurchaseOrders />} />
+          <Route path="/purchase/settings" element={<PurchaseSettings />} />
+          <Route path="/purchase/dashboard" element={<MaterialProcurementDashboard />} />
+          <Route path="/reports/rpo-inventory" element={<RPOInventoryReport />} />
+          <Route path="/reports/reconciliation" element={<ReconciliationReport />} />
+          <Route path="/suppliers/:id/ledger" element={<SupplierLedger />} />
+          <Route path="/materials/inwards" element={<MaterialInwards />} />
+          <Route path="/qc/incoming" element={<QCIncoming />} />
+          <Route path="/work-orders" element={<WorkOrders />} />
+          <Route path="/work-orders/new" element={<NewWorkOrder />} />
+          <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
+          <Route path="/quality" element={<Quality />} />
+          <Route path="/packing" element={<Packing />} />
+          <Route path="/dispatch" element={<Dispatch />} />
+          <Route path="/genealogy" element={<Genealogy />} />
+          <Route path="/floor-dashboard" element={<FloorDashboard />} />
+          <Route path="/machine-status" element={<MachineStatus />} />
+          <Route path="/cnc-dashboard" element={<CNCDashboard />} />
+          <Route path="/cutting" element={<Cutting />} />
+          <Route path="/forging" element={<Forging />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/tolerance-setup" element={<ToleranceSetup />} />
+          <Route path="/hourly-qc" element={<HourlyQC />} />
+          <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
+          <Route path="/department/:departmentName" element={<DepartmentDetail />} />
+          <Route path="/material-requirements" element={<MaterialRequirements />} />
+          <Route path="/stage/:stage" element={<StageDetailView />} />
+          <Route path="/maintenance" element={<Maintenance />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/factory-calendar" element={<FactoryCalendar />} />
+          <Route path="/production-progress" element={<ProductionProgress />} />
+          <Route path="/finance/dashboard" element={<FinanceDashboard />} />
+          <Route path="/finance/invoices" element={<Invoices />} />
+          <Route path="/finance/invoices/create" element={<CreateInvoices />} />
+          <Route path="/finance/invoices/:id" element={<InvoiceDetail />} />
+          <Route path="/finance/payments" element={<Payments />} />
+          <Route path="/finance/aging" element={<Aging />} />
+          <Route path="/finance/reports" element={<FinanceReports />} />
+          <Route path="/reports/machine-runtime" element={<MachineRuntime />} />
+          <Route path="/reports/worker-efficiency" element={<WorkerEfficiency />} />
+          <Route path="/finance/settings" element={<FinanceSettings />} />
+          <Route path="/logistics" element={<Logistics />} />
+          <Route path="/logistics-dashboard" element={<LogisticsDashboard />} />
+          <Route path="/partners" element={<Partners />} />
+          <Route path="/partner-performance" element={<PartnerPerformance />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   </>

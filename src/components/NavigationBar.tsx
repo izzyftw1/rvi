@@ -237,7 +237,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
   return (
     <>
       {/* Desktop Navigation */}
-      <div className="hidden lg:block border-b bg-card">
+      <div className="hidden lg:block border-t bg-card">
         <div className="container mx-auto px-4">
           <NavigationMenu 
             className="max-w-full justify-start"
@@ -294,7 +294,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       </div>
 
       {/* Mobile Navigation */}
-      <div className="lg:hidden border-b bg-card">
+      <div className="lg:hidden border-t bg-card">
         <div className="container mx-auto px-4 h-12 flex items-center">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
