@@ -336,6 +336,7 @@ export type Database = {
       departments: {
         Row: {
           created_at: string
+          description: string | null
           id: string
           name: string
           site_id: string | null
@@ -343,6 +344,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          description?: string | null
           id?: string
           name: string
           site_id?: string | null
@@ -350,6 +352,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          description?: string | null
           id?: string
           name?: string
           site_id?: string | null
@@ -2615,6 +2618,30 @@ export type Database = {
           id?: string
           module?: string
           role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      roles: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          role_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          role_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          role_name?: string
+          updated_at?: string
         }
         Relationships: []
       }
