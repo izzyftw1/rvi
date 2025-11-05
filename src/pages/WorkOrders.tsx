@@ -273,29 +273,78 @@ const WorkOrders = () => {
             <h1 className="text-2xl font-bold">Work Orders</h1>
             <p className="text-sm text-muted-foreground">Manage production orders</p>
           </div>
-          <div className="flex gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={handleExportCSV}>
-                  Export as CSV
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExportPDF}>
-                  Export as PDF
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button onClick={() => navigate("/work-orders/new")}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Work Order
-            </Button>
-          </div>
+          <Button onClick={() => navigate("/work-orders/new")}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Work Order
+          </Button>
         </div>
+
+        {/* Stage Filter Chips */}
+        <Card>
+          <CardContent className="pt-6 pb-4">
+            <div className="space-y-4">
+              {/* Internal Stages */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Internal Stages</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'all', label: 'All', variant: 'default' as const },
+                    { value: 'goods_in', label: 'Goods In', variant: 'outline' as const },
+                    { value: 'cutting_queue', label: 'Cutting Queue', variant: 'outline' as const },
+                    { value: 'forging_queue', label: 'Forging Queue', variant: 'outline' as const },
+                    { value: 'production', label: 'Production', variant: 'outline' as const },
+                    { value: 'qc', label: 'QC', variant: 'outline' as const },
+                    { value: 'packing', label: 'Packing', variant: 'outline' as const },
+                    { value: 'dispatch', label: 'Dispatch', variant: 'outline' as const },
+                  ].map((stage) => {
+                    const count = workOrders.filter(wo => 
+                      stage.value === 'all' ? true : wo.current_stage === stage.value
+                    ).length;
+                    return (
+                      <Badge
+                        key={stage.value}
+                        variant={stageFilter === stage.value ? 'default' : stage.variant}
+                        className="cursor-pointer hover:bg-primary/80 transition-colors"
+                        onClick={() => setStageFilter(stage.value)}
+                      >
+                        {stage.label} ({count})
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* External Stages */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">External Processes</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'job_work', label: 'Job Work' },
+                    { value: 'plating', label: 'Plating' },
+                    { value: 'buffing', label: 'Buffing' },
+                    { value: 'blasting', label: 'Blasting' },
+                    { value: 'forging', label: 'Forging (Ext)' },
+                  ].map((process) => {
+                    const count = workOrders.filter(wo => 
+                      wo.external_wip && wo.external_wip[process.value] > 0
+                    ).length;
+                    return (
+                      <Badge
+                        key={process.value}
+                        variant={stageFilter === process.value ? 'default' : 'secondary'}
+                        className="cursor-pointer hover:bg-orange-500/80 transition-colors bg-orange-500/10 text-orange-700 border-orange-300"
+                        onClick={() => setStageFilter(process.value)}
+                      >
+                        <Package className="h-3 w-3 mr-1" />
+                        {process.label} ({count})
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Filters */}
         <Card>
@@ -310,29 +359,6 @@ const WorkOrders = () => {
                   className="pl-9"
                 />
               </div>
-
-              <Select value={stageFilter} onValueChange={setStageFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Stages" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Stages</SelectItem>
-                  <SelectItem value="goods_in">Goods In</SelectItem>
-                  <SelectItem value="cutting_queue">Cutting Queue</SelectItem>
-                  <SelectItem value="cutting_in_progress">Cutting In Progress</SelectItem>
-                  <SelectItem value="forging_queue">Forging Queue</SelectItem>
-                  <SelectItem value="forging_in_progress">Forging In Progress</SelectItem>
-                  <SelectItem value="production">Production</SelectItem>
-                  <SelectItem value="qc">QC</SelectItem>
-                  <SelectItem value="packing">Packing</SelectItem>
-                  <SelectItem value="dispatch">Dispatch</SelectItem>
-                  <SelectItem value="job_work">Job Work (External)</SelectItem>
-                  <SelectItem value="plating">Plating (External)</SelectItem>
-                  <SelectItem value="buffing">Buffing (External)</SelectItem>
-                  <SelectItem value="blasting">Blasting (External)</SelectItem>
-                  <SelectItem value="forging">Forging (External)</SelectItem>
-                </SelectContent>
-              </Select>
 
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger>
@@ -368,6 +394,25 @@ const WorkOrders = () => {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <div className="flex gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={handleExportCSV}>
+                      Export as CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportPDF}>
+                      Export as PDF
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -411,9 +456,15 @@ const WorkOrders = () => {
                 <Card key={wo.id} className="hover:shadow-md transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
-                      <div onClick={() => navigate(`/work-orders/${wo.id}`)} className="flex-1 cursor-pointer">
-                        <CardTitle className="text-lg">
+                  <div onClick={() => navigate(`/work-orders/${wo.id}`)} className="flex-1 cursor-pointer">
+                        <CardTitle className="text-lg flex items-center gap-2">
                           {wo.display_id || wo.wo_id || "—"}
+                          {wo.overdue_moves_count > 0 && (
+                            <Badge variant="destructive" className="text-xs">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              {wo.overdue_moves_count} Overdue
+                            </Badge>
+                          )}
                         </CardTitle>
                         <div className="flex flex-wrap gap-2 mt-2">
                           {visibleColumns.stage && (
@@ -421,23 +472,23 @@ const WorkOrders = () => {
                               {wo.current_stage?.replace(/_/g, " ") || "—"}
                             </Badge>
                           )}
-                          {visibleColumns.external && externalWIP && (
-                            <Badge variant="secondary" className="cursor-pointer" onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/work-orders/${wo.id}?tab=external`);
-                            }}>
-                              <Package className="h-3 w-3 mr-1" />
-                              {externalWIP}
-                            </Badge>
-                          )}
-                          {visibleColumns.overdue && overdueReturns && (
-                            <Badge variant="destructive" className="cursor-pointer" onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/work-orders/${wo.id}?tab=external`);
-                            }}>
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              Overdue Returns
-                            </Badge>
+                          {visibleColumns.external && wo.external_wip && Object.keys(wo.external_wip).length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {Object.entries(wo.external_wip).map(([process, qty]: [string, any]) => (
+                                <Badge 
+                                  key={process}
+                                  variant="secondary" 
+                                  className="cursor-pointer bg-orange-500/10 text-orange-700 border-orange-300 hover:bg-orange-500/20" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/work-orders/${wo.id}?tab=external`);
+                                  }}
+                                >
+                                  <Package className="h-3 w-3 mr-1" />
+                                  {process.replace('_', ' ')}: {qty}
+                                </Badge>
+                              ))}
+                            </div>
                           )}
                           {wo.cutting_required && <Scissors className="h-4 w-4 text-orange-600" />}
                           {wo.forging_required && <Hammer className="h-4 w-4 text-blue-600" />}
