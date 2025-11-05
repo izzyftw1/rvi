@@ -13,7 +13,9 @@ import {
   Shield,
   AlertTriangle,
   ClipboardCheck,
-  QrCode
+  QrCode,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { KPIBanner } from "@/components/dashboard/KPIBanner";
 import { FloorKanban } from "@/components/dashboard/FloorKanban";
@@ -25,6 +27,7 @@ import { QCAlertsWidget } from "@/components/dashboard/QCAlertsWidget";
 import { LogisticsAlertsWidget } from "@/components/dashboard/LogisticsAlertsWidget";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QuickActionsAccordion } from "@/components/dashboard/QuickActionsAccordion";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -33,6 +36,7 @@ const Index = () => {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [userRoles, setUserRoles] = useState<string[]>([]);
+  const [quickAccessOpen, setQuickAccessOpen] = useState(true);
   
   // KPI Metrics
   const [kpiMetrics, setKpiMetrics] = useState({
@@ -461,11 +465,35 @@ const Index = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Quick Access Section */}
-        <div className="mt-8">
-          <h2 className="text-xl font-bold mb-4">Quick Access</h2>
-          <QuickActionsAccordion />
-        </div>
+        {/* Quick Access Section - Collapsible */}
+        <Collapsible 
+          open={quickAccessOpen} 
+          onOpenChange={setQuickAccessOpen}
+          className="space-y-2"
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">Quick Access</h2>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2">
+                {quickAccessOpen ? (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    <span className="text-sm">Collapse</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    <span className="text-sm">Expand</span>
+                  </>
+                )}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+          
+          <CollapsibleContent className="space-y-2 animate-accordion-down">
+            <QuickActionsAccordion />
+          </CollapsibleContent>
+        </Collapsible>
       </main>
     </div>
   );
