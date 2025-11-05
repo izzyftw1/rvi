@@ -491,7 +491,7 @@ const Index = () => {
           </div>
           
           <CollapsibleContent className="space-y-2 animate-accordion-down">
-            <QuickActionsAccordion />
+            <QuickActionsAccordion userRoles={userRoles} />
           </CollapsibleContent>
         </Collapsible>
       </main>
