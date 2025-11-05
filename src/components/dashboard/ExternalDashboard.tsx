@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -72,17 +73,20 @@ export const ExternalDashboard = () => {
 
   useEffect(() => {
     loadExternalData();
-
-    const channel = supabase
-      .channel('external-dashboard')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadExternalData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, loadExternalData)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  // Throttled realtime for External heatmap - separate channel
+  const loadExternalDataCallback = useCallback(() => {
+    loadExternalData();
+  }, []);
+
+  useThrottledRealtime({
+    channelName: 'dashboard-external-heatmap',
+    tables: ['wo_external_moves', 'wo_external_receipts'],
+    onUpdate: loadExternalDataCallback,
+    throttleMs: 5000, // 5 seconds throttle
+    cacheMs: 30000, // 30 seconds cache
+  });
 
   const loadExternalData = async () => {
     try {

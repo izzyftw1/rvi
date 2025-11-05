@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -42,18 +43,20 @@ export const TodayGlanceTimeline = ({ limit, showViewAll = false }: TodayGlanceT
 
   useEffect(() => {
     loadTodayEvents();
-
-    const channel = supabase
-      .channel('today-timeline')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadTodayEvents)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, loadTodayEvents)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadTodayEvents)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  // Throttled realtime for Today's events - separate channel
+  const loadTodayEventsCallback = useCallback(() => {
+    loadTodayEvents();
+  }, []);
+
+  useThrottledRealtime({
+    channelName: 'dashboard-today-timeline',
+    tables: ['work_orders', 'qc_records', 'wo_external_moves', 'invoices'],
+    onUpdate: loadTodayEventsCallback,
+    throttleMs: 10000, // 10 seconds throttle
+    cacheMs: 30000, // 30 seconds cache
+  });
 
   const loadTodayEvents = async () => {
     try {

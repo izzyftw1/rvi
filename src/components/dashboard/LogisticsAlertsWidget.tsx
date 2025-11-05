@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Truck, Calendar, Package } from "lucide-react";
@@ -21,17 +22,20 @@ export const LogisticsAlertsWidget = () => {
 
   useEffect(() => {
     loadLogisticsAlerts();
-
-    const channel = supabase
-      .channel('logistics-alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadLogisticsAlerts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, loadLogisticsAlerts)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  // Throttled realtime for Logistics alerts - separate channel
+  const loadLogisticsAlertsCallback = useCallback(() => {
+    loadLogisticsAlerts();
+  }, []);
+
+  useThrottledRealtime({
+    channelName: 'dashboard-logistics-alerts',
+    tables: ['wo_external_moves', 'wo_external_receipts'],
+    onUpdate: loadLogisticsAlertsCallback,
+    throttleMs: 8000, // 8 seconds throttle
+    cacheMs: 30000, // 30 seconds cache
+  });
 
   const loadLogisticsAlerts = async () => {
     try {

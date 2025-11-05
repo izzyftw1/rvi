@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import rvLogo from "@/assets/rv-logo.jpg";
+import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { 
   Factory, 
   Package, 
@@ -77,23 +78,23 @@ const Index = () => {
       }
     });
 
-    // Set up real-time subscriptions
-    const channel = supabase
-      .channel('dashboard-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
-        loadDashboardData();
-      })
-      .subscribe();
-
-    // Refresh data every 30 seconds
-    const interval = setInterval(loadDashboardData, 30000);
-
     return () => {
       subscription.unsubscribe();
-      supabase.removeChannel(channel);
-      clearInterval(interval);
     };
   }, [navigate]);
+
+  // Throttled realtime for KPIs - separate channel
+  const loadKPIsCallback = useCallback(() => {
+    if (user) loadKPIs();
+  }, [user, userRoles]);
+
+  useThrottledRealtime({
+    channelName: 'dashboard-kpis',
+    tables: ['work_orders', 'sales_orders', 'qc_records', 'wo_external_moves'],
+    onUpdate: loadKPIsCallback,
+    throttleMs: 10000, // 10 seconds for KPIs
+    cacheMs: 30000, // 30 seconds cache
+  });
 
   const loadProfile = async (userId: string) => {
     const { data } = await supabase
@@ -119,14 +120,7 @@ const Index = () => {
 
   const loadDashboardData = async () => {
     try {
-      // Load KPIs
       await loadKPIs();
-      
-      // Load Floor Status
-      await loadFloorStatus();
-      
-      // Load Today's Events
-      await loadTodayEvents();
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
@@ -257,141 +251,7 @@ const Index = () => {
     }
   };
 
-  const loadFloorStatus = async () => {
-    const { data: wos } = await supabase
-      .from('work_orders')
-      .select('id, current_stage, quantity, gross_weight_per_pc, created_at');
-
-    if (!wos) return;
-
-    const stages = {
-      goods_in: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
-      production: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
-      qc: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
-      packing: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
-      dispatch: { count: 0, pcs: 0, kg: 0, totalWaitHours: 0, woCount: 0 },
-    };
-
-    wos.forEach(wo => {
-      const stage = wo.current_stage as keyof typeof stages;
-      if (stages[stage]) {
-        stages[stage].count++;
-        stages[stage].pcs += wo.quantity || 0;
-        stages[stage].kg += (wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000;
-        
-        const waitHours = (Date.now() - new Date(wo.created_at).getTime()) / (1000 * 60 * 60);
-        stages[stage].totalWaitHours += waitHours;
-        stages[stage].woCount++;
-      }
-    });
-
-    setFloorStats({
-      goods_in: {
-        count: stages.goods_in.count,
-        pcs: stages.goods_in.pcs,
-        kg: stages.goods_in.kg,
-        avgWait: stages.goods_in.woCount > 0 ? stages.goods_in.totalWaitHours / stages.goods_in.woCount : 0
-      },
-      production: {
-        count: stages.production.count,
-        pcs: stages.production.pcs,
-        kg: stages.production.kg,
-        avgWait: stages.production.woCount > 0 ? stages.production.totalWaitHours / stages.production.woCount : 0
-      },
-      qc: {
-        count: stages.qc.count,
-        pcs: stages.qc.pcs,
-        kg: stages.qc.kg,
-        avgWait: stages.qc.woCount > 0 ? stages.qc.totalWaitHours / stages.qc.woCount : 0
-      },
-      packing: {
-        count: stages.packing.count,
-        pcs: stages.packing.pcs,
-        kg: stages.packing.kg,
-        avgWait: stages.packing.woCount > 0 ? stages.packing.totalWaitHours / stages.packing.woCount : 0
-      },
-      dispatch: {
-        count: stages.dispatch.count,
-        pcs: stages.dispatch.pcs,
-        kg: stages.dispatch.kg,
-        avgWait: stages.dispatch.woCount > 0 ? stages.dispatch.totalWaitHours / stages.dispatch.woCount : 0
-      },
-    });
-  };
-
-  const loadTodayEvents = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const events: any[] = [];
-
-    // WOs due today
-    const { count: woDue } = await supabase
-      .from('work_orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('due_date', today);
-
-    if (woDue && woDue > 0) {
-      events.push({
-        time: 'End of Day',
-        type: 'wo_due',
-        title: `${woDue} Work Orders Due`,
-        count: woDue,
-        priority: 'high'
-      });
-    }
-
-    // Late deliveries
-    const { count: late } = await supabase
-      .from('work_orders')
-      .select('*', { count: 'exact', head: true })
-      .lt('due_date', today)
-      .neq('status', 'completed');
-
-    if (late && late > 0) {
-      events.push({
-        time: 'Overdue',
-        type: 'late',
-        title: `${late} Late Deliveries`,
-        count: late,
-        priority: 'high'
-      });
-    }
-
-    // Ready to ship
-    const { count: ready } = await supabase
-      .from('work_orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('dispatch_allowed', true)
-      .neq('status', 'completed');
-
-    if (ready && ready > 0) {
-      events.push({
-        time: 'Ready Now',
-        type: 'ready',
-        title: `${ready} Ready for Dispatch`,
-        count: ready,
-        priority: 'medium'
-      });
-    }
-
-    // Payments expected (invoices due today)
-    const { count: paymentsDue } = await supabase
-      .from('invoices')
-      .select('*', { count: 'exact', head: true })
-      .eq('due_date', today)
-      .neq('status', 'paid');
-
-    if (paymentsDue && paymentsDue > 0) {
-      events.push({
-        time: 'Today',
-        type: 'payment',
-        title: `${paymentsDue} Payments Expected`,
-        count: paymentsDue,
-        priority: 'medium'
-      });
-    }
-
-    setTodayEvents(events);
-  };
+  // Removed loadFloorStatus and loadTodayEvents - moved to individual components with throttling
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

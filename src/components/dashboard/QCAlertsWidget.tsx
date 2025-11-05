@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Clock, CheckCircle2 } from "lucide-react";
@@ -22,17 +23,20 @@ export const QCAlertsWidget = () => {
 
   useEffect(() => {
     loadQCAlerts();
-
-    const channel = supabase
-      .channel('qc-alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, loadQCAlerts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadQCAlerts)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  // Throttled realtime for QC alerts - separate channel
+  const loadQCAlertsCallback = useCallback(() => {
+    loadQCAlerts();
+  }, []);
+
+  useThrottledRealtime({
+    channelName: 'dashboard-qc-alerts',
+    tables: ['qc_records', 'work_orders'],
+    onUpdate: loadQCAlertsCallback,
+    throttleMs: 8000, // 8 seconds throttle
+    cacheMs: 30000, // 30 seconds cache
+  });
 
   const loadQCAlerts = async () => {
     try {

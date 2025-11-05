@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -77,20 +78,20 @@ export const FloorKanban = () => {
 
   useEffect(() => {
     loadStageData();
-
-    // Set up real-time subscriptions
-    const channel = supabase
-      .channel('kanban-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadStageData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadStageData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, loadStageData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_logs' }, loadStageData)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  // Throttled realtime for Kanban - separate channel
+  const loadStageDataCallback = useCallback(() => {
+    loadStageData();
+  }, []);
+
+  useThrottledRealtime({
+    channelName: 'dashboard-kanban',
+    tables: ['work_orders', 'wo_external_moves', 'wo_external_receipts', 'production_logs'],
+    onUpdate: loadStageDataCallback,
+    throttleMs: 5000, // 5 seconds throttle
+    cacheMs: 30000, // 30 seconds cache
+  });
 
   const loadStageData = async () => {
     try {
