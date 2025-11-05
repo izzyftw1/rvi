@@ -143,7 +143,7 @@ export const ExternalPartnersManagement = () => {
             default_lead_time_days: formData.default_lead_time_days,
             contact_name: formData.contact_person.trim() || null,
             contact_phone: formData.phone.trim() || null,
-            contact_email: formData.email.trim() || null,
+            email: formData.email.trim() || null,
             address: formData.address.trim() || null,
             is_active: formData.is_active,
           })
@@ -163,7 +163,7 @@ export const ExternalPartnersManagement = () => {
             default_lead_time_days: formData.default_lead_time_days,
             contact_name: formData.contact_person.trim() || null,
             contact_phone: formData.phone.trim() || null,
-            contact_email: formData.email.trim() || null,
+            email: formData.email.trim() || null,
             address: formData.address.trim() || null,
             is_active: formData.is_active,
           },
