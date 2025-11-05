@@ -20,14 +20,17 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
 import { TodayGlanceTimeline } from "@/components/dashboard/TodayGlanceTimeline";
 import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
+import { QCAlertsWidget } from "@/components/dashboard/QCAlertsWidget";
+import { LogisticsAlertsWidget } from "@/components/dashboard/LogisticsAlertsWidget";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Index = () => {
   const navigate = useNavigate();
-  const { isSuperAdmin, isFinanceRole } = useUserRole();
+  const { isSuperAdmin, isFinanceRole, hasRole } = useUserRole();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
   
   // KPI Metrics
   const [kpiMetrics, setKpiMetrics] = useState({
@@ -102,6 +105,16 @@ const Index = () => {
     if (data) {
       setProfile(data);
     }
+
+    // Load user roles
+    const { data: rolesData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId);
+    
+    if (rolesData) {
+      setUserRoles(rolesData.map(r => r.role));
+    }
   };
 
   const loadDashboardData = async () => {
@@ -122,65 +135,126 @@ const Index = () => {
   const loadKPIs = async () => {
     const today = new Date().toISOString().split('T')[0];
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-    // Orders in Pipeline (pending/approved sales orders)
-    const { count: pipeline } = await supabase
-      .from('sales_orders')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'approved']);
+    // Check if user is QC role
+    const isQC = userRoles.includes('quality');
 
-    // Orders in Production
-    const { count: production } = await supabase
-      .from('work_orders')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['in_progress', 'pending']);
+    if (isQC) {
+      // QC-specific KPIs
+      // Material Tests Pending
+      const { count: materialTests } = await supabase
+        .from('qc_records')
+        .select('*', { count: 'exact', head: true })
+        .eq('qc_type', 'incoming')
+        .eq('result', 'pending');
 
-    // External WIP (count pieces sent out but not returned)
-    const { data: externalMoves } = await supabase
-      .from('wo_external_moves' as any)
-      .select('qty_sent, qty_returned')
-      .is('returned_date', null);
-    
-    const externalWIP = externalMoves?.reduce((sum: number, move: any) => {
-      return sum + (move.qty_sent - (move.qty_returned || 0));
-    }, 0) || 0;
+      // First-Piece Due (24h)
+      const { data: firstPieceDue } = await supabase
+        .from('qc_records')
+        .select('*, work_orders!inner(due_date)')
+        .eq('qc_type', 'first_piece')
+        .eq('result', 'pending')
+        .lte('work_orders.due_date', tomorrowStr);
 
-    // Late Deliveries
-    const { count: late } = await supabase
-      .from('work_orders')
-      .select('*', { count: 'exact', head: true })
-      .lt('due_date', today)
-      .neq('status', 'completed');
+      // QC Holds
+      const { count: qcHolds } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('production_allowed', false)
+        .neq('status', 'completed');
 
-    // Due Today
-    const { count: dueToday } = await supabase
-      .from('work_orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('due_date', today)
-      .neq('status', 'completed');
+      // Orders in Production (still useful for QC)
+      const { count: production } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['in_progress', 'pending']);
 
-    // On-time Rate 7d
-    const { data: completedLast7d } = await supabase
-      .from('work_orders')
-      .select('due_date, updated_at')
-      .eq('status', 'completed')
-      .gte('updated_at', sevenDaysAgo);
-    
-    const ontimeCount = completedLast7d?.filter(wo => {
-      return new Date(wo.updated_at) <= new Date(wo.due_date);
-    }).length || 0;
-    
-    const totalCompleted = completedLast7d?.length || 0;
-    const ontimeRate7d = totalCompleted > 0 ? Math.round((ontimeCount / totalCompleted) * 100) : 100;
+      // Late Deliveries
+      const { count: late } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .lt('due_date', today)
+        .neq('status', 'completed');
 
-    setKpiMetrics({
-      ordersPipeline: pipeline || 0,
-      ordersProduction: production || 0,
-      externalWIP,
-      lateDeliveries: late || 0,
-      dueToday: dueToday || 0,
-      ontimeRate7d,
-    });
+      // Due Today
+      const { count: dueToday } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('due_date', today)
+        .neq('status', 'completed');
+
+      setKpiMetrics({
+        ordersPipeline: materialTests || 0, // Repurposed
+        ordersProduction: production || 0,
+        externalWIP: firstPieceDue?.length || 0, // Repurposed
+        lateDeliveries: late || 0,
+        dueToday: qcHolds || 0, // Repurposed
+        ontimeRate7d: dueToday || 0, // Repurposed
+      });
+    } else {
+      // Default KPIs for Production/Logistics/Others
+      // Orders in Pipeline (pending/approved sales orders)
+      const { count: pipeline } = await supabase
+        .from('sales_orders')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['pending', 'approved']);
+
+      // Orders in Production
+      const { count: production } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['in_progress', 'pending']);
+
+      // External WIP (count pieces sent out but not returned)
+      const { data: externalMoves } = await supabase
+        .from('wo_external_moves' as any)
+        .select('qty_sent, qty_returned')
+        .is('returned_date', null);
+      
+      const externalWIP = externalMoves?.reduce((sum: number, move: any) => {
+        return sum + (move.qty_sent - (move.qty_returned || 0));
+      }, 0) || 0;
+
+      // Late Deliveries
+      const { count: late } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .lt('due_date', today)
+        .neq('status', 'completed');
+
+      // Due Today
+      const { count: dueToday } = await supabase
+        .from('work_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('due_date', today)
+        .neq('status', 'completed');
+
+      // On-time Rate 7d
+      const { data: completedLast7d } = await supabase
+        .from('work_orders')
+        .select('due_date, updated_at')
+        .eq('status', 'completed')
+        .gte('updated_at', sevenDaysAgo);
+      
+      const ontimeCount = completedLast7d?.filter(wo => {
+        return new Date(wo.updated_at) <= new Date(wo.due_date);
+      }).length || 0;
+      
+      const totalCompleted = completedLast7d?.length || 0;
+      const ontimeRate7d = totalCompleted > 0 ? Math.round((ontimeCount / totalCompleted) * 100) : 100;
+
+      setKpiMetrics({
+        ordersPipeline: pipeline || 0,
+        ordersProduction: production || 0,
+        externalWIP,
+        lateDeliveries: late || 0,
+        dueToday: dueToday || 0,
+        ontimeRate7d,
+      });
+    }
   };
 
   const loadFloorStatus = async () => {
@@ -335,8 +409,58 @@ const Index = () => {
     );
   }
 
-  // Prepare KPI data
-  const kpiData = [
+  // Prepare KPI data based on role
+  const isQC = userRoles.includes('quality');
+  
+  const kpiData = isQC ? [
+    {
+      label: "Material Tests Pending",
+      value: kpiMetrics.ordersPipeline.toString(),
+      status: (kpiMetrics.ordersPipeline === 0 ? 'good' : 
+              kpiMetrics.ordersPipeline <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: Package,
+      onClick: () => navigate("/qc-incoming")
+    },
+    {
+      label: "Orders in Production",
+      value: kpiMetrics.ordersProduction.toString(),
+      status: 'good' as const,
+      icon: Factory,
+      onClick: () => navigate("/production-progress")
+    },
+    {
+      label: "First-Piece Due (24h)",
+      value: kpiMetrics.externalWIP.toString(),
+      status: (kpiMetrics.externalWIP === 0 ? 'good' : 
+              kpiMetrics.externalWIP <= 2 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: ClipboardCheck,
+      onClick: () => navigate("/quality")
+    },
+    {
+      label: "Late Deliveries",
+      value: kpiMetrics.lateDeliveries.toString(),
+      status: (kpiMetrics.lateDeliveries === 0 ? 'good' : 
+              kpiMetrics.lateDeliveries <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: AlertTriangle,
+      onClick: () => navigate("/work-orders")
+    },
+    {
+      label: "QC Holds",
+      value: kpiMetrics.dueToday.toString(),
+      status: (kpiMetrics.dueToday === 0 ? 'good' : 
+              kpiMetrics.dueToday <= 2 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: AlertTriangle,
+      onClick: () => navigate("/quality")
+    },
+    {
+      label: "Due Today",
+      value: kpiMetrics.ontimeRate7d.toString(),
+      status: (kpiMetrics.ontimeRate7d === 0 ? 'good' : 
+              kpiMetrics.ontimeRate7d <= 5 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
+      icon: CheckCircle2,
+      onClick: () => navigate("/work-orders")
+    }
+  ] : [
     {
       label: "Orders in Pipeline",
       value: kpiMetrics.ordersPipeline.toString(),
@@ -438,8 +562,19 @@ const Index = () => {
         {/* KPI Banner - Compact 6 tiles */}
         <KPIBanner metrics={kpiData} />
 
-        {/* Tabbed View */}
-        <Tabs defaultValue="internal" className="w-full">
+        {/* Role-specific alerts */}
+        {userRoles.includes('quality') && (
+          <QCAlertsWidget />
+        )}
+        {userRoles.includes('logistics') && (
+          <LogisticsAlertsWidget />
+        )}
+
+        {/* Tabbed View - Default tab based on role */}
+        <Tabs 
+          defaultValue={userRoles.includes('logistics') ? 'external' : 'internal'} 
+          className="w-full"
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="internal">Internal Flow</TabsTrigger>
             <TabsTrigger value="external">External Processing</TabsTrigger>
@@ -447,10 +582,17 @@ const Index = () => {
           
           <TabsContent value="internal" className="space-y-6 mt-6">
             {/* Live Floor Status - Kanban View */}
-            <FloorKanban />
+            {!userRoles.includes('quality') && <FloorKanban />}
 
             {/* Today at a Glance Timeline */}
             <TodayGlanceTimeline limit={10} showViewAll={true} />
+
+            {/* QC sees simplified kanban */}
+            {userRoles.includes('quality') && (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="text-sm">Internal flow view available. Switch to External tab for detailed processing.</p>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="external" className="mt-6">
