@@ -8,8 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Plus, Edit, Trash2, Shield } from "lucide-react";
+import { Plus, Edit, Trash2, Shield, AlertTriangle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 interface Role {
   id: string;
@@ -171,8 +173,16 @@ export function RolesManagement() {
     }
   };
 
+  const LoadingSkeleton = () => (
+    <div className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-12 w-full" />
+      ))}
+    </div>
+  );
+
   return (
-    <>
+    <ErrorBoundary>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -185,24 +195,21 @@ export function RolesManagement() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Role Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+          {loading ? (
+            <LoadingSkeleton />
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      Loading...
-                    </TableCell>
+                    <TableHead>Role Name</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Created At</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ) : roles.length === 0 ? (
+                </TableHeader>
+                <TableBody>
+                  {roles.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                       No roles found
@@ -241,10 +248,11 @@ export function RolesManagement() {
                       </TableCell>
                     </TableRow>
                   ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -294,9 +302,14 @@ export function RolesManagement() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Role</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete the role "{roleToDelete?.role_name}"? This action cannot be undone.
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Confirm Role Deletion
+            </DialogTitle>
+            <DialogDescription className="space-y-2">
+              <p>Are you sure you want to delete the role <strong>"{roleToDelete?.role_name}"</strong>?</p>
+              <p className="font-medium text-foreground">This action cannot be undone.</p>
+              <p className="text-sm">Users assigned to this role may lose access permissions.</p>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -304,11 +317,11 @@ export function RolesManagement() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              Delete
+              Yes, Delete Role
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </ErrorBoundary>
   );
 }
