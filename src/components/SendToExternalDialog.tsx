@@ -7,15 +7,30 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { format, addDays } from "date-fns";
+import { Loader2, Plus, ExternalLink, AlertCircle } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { z } from "zod";
 
 interface ExternalPartner {
   id: string;
-  name: string;
-  process_types: string[];
+  partner_name: string;
+  process_type: string[];
+  lead_time_days: number;
 }
+
+// Validation schema
+const externalMoveSchema = z.object({
+  process: z.string().min(1, "Process is required"),
+  partnerId: z.string().uuid("Partner is required"),
+  qtySent: z.number()
+    .positive("Quantity must be greater than 0")
+    .max(999999, "Quantity too large"),
+  expectedReturnDate: z.string().optional(),
+  remarks: z.string().max(500, "Remarks must be less than 500 characters").optional(),
+  operationTag: z.string().max(50, "Operation tag too long").optional(),
+});
 
 interface SendToExternalDialogProps {
   open: boolean;
@@ -29,7 +44,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const { hasAnyRole } = useUserRole();
   const [loading, setLoading] = useState(false);
   
-  const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
+  const canCreate = hasAnyRole(['production', 'admin']);
   const [process, setProcess] = useState<string>("");
   const [partnerId, setPartnerId] = useState<string>("");
   const [qtySent, setQtySent] = useState<string>("");
@@ -38,13 +53,17 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const [operationTag, setOperationTag] = useState<string>("");
   const [partners, setPartners] = useState<ExternalPartner[]>([]);
   const [filteredPartners, setFilteredPartners] = useState<ExternalPartner[]>([]);
+  
+  // Validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const processOptions = [
-    { value: "job_work", label: "Job Work", prefix: "JW" },
-    { value: "plating", label: "Plating", prefix: "PL" },
-    { value: "buffing", label: "Buffing", prefix: "BF" },
-    { value: "blasting", label: "Blasting", prefix: "BL" },
-    { value: "forging", label: "Forging", prefix: "FG" },
+    { value: "Plating", label: "Plating", prefix: "PL" },
+    { value: "Job Work", label: "Job Work", prefix: "JW" },
+    { value: "Buffing", label: "Buffing", prefix: "BF" },
+    { value: "Blasting", label: "Blasting", prefix: "BL" },
+    { value: "Forging", label: "Forging", prefix: "FG" },
+    { value: "Heat Treatment", label: "Heat Treatment", prefix: "HT" },
   ];
 
   useEffect(() => {
@@ -53,19 +72,31 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
   useEffect(() => {
     if (process && partners.length > 0) {
-      const filtered = partners.filter(p => p.process_types?.includes(process));
+      const filtered = partners.filter(p => p.process_type?.includes(process));
       setFilteredPartners(filtered);
       setPartnerId("");
+      setExpectedReturnDate("");
+      setErrors({});
     }
   }, [process, partners]);
 
   const loadPartners = async () => {
     const { data } = await supabase
-      .from("external_partners" as any)
-      .select("id, name, process_types")
+      .from("external_partners")
+      .select("id, partner_name, process_type, lead_time_days")
       .eq("active", true)
-      .order("name");
-    setPartners((data || []) as unknown as ExternalPartner[]);
+      .order("partner_name");
+    setPartners((data || []) as ExternalPartner[]);
+  };
+
+  const handlePartnerChange = (newPartnerId: string) => {
+    setPartnerId(newPartnerId);
+    const selectedPartner = partners.find(p => p.id === newPartnerId);
+    if (selectedPartner && selectedPartner.lead_time_days) {
+      const returnDate = addDays(new Date(), selectedPartner.lead_time_days);
+      setExpectedReturnDate(format(returnDate, "yyyy-MM-dd"));
+    }
+    setErrors(prev => ({ ...prev, partnerId: "" }));
   };
 
   const generateChallanNo = (processType: string) => {
@@ -82,6 +113,47 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     return Math.max(0, remaining);
   };
 
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!process) {
+      newErrors.process = "Process selection is required";
+    }
+    
+    if (!partnerId) {
+      newErrors.partnerId = "Partner selection is required";
+    }
+    
+    const qty = parseFloat(qtySent);
+    const maxQty = getMaxQty();
+    
+    if (!qtySent || isNaN(qty)) {
+      newErrors.qtySent = "Quantity is required";
+    } else if (qty <= 0) {
+      newErrors.qtySent = "Quantity must be greater than 0";
+    } else if (qty > maxQty) {
+      newErrors.qtySent = `Quantity cannot exceed ${maxQty} (available quantity)`;
+    }
+    
+    if (!expectedReturnDate) {
+      newErrors.expectedReturnDate = "Expected return date is required";
+    } else {
+      const returnDate = new Date(expectedReturnDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (returnDate < today) {
+        newErrors.expectedReturnDate = "Return date cannot be in the past";
+      }
+    }
+    
+    if (remarks && remarks.length > 500) {
+      newErrors.remarks = "Remarks must be less than 500 characters";
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async () => {
     if (!canCreate) {
       toast({
@@ -92,61 +164,66 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       return;
     }
     
-    if (!process || !partnerId || !qtySent) {
+    if (!validateForm()) {
       toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields",
+        title: "Validation Error",
+        description: "Please fix the errors in the form",
         variant: "destructive",
       });
       return;
     }
 
     const qty = parseFloat(qtySent);
-    const maxQty = getMaxQty();
-
-    if (qty <= 0 || qty > maxQty) {
-      toast({
-        title: "Invalid quantity",
-        description: `Quantity must be between 1 and ${maxQty}`,
-        variant: "destructive",
-      });
-      return;
-    }
 
     setLoading(true);
     try {
       const challanNo = generateChallanNo(process);
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
+      const { data: moveData, error } = await supabase
         .from("wo_external_moves" as any)
-        .insert({
+        .insert([{
           work_order_id: workOrder.id,
           process,
           partner_id: partnerId,
           qty_sent: qty,
-          expected_return_date: expectedReturnDate || null,
+          expected_return_date: expectedReturnDate,
           challan_no: challanNo,
-          remarks: remarks || null,
-          operation_tag: operationTag || null,
+          remarks: remarks.trim() || null,
+          operation_tag: operationTag.trim() || null,
           created_by: user?.id,
-        });
+        }])
+        .select()
+        .single() as any;
 
       if (error) throw error;
 
+      const selectedPartner = partners.find(p => p.id === partnerId);
+      
       toast({
-        title: "Success",
-        description: `Challan ${challanNo} created successfully`,
+        title: "Challan Created Successfully",
+        description: `Challan #${challanNo} created for ${selectedPartner?.partner_name || "partner"}`,
+        action: (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              window.location.href = `/work-orders/${workOrder.id}`;
+            }}
+          >
+            <ExternalLink className="h-3 w-3 mr-1" />
+            View Details
+          </Button>
+        ),
       });
 
       onSuccess();
       onOpenChange(false);
       resetForm();
     } catch (error: any) {
-      console.error("Error creating move:", error);
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Error Creating Challan",
+        description: error.message || "Failed to create external move",
         variant: "destructive",
       });
     } finally {
@@ -161,6 +238,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     setExpectedReturnDate("");
     setRemarks("");
     setOperationTag("");
+    setErrors({});
   };
 
   return (
@@ -174,10 +252,28 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Availability Alert */}
+          {workOrder && getMaxQty() === 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                No quantity available for external processing. All items are already sent or completed.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="space-y-2">
-            <Label>Process *</Label>
-            <Select value={process} onValueChange={setProcess}>
-              <SelectTrigger>
+            <Label htmlFor="process">
+              Process <span className="text-destructive">*</span>
+            </Label>
+            <Select 
+              value={process} 
+              onValueChange={(value) => {
+                setProcess(value);
+                setErrors(prev => ({ ...prev, process: "" }));
+              }}
+            >
+              <SelectTrigger id="process" className={errors.process ? "border-destructive" : ""}>
                 <SelectValue placeholder="Select process" />
               </SelectTrigger>
               <SelectContent>
@@ -188,49 +284,102 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                 ))}
               </SelectContent>
             </Select>
+            {errors.process && (
+              <p className="text-sm text-destructive">{errors.process}</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label>Partner *</Label>
-            <Select value={partnerId} onValueChange={setPartnerId} disabled={!process}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select partner" />
+            <Label htmlFor="partner">
+              Partner <span className="text-destructive">*</span>
+            </Label>
+            <Select 
+              value={partnerId} 
+              onValueChange={handlePartnerChange}
+              disabled={!process}
+            >
+              <SelectTrigger id="partner" className={errors.partnerId ? "border-destructive" : ""}>
+                <SelectValue placeholder={!process ? "Select process first" : "Select partner"} />
               </SelectTrigger>
               <SelectContent>
-                {filteredPartners.map(p => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
+                {filteredPartners.length === 0 && process ? (
+                  <div className="p-2 text-sm text-muted-foreground text-center">
+                    No partners available for {process}
+                  </div>
+                ) : (
+                  filteredPartners.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.partner_name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
+            {errors.partnerId && (
+              <p className="text-sm text-destructive">{errors.partnerId}</p>
+            )}
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              onClick={() => window.open("/partners", "_blank")}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add New Partner
+            </Button>
           </div>
 
           <div className="space-y-2">
-            <Label>Quantity to Send * (Max: {getMaxQty()} pcs)</Label>
+            <Label htmlFor="quantity">
+              Quantity to Send <span className="text-destructive">*</span>
+              <span className="text-muted-foreground text-xs ml-2">
+                (Max: {getMaxQty()} pcs)
+              </span>
+            </Label>
             <Input
+              id="quantity"
               type="number"
               value={qtySent}
-              onChange={(e) => setQtySent(e.target.value)}
+              onChange={(e) => {
+                setQtySent(e.target.value);
+                setErrors(prev => ({ ...prev, qtySent: "" }));
+              }}
               placeholder="Enter quantity"
               max={getMaxQty()}
+              min={1}
+              className={errors.qtySent ? "border-destructive" : ""}
             />
+            {errors.qtySent && (
+              <p className="text-sm text-destructive">{errors.qtySent}</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label>Expected Return Date</Label>
+            <Label htmlFor="return-date">
+              Expected Return Date <span className="text-destructive">*</span>
+            </Label>
             <Input
+              id="return-date"
               type="date"
               value={expectedReturnDate}
-              onChange={(e) => setExpectedReturnDate(e.target.value)}
+              onChange={(e) => {
+                setExpectedReturnDate(e.target.value);
+                setErrors(prev => ({ ...prev, expectedReturnDate: "" }));
+              }}
+              min={format(new Date(), "yyyy-MM-dd")}
+              className={errors.expectedReturnDate ? "border-destructive" : ""}
             />
+            {errors.expectedReturnDate && (
+              <p className="text-sm text-destructive">{errors.expectedReturnDate}</p>
+            )}
           </div>
 
-          {process === 'job_work' && (
+          {process === 'Job Work' && (
             <div className="space-y-2">
-              <Label>Operation (Optional)</Label>
+              <Label htmlFor="operation">Operation (Optional)</Label>
               <Select value={operationTag} onValueChange={setOperationTag}>
-                <SelectTrigger>
+                <SelectTrigger id="operation">
                   <SelectValue placeholder="Select operation if applicable" />
                 </SelectTrigger>
                 <SelectContent>
@@ -244,21 +393,48 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           )}
 
           <div className="space-y-2">
-            <Label>Remarks</Label>
+            <Label htmlFor="remarks">Remarks (Optional)</Label>
             <Textarea
+              id="remarks"
               value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value.length <= 500) {
+                  setRemarks(value);
+                  setErrors(prev => ({ ...prev, remarks: "" }));
+                }
+              }}
               placeholder="Optional notes"
               rows={3}
+              maxLength={500}
+              className={errors.remarks ? "border-destructive" : ""}
             />
+            <div className="flex justify-between items-center">
+              {errors.remarks && (
+                <p className="text-sm text-destructive">{errors.remarks}</p>
+              )}
+              <p className="text-xs text-muted-foreground ml-auto">
+                {remarks.length}/500 characters
+              </p>
+            </div>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              onOpenChange(false);
+              resetForm();
+            }} 
+            disabled={loading}
+          >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={loading || !canCreate}>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={loading || !canCreate || getMaxQty() === 0}
+          >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Challan
           </Button>
