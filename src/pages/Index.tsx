@@ -29,6 +29,10 @@ import { convertToINR, formatINR } from "@/lib/currencyConverter";
 import { CuttingDashboard } from "@/components/dashboard/CuttingDashboard";
 import { ForgingDashboard } from "@/components/dashboard/ForgingDashboard";
 import { ComprehensiveDepartmentStatus } from "@/components/dashboard/ComprehensiveDepartmentStatus";
+import { SmartSummaryHeader } from "@/components/dashboard/SmartSummaryHeader";
+import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
+import { TodayGlanceTimeline } from "@/components/dashboard/TodayGlanceTimeline";
+import { EfficiencySnapshot } from "@/components/dashboard/EfficiencySnapshot";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -434,6 +438,12 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Smart Summary Header */}
+        <SmartSummaryHeader />
+
+        {/* Critical Alerts Bar */}
+        <CriticalAlertsBar />
+
         {/* KPI Banner */}
         <KPIBanner metrics={kpiData} />
 
@@ -449,8 +459,11 @@ const Index = () => {
         {/* Live Floor Status - Kanban View */}
         <FloorKanban />
 
-        {/* Today Timeline */}
-        {todayEvents.length > 0 && <TodayTimeline events={todayEvents} />}
+        {/* Today at a Glance Timeline */}
+        <TodayGlanceTimeline />
+
+        {/* Efficiency Snapshot */}
+        <EfficiencySnapshot />
       </main>
     </div>
   );
