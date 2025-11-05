@@ -16,6 +16,7 @@ import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, Al
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
 import { ExternalMovementsTab } from "@/components/ExternalMovementsTab";
+import { ExternalProcessingHistoryTab } from "@/components/ExternalProcessingHistoryTab";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
@@ -844,7 +845,7 @@ const WorkOrderDetail = () => {
 
         {/* Tabs */}
         <Tabs defaultValue={searchParams.get('tab') || "production"} className="w-full">
-            <TabsList className="grid w-full grid-cols-11">
+            <TabsList className="grid w-full grid-cols-12">
               <TabsTrigger value="production">Production</TabsTrigger>
               <TabsTrigger value="routing">Routing</TabsTrigger>
               <TabsTrigger value="stage-history">Stage History</TabsTrigger>
@@ -855,6 +856,7 @@ const WorkOrderDetail = () => {
               {wo.cutting_required && <TabsTrigger value="cutting">Cutting</TabsTrigger>}
               {wo.forging_required && <TabsTrigger value="forging">Forging</TabsTrigger>}
               <TabsTrigger value="external">External</TabsTrigger>
+              <TabsTrigger value="ext-history">Ext History</TabsTrigger>
               <TabsTrigger value="genealogy">Genealogy</TabsTrigger>
           </TabsList>
 
@@ -1309,6 +1311,10 @@ const WorkOrderDetail = () => {
 
           <TabsContent value="external" className="space-y-4">
             <ExternalProcessingTab workOrderId={id || ""} />
+          </TabsContent>
+
+          <TabsContent value="ext-history" className="space-y-4">
+            <ExternalProcessingHistoryTab workOrderId={id || ""} />
           </TabsContent>
 
           <TabsContent value="genealogy" className="space-y-4">
