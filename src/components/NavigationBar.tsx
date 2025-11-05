@@ -50,6 +50,61 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Route validation mapping - logs corrections
+  const validateAndCorrectRoute = (path: string, label: string): string => {
+    const routeMap: Record<string, string> = {
+      // Sales & Customers - all valid
+      "/sales": "/sales",
+      "/customers": "/customers", 
+      "/items": "/items",
+      
+      // Procurement - all valid
+      "/purchase/raw-po": "/purchase/raw-po",
+      "/material-requirements": "/material-requirements",
+      "/purchase/dashboard": "/purchase/dashboard",
+      
+      // Production - corrected paths
+      "/work-orders": "/work-orders",
+      "/production-progress": "/production-progress",
+      "/cnc-dashboard": "/cnc-dashboard",
+      "/floor-dashboard": "/floor-dashboard",
+      "/hourly-qc": "/hourly-qc",
+      "/tolerance-setup": "/tolerance-setup",
+      "/genealogy": "/genealogy",
+      
+      // QC & Dispatch - corrected paths
+      "/qc/incoming": "/qc/incoming",
+      "/quality": "/quality",
+      "/packing": "/packing",
+      "/dispatch": "/dispatch",
+      
+      // Finance - corrected paths
+      "/finance/dashboard": "/finance/dashboard",
+      "/reports/reconciliation": "/reports/reconciliation",
+      "/finance/reports": "/finance/reports",
+      
+      // Logistics - corrected paths
+      "/materials/inwards": "/materials/inwards",
+      "/logistics": "/logistics",
+      "/reports/rpo-inventory": "/reports/rpo-inventory",
+      
+      // External - corrected paths
+      "/partners": "/partners",
+      "/partner-performance": "/partner-performance"
+    };
+
+    const correctedPath = routeMap[path];
+    if (correctedPath && correctedPath !== path) {
+      console.log(`[Navigation] Route corrected: "${label}" - ${path} → ${correctedPath}`);
+    } else if (!correctedPath) {
+      console.warn(`[Navigation] Route not found: "${label}" - ${path}. Using fallback.`);
+      // Try to extract parent route
+      const parentPath = path.split('/').slice(0, -1).join('/') || '/';
+      return parentPath;
+    }
+    return correctedPath || path;
+  };
+
   const navGroups: NavGroup[] = [
     {
       title: "Sales & Customers",
@@ -66,9 +121,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       icon: Truck,
       allowedRoles: ['admin', 'procurement', 'purchase'],
       items: [
-        { label: "Raw PO", path: "/procurement/raw-po", icon: Truck },
-        { label: "Material Requirements", path: "/procurement/material-requirements", icon: Boxes },
-        { label: "Purchase Dashboard", path: "/procurement/purchase-dashboard", icon: BarChart3 },
+        { label: "Raw PO", path: "/purchase/raw-po", icon: Truck },
+        { label: "Material Requirements", path: "/material-requirements", icon: Boxes },
+        { label: "Purchase Dashboard", path: "/purchase/dashboard", icon: BarChart3 },
       ]
     },
     {
@@ -76,13 +131,13 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       icon: Activity,
       allowedRoles: ['admin', 'production', 'ops_manager'],
       items: [
-        { label: "Work Orders", path: "/production/work-orders", icon: Search },
-        { label: "Production Log", path: "/production/log", icon: BarChart3 },
-        { label: "CNC Dashboard", path: "/production/cnc-dashboard", icon: Activity },
-        { label: "Floor Dashboard", path: "/production/floor-dashboard", icon: Activity },
-        { label: "Hourly QC", path: "/production/hourly-qc", icon: ClipboardCheck },
-        { label: "Tolerances", path: "/production/tolerances", icon: ClipboardCheck },
-        { label: "Genealogy", path: "/production/genealogy", icon: BarChart3 },
+        { label: "Work Orders", path: "/work-orders", icon: Search },
+        { label: "Production Log", path: "/production-progress", icon: BarChart3},
+        { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
+        { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
+        { label: "Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
+        { label: "Tolerances", path: "/tolerance-setup", icon: ClipboardCheck },
+        { label: "Genealogy", path: "/genealogy", icon: BarChart3 },
       ]
     },
     {
@@ -91,9 +146,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       allowedRoles: ['admin', 'production', 'quality', 'packing'],
       items: [
         { label: "QC Incoming", path: "/qc/incoming", icon: ClipboardCheck },
-        { label: "QC Batch", path: "/qc/batch", icon: ClipboardCheck },
-        { label: "Packing", path: "/dispatch/packing", icon: Package },
-        { label: "Dispatch", path: "/dispatch/main", icon: Truck },
+        { label: "QC Batch", path: "/quality", icon: ClipboardCheck },
+        { label: "Packing", path: "/packing", icon: Package },
+        { label: "Dispatch", path: "/dispatch", icon: Truck },
       ]
     },
     {
@@ -102,7 +157,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       allowedRoles: ['admin', 'finance', 'finance_admin', 'finance_user', 'accounts', 'sales'],
       items: [
         { label: "Finance Dashboard", path: "/finance/dashboard", icon: DollarSign },
-        { label: "Reconciliations", path: "/finance/reconciliations", icon: AlertCircle },
+        { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle },
         { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet },
       ]
     },
@@ -111,9 +166,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       icon: PackageCheck,
       allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores'],
       items: [
-        { label: "Goods Inwards", path: "/logistics/goods-inwards", icon: Box },
+        { label: "Goods Inwards", path: "/materials/inwards", icon: Box },
         { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck },
-        { label: "RPO vs Inventory", path: "/logistics/rpo-vs-inventory", icon: FileSpreadsheet },
+        { label: "RPO vs Inventory", path: "/reports/rpo-inventory", icon: FileSpreadsheet },
       ]
     },
     {
@@ -121,9 +176,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       icon: Handshake,
       allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
       items: [
-        { label: "External Partners", path: "/external/partners", icon: Handshake },
-        { label: "External Moves", path: "/external/moves", icon: Truck },
-        { label: "External Receipts", path: "/external/receipts", icon: PackageCheck },
+        { label: "External Partners", path: "/partners", icon: Handshake },
+        { label: "External Moves", path: "/logistics", icon: Truck },
+        { label: "Partner Performance", path: "/partner-performance", icon: PackageCheck },
       ]
     }
   ];
@@ -150,8 +205,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
 
   const visibleGroups = getVisibleGroups();
 
-  const handleNavigate = (path: string) => {
-    navigate(path);
+  const handleNavigate = (path: string, label: string) => {
+    const validatedPath = validateAndCorrectRoute(path, label);
+    navigate(validatedPath);
     setMobileMenuOpen(false);
   };
 
@@ -177,7 +233,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
                           return (
                             <li key={item.path}>
                               <button
-                                onClick={() => handleNavigate(item.path)}
+                                onClick={() => handleNavigate(item.path, item.label)}
                                 className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
                               >
                                 <ItemIcon className="h-4 w-4" />
@@ -226,7 +282,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
                             return (
                               <button
                                 key={item.path}
-                                onClick={() => handleNavigate(item.path)}
+                                onClick={() => handleNavigate(item.path, item.label)}
                                 className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
                               >
                                 <ItemIcon className="h-4 w-4" />
