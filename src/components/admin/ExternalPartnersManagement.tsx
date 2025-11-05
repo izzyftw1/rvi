@@ -68,8 +68,8 @@ export const ExternalPartnersManagement = () => {
   const loadPartners = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("external_partners")
+      const { data, error } = await (supabase as any)
+        .from("wo_external_partners")
         .select("*")
         .order("name");
 
@@ -135,8 +135,8 @@ export const ExternalPartnersManagement = () => {
     setLoading(true);
     try {
       if (editingPartner) {
-        const { error } = await supabase
-          .from("external_partners")
+        const { error } = await (supabase as any)
+          .from("wo_external_partners")
           .update({
             name: formData.name.trim(),
             process_type: formData.process_type.trim() || null,
@@ -156,7 +156,7 @@ export const ExternalPartnersManagement = () => {
           description: "External partner updated successfully",
         });
       } else {
-        const { error } = await supabase.from("external_partners").insert([
+        const { error } = await (supabase as any).from("wo_external_partners").insert([
           {
             name: formData.name.trim(),
             process_type: formData.process_type.trim() || null,
@@ -210,8 +210,8 @@ export const ExternalPartnersManagement = () => {
   const handleDeactivate = async (partnerId: string, currentStatus: boolean) => {
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("external_partners")
+      const { error } = await (supabase as any)
+        .from("wo_external_partners")
         .update({ is_active: !currentStatus })
         .eq("id", partnerId);
 

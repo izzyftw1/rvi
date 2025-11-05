@@ -97,7 +97,7 @@ export const ExternalDashboard = () => {
         (supabase as any).from('wo_external_moves').select('*'),
         (supabase as any).from('wo_external_receipts').select('*'),
         supabase.from('work_orders').select('id, display_id, wo_id, gross_weight_per_pc'),
-        (supabase as any).from('external_partners').select('id, name')
+        (supabase as any).from('wo_external_partners').select('id, name')
       ]);
 
       if (movesResult.error) {

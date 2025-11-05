@@ -84,7 +84,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const loadPartners = async () => {
     try {
       const { data, error } = await (supabase as any)
-        .from("external_partners")
+        .from("wo_external_partners")
         .select("id, name, process_type, default_lead_time_days, is_active")
         .eq("is_active", true)
         .order("name");

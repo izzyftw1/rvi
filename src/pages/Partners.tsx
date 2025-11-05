@@ -70,8 +70,8 @@ const Partners = () => {
 
   const loadPartners = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from("external_partners")
+      const { data, error } = await (supabase as any)
+        .from("wo_external_partners")
         .select("*")
         .order("name");
 
@@ -182,8 +182,8 @@ const Partners = () => {
 
     try {
       if (editingPartner) {
-        const { error } = await supabase
-          .from("external_partners")
+        const { error } = await (supabase as any)
+          .from("wo_external_partners")
           .update({
             name: formData.name.trim(),
             process_type: formData.process_type.trim() || null,
@@ -202,8 +202,8 @@ const Partners = () => {
           description: "Partner updated successfully",
         });
       } else {
-        const { error } = await supabase
-          .from("external_partners")
+        const { error } = await (supabase as any)
+          .from("wo_external_partners")
           .insert([{
             name: formData.name.trim(),
             process_type: formData.process_type.trim() || null,
