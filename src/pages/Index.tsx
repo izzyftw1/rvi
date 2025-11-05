@@ -387,59 +387,6 @@ const Index = () => {
     }
   ];
 
-  // Prepare Kanban data
-  const kanbanStages = [
-    {
-      stage: "Goods In",
-      icon: Package,
-      count: floorStats.goods_in.count,
-      totalPcs: floorStats.goods_in.pcs,
-      totalKg: floorStats.goods_in.kg,
-      avgWaitHours: floorStats.goods_in.avgWait,
-      status: 'good' as const,
-      onClick: () => navigate("/stage/goods_in")
-    },
-    {
-      stage: "Production",
-      icon: Factory,
-      count: floorStats.production.count,
-      totalPcs: floorStats.production.pcs,
-      totalKg: floorStats.production.kg,
-      avgWaitHours: floorStats.production.avgWait,
-      status: 'good' as const,
-      onClick: () => navigate("/stage/production")
-    },
-    {
-      stage: "QC",
-      icon: ClipboardCheck,
-      count: floorStats.qc.count,
-      totalPcs: floorStats.qc.pcs,
-      totalKg: floorStats.qc.kg,
-      avgWaitHours: floorStats.qc.avgWait,
-      status: 'good' as const,
-      onClick: () => navigate("/stage/qc")
-    },
-    {
-      stage: "Packing",
-      icon: Box,
-      count: floorStats.packing.count,
-      totalPcs: floorStats.packing.pcs,
-      totalKg: floorStats.packing.kg,
-      avgWaitHours: floorStats.packing.avgWait,
-      status: 'good' as const,
-      onClick: () => navigate("/stage/packing")
-    },
-    {
-      stage: "Dispatch",
-      icon: Truck,
-      count: floorStats.dispatch.count,
-      totalPcs: floorStats.dispatch.pcs,
-      totalKg: floorStats.dispatch.kg,
-      avgWaitHours: floorStats.dispatch.avgWait,
-      status: 'good' as const,
-      onClick: () => navigate("/stage/dispatch")
-    }
-  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -498,6 +445,9 @@ const Index = () => {
 
         {/* Comprehensive Department Status */}
         <ComprehensiveDepartmentStatus />
+
+        {/* Live Floor Status - Kanban View */}
+        <FloorKanban />
 
         {/* Today Timeline */}
         {todayEvents.length > 0 && <TodayTimeline events={todayEvents} />}
