@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Settings2, Search, Download, Factory, CheckCircle2, PackageCheck, Truck, AlertTriangle, Filter, Clock, TrendingUp, Inbox, Scissors, Hammer, Box, FileDown, Calendar } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
@@ -174,6 +175,14 @@ const WorkOrderRow = memo(({
       });
   };
 
+  const hasFullyReceivedMoves = () => {
+    if (!wo.external_moves || wo.external_moves.length === 0) return false;
+    return wo.external_moves.some((m: any) => {
+      const totalReceived = m.receipts?.reduce((sum: number, r: any) => sum + (r.qty_received || 0), 0) || 0;
+      return totalReceived >= m.qty_sent && m.status !== 'received_full';
+    });
+  };
+
   const hasOverdue = wo.external_moves?.some((m: any) => 
     m.expected_return_date && 
     isPast(parseISO(m.expected_return_date)) && 
@@ -187,10 +196,21 @@ const WorkOrderRow = memo(({
   };
 
   return (
-    <Card 
-      className="hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fade-in"
-      onClick={() => onNavigate(wo.id)}
-    >
+    <>
+      {/* Overdue Warning Banner */}
+      {hasOverdue && (
+        <Alert variant="destructive" className="mb-2">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-sm">
+            External processing overdue - {wo.overdue_moves_count || 1} item(s) not returned by expected date
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      <Card 
+        className="hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fade-in"
+        onClick={() => onNavigate(wo.id)}
+      >
       <CardContent className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
           {/* WO ID & Status */}
@@ -285,11 +305,25 @@ const WorkOrderRow = memo(({
             </div>
           )}
 
-          {/* External WIP */}
+          {/* External WIP with Mark Received button */}
           {visibleColumns.external && (
-            <div className="md:col-span-3 flex flex-wrap gap-1">
+            <div className="md:col-span-3 flex flex-wrap gap-1 items-center">
               {getExternalWIPBadges() || (
                 <span className="text-xs text-muted-foreground">No external WIP</span>
+              )}
+              {canManageExternal && hasFullyReceivedMoves() && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-xs ml-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReceiveFromExternal(wo);
+                  }}
+                >
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Mark Received
+                </Button>
               )}
             </div>
           )}
@@ -353,6 +387,7 @@ const WorkOrderRow = memo(({
         </div>
       </CardContent>
     </Card>
+    </>
   );
 });
 

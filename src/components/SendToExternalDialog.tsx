@@ -174,10 +174,23 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     }
 
     const qty = parseFloat(qtySent);
+    const challanNo = generateChallanNo(process);
 
     setLoading(true);
     try {
-      const challanNo = generateChallanNo(process);
+      // Check for duplicate challan number
+      const { data: existingChallan } = await supabase
+        .from("wo_external_moves" as any)
+        .select("id")
+        .eq("challan_no", challanNo)
+        .maybeSingle();
+
+      if (existingChallan) {
+        setErrors({ submit: `Challan #${challanNo} already exists. Please try again.` });
+        setLoading(false);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
 
       const { data: moveData, error } = await supabase
@@ -196,7 +209,15 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         .select()
         .single() as any;
 
-      if (error) throw error;
+      if (error) {
+        // Handle unique constraint violation
+        if (error.code === '23505') {
+          setErrors({ submit: "Challan number already exists. Please try again." });
+          setLoading(false);
+          return;
+        }
+        throw error;
+      }
 
       const selectedPartner = partners.find(p => p.id === partnerId);
       
@@ -208,7 +229,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
             variant="outline"
             size="sm"
             onClick={() => {
-              window.location.href = `/work-orders/${workOrder.id}`;
+              window.location.href = `/work-orders/${workOrder.id}?tab=external`;
             }}
           >
             <ExternalLink className="h-3 w-3 mr-1" />
