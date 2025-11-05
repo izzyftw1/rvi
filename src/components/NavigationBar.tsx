@@ -49,6 +49,8 @@ interface NavigationBarProps {
 export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openDesktopMenu, setOpenDesktopMenu] = useState<string | null>(null);
+  const closeTimeoutRef = useState<NodeJS.Timeout | null>(null)[0];
 
   // Route validation mapping - logs corrections
   const validateAndCorrectRoute = (path: string, label: string): string => {
@@ -209,6 +211,27 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
     const validatedPath = validateAndCorrectRoute(path, label);
     navigate(validatedPath);
     setMobileMenuOpen(false);
+    setOpenDesktopMenu(null);
+  };
+
+  const handleMenuOpen = (menuTitle: string) => {
+    if (closeTimeoutRef) {
+      clearTimeout(closeTimeoutRef);
+    }
+    setOpenDesktopMenu(menuTitle);
+  };
+
+  const handleMenuClose = () => {
+    const timeout = setTimeout(() => {
+      setOpenDesktopMenu(null);
+    }, 150);
+    if (closeTimeoutRef !== null) {
+      clearTimeout(closeTimeoutRef);
+    }
+  };
+
+  const toggleMenu = (menuTitle: string) => {
+    setOpenDesktopMenu(prev => prev === menuTitle ? null : menuTitle);
   };
 
   return (
@@ -216,17 +239,35 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       {/* Desktop Navigation */}
       <div className="hidden lg:block border-b bg-card">
         <div className="container mx-auto px-4">
-          <NavigationMenu className="max-w-full justify-start">
+          <NavigationMenu 
+            className="max-w-full justify-start"
+            onValueChange={(value) => {
+              if (!value) handleMenuClose();
+            }}
+          >
             <NavigationMenuList className="flex-wrap h-12">
               {visibleGroups.map((group) => {
                 const GroupIcon = group.icon;
+                const isOpen = openDesktopMenu === group.title;
                 return (
-                  <NavigationMenuItem key={group.title}>
-                    <NavigationMenuTrigger className="h-12 gap-2 hover:bg-muted">
+                  <NavigationMenuItem 
+                    key={group.title}
+                    value={group.title}
+                    onMouseEnter={() => handleMenuOpen(group.title)}
+                    onMouseLeave={handleMenuClose}
+                  >
+                    <NavigationMenuTrigger 
+                      className="h-12 gap-2 hover:bg-muted transition-all duration-200"
+                      onClick={() => toggleMenu(group.title)}
+                    >
                       <GroupIcon className="h-4 w-4" />
                       {group.title}
                     </NavigationMenuTrigger>
-                    <NavigationMenuContent className="z-50">
+                    <NavigationMenuContent 
+                      className="z-50"
+                      onMouseEnter={() => handleMenuOpen(group.title)}
+                      onMouseLeave={handleMenuClose}
+                    >
                       <ul className="grid w-56 gap-1 p-2 bg-card">
                         {group.items.map((item) => {
                           const ItemIcon = item.icon;
@@ -234,7 +275,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
                             <li key={item.path}>
                               <button
                                 onClick={() => handleNavigate(item.path, item.label)}
-                                className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
+                                className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-all duration-150 text-left"
                               >
                                 <ItemIcon className="h-4 w-4" />
                                 {item.label}
