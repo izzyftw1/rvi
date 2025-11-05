@@ -435,14 +435,29 @@ const WorkOrders = () => {
     }
   }, [currentPage, pageSize]);
 
-  // Debounced realtime subscription
+  // Realtime subscription for work orders and external processing
   useEffect(() => {
     loadWorkOrders();
 
     let timeout: NodeJS.Timeout;
     const channel = supabase
       .channel('work_orders_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'work_orders' 
+      }, (payload) => {
+        // Immediate update for external_wip changes
+        if (payload.eventType === 'UPDATE' && payload.new?.external_wip) {
+          setWorkOrders(prev => 
+            prev.map(wo => 
+              wo.id === payload.new.id 
+                ? { ...wo, external_wip: payload.new.external_wip }
+                : wo
+            )
+          );
+        }
+        // Debounced full reload for other changes
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
