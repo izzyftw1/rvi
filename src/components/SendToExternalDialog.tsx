@@ -17,7 +17,7 @@ interface ExternalPartner {
   id: string;
   partner_name: string;
   process_type: string[];
-  lead_time_days: number;
+  lead_time_days?: number;
 }
 
 // Validation schema
@@ -109,8 +109,10 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const handlePartnerChange = (newPartnerId: string) => {
     setPartnerId(newPartnerId);
     const selectedPartner = partners.find(p => p.id === newPartnerId);
-    if (selectedPartner && selectedPartner.lead_time_days) {
-      const returnDate = addDays(new Date(), selectedPartner.lead_time_days);
+    // Set default 7 days return date if not specified
+    if (selectedPartner) {
+      const defaultDays = selectedPartner.lead_time_days || 7;
+      const returnDate = addDays(new Date(), defaultDays);
       setExpectedReturnDate(format(returnDate, "yyyy-MM-dd"));
     }
     setErrors(prev => ({ ...prev, partnerId: "" }));

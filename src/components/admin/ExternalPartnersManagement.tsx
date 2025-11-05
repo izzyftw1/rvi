@@ -1,0 +1,530 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Plus, Edit, Trash2, Search, CheckCircle, XCircle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+
+interface ExternalPartner {
+  id: string;
+  partner_name: string;
+  process_type: string[];
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address_line1: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  gst_number: string | null;
+  lead_time_days: number | null;
+  active: boolean;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const PROCESS_OPTIONS = [
+  "Plating",
+  "Job Work",
+  "Buffing",
+  "Blasting",
+  "Forging",
+  "Heat Treatment",
+];
+
+export const ExternalPartnersManagement = () => {
+  const { toast } = useToast();
+  const [partners, setPartners] = useState<ExternalPartner[]>([]);
+  const [filteredPartners, setFilteredPartners] = useState<ExternalPartner[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<ExternalPartner | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [processFilter, setProcessFilter] = useState<string>("");
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    partner_name: "",
+    process_type: [] as string[],
+    contact_person: "",
+    phone: "",
+    email: "",
+    address_line1: "",
+    active: true,
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    loadPartners();
+  }, []);
+
+  useEffect(() => {
+    filterPartners();
+  }, [partners, searchTerm, processFilter]);
+
+  const loadPartners = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("external_partners")
+        .select("*")
+        .order("name");
+
+      if (error) throw error;
+      setPartners(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load external partners",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterPartners = () => {
+    let filtered = [...partners];
+
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.partner_name.toLowerCase().includes(search) ||
+          p.contact_person?.toLowerCase().includes(search) ||
+          p.email?.toLowerCase().includes(search) ||
+          p.phone?.includes(search)
+      );
+    }
+
+    if (processFilter) {
+      filtered = filtered.filter((p) => p.process_type.includes(processFilter));
+    }
+
+    setFilteredPartners(filtered);
+  };
+
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.partner_name.trim()) {
+      newErrors.partner_name = "Partner name is required";
+    }
+
+    if (formData.process_type.length === 0) {
+      newErrors.process_type = "At least one process type is required";
+    }
+
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = "Invalid email format";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      toast({
+        title: "Validation Error",
+        description: "Please fix the errors in the form",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (editingPartner) {
+        const { error } = await supabase
+          .from("external_partners")
+          .update({
+            partner_name: formData.partner_name.trim(),
+            process_type: formData.process_type,
+            contact_person: formData.contact_person.trim() || null,
+            phone: formData.phone.trim() || null,
+            email: formData.email.trim() || null,
+            address_line1: formData.address_line1.trim() || null,
+            active: formData.active,
+          })
+          .eq("id", editingPartner.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Success",
+          description: "External partner updated successfully",
+        });
+      } else {
+        const { error } = await supabase.from("external_partners").insert([
+          {
+            partner_name: formData.partner_name.trim(),
+            process_type: formData.process_type,
+            contact_person: formData.contact_person.trim() || null,
+            phone: formData.phone.trim() || null,
+            email: formData.email.trim() || null,
+            address_line1: formData.address_line1.trim() || null,
+            active: formData.active,
+          },
+        ]);
+
+        if (error) throw error;
+
+        toast({
+          title: "Success",
+          description: "External partner created successfully",
+        });
+      }
+
+      setDialogOpen(false);
+      resetForm();
+      loadPartners();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save external partner",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (partner: ExternalPartner) => {
+    setEditingPartner(partner);
+    setFormData({
+      partner_name: partner.partner_name,
+      process_type: partner.process_type,
+      contact_person: partner.contact_person || "",
+      phone: partner.phone || "",
+      email: partner.email || "",
+      address_line1: partner.address_line1 || "",
+      active: partner.active,
+    });
+    setErrors({});
+    setDialogOpen(true);
+  };
+
+  const handleDeactivate = async (partnerId: string, currentStatus: boolean) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("external_partners")
+        .update({ active: !currentStatus })
+        .eq("id", partnerId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Partner ${currentStatus ? "deactivated" : "activated"} successfully`,
+      });
+      loadPartners();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update partner status",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      partner_name: "",
+      process_type: [],
+      contact_person: "",
+      phone: "",
+      email: "",
+      address_line1: "",
+      active: true,
+    });
+    setEditingPartner(null);
+    setErrors({});
+  };
+
+  const toggleProcessType = (processType: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      process_type: prev.process_type.includes(processType)
+        ? prev.process_type.filter((p) => p !== processType)
+        : [...prev.process_type, processType],
+    }));
+    setErrors((prev) => ({ ...prev, process_type: "" }));
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>External Partners</CardTitle>
+            <CardDescription>Manage external processing partners</CardDescription>
+          </div>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Partner
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Filters */}
+        <div className="flex gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, contact, email, or phone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <select
+            value={processFilter}
+            onChange={(e) => setProcessFilter(e.target.value)}
+            className="border rounded-md px-3 py-2 text-sm"
+          >
+            <option value="">All Processes</option>
+            {PROCESS_OPTIONS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Table */}
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Process Types</TableHead>
+                <TableHead>Contact Person</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredPartners.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    No external partners found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredPartners.map((partner) => (
+                  <TableRow key={partner.id}>
+                    <TableCell className="font-medium">{partner.partner_name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {partner.process_type.map((pt) => (
+                          <Badge key={pt} variant="secondary" className="text-xs">
+                            {pt}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>{partner.contact_person || "-"}</TableCell>
+                    <TableCell>{partner.phone || "-"}</TableCell>
+                    <TableCell>{partner.email || "-"}</TableCell>
+                    <TableCell>
+                      {partner.active ? (
+                        <Badge variant="default" className="gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          Active
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="gap-1">
+                          <XCircle className="h-3 w-3" />
+                          Inactive
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(partner)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeactivate(partner.id, partner.active)}
+                        >
+                          {partner.active ? (
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) resetForm();
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingPartner ? "Edit External Partner" : "Add External Partner"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="partner_name">
+                Partner Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="partner_name"
+                value={formData.partner_name}
+                onChange={(e) => {
+                  setFormData({ ...formData, partner_name: e.target.value });
+                  setErrors({ ...errors, partner_name: "" });
+                }}
+                placeholder="Enter partner name"
+                className={errors.partner_name ? "border-destructive" : ""}
+              />
+              {errors.partner_name && (
+                <p className="text-sm text-destructive">{errors.partner_name}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>
+                Process Types <span className="text-destructive">*</span>
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                {PROCESS_OPTIONS.map((process) => (
+                  <div key={process} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`process-${process}`}
+                      checked={formData.process_type.includes(process)}
+                      onCheckedChange={() => toggleProcessType(process)}
+                    />
+                    <Label
+                      htmlFor={`process-${process}`}
+                      className="cursor-pointer font-normal"
+                    >
+                      {process}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              {errors.process_type && (
+                <p className="text-sm text-destructive">{errors.process_type}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="contact_person">Contact Person</Label>
+                <Input
+                  id="contact_person"
+                  value={formData.contact_person}
+                  onChange={(e) =>
+                    setFormData({ ...formData, contact_person: e.target.value })
+                  }
+                  placeholder="Contact person name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="+91-9876543210"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  setErrors({ ...errors, email: "" });
+                }}
+                placeholder="contact@partner.com"
+                className={errors.email ? "border-destructive" : ""}
+              />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address_line1">Address</Label>
+              <Textarea
+                id="address_line1"
+                value={formData.address_line1}
+                onChange={(e) => setFormData({ ...formData, address_line1: e.target.value })}
+                placeholder="Complete address"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="active"
+                checked={formData.active}
+                onCheckedChange={(checked) =>
+                  setFormData({ ...formData, active: checked as boolean })
+                }
+              />
+              <Label htmlFor="active" className="cursor-pointer font-normal">
+                Active Partner
+              </Label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={loading}>
+              {loading ? "Saving..." : editingPartner ? "Update Partner" : "Add Partner"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+};

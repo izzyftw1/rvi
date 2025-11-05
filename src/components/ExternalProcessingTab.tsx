@@ -36,6 +36,7 @@ interface ExternalReceipt {
 interface ExternalPartner {
   id: string;
   name: string;
+  process_types?: string[];
 }
 
 interface ExternalProcessingTabProps {
