@@ -92,16 +92,27 @@ export const ExternalDashboard = () => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Fetch external moves and receipts
-      const [movesResult, receiptsResult, workOrdersResult] = await Promise.all([
-        supabase.from('wo_external_moves' as any).select('*'),
-        supabase.from('wo_external_receipts' as any).select('*'),
-        supabase.from('work_orders').select('id, display_id, wo_id, gross_weight_per_pc')
+      // Fetch external moves with partner info and receipts
+      const [movesResult, receiptsResult, workOrdersResult, partnersResult] = await Promise.all([
+        (supabase as any).from('wo_external_moves').select('*'),
+        (supabase as any).from('wo_external_receipts').select('*'),
+        supabase.from('work_orders').select('id, display_id, wo_id, gross_weight_per_pc'),
+        (supabase as any).from('external_partners').select('id, name')
       ]);
+
+      if (movesResult.error) {
+        console.warn('Could not load external partners:', movesResult.error);
+        setLoading(false);
+        return;
+      }
 
       const moves: any[] = movesResult.data || [];
       const receipts: any[] = receiptsResult.data || [];
       const workOrders: any[] = workOrdersResult.data || [];
+      const partners: any[] = partnersResult.data || [];
+
+      // Build partner name map
+      const partnerMap = new Map(partners.map(p => [p.id, p.name]));
 
       // Build heatmap data
       const data: HeatmapData = {
@@ -115,15 +126,15 @@ export const ExternalDashboard = () => {
       const overdueList: OverdueReturn[] = [];
 
       PROCESS_CONFIG.forEach(({ key }) => {
-        const processMoves = moves.filter(m => m.process_type === key);
+        const processMoves = moves.filter(m => m.process === key);
         
         processMoves.forEach(move => {
           const moveReceipts = receipts.filter(r => r.move_id === move.id);
-          const totalReceived = moveReceipts.reduce((sum, r) => sum + (r.qty_received || 0), 0);
-          const pending = (move.qty_sent || 0) - totalReceived;
+          const totalReceived = moveReceipts.reduce((sum, r) => sum + (r.received_qty || 0), 0);
+          const pending = (move.quantity_sent || 0) - totalReceived;
 
           if (pending > 0 || !move.returned_date) {
-            const wo = workOrders.find(w => w.id === move.wo_id);
+            const wo = workOrders.find(w => w.id === move.work_order_id);
             const weightPerPc = wo?.gross_weight_per_pc || 0;
 
             data[key].pcs += pending;
@@ -142,7 +153,7 @@ export const ExternalDashboard = () => {
                 id: move.id,
                 wo_display_id: wo?.display_id || wo?.wo_id || 'N/A',
                 process_type: key,
-                partner_name: move.partner_name || 'Unknown',
+                partner_name: partnerMap.get(move.partner_id) || 'Unknown',
                 dispatch_date: move.dispatch_date || move.created_at,
                 expected_return_date: move.expected_return_date,
                 pcs_pending: pending,
