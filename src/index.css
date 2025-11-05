@@ -60,6 +60,15 @@ All colors MUST be HSL.
     
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    
+    /* Stage Colors */
+    --stage-goods-in: 210 20% 85%;
+    --stage-cutting: 210 90% 52%;
+    --stage-forging: 38 92% 50%;
+    --stage-production: 210 90% 42%;
+    --stage-qc: 142 76% 36%;
+    --stage-packing: 210 70% 40%;
+    --stage-dispatch: 142 76% 40%;
 
     --sidebar-background: 215 25% 15%;
     --sidebar-foreground: 210 20% 90%;

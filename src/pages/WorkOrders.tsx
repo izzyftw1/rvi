@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,15 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Plus, AlertCircle, Trash2, Scissors, Hammer, Send, Package, MoreVertical, Settings2, Search, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Settings2, Search, Download, Factory, CheckCircle2, PackageCheck, Truck, AlertTriangle, Filter, Clock, TrendingUp, Inbox, Scissors, Hammer, Box } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
 import { isPast, parseISO, differenceInDays } from "date-fns";
 import { downloadCSV, downloadPDF, formatExternalWIP } from "@/lib/exportHelpers";
+import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
 
 const COLUMNS_KEY = "workorders_visible_columns";
+const FILTER_KEY = "workorders_last_filter";
 const DEFAULT_COLUMNS = {
   customer: true,
   item: true,
@@ -29,23 +35,278 @@ const DEFAULT_COLUMNS = {
   aging: false,
 };
 
+// Stage configuration with icons and colors
+const INTERNAL_STAGES = [
+  { value: 'goods_in', label: 'Goods In', icon: Inbox, color: 'hsl(var(--muted))' },
+  { value: 'cutting_queue', label: 'Cutting', icon: Scissors, color: 'hsl(210 90% 52%)' },
+  { value: 'forging_queue', label: 'Forging', icon: Hammer, color: 'hsl(38 92% 50%)' },
+  { value: 'production', label: 'Production', icon: Factory, color: 'hsl(210 90% 42%)' },
+  { value: 'qc', label: 'QC', icon: CheckCircle2, color: 'hsl(142 76% 36%)' },
+  { value: 'packing', label: 'Packing', icon: Box, color: 'hsl(210 70% 40%)' },
+  { value: 'dispatch', label: 'Dispatch', icon: Truck, color: 'hsl(142 76% 40%)' },
+];
+
+const EXTERNAL_STAGES = [
+  { value: 'job_work', label: 'Job Work', icon: Package },
+  { value: 'plating', label: 'Plating', icon: PackageCheck },
+  { value: 'buffing', label: 'Buffing', icon: Package },
+  { value: 'blasting', label: 'Blasting', icon: Package },
+  { value: 'forging', label: 'Forging (Ext)', icon: Hammer },
+];
+
+// Memoized Stage Chip Component
+const StageChip = memo(({ 
+  stage, 
+  count, 
+  isActive, 
+  onClick, 
+  isExternal = false 
+}: { 
+  stage: any; 
+  count: number; 
+  isActive: boolean; 
+  onClick: () => void; 
+  isExternal?: boolean;
+}) => {
+  const Icon = stage.icon;
+  
+  return (
+    <Badge
+      variant={isActive ? 'default' : 'outline'}
+      className={cn(
+        "cursor-pointer transition-all duration-300 hover:scale-105 px-3 py-2 gap-1.5",
+        isExternal 
+          ? isActive 
+            ? "bg-accent text-accent-foreground hover:bg-accent/90" 
+            : "bg-accent/10 text-accent border-accent/30 hover:bg-accent/20"
+          : isActive 
+            ? "bg-primary text-primary-foreground shadow-md" 
+            : "hover:bg-primary/10"
+      )}
+      onClick={onClick}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="font-medium">{stage.label}</span>
+      <span className={cn(
+        "ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold",
+        isActive 
+          ? "bg-background/20" 
+          : isExternal 
+            ? "bg-accent/20" 
+            : "bg-primary/20"
+      )}>
+        {count}
+      </span>
+    </Badge>
+  );
+});
+
+StageChip.displayName = "StageChip";
+
+// Memoized Work Order Row Component
+const WorkOrderRow = memo(({ 
+  wo, 
+  visibleColumns, 
+  onDelete, 
+  onSendToExternal, 
+  onReceiveFromExternal,
+  onNavigate 
+}: any) => {
+  const getShortWOId = () => {
+    const itemCode = wo.item_code || '';
+    const shortItem = itemCode.length > 10 ? itemCode.substring(0, 10) + '...' : itemCode;
+    return `ISO-${wo.customer_po || 'N/A'}-${shortItem}`;
+  };
+
+  const getStageColor = () => {
+    const stage = INTERNAL_STAGES.find(s => s.value === wo.current_stage);
+    return stage?.color || 'hsl(var(--muted))';
+  };
+
+  const getExternalWIPBadges = () => {
+    if (!wo.external_wip || Object.keys(wo.external_wip).length === 0) return null;
+    return Object.entries(wo.external_wip)
+      .filter(([_, qty]: any) => qty > 0)
+      .map(([process, qty]: any) => (
+        <Badge key={process} variant="outline" className="bg-accent/10 text-accent border-accent/30">
+          {process.replace('_', ' ')}: {qty} pcs
+        </Badge>
+      ));
+  };
+
+  const hasOverdue = wo.external_moves?.some((m: any) => 
+    m.expected_return_date && 
+    isPast(parseISO(m.expected_return_date)) && 
+    m.status !== 'received_full'
+  );
+
+  const getProgressPercent = () => {
+    if (!wo.quantity || wo.quantity === 0) return 0;
+    const completed = wo.qty_completed || 0;
+    return Math.min(100, Math.round((completed / wo.quantity) * 100));
+  };
+
+  return (
+    <Card 
+      className="hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fade-in"
+      onClick={() => onNavigate(wo.id)}
+    >
+      <CardContent className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+          {/* WO ID & Status */}
+          <div className="md:col-span-3">
+            <HoverCard>
+              <HoverCardTrigger>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-foreground hover:text-primary transition-colors">
+                    {getShortWOId()}
+                  </p>
+                  {hasOverdue && (
+                    <Badge variant="destructive" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      {wo.overdue_moves_count || 1}
+                    </Badge>
+                  )}
+                </div>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-80">
+                <div className="space-y-2">
+                  <h4 className="font-semibold">Work Order Details</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="text-muted-foreground">Customer:</div>
+                    <div className="font-medium">{wo.customer}</div>
+                    <div className="text-muted-foreground">PO Date:</div>
+                    <div>{wo.created_at ? new Date(wo.created_at).toLocaleDateString() : 'N/A'}</div>
+                    <div className="text-muted-foreground">Item Code:</div>
+                    <div className="font-medium">{wo.item_code}</div>
+                    <div className="text-muted-foreground">Progress:</div>
+                    <div className="flex items-center gap-2">
+                      <Progress value={getProgressPercent()} className="h-2 flex-1" />
+                      <span className="text-xs font-medium">{getProgressPercent()}%</span>
+                    </div>
+                  </div>
+                </div>
+              </HoverCardContent>
+            </HoverCard>
+            {visibleColumns.customer && (
+              <p className="text-xs text-muted-foreground mt-1">{wo.customer}</p>
+            )}
+          </div>
+
+          {/* Item & Quantity */}
+          {visibleColumns.item && (
+            <div className="md:col-span-2">
+              <p className="text-sm font-medium text-foreground">{wo.item_code}</p>
+              {visibleColumns.qty && (
+                <p className="text-xs text-muted-foreground">Qty: {wo.quantity?.toLocaleString()}</p>
+              )}
+            </div>
+          )}
+
+          {/* Current Stage */}
+          {visibleColumns.stage && (
+            <div className="md:col-span-2">
+              <Badge 
+                className="font-medium"
+                style={{ 
+                  backgroundColor: getStageColor(),
+                  color: 'hsl(var(--primary-foreground))'
+                }}
+              >
+                {wo.current_stage?.replace('_', ' ').toUpperCase()}
+              </Badge>
+            </div>
+          )}
+
+          {/* External WIP */}
+          {visibleColumns.external && (
+            <div className="md:col-span-3 flex flex-wrap gap-1">
+              {getExternalWIPBadges() || (
+                <span className="text-xs text-muted-foreground">No external WIP</span>
+              )}
+            </div>
+          )}
+
+          {/* Due Date & Aging */}
+          <div className="md:col-span-1">
+            {visibleColumns.due && wo.due_date && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {new Date(wo.due_date).toLocaleDateString()}
+              </p>
+            )}
+            {visibleColumns.aging && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {Math.floor((new Date().getTime() - new Date(wo.created_at).getTime()) / (1000 * 60 * 60 * 24))}d
+              </p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="md:col-span-1 flex justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="sm">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(e) => {
+                  e.stopPropagation();
+                  onSendToExternal(wo);
+                }}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send to External
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => {
+                  e.stopPropagation();
+                  onReceiveFromExternal(wo);
+                }}>
+                  <Package className="h-4 w-4 mr-2" />
+                  Receive from External
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  className="text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(wo.id, wo.display_id || wo.wo_id);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
+WorkOrderRow.displayName = "WorkOrderRow";
+
 const WorkOrders = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   
-  // Filters
+  // Filters with localStorage persistence
   const [searchQuery, setSearchQuery] = useState("");
-  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [stageFilter, setStageFilter] = useState<string>(() => {
+    const saved = localStorage.getItem(FILTER_KEY);
+    return saved || "all";
+  });
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20);
-  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(25);
+  const [hasMore, setHasMore] = useState(true);
   
   // Column toggles
   const [visibleColumns, setVisibleColumns] = useState(() => {
@@ -57,51 +318,28 @@ const WorkOrders = () => {
   const [selectedWO, setSelectedWO] = useState<any>(null);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
-  const [selectedMove, setSelectedMove] = useState<any>(null);
 
-  useEffect(() => {
-    loadWorkOrders();
-
-    const channel = supabase
-      .channel('work_orders_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadWorkOrders)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadWorkOrders)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, loadWorkOrders)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentPage]);
-
-  useEffect(() => {
-    applyFilters();
-  }, [workOrders, searchQuery, stageFilter, statusFilter]);
-
-  useEffect(() => {
-    localStorage.setItem(COLUMNS_KEY, JSON.stringify(visibleColumns));
-  }, [visibleColumns]);
-
-  const loadWorkOrders = async () => {
+  // Debounced load function
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  
+  const loadWorkOrders = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
       const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
+      const to = from + pageSize;
 
-      // Load work orders with count
-      const { data: workOrders, error: queryError, count } = await supabase
+      const { data: workOrders, error: queryError } = await supabase
         .from("work_orders")
-        .select("*", { count: 'exact' })
+        .select("*")
         .order("created_at", { ascending: false })
         .range(from, to);
 
       if (queryError) throw queryError;
 
-      setTotalCount(count || 0);
+      setHasMore((workOrders || []).length === pageSize);
 
-      // Load external moves for visible WOs
       const woIds = (workOrders || []).map((wo: any) => wo.id);
       let movesMap: Record<string, any[]> = {};
       
@@ -117,11 +355,10 @@ const WorkOrders = () => {
         });
       }
 
-      // Combine data
       const data = (workOrders || []).map((wo: any) => ({
         ...wo,
         external_moves: movesMap[wo.id] || [],
-      })) as any[];
+      }));
 
       setWorkOrders(data);
     } catch (err: any) {
@@ -131,12 +368,54 @@ const WorkOrders = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, pageSize]);
 
-  const applyFilters = () => {
+  // Debounced realtime subscription
+  useEffect(() => {
+    loadWorkOrders();
+
+    let timeout: NodeJS.Timeout;
+    const channel = supabase
+      .channel('work_orders_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
+      .subscribe();
+
+    return () => {
+      clearTimeout(timeout);
+      supabase.removeChannel(channel);
+    };
+  }, [currentPage, loadWorkOrders]);
+
+  useEffect(() => {
+    if (lastUpdate > 0) {
+      loadWorkOrders();
+    }
+  }, [lastUpdate, loadWorkOrders]);
+
+  // Persist filter selection
+  useEffect(() => {
+    localStorage.setItem(FILTER_KEY, stageFilter);
+  }, [stageFilter]);
+
+  useEffect(() => {
+    localStorage.setItem(COLUMNS_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  // Memoized filtered orders
+  const filteredOrders = useMemo(() => {
     let filtered = [...workOrders];
 
-    // Search
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(wo =>
@@ -147,49 +426,40 @@ const WorkOrders = () => {
       );
     }
 
-    // Stage filter
     if (stageFilter !== "all") {
-      if (["job_work", "plating", "buffing", "blasting", "forging"].includes(stageFilter)) {
-        // External stage
+      if (EXTERNAL_STAGES.some(s => s.value === stageFilter)) {
         filtered = filtered.filter(wo =>
           (wo.external_wip && wo.external_wip[stageFilter] > 0) ||
           wo.external_moves?.some((m: any) => m.process === stageFilter && m.status !== 'received_full')
         );
       } else {
-        // Internal stage
         filtered = filtered.filter(wo => wo.current_stage === stageFilter);
       }
     }
 
-    // Status filter
     if (statusFilter !== "all") {
       filtered = filtered.filter(wo => wo.status === statusFilter);
     }
 
-    setFilteredOrders(filtered);
-  };
+    return filtered;
+  }, [workOrders, searchQuery, stageFilter, statusFilter]);
 
-  const getExternalWIPSummary = (wo: any) => {
-    if (!wo.external_wip || Object.keys(wo.external_wip).length === 0) return null;
-    return Object.entries(wo.external_wip)
-      .map(([process, qty]) => `${process.replace('_', ' ')}: ${qty}`)
-      .join(" / ");
-  };
-
-  const hasOverdueReturns = (wo: any) => {
-    return wo.external_moves?.some((m: any) => 
-      m.expected_return_date && 
-      isPast(parseISO(m.expected_return_date)) && 
-      m.status !== 'received_full'
-    );
-  };
-
-  const getAging = (wo: any) => {
-    const created = new Date(wo.created_at);
-    const now = new Date();
-    const days = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-    return days;
-  };
+  // Memoized stage counts
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: workOrders.length };
+    
+    INTERNAL_STAGES.forEach(stage => {
+      counts[stage.value] = workOrders.filter(wo => wo.current_stage === stage.value).length;
+    });
+    
+    EXTERNAL_STAGES.forEach(stage => {
+      counts[stage.value] = workOrders.filter(wo => 
+        wo.external_wip && wo.external_wip[stage.value] > 0
+      ).length;
+    });
+    
+    return counts;
+  }, [workOrders]);
 
   const handleDeleteWorkOrder = async (woId: string, displayId: string) => {
     if (!confirm(`Are you sure you want to delete Work Order ${displayId}?`)) return;
@@ -225,7 +495,6 @@ const WorkOrders = () => {
       'Current Stage': wo.current_stage?.replace('_', ' ').toUpperCase(),
       'External WIP': formatExternalWIP(wo.external_wip),
       'Overdue Moves': wo.overdue_moves_count || 0,
-      'Qty at Partners': (wo.external_out_total || 0) - (wo.external_in_total || 0),
       'Status': wo.status,
     }));
     downloadCSV(exportData, 'work_orders');
@@ -242,7 +511,6 @@ const WorkOrders = () => {
       stage: wo.current_stage?.replace('_', ' ').toUpperCase(),
       externalWip: formatExternalWIP(wo.external_wip),
       overdue: wo.overdue_moves_count || 0,
-      qtyAtPartners: (wo.external_out_total || 0) - (wo.external_in_total || 0),
     }));
 
     const columns = [
@@ -254,100 +522,94 @@ const WorkOrders = () => {
       { header: 'Stage', dataKey: 'stage' },
       { header: 'External WIP', dataKey: 'externalWip' },
       { header: 'Overdue', dataKey: 'overdue' },
-      { header: 'Qty @ Partners', dataKey: 'qtyAtPartners' },
     ];
 
     downloadPDF(exportData, 'work_orders', 'Work Orders Report', columns);
     toast({ description: 'PDF export completed' });
   };
 
-  const totalPages = Math.ceil(totalCount / pageSize);
+  const loadMore = () => {
+    setCurrentPage(prev => prev + 1);
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader />
       
       <div className="max-w-7xl mx-auto p-4 space-y-6">
-        <div className="flex items-center justify-between">
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Work Orders</h1>
-            <p className="text-sm text-muted-foreground">Manage production orders</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              Work Orders
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Manage production orders across all stages
+            </p>
           </div>
-          <Button onClick={() => navigate("/work-orders/new")}>
+          <Button onClick={() => navigate("/work-orders/new")} className="shadow-md hover:shadow-lg transition-shadow">
             <Plus className="h-4 w-4 mr-2" />
             New Work Order
           </Button>
         </div>
 
-        {/* Stage Filter Chips */}
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="space-y-4">
-              {/* Internal Stages */}
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Internal Stages</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { value: 'all', label: 'All', variant: 'default' as const },
-                    { value: 'goods_in', label: 'Goods In', variant: 'outline' as const },
-                    { value: 'cutting_queue', label: 'Cutting Queue', variant: 'outline' as const },
-                    { value: 'forging_queue', label: 'Forging Queue', variant: 'outline' as const },
-                    { value: 'production', label: 'Production', variant: 'outline' as const },
-                    { value: 'qc', label: 'QC', variant: 'outline' as const },
-                    { value: 'packing', label: 'Packing', variant: 'outline' as const },
-                    { value: 'dispatch', label: 'Dispatch', variant: 'outline' as const },
-                  ].map((stage) => {
-                    const count = workOrders.filter(wo => 
-                      stage.value === 'all' ? true : wo.current_stage === stage.value
-                    ).length;
-                    return (
-                      <Badge
+        {/* Stage Filter Chips - Sticky on scroll */}
+        <div className="sticky top-16 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 -mx-4 px-4 py-4 border-b">
+          <Card className="shadow-lg">
+            <CardContent className="pt-6 pb-4">
+              <div className="space-y-4">
+                {/* Internal Stages */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Factory className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">Internal Processes</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <StageChip
+                      stage={{ value: 'all', label: 'All Work Orders', icon: Factory }}
+                      count={stageCounts.all || 0}
+                      isActive={stageFilter === 'all'}
+                      onClick={() => setStageFilter('all')}
+                    />
+                    {INTERNAL_STAGES.map((stage) => (
+                      <StageChip
                         key={stage.value}
-                        variant={stageFilter === stage.value ? 'default' : stage.variant}
-                        className="cursor-pointer hover:bg-primary/80 transition-colors"
+                        stage={stage}
+                        count={stageCounts[stage.value] || 0}
+                        isActive={stageFilter === stage.value}
                         onClick={() => setStageFilter(stage.value)}
-                      >
-                        {stage.label} ({count})
-                      </Badge>
-                    );
-                  })}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* External Stages */}
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">External Processes</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { value: 'job_work', label: 'Job Work' },
-                    { value: 'plating', label: 'Plating' },
-                    { value: 'buffing', label: 'Buffing' },
-                    { value: 'blasting', label: 'Blasting' },
-                    { value: 'forging', label: 'Forging (Ext)' },
-                  ].map((process) => {
-                    const count = workOrders.filter(wo => 
-                      wo.external_wip && wo.external_wip[process.value] > 0
-                    ).length;
-                    return (
-                      <Badge
+                {/* External Stages */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Package className="h-4 w-4 text-accent" />
+                    <p className="text-sm font-semibold text-foreground">External Processes</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {EXTERNAL_STAGES.map((process) => (
+                      <StageChip
                         key={process.value}
-                        variant={stageFilter === process.value ? 'default' : 'secondary'}
-                        className="cursor-pointer hover:bg-orange-500/80 transition-colors bg-orange-500/10 text-orange-700 border-orange-300"
+                        stage={process}
+                        count={stageCounts[process.value] || 0}
+                        isActive={stageFilter === process.value}
                         onClick={() => setStageFilter(process.value)}
-                      >
-                        <Package className="h-3 w-3 mr-1" />
-                        {process.label} ({count})
-                      </Badge>
-                    );
-                  })}
+                        isExternal
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Filters */}
-        <Card>
+        {/* Filters - Desktop */}
+        <Card className="hidden md:block">
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="relative">
@@ -395,30 +657,89 @@ const WorkOrders = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="flex gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={handleExportCSV}>
-                      Export as CSV
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleExportPDF}>
-                      Export as PDF
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={handleExportCSV}>
+                    Export as CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportPDF}>
+                    Export as PDF
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </CardContent>
         </Card>
 
+        {/* Filters - Mobile */}
+        <div className="md:hidden">
+          <Sheet open={showMobileFilters} onOpenChange={setShowMobileFilters}>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="w-full">
+                <Filter className="h-4 w-4 mr-2" />
+                Filters & Options
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[80vh]">
+              <SheetHeader>
+                <SheetTitle>Filters & Options</SheetTitle>
+              </SheetHeader>
+              <div className="space-y-4 mt-6">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search WO, Customer, Item..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="space-y-2">
+                  <Label className="font-semibold">Visible Columns</Label>
+                  {Object.entries(DEFAULT_COLUMNS).map(([key, _]) => (
+                    <div key={key} className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={visibleColumns[key]}
+                        onCheckedChange={() => toggleColumn(key)}
+                      />
+                      <Label className="capitalize cursor-pointer">{key}</Label>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleExportCSV} className="flex-1">
+                    Export CSV
+                  </Button>
+                  <Button variant="outline" onClick={handleExportPDF} className="flex-1">
+                    Export PDF
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+
+        {/* Error State */}
         {error && (
-          <Card className="border-destructive">
+          <Card className="border-destructive animate-fade-in">
             <CardContent className="py-6">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-5 w-5" />
@@ -429,209 +750,89 @@ const WorkOrders = () => {
           </Card>
         )}
 
+        {/* Loading Skeletons */}
         {loading && (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">Loading work orders...</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {!loading && !error && filteredOrders.length === 0 && (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-lg font-medium">No Work Orders Found</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {!loading && !error && filteredOrders.length > 0 && (
           <div className="space-y-4">
-            {filteredOrders.map((wo) => {
-              const externalWIP = getExternalWIPSummary(wo);
-              const overdueReturns = hasOverdueReturns(wo);
-              const aging = getAging(wo);
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <Skeleton className="h-5 w-2/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-1/3" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
-              return (
-                <Card key={wo.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                  <div onClick={() => navigate(`/work-orders/${wo.id}`)} className="flex-1 cursor-pointer">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {wo.display_id || wo.wo_id || "—"}
-                          {wo.overdue_moves_count > 0 && (
-                            <Badge variant="destructive" className="text-xs">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              {wo.overdue_moves_count} Overdue
-                            </Badge>
-                          )}
-                        </CardTitle>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {visibleColumns.stage && (
-                            <Badge variant="outline" className="capitalize">
-                              {wo.current_stage?.replace(/_/g, " ") || "—"}
-                            </Badge>
-                          )}
-                          {visibleColumns.external && wo.external_wip && Object.keys(wo.external_wip).length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {Object.entries(wo.external_wip).map(([process, qty]: [string, any]) => (
-                                <Badge 
-                                  key={process}
-                                  variant="secondary" 
-                                  className="cursor-pointer bg-orange-500/10 text-orange-700 border-orange-300 hover:bg-orange-500/20" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/work-orders/${wo.id}?tab=external`);
-                                  }}
-                                >
-                                  <Package className="h-3 w-3 mr-1" />
-                                  {process.replace('_', ' ')}: {qty}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                          {wo.cutting_required && <Scissors className="h-4 w-4 text-orange-600" />}
-                          {wo.forging_required && <Hammer className="h-4 w-4 text-blue-600" />}
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedWO(wo);
-                            setSendDialogOpen(true);
-                          }}>
-                            <Send className="h-4 w-4 mr-2" />
-                            Send to External
-                          </DropdownMenuItem>
-                          {wo.external_moves?.length > 0 && (
-                            <DropdownMenuItem onClick={() => {
-                              setSelectedMove(wo.external_moves[0]);
-                              setReceiptDialogOpen(true);
-                            }}>
-                              <Package className="h-4 w-4 mr-2" />
-                              Record Receipt
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => navigate(`/work-orders/${wo.id}?tab=external`)}>
-                            View External Timeline
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDeleteWorkOrder(wo.id, wo.display_id || wo.wo_id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  <CardContent onClick={() => navigate(`/work-orders/${wo.id}`)} className="cursor-pointer">
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
-                      {visibleColumns.customer && (
-                        <div>
-                          <p className="text-muted-foreground">Customer</p>
-                          <p className="font-medium truncate">{wo.customer || "—"}</p>
-                        </div>
-                      )}
-                      {visibleColumns.item && (
-                        <div>
-                          <p className="text-muted-foreground">Item</p>
-                          <p className="font-medium truncate">{wo.item_code || "—"}</p>
-                        </div>
-                      )}
-                      {visibleColumns.qty && (
-                        <div>
-                          <p className="text-muted-foreground">Quantity</p>
-                          <p className="font-medium">{wo.quantity || 0} pcs</p>
-                        </div>
-                      )}
-                      {visibleColumns.due && (
-                        <div>
-                          <p className="text-muted-foreground">Due Date</p>
-                          <p className="font-medium">
-                            {wo.due_date ? new Date(wo.due_date).toLocaleDateString() : "—"}
-                          </p>
-                        </div>
-                      )}
-                      {visibleColumns.aging && (
-                        <div>
-                          <p className="text-muted-foreground">Age</p>
-                          <p className="font-medium">{aging} days</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-muted-foreground">Status</p>
-                        <Badge variant={wo.status === 'completed' ? 'default' : 'secondary'}>
-                          {wo.status?.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+        {/* Empty State */}
+        {!loading && !error && filteredOrders.length === 0 && (
+          <Card className="animate-fade-in">
+            <CardContent className="py-12 text-center">
+              <Factory className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">No Work Orders Found</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {stageFilter !== 'all' 
+                  ? `No work orders in ${stageFilter.replace('_', ' ')} stage`
+                  : 'Create a new work order to get started'}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} work orders
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+        {/* Work Orders List */}
+        {!loading && !error && filteredOrders.length > 0 && (
+          <div className="space-y-3">
+            {filteredOrders.map((wo) => (
+              <WorkOrderRow
+                key={wo.id}
+                wo={wo}
+                visibleColumns={visibleColumns}
+                onDelete={handleDeleteWorkOrder}
+                onSendToExternal={(wo: any) => {
+                  setSelectedWO(wo);
+                  setSendDialogOpen(true);
+                }}
+                onReceiveFromExternal={(wo: any) => {
+                  setSelectedWO(wo);
+                  setReceiptDialogOpen(true);
+                }}
+                onNavigate={(id: string) => navigate(`/work-orders/${id}`)}
+              />
+            ))}
+
+            {/* Load More */}
+            {hasMore && (
+              <div className="flex justify-center pt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={loadMore}
+                  disabled={loading}
+                >
+                  {loading ? 'Loading...' : 'Load More'}
+                </Button>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {selectedWO && (
-        <SendToExternalDialog
-          open={sendDialogOpen}
-          onOpenChange={setSendDialogOpen}
-          workOrder={selectedWO}
-          onSuccess={() => {
-            loadWorkOrders();
-            setSendDialogOpen(false);
-          }}
-        />
-      )}
-
-      {selectedMove && (
+      {/* Dialogs */}
+      <SendToExternalDialog
+        open={sendDialogOpen}
+        onOpenChange={setSendDialogOpen}
+        workOrder={selectedWO}
+        onSuccess={loadWorkOrders}
+      />
+      
+      {selectedWO?.external_moves?.[0] && (
         <ExternalReceiptDialog
           open={receiptDialogOpen}
           onOpenChange={setReceiptDialogOpen}
-          move={selectedMove}
-          onSuccess={() => {
-            loadWorkOrders();
-            setReceiptDialogOpen(false);
-          }}
+          move={selectedWO.external_moves[0]}
+          onSuccess={loadWorkOrders}
         />
       )}
     </div>
