@@ -19,6 +19,8 @@ import { EnhancedStageHistory } from "@/components/EnhancedStageHistory";
 import { EnhancedQCRecords } from "@/components/EnhancedQCRecords";
 import { WOVersionLog } from "@/components/WOVersionLog";
 import { EnhancedExternalTab } from "@/components/EnhancedExternalTab";
+import { WOTimelineVisualization } from "@/components/WOTimelineVisualization";
+import { WOAuditTrailModal } from "@/components/WOAuditTrailModal";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
 import { ExternalMovementsTab } from "@/components/ExternalMovementsTab";
@@ -67,6 +69,14 @@ const WorkOrderDetail = () => {
   const [forgingRecords, setForgingRecords] = useState<any[]>([]);
   const [showExternalDialog, setShowExternalDialog] = useState(false);
   const [externalMoves, setExternalMoves] = useState<any[]>([]);
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    return localStorage.getItem('wo-detail-active-tab') || 'production';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('wo-detail-active-tab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     loadWorkOrderData();
@@ -631,31 +641,41 @@ const WorkOrderDetail = () => {
           </div>
         </div>
 
-        {/* Stage Flow Breadcrumbs */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Production Workflow</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WorkOrderStageFlow currentStage={wo.current_stage} stageHistory={stageHistory} />
-          </CardContent>
-        </Card>
+        {/* Interactive Stage Flow Breadcrumb */}
+        <WorkOrderStageFlow 
+          currentStage={wo.current_stage} 
+          stageHistory={stageHistory}
+          onStageClick={(stage) => {
+            // Navigate to relevant tab when stage is clicked
+            if (stage.includes('qc')) {
+              setActiveTab('qc');
+            } else if (stage.includes('production') || stage.includes('cnc')) {
+              setActiveTab('production');
+            }
+          }}
+        />
 
-        {/* QC Gates Blocked Warning */}
+        {/* Production Blocked Alert */}
         {qcGatesBlocked && (
-          <div className="bg-destructive/10 border-2 border-destructive rounded-lg p-4">
+          <div className="bg-destructive/10 border-l-4 border-destructive p-4 rounded-lg">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-semibold text-destructive">Production Blocked – QC Gates Pending</h3>
+                <h3 className="font-semibold text-destructive">Production Blocked</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {(wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed') && 
-                    "Material QC must pass or be waived before production can begin. "}
-                  {wo.qc_material_status === 'passed' && 
-                    (wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed') && 
-                    "First Piece QC must pass or be waived before mass production can begin. "}
-                  Please complete or waive the required QC approvals in the QC Records tab.
+                  {wo.qc_material_status === 'pending' && 'Raw Material QC pending approval. '}
+                  {wo.qc_material_status === 'failed' && 'Raw Material QC failed. '}
+                  {wo.qc_first_piece_status === 'pending' && 'First Piece QC pending approval. '}
+                  {wo.qc_first_piece_status === 'failed' && 'First Piece QC failed. '}
                 </p>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  className="mt-2"
+                  onClick={() => setActiveTab('qc')}
+                >
+                  Review QC Records
+                </Button>
               </div>
             </div>
           </div>
@@ -772,10 +792,11 @@ const WorkOrderDetail = () => {
           <FirstPieceQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
         )}
 
-        {/* Production Progress Card */}
+        {/* Enhanced Production Progress with Real-time Updates */}
         {woProgress && (
           <div className="space-y-4">
             <WOProgressCard
+              woId={id!}
               targetQuantity={woProgress.target_quantity}
               completedQuantity={woProgress.total_completed}
               scrapQuantity={woProgress.total_scrap}
@@ -828,6 +849,11 @@ const WorkOrderDetail = () => {
           </div>
         )}
 
+        {/* Timeline Visualization */}
+        {stageHistory.length > 0 && (
+          <WOTimelineVisualization stageHistory={stageHistory} />
+        )}
+
         {/* OEE Widget for running WO */}
         {woOEE && machineAssignments.some(a => a.status === 'running') && (
           <OEEWidget 
@@ -869,8 +895,20 @@ const WorkOrderDetail = () => {
           <ProductionLogForm workOrder={wo} />
         )}
 
-        {/* Tabs */}
-        <Tabs defaultValue={searchParams.get('tab') || "production"} className="w-full">
+        {/* Audit Trail Button */}
+        <div className="flex justify-end">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowAuditModal(true)}
+            className="gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Show Full Audit Log
+          </Button>
+        </div>
+
+        {/* Tabs with Lazy Loading */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="production">🏭 Production</TabsTrigger>
               <TabsTrigger value="stage-history">🔁 Stage History</TabsTrigger>
@@ -881,23 +919,33 @@ const WorkOrderDetail = () => {
           </TabsList>
 
           <TabsContent value="production" className="space-y-4">
-            <EnhancedProductionTab woId={id || ""} workOrder={wo} />
+            {activeTab === 'production' && (
+              <EnhancedProductionTab woId={id || ""} workOrder={wo} />
+            )}
           </TabsContent>
 
           <TabsContent value="stage-history" className="space-y-4">
-            <EnhancedStageHistory stageHistory={stageHistory} routingSteps={routingSteps} />
+            {activeTab === 'stage-history' && (
+              <EnhancedStageHistory stageHistory={stageHistory} routingSteps={routingSteps} />
+            )}
           </TabsContent>
 
           <TabsContent value="qc" className="space-y-4">
-            <EnhancedQCRecords qcRecords={qcRecords} workOrder={wo} />
+            {activeTab === 'qc' && (
+              <EnhancedQCRecords qcRecords={qcRecords} workOrder={wo} />
+            )}
           </TabsContent>
 
           <TabsContent value="genealogy" className="space-y-4">
-            <WOVersionLog woId={id || ""} />
+            {activeTab === 'genealogy' && (
+              <WOVersionLog woId={id || ""} />
+            )}
           </TabsContent>
 
           <TabsContent value="external" className="space-y-4">
-            <EnhancedExternalTab workOrderId={id || ""} />
+            {activeTab === 'external' && (
+              <EnhancedExternalTab workOrderId={id || ""} />
+            )}
           </TabsContent>
 
           <TabsContent value="materials" className="space-y-4">
@@ -1211,6 +1259,14 @@ const WorkOrderDetail = () => {
           onSuccess={loadWorkOrderData}
         />
       </div>
+
+      {/* Audit Trail Modal */}
+      <WOAuditTrailModal 
+        open={showAuditModal}
+        onOpenChange={setShowAuditModal}
+        auditLog={genealogyLog}
+        woId={wo.wo_number || wo.display_id || wo.wo_id}
+      />
     </div>
   );
 };
