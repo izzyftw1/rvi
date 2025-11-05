@@ -67,35 +67,52 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
   }, [workOrderId]);
 
   const loadData = async () => {
-    const [movesRes, receiptsRes, partnersRes] = await Promise.all([
-      supabase
-        .from("wo_external_moves" as any)
-        .select("id, work_order_id, process, qty_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
-        .eq("work_order_id", workOrderId)
-        .order("dispatch_date", { ascending: false }),
-      supabase
-        .from("wo_external_receipts" as any)
-        .select("id, move_id, qty_received, receipt_date, grn_no, remarks")
-        .order("receipt_date", { ascending: false }),
-      supabase
-        .from("external_partners" as any)
-        .select("id, name"),
-    ]);
+    try {
+      const [movesRes, receiptsRes, partnersRes] = await Promise.all([
+        supabase
+          .from("wo_external_moves" as any)
+          .select("id, work_order_id, process, qty_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
+          .eq("work_order_id", workOrderId)
+          .order("dispatch_date", { ascending: false }),
+        supabase
+          .from("wo_external_receipts" as any)
+          .select("id, move_id, qty_received, receipt_date, grn_no, remarks")
+          .order("receipt_date", { ascending: false }),
+        supabase
+          .from("external_partners" as any)
+          .select("id, name"),
+      ]);
 
-    const movesData = (movesRes.data || []) as unknown as ExternalMove[];
-    const receiptsData = (receiptsRes.data || []) as unknown as ExternalReceipt[];
-    const partnersData = (partnersRes.data || []) as unknown as ExternalPartner[];
+      if (movesRes.error) {
+        console.warn("Failed to load external moves:", movesRes.error);
+      }
+      if (receiptsRes.error) {
+        console.warn("Failed to load external receipts:", receiptsRes.error);
+      }
+      if (partnersRes.error) {
+        console.warn("Failed to load external partners:", partnersRes.error);
+      }
 
-    // Aggregate receipts per move
-    const movesWithReceipts = movesData.map(m => {
-      const moveReceipts = receiptsData.filter(r => r.move_id === m.id);
-      const totalReceived = moveReceipts.reduce((sum, r) => sum + (r.qty_received || 0), 0);
-      return { ...m, receipts: moveReceipts, total_received: totalReceived };
-    });
+      const movesData = (movesRes.data || []) as unknown as ExternalMove[];
+      const receiptsData = (receiptsRes.data || []) as unknown as ExternalReceipt[];
+      const partnersData = (partnersRes.data || []) as unknown as ExternalPartner[];
 
-    setMoves(movesWithReceipts);
-    setReceipts(receiptsData);
-    setPartners(partnersData);
+      // Aggregate receipts per move
+      const movesWithReceipts = movesData.map(m => {
+        const moveReceipts = receiptsData.filter(r => r.move_id === m.id);
+        const totalReceived = moveReceipts.reduce((sum, r) => sum + (r.qty_received || 0), 0);
+        return { ...m, receipts: moveReceipts, total_received: totalReceived };
+      });
+
+      setMoves(movesWithReceipts);
+      setReceipts(receiptsData);
+      setPartners(partnersData);
+    } catch (err) {
+      console.warn("Error loading external processing data:", err);
+      setMoves([]);
+      setReceipts([]);
+      setPartners([]);
+    }
   };
 
   const getPartnerName = (partnerId: string) => {

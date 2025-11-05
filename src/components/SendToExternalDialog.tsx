@@ -81,12 +81,29 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   }, [process, partners]);
 
   const loadPartners = async () => {
-    const { data } = await supabase
-      .from("external_partners")
-      .select("id, partner_name, process_type, lead_time_days")
-      .eq("active", true)
-      .order("partner_name");
-    setPartners((data || []) as ExternalPartner[]);
+    try {
+      const { data, error } = await supabase
+        .from("external_partners")
+        .select("id, partner_name, process_type, lead_time_days")
+        .eq("active", true)
+        .order("partner_name");
+      
+      if (error) {
+        console.warn("Failed to load external partners:", error);
+        toast({
+          title: "Warning",
+          description: "Could not load external partners. Please refresh the page.",
+          variant: "destructive",
+        });
+        setPartners([]);
+        return;
+      }
+      
+      setPartners((data || []) as ExternalPartner[]);
+    } catch (err) {
+      console.warn("Error loading partners:", err);
+      setPartners([]);
+    }
   };
 
   const handlePartnerChange = (newPartnerId: string) => {
@@ -288,7 +305,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               Process <span className="text-destructive">*</span>
             </Label>
             <Select 
-              value={process || processOptions[0]?.value || ""} 
+              value={process} 
               onValueChange={(value) => {
                 setProcess(value);
                 setErrors(prev => ({ ...prev, process: "" }));
@@ -299,8 +316,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               </SelectTrigger>
               <SelectContent>
                 {processOptions.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value || 'unknown'}>
-                    {opt.label || 'Unknown Process'}
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -315,22 +332,28 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               Partner <span className="text-destructive">*</span>
             </Label>
             <Select 
-              value={partnerId || (filteredPartners.length > 0 ? filteredPartners[0].id : "")} 
+              value={partnerId} 
               onValueChange={handlePartnerChange}
               disabled={!process || filteredPartners.length === 0}
             >
               <SelectTrigger id="partner" className={errors.partnerId ? "border-destructive" : ""}>
-                <SelectValue placeholder={!process ? "Select process first" : "Select partner"} />
+                <SelectValue placeholder={
+                  !process 
+                    ? "Select process first" 
+                    : filteredPartners.length === 0 
+                      ? "No external partners found. Add one in Admin > External Partners." 
+                      : "Select partner"
+                } />
               </SelectTrigger>
               <SelectContent>
                 {filteredPartners.length === 0 && process ? (
                   <div className="p-2 text-sm text-muted-foreground text-center">
-                    No partners available for {process}
+                    No partners available for {process}. Add one in Partners page.
                   </div>
                 ) : (
                   filteredPartners.map(p => (
-                    <SelectItem key={p.id} value={p.id || 'unknown'}>
-                      {p.partner_name || 'Unknown Partner'}
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.partner_name}
                     </SelectItem>
                   ))
                 )}
