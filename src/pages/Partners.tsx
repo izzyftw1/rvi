@@ -43,7 +43,7 @@ interface Partner {
   country: string | null;
   gst_number: string | null;
   lead_time_days: number;
-  active: boolean;
+  is_active: boolean;
   remarks: string | null;
   created_at: string;
   updated_at: string;
@@ -71,7 +71,7 @@ const Partners = () => {
     country: "India",
     gst_number: "",
     lead_time_days: 7,
-    active: true,
+    is_active: true,
     remarks: "",
   });
 
@@ -135,8 +135,8 @@ const Partners = () => {
 
       const matchesStatus =
         statusFilter === "all" ||
-        (statusFilter === "active" && partner.active) ||
-        (statusFilter === "inactive" && !partner.active);
+        (statusFilter === "active" && partner.is_active) ||
+        (statusFilter === "inactive" && !partner.is_active);
 
       return matchesSearch && matchesProcess && matchesStatus;
     });
@@ -145,7 +145,7 @@ const Partners = () => {
   const processCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     partners.forEach((partner) => {
-      if (partner.active) {
+      if (partner.is_active) {
         partner.process_type.forEach((process) => {
           counts[process] = (counts[process] || 0) + 1;
         });
@@ -169,7 +169,7 @@ const Partners = () => {
         country: partner.country || "India",
         gst_number: partner.gst_number || "",
         lead_time_days: partner.lead_time_days,
-        active: partner.active,
+        is_active: partner.is_active,
         remarks: partner.remarks || "",
       });
     } else {
@@ -186,7 +186,7 @@ const Partners = () => {
         country: "India",
         gst_number: "",
         lead_time_days: 7,
-        active: true,
+        is_active: true,
         remarks: "",
       });
     }
@@ -306,7 +306,7 @@ const Partners = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {partners.filter((p) => p.active).length}
+              {partners.filter((p) => p.is_active).length}
             </div>
           </CardContent>
         </Card>
@@ -318,7 +318,7 @@ const Partners = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {partners.filter((p) => !p.active).length}
+              {partners.filter((p) => !p.is_active).length}
             </div>
           </CardContent>
         </Card>
@@ -494,8 +494,8 @@ const Partners = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={partner.active ? "default" : "secondary"}>
-                        {partner.active ? "Active" : "Inactive"}
+                      <Badge variant={partner.is_active ? "default" : "secondary"}>
+                        {partner.is_active ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
                     {canEdit && (
@@ -710,10 +710,10 @@ const Partners = () => {
                 </p>
               </div>
               <Switch
-                id="active"
-                checked={formData.active}
+                id="is_active"
+                checked={formData.is_active}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, active: checked })
+                  setFormData({ ...formData, is_active: checked })
                 }
               />
             </div>

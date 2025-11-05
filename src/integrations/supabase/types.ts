@@ -504,15 +504,16 @@ export type Database = {
       }
       external_partners: {
         Row: {
-          active: boolean | null
           address_line1: string | null
           city: string | null
           contact_person: string | null
           country: string | null
           created_at: string | null
+          default_lead_time_days: number | null
           email: string | null
           gst_number: string | null
           id: string
+          is_active: boolean | null
           lead_time_days: number | null
           partner_name: string
           phone: string | null
@@ -522,15 +523,16 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          active?: boolean | null
           address_line1?: string | null
           city?: string | null
           contact_person?: string | null
           country?: string | null
           created_at?: string | null
+          default_lead_time_days?: number | null
           email?: string | null
           gst_number?: string | null
           id?: string
+          is_active?: boolean | null
           lead_time_days?: number | null
           partner_name: string
           phone?: string | null
@@ -540,15 +542,16 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          active?: boolean | null
           address_line1?: string | null
           city?: string | null
           contact_person?: string | null
           country?: string | null
           created_at?: string | null
+          default_lead_time_days?: number | null
           email?: string | null
           gst_number?: string | null
           id?: string
+          is_active?: boolean | null
           lead_time_days?: number | null
           partner_name?: string
           phone?: string | null
@@ -3572,6 +3575,120 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wo_external_moves: {
+        Row: {
+          challan_no: string | null
+          created_at: string | null
+          created_by: string | null
+          dispatch_date: string | null
+          expected_return_date: string | null
+          id: string
+          partner_id: string | null
+          process: string
+          qty_returned: number | null
+          quantity_sent: number
+          remarks: string | null
+          returned_date: string | null
+          status: string | null
+          updated_at: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          challan_no?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dispatch_date?: string | null
+          expected_return_date?: string | null
+          id?: string
+          partner_id?: string | null
+          process: string
+          qty_returned?: number | null
+          quantity_sent: number
+          remarks?: string | null
+          returned_date?: string | null
+          status?: string | null
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          challan_no?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dispatch_date?: string | null
+          expected_return_date?: string | null
+          id?: string
+          partner_id?: string | null
+          process?: string
+          qty_returned?: number | null
+          quantity_sent?: number
+          remarks?: string | null
+          returned_date?: string | null
+          status?: string | null
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_external_moves_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_moves_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_moves_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wo_external_receipts: {
+        Row: {
+          created_at: string | null
+          id: string
+          move_id: string | null
+          received_by: string | null
+          received_date: string | null
+          received_qty: number
+          remarks: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          move_id?: string | null
+          received_by?: string | null
+          received_date?: string | null
+          received_qty: number
+          remarks?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          move_id?: string | null
+          received_by?: string | null
+          received_date?: string | null
+          received_qty?: number
+          remarks?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_external_receipts_move_id_fkey"
+            columns: ["move_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_moves"
             referencedColumns: ["id"]
           },
         ]

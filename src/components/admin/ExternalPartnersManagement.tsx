@@ -25,7 +25,7 @@ interface ExternalPartner {
   country: string | null;
   gst_number: string | null;
   lead_time_days: number | null;
-  active: boolean;
+  is_active: boolean;
   remarks: string | null;
   created_at: string;
   updated_at: string;
@@ -58,7 +58,7 @@ export const ExternalPartnersManagement = () => {
     phone: "",
     email: "",
     address_line1: "",
-    active: true,
+    is_active: true,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -75,7 +75,7 @@ export const ExternalPartnersManagement = () => {
     try {
       const { data, error } = await supabase
         .from("external_partners")
-        .select("id, partner_name, process_type, contact_person, phone, email, address_line1, city, state, country, gst_number, lead_time_days, active, remarks, created_at, updated_at")
+        .select("id, partner_name, process_type, contact_person, phone, email, address_line1, city, state, country, gst_number, lead_time_days, is_active, remarks, created_at, updated_at")
         .order("partner_name");
 
       if (error) throw error;
@@ -153,7 +153,7 @@ export const ExternalPartnersManagement = () => {
             phone: formData.phone.trim() || null,
             email: formData.email.trim() || null,
             address_line1: formData.address_line1.trim() || null,
-            active: formData.active,
+            is_active: formData.is_active,
           })
           .eq("id", editingPartner.id);
 
@@ -172,7 +172,7 @@ export const ExternalPartnersManagement = () => {
             phone: formData.phone.trim() || null,
             email: formData.email.trim() || null,
             address_line1: formData.address_line1.trim() || null,
-            active: formData.active,
+            is_active: formData.is_active,
           },
         ]);
 
@@ -207,7 +207,7 @@ export const ExternalPartnersManagement = () => {
       phone: partner.phone || "",
       email: partner.email || "",
       address_line1: partner.address_line1 || "",
-      active: partner.active,
+      is_active: partner.is_active,
     });
     setErrors({});
     setDialogOpen(true);
@@ -218,7 +218,7 @@ export const ExternalPartnersManagement = () => {
     try {
       const { error } = await supabase
         .from("external_partners")
-        .update({ active: !currentStatus })
+        .update({ is_active: !currentStatus })
         .eq("id", partnerId);
 
       if (error) throw error;
@@ -247,7 +247,7 @@ export const ExternalPartnersManagement = () => {
       phone: "",
       email: "",
       address_line1: "",
-      active: true,
+      is_active: true,
     });
     setEditingPartner(null);
     setErrors({});
@@ -341,7 +341,7 @@ export const ExternalPartnersManagement = () => {
                     <TableCell>{partner.phone || "-"}</TableCell>
                     <TableCell>{partner.email || "-"}</TableCell>
                     <TableCell>
-                      {partner.active ? (
+                      {partner.is_active ? (
                         <Badge variant="default" className="gap-1">
                           <CheckCircle className="h-3 w-3" />
                           Active
@@ -365,9 +365,9 @@ export const ExternalPartnersManagement = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeactivate(partner.id, partner.active)}
+                          onClick={() => handleDeactivate(partner.id, partner.is_active)}
                         >
-                          {partner.active ? (
+                          {partner.is_active ? (
                             <XCircle className="h-4 w-4 text-destructive" />
                           ) : (
                             <CheckCircle className="h-4 w-4 text-green-600" />
@@ -496,13 +496,13 @@ export const ExternalPartnersManagement = () => {
 
             <div className="flex items-center gap-2">
               <Checkbox
-                id="active"
-                checked={formData.active}
+                id="is_active"
+                checked={formData.is_active}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, active: checked as boolean })
+                  setFormData({ ...formData, is_active: checked as boolean })
                 }
               />
-              <Label htmlFor="active" className="cursor-pointer font-normal">
+              <Label htmlFor="is_active" className="cursor-pointer font-normal">
                 Active Partner
               </Label>
             </div>
