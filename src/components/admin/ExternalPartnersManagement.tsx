@@ -75,8 +75,8 @@ export const ExternalPartnersManagement = () => {
     try {
       const { data, error } = await supabase
         .from("external_partners")
-        .select("*")
-        .order("name");
+        .select("id, partner_name, process_type, contact_person, phone, email, address_line1, city, state, country, gst_number, lead_time_days, active, remarks, created_at, updated_at")
+        .order("partner_name");
 
       if (error) throw error;
       setPartners(data || []);
