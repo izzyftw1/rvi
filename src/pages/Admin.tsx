@@ -32,6 +32,7 @@ export default function Admin() {
   const [userRoles, setUserRoles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({
@@ -40,6 +41,7 @@ export default function Admin() {
     password: "",
     department_id: "",
     role: "",
+    is_active: true,
   });
   const { toast } = useToast();
   const { isSuperAdmin, hasAnyRole } = useUserRole();
@@ -145,20 +147,95 @@ export default function Admin() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!newUser.email || !newUser.full_name || !newUser.password || !newUser.role) {
+    // Validate required fields
+    if (!newUser.email || !newUser.full_name || !newUser.role) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields",
+        description: "Please fill in all required fields (Name, Email, Role)",
         variant: "destructive",
       });
       return;
     }
 
-    toast({
-      title: "Info",
-      description: "User creation requires Supabase Admin API integration. Please contact system administrator.",
-    });
-    setCreateDialogOpen(false);
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUser.email)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreatingUser(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      // Call edge function to create user
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            email: newUser.email,
+            full_name: newUser.full_name,
+            password: newUser.password || undefined,
+            role: newUser.role,
+            department_id: newUser.department_id && newUser.department_id !== 'none' 
+              ? newUser.department_id 
+              : null,
+            is_active: newUser.is_active,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create user');
+      }
+
+      toast({
+        title: "Success",
+        description: result.temporary_password 
+          ? `User created successfully. Temporary password: ${result.temporary_password}` 
+          : "User created successfully",
+      });
+
+      // Reset form and close dialog
+      setNewUser({
+        email: "",
+        full_name: "",
+        password: "",
+        department_id: "",
+        role: "",
+        is_active: true,
+      });
+      setCreateDialogOpen(false);
+      
+      // Reload data
+      loadData();
+
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create user",
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingUser(false);
+    }
   };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
@@ -431,7 +508,7 @@ export default function Admin() {
 
         {/* Create User Dialog */}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Create New User</DialogTitle>
               <DialogDescription>
@@ -441,18 +518,23 @@ export default function Admin() {
             
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name *</Label>
+                <Label htmlFor="name">
+                  Full Name <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="name"
                   value={newUser.full_name}
                   onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
                   placeholder="John Doe"
                   required
+                  disabled={creatingUser}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">
+                  Email <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="email"
                   type="email"
@@ -460,32 +542,42 @@ export default function Admin() {
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   placeholder="john@example.com"
                   required
+                  disabled={creatingUser}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Temporary Password *</Label>
+                <Label htmlFor="password">
+                  Password (Optional)
+                </Label>
                 <Input
                   id="password"
                   type="password"
                   value={newUser.password}
                   onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  placeholder="Min 8 characters"
-                  required
+                  placeholder="Leave blank for auto-generated"
+                  disabled={creatingUser}
                 />
+                <p className="text-xs text-muted-foreground">
+                  If left blank, a temporary password will be generated
+                </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="role">Initial Role *</Label>
+                <Label htmlFor="role">
+                  Role <span className="text-destructive">*</span>
+                </Label>
                 <Select 
-                  value={newUser.role || (roles.length > 0 ? roles[0].value : "")} 
+                  value={newUser.role || (roles.length > 0 ? roles[0].value : "unassigned")} 
                   onValueChange={(value) => setNewUser({ ...newUser, role: value })}
                   required
+                  disabled={creatingUser}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
                     {roles.map((role) => (
                       <SelectItem 
                         key={role.value} 
@@ -503,6 +595,7 @@ export default function Admin() {
                 <Select 
                   value={newUser.department_id || "none"} 
                   onValueChange={(value) => setNewUser({ ...newUser, department_id: value })}
+                  disabled={creatingUser}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select department" />
@@ -521,11 +614,37 @@ export default function Admin() {
                 </Select>
               </div>
 
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="active"
+                  checked={newUser.is_active}
+                  onCheckedChange={(checked) => setNewUser({ ...newUser, is_active: checked })}
+                  disabled={creatingUser}
+                />
+                <Label htmlFor="active" className="cursor-pointer">
+                  Account Active
+                </Label>
+              </div>
+
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setCreateDialogOpen(false)}
+                  disabled={creatingUser}
+                >
                   Cancel
                 </Button>
-                <Button type="submit">Create User</Button>
+                <Button type="submit" disabled={creatingUser}>
+                  {creatingUser ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create User'
+                  )}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
