@@ -901,130 +901,10 @@ const WorkOrderDetail = () => {
           </TabsContent>
 
           <TabsContent value="materials" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Material Issues</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {stageHistory.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No stage history recorded
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {stageHistory.map((history, index) => (
-                      <div
-                        key={history.id}
-                        className={`p-4 rounded-lg border ${
-                          index === 0 ? 'border-primary bg-primary/5' : 'bg-secondary'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              {history.from_stage && (
-                                <>
-                                  <Badge variant="outline">
-                                    {history.from_stage.replace('_', ' ').toUpperCase()}
-                                  </Badge>
-                                  <span className="text-muted-foreground">→</span>
-                                </>
-                              )}
-                              <Badge className="bg-primary">
-                                {history.to_stage.replace('_', ' ').toUpperCase()}
-                              </Badge>
-                              {history.is_override && (
-                                <Badge variant="destructive" className="text-xs">
-                                  OVERRIDE
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Changed by: {history.profiles?.full_name || 'System'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(history.changed_at).toLocaleString()}
-                            </p>
-                            {history.reason && (
-                              <p className="text-sm mt-2 italic">
-                                Reason: {history.reason}
-                              </p>
-                            )}
-                          </div>
-                          {index === 0 && (
-                            <Badge variant="secondary" className="text-xs">
-                              CURRENT
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="design">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Design Files</CardTitle>
-                  <div>
-                    <input
-                      type="file"
-                      id="design-upload"
-                      accept=".pdf,.dxf,.step"
-                      onChange={handleDesignUpload}
-                      className="hidden"
-                      disabled={uploadingDesign}
-                    />
-                    <Button
-                      onClick={() => document.getElementById('design-upload')?.click()}
-                      disabled={uploadingDesign}
-                    >
-                      {uploadingDesign ? "Uploading..." : "Upload Design"}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {designFiles.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No design files uploaded</p>
-                ) : (
-                  <div className="space-y-3">
-                    {designFiles.map((file) => (
-                      <div key={file.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">v{file.version} - {file.file_name}</p>
-                            {file.is_latest && <Badge>Latest</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground uppercase">{file.file_type}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(file.uploaded_at).toLocaleString()}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => downloadDesignFile(file.file_path, file.file_name)}
-                        >
-                          Download
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="materials" className="space-y-4">
             <Tabs defaultValue="issues">
               <TabsList>
                 <TabsTrigger value="issues">Material Issues</TabsTrigger>
-                <TabsTrigger value="external-movements">External Movements</TabsTrigger>
+                <TabsTrigger value="design">Design Files</TabsTrigger>
               </TabsList>
 
               <TabsContent value="issues">
@@ -1068,232 +948,69 @@ const WorkOrderDetail = () => {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="external-movements">
-                <ExternalMovementsTab workOrderId={id || ""} />
+              <TabsContent value="design">
+                <Card>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle>Design Files</CardTitle>
+                      <div>
+                        <input
+                          type="file"
+                          id="design-upload"
+                          accept=".pdf,.dxf,.step"
+                          onChange={handleDesignUpload}
+                          className="hidden"
+                          disabled={uploadingDesign}
+                        />
+                        <Button
+                          onClick={() => document.getElementById('design-upload')?.click()}
+                          disabled={uploadingDesign}
+                        >
+                          {uploadingDesign ? "Uploading..." : "Upload Design"}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {designFiles.length === 0 ? (
+                      <p className="text-muted-foreground text-center py-8">No design files uploaded</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {designFiles.map((file) => (
+                          <div key={file.id} className="flex items-center justify-between p-4 border rounded-lg">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">v{file.version} - {file.file_name}</p>
+                                {file.is_latest && <Badge>Latest</Badge>}
+                              </div>
+                              <p className="text-sm text-muted-foreground uppercase">{file.file_type}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(file.uploaded_at).toLocaleString()}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => downloadDesignFile(file.file_path, file.file_name)}
+                            >
+                              Download
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </TabsContent>
 
-          <TabsContent value="qc" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>QC Records</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {qcRecords.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No QC records yet
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {qcRecords.map((qc) => (
-                      <div
-                        key={qc.id}
-                        className="flex items-start justify-between p-4 border rounded-lg"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{qc.qc_id}</p>
-                            <Badge variant="outline">{qc.qc_type.replace("_", " ")}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(qc.qc_date_time).toLocaleString()}
-                          </p>
-                          {qc.remarks && (
-                            <p className="text-sm mt-2">{qc.remarks}</p>
-                          )}
-                        </div>
-                        <Badge
-                          variant={
-                            qc.result === "pass"
-                              ? "default"
-                              : qc.result === "fail"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className={
-                            qc.result === "pass"
-                              ? "bg-success"
-                              : ""
-                          }
-                        >
-                          {qc.result.toUpperCase()}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {/* Old duplicate tabs removed - using new enhanced components */}
+        </Tabs>
 
-          <TabsContent value="hourly-qc" className="space-y-4">
-            <QCRecordsTab records={hourlyQcRecords} woId={wo.wo_id} workOrder={wo} onUpdate={loadWorkOrderData} />
-          </TabsContent>
-
-          {wo.cutting_required && (
-            <TabsContent value="cutting" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle>Cutting Records</CardTitle>
-                    <Button onClick={() => window.open('/cutting', '_blank')} variant="outline" size="sm">
-                      Open Cutting Dashboard
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {cuttingRecords.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No cutting records yet
-                    </p>
-                  ) : (
-                    <div className="space-y-4">
-                      {cuttingRecords.map((record) => (
-                        <div key={record.id} className="p-4 border rounded-lg">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <p className="font-medium text-lg">{record.item_code}</p>
-                              <Badge variant={
-                                record.status === 'completed' ? 'default' : 
-                                record.status === 'in_progress' ? 'secondary' : 
-                                'outline'
-                              }>
-                                {record.status.replace('_', ' ').toUpperCase()}
-                              </Badge>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm text-muted-foreground">Progress</p>
-                              <p className="text-xl font-bold">
-                                {record.qty_cut}/{record.qty_required} kg
-                              </p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">Start Date</p>
-                              <p className="font-medium">
-                                {record.start_date ? new Date(record.start_date).toLocaleDateString() : '—'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">End Date</p>
-                              <p className="font-medium">
-                                {record.end_date ? new Date(record.end_date).toLocaleDateString() : '—'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Remaining</p>
-                              <p className="font-medium text-orange-600">
-                                {(record.qty_required - record.qty_cut).toFixed(2)} kg
-                              </p>
-                            </div>
-                          </div>
-                          {record.remarks && (
-                            <div className="mt-3 p-2 bg-secondary rounded">
-                              <p className="text-xs text-muted-foreground">Remarks</p>
-                              <p className="text-sm">{record.remarks}</p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
-
-          {wo.forging_required && (
-            <TabsContent value="forging" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle>Forging Records</CardTitle>
-                    <Button onClick={() => window.open('/forging', '_blank')} variant="outline" size="sm">
-                      Open Forging Dashboard
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {forgingRecords.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No forging records yet
-                    </p>
-                  ) : (
-                    <div className="space-y-4">
-                      {forgingRecords.map((record) => (
-                        <div key={record.id} className="p-4 border rounded-lg">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <p className="font-medium text-lg">{record.forging_vendor || 'No Vendor Assigned'}</p>
-                              <div className="flex gap-2 mt-1">
-                                <Badge variant={
-                                  record.status === 'completed' ? 'default' : 
-                                  record.status === 'in_progress' ? 'secondary' : 
-                                  'outline'
-                                }>
-                                  {record.status.replace('_', ' ').toUpperCase()}
-                                </Badge>
-                                {record.qc_approved && (
-                                  <Badge variant="default">QC Approved</Badge>
-                                )}
-                                {record.sample_sent && !record.qc_approved && (
-                                  <Badge variant="outline">Sample Sent</Badge>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm text-muted-foreground">Progress</p>
-                              <p className="text-xl font-bold">
-                                {record.qty_forged || 0}/{record.qty_required} pcs
-                              </p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">Start Date</p>
-                              <p className="font-medium">
-                                {record.forging_start_date ? new Date(record.forging_start_date).toLocaleDateString() : '—'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">End Date</p>
-                              <p className="font-medium">
-                                {record.forging_end_date ? new Date(record.forging_end_date).toLocaleDateString() : '—'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Remaining</p>
-                              <p className="font-medium text-orange-600">
-                                {record.qty_required - (record.qty_forged || 0)} pcs
-                              </p>
-                            </div>
-                          </div>
-                          {record.remarks && (
-                            <div className="mt-3 p-2 bg-secondary rounded">
-                              <p className="text-xs text-muted-foreground">Remarks</p>
-                              <p className="text-sm">{record.remarks}</p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
-
-          <TabsContent value="external" className="space-y-4">
-            <ExternalProcessingTab workOrderId={id || ""} />
-          </TabsContent>
-
-          <TabsContent value="ext-history" className="space-y-4">
-            <ExternalProcessingHistoryTab workOrderId={id || ""} />
-          </TabsContent>
-
-          <TabsContent value="genealogy" className="space-y-4">
+        {/* Legacy Genealogy Section - Will be replaced by WOVersionLog */}
+        {false && (
+          <div>
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
@@ -1437,8 +1154,8 @@ const WorkOrderDetail = () => {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
 
         {/* Stage Update Dialog */}
         <Dialog open={showStageDialog} onOpenChange={setShowStageDialog}>
