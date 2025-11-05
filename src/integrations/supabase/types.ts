@@ -499,6 +499,63 @@ export type Database = {
           },
         ]
       }
+      external_partners: {
+        Row: {
+          active: boolean | null
+          address_line1: string | null
+          city: string | null
+          contact_person: string | null
+          country: string | null
+          created_at: string | null
+          email: string | null
+          gst_number: string | null
+          id: string
+          lead_time_days: number | null
+          partner_name: string
+          phone: string | null
+          process_type: string[]
+          remarks: string | null
+          state: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          address_line1?: string | null
+          city?: string | null
+          contact_person?: string | null
+          country?: string | null
+          created_at?: string | null
+          email?: string | null
+          gst_number?: string | null
+          id?: string
+          lead_time_days?: number | null
+          partner_name: string
+          phone?: string | null
+          process_type?: string[]
+          remarks?: string | null
+          state?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          address_line1?: string | null
+          city?: string | null
+          contact_person?: string | null
+          country?: string | null
+          created_at?: string | null
+          email?: string | null
+          gst_number?: string | null
+          id?: string
+          lead_time_days?: number | null
+          partner_name?: string
+          phone?: string | null
+          process_type?: string[]
+          remarks?: string | null
+          state?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       factory_calendar_exceptions: {
         Row: {
           created_at: string | null
