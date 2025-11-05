@@ -220,17 +220,17 @@ export default function Admin() {
             <div className="flex items-center gap-2">
               <Label className="text-sm">Test Role Visibility:</Label>
               <Select
-                value={impersonatedRole || ""}
-                onValueChange={(value) => impersonate(value as UserRole || null)}
+                value={impersonatedRole || "none"}
+                onValueChange={(value) => impersonate(value === "none" ? null : value as UserRole)}
               >
                 <SelectTrigger className="w-[250px]">
                   <SelectValue placeholder="Select role to impersonate" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Normal View (No Impersonation)</SelectItem>
+                  <SelectItem value="none">Normal View (No Impersonation)</SelectItem>
                   {roles.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
+                    <SelectItem key={role.value} value={role.value || 'unassigned'}>
+                      {role.label || 'Unassigned'}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -441,11 +441,12 @@ export default function Admin() {
               </div>
               <div>
                 <Label>Department</Label>
-                <Select value={editingUser.department_id} onValueChange={(value) => setEditingUser({ ...editingUser, department_id: value })}>
+                <Select value={editingUser.department_id || "none"} onValueChange={(value) => setEditingUser({ ...editingUser, department_id: value === "none" ? "" : value })}>
                   <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">No Department</SelectItem>
                     {departments.map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                      <SelectItem key={dept.id} value={dept.id || 'unassigned'}>{dept.name || 'Unnamed Department'}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
