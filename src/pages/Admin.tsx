@@ -247,9 +247,70 @@ export default function Admin() {
                 <DialogDescription>Add a new user to the system</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateUser} className="space-y-4">
-                <div><Label>Full Name</Label><Input value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} required /></div>
-                <div><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} required /></div>
-                <div><Label>Temporary Password</Label><Input type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} required /></div>
+                <div>
+                  <Label>Full Name</Label>
+                  <Input 
+                    value={newUser.full_name} 
+                    onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} 
+                    required 
+                  />
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Input 
+                    type="email" 
+                    value={newUser.email} 
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} 
+                    required 
+                  />
+                </div>
+                <div>
+                  <Label>Temporary Password</Label>
+                  <Input 
+                    type="password" 
+                    value={newUser.password} 
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} 
+                    required 
+                  />
+                </div>
+                <div>
+                  <Label>Department *</Label>
+                  <Select 
+                    value={newUser.department_id || ""} 
+                    onValueChange={(value) => setNewUser({ ...newUser, department_id: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id || 'unassigned'}>
+                          {dept.name || 'Unnamed Department'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Initial Role *</Label>
+                  <Select 
+                    value={newUser.role || ""} 
+                    onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map((role) => (
+                        <SelectItem key={role.value} value={role.value || 'unassigned'}>
+                          {role.label || 'Unassigned'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button type="submit" className="w-full">Create User</Button>
               </form>
             </DialogContent>

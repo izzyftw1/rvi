@@ -4160,6 +4160,7 @@ export type Database = {
         | "finance_admin"
         | "finance_user"
         | "ops_manager"
+        | "logistics"
       department_type:
         | "hr"
         | "stores"
@@ -4414,6 +4415,7 @@ export const Constants = {
         "finance_admin",
         "finance_user",
         "ops_manager",
+        "logistics",
       ],
       department_type: [
         "hr",
