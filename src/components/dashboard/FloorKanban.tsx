@@ -97,23 +97,27 @@ export const FloorKanban = () => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Fetch work orders
+      // Fetch work orders for internal stages
       const { data: wos } = await supabase
         .from('work_orders')
         .select('*');
 
-      // Fetch external moves and receipts
-      const { data: moves } = await supabase
-        .from('wo_external_moves' as any)
-        .select('*');
-
-      const { data: receipts } = await supabase
-        .from('wo_external_receipts' as any)
-        .select('*');
+      // Fetch external moves for external processing
+      const { data: externalMoves } = await supabase
+        .from('wo_external_moves')
+        .select(`
+          *,
+          work_orders!inner(
+            quantity,
+            gross_weight_per_pc,
+            item_code,
+            customer
+          )
+        `)
+        .in('status', ['sent', 'in_transit', 'partial']);
 
       const workOrders = wos || [];
-      const externalMoves: any[] = moves || [];
-      const externalReceipts: any[] = receipts || [];
+      const moves: any[] = externalMoves || [];
 
       const stagesData: StageData[] = [];
 
@@ -126,7 +130,7 @@ export const FloorKanban = () => {
 
       // Internal Stages
       const internalStages = [
-        { key: 'goods_in', label: 'Goods In', icon: Package, route: '/material-inwards' },
+        { key: 'goods_in', label: 'Goods In', icon: Package, route: '/materials/inwards' },
         { key: 'production', label: 'Production', icon: Factory, route: '/production-progress' },
         { key: 'qc', label: 'Quality Control', icon: ClipboardCheck, route: '/quality' },
         { key: 'packing', label: 'Packing', icon: Box, route: '/packing' },
@@ -159,35 +163,50 @@ export const FloorKanban = () => {
         });
       });
 
-      // External Stages
+      // External Processing Stages - fetch from wo_external_moves
       const externalStages = [
         { type: 'job_work', label: 'Job Work', icon: Factory },
         { type: 'plating', label: 'Plating', icon: Sparkles },
         { type: 'buffing', label: 'Buffing', icon: Wind },
         { type: 'blasting', label: 'Blasting', icon: Hammer },
-        { type: 'forging_ext', label: 'Forging (Ext)', icon: Flame }
+        { type: 'forging', label: 'Forging (Ext)', icon: Flame }
       ];
 
       externalStages.forEach(({ type, label, icon }) => {
-        const typeMoves = externalMoves.filter(m => m.process_type === type);
-        const activeMoves = typeMoves.filter(m => m.status !== 'returned');
+        // Filter moves by process type and active status
+        const typeMoves = moves.filter(m => 
+          m.process?.toLowerCase() === type.toLowerCase() &&
+          ['sent', 'in_transit', 'partial'].includes(m.status)
+        );
         
-        const totalSent = typeMoves.reduce((sum, m) => sum + (m.qty_sent || 0), 0);
-        const totalReceived = externalReceipts
-          .filter(r => typeMoves.some(m => m.id === r.move_id))
-          .reduce((sum, r) => sum + (r.qty_received || 0), 0);
+        // Calculate totals
+        const totalSentPcs = typeMoves.reduce((sum, m) => sum + (m.qty_sent || 0), 0);
+        const totalReturnedPcs = typeMoves.reduce((sum, m) => sum + (m.qty_returned || 0), 0);
+        const wipPcs = totalSentPcs - totalReturnedPcs;
         
-        const totalWaitHours = activeMoves.reduce((sum, m) => {
-          const waitTime = (Date.now() - new Date(m.dispatch_date || m.created_at).getTime()) / (1000 * 60 * 60);
+        // Calculate weight (assuming gross_weight_per_pc from work_orders)
+        const totalKg = typeMoves.reduce((sum, m) => {
+          const woData = m.work_orders;
+          const qtyInTransit = (m.qty_sent || 0) - (m.qty_returned || 0);
+          const weightPerPc = woData?.gross_weight_per_pc || 0;
+          return sum + (qtyInTransit * weightPerPc / 1000);
+        }, 0);
+        
+        // Calculate average wait time
+        const totalWaitHours = typeMoves.reduce((sum, m) => {
+          const dispatchDate = m.dispatch_date || m.created_at;
+          const waitTime = (Date.now() - new Date(dispatchDate).getTime()) / (1000 * 60 * 60);
           return sum + waitTime;
         }, 0);
-        const avgWait = activeMoves.length > 0 ? totalWaitHours / activeMoves.length : 0;
+        const avgWait = typeMoves.length > 0 ? totalWaitHours / typeMoves.length : 0;
 
-        const overdueCount = activeMoves.filter(m => 
-          m.expected_return_date && m.expected_return_date < today
+        // Count overdue moves
+        const overdueCount = typeMoves.filter(m => 
+          m.expected_return_date && new Date(m.expected_return_date) < new Date(today)
         ).length;
 
-        const expectedReturns = activeMoves
+        // Get expected return dates
+        const expectedReturns = typeMoves
           .filter(m => m.expected_return_date)
           .map(m => m.expected_return_date)
           .sort()
@@ -196,16 +215,16 @@ export const FloorKanban = () => {
         stagesData.push({
           stage: label,
           icon,
-          count: activeMoves.length,
-          totalPcs: totalSent - totalReceived,
-          totalKg: 0,
+          count: typeMoves.length,
+          totalPcs: wipPcs,
+          totalKg: totalKg,
           avgWaitHours: avgWait,
           status: getStatus(avgWait),
-          onClick: () => navigate('/logistics'),
+          onClick: () => navigate(`/logistics?filter=${type}`),
           isExternal: true,
           breakdown: {
-            activeJobs: activeMoves.length,
-            pendingReturns: activeMoves.filter(m => m.status === 'sent').length,
+            activeJobs: typeMoves.length,
+            pendingReturns: typeMoves.filter(m => m.status === 'sent').length,
             overdueCount,
             expectedReturns
           }
