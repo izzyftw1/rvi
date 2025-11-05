@@ -3793,6 +3793,7 @@ export type Database = {
       }
       work_orders: {
         Row: {
+          actual_cycle_time_hours: number | null
           bom: Json | null
           created_at: string
           current_stage: Database["public"]["Enums"]["wo_stage"] | null
@@ -3815,6 +3816,8 @@ export type Database = {
           net_weight_per_pc: number | null
           priority: number | null
           production_allowed: boolean | null
+          production_end: string | null
+          production_start: string | null
           qc_first_piece_approved_at: string | null
           qc_first_piece_approved_by: string | null
           qc_first_piece_passed: boolean
@@ -3833,8 +3836,10 @@ export type Database = {
           status: Database["public"]["Enums"]["wo_status"]
           updated_at: string
           wo_id: string | null
+          wo_number: string | null
         }
         Insert: {
+          actual_cycle_time_hours?: number | null
           bom?: Json | null
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
@@ -3857,6 +3862,8 @@ export type Database = {
           net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
+          production_end?: string | null
+          production_start?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean
@@ -3875,8 +3882,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
           wo_id?: string | null
+          wo_number?: string | null
         }
         Update: {
+          actual_cycle_time_hours?: number | null
           bom?: Json | null
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
@@ -3899,6 +3908,8 @@ export type Database = {
           net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
+          production_end?: string | null
+          production_start?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean
@@ -3917,6 +3928,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["wo_status"]
           updated_at?: string
           wo_id?: string | null
+          wo_number?: string | null
         }
         Relationships: [
           {
@@ -4293,6 +4305,20 @@ export type Database = {
         | "forging_queue"
         | "forging_in_progress"
         | "forging_complete"
+        | "production_planning"
+        | "proforma_sent"
+        | "raw_material_check"
+        | "raw_material_order"
+        | "raw_material_inwards"
+        | "raw_material_qc"
+        | "cutting"
+        | "forging"
+        | "cnc_production"
+        | "first_piece_qc"
+        | "mass_production"
+        | "buffing"
+        | "plating"
+        | "blasting"
       wo_status:
         | "pending"
         | "in_progress"
@@ -4549,6 +4575,20 @@ export const Constants = {
         "forging_queue",
         "forging_in_progress",
         "forging_complete",
+        "production_planning",
+        "proforma_sent",
+        "raw_material_check",
+        "raw_material_order",
+        "raw_material_inwards",
+        "raw_material_qc",
+        "cutting",
+        "forging",
+        "cnc_production",
+        "first_piece_qc",
+        "mass_production",
+        "buffing",
+        "plating",
+        "blasting",
       ],
       wo_status: [
         "pending",

@@ -53,8 +53,13 @@ const NewWorkOrder = () => {
       // Generate user-friendly display_id
       const displayId = `ISO-${formData.customer_po}`;
 
+      // Generate WO number format: {SO#}-{ItemCode}-{YYMM}-{WO#}
+      const yearMonth = new Date().toISOString().slice(2, 7).replace('-', '');
+      const woNumber = `${formData.customer_po.substring(0, 4)}-${formData.item_code}-${yearMonth}-01`;
+      
       const { data: woData, error } = await supabase.from("work_orders").insert({
-        display_id: displayId,
+        wo_number: woNumber,
+        display_id: woNumber,
         customer: formData.customer,
         customer_po: formData.customer_po || null,
         item_code: formData.item_code,
@@ -64,6 +69,7 @@ const NewWorkOrder = () => {
         priority: parseInt(formData.priority),
         sales_order: formData.sales_order || null,
         status: "pending",
+        current_stage: "production_planning",
         cutting_required: formData.cutting_required,
         forging_required: formData.forging_required,
       }).select().single();
@@ -72,7 +78,7 @@ const NewWorkOrder = () => {
 
       toast({
         title: "Work order created",
-        description: `WO ${woData.display_id} created successfully`,
+        description: `WO ${woData.wo_number || woData.display_id} created successfully - Starting at Production Planning`,
       });
 
       setCreatedWO(woData);

@@ -172,6 +172,17 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Update production_start timestamp if this is the first production log
+      if (propWorkOrder && !propWorkOrder.production_start) {
+        await supabase
+          .from("work_orders")
+          .update({ 
+            production_start: new Date().toISOString(),
+            current_stage: 'mass_production'
+          })
+          .eq("id", propWorkOrder.id);
+      }
+      
       const { error: logError } = await supabase.from("production_logs").insert({
         wo_id: data.wo_id,
         machine_id: data.machine_id,

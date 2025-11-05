@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send } from "lucide-react";
+import { WorkOrderStageFlow } from "@/components/WorkOrderStageFlow";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
 import { ExternalMovementsTab } from "@/components/ExternalMovementsTab";
@@ -565,11 +566,11 @@ const WorkOrderDetail = () => {
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold">{wo.wo_id}</h1>
+              <h1 className="text-2xl font-bold">{wo.wo_number || wo.display_id || wo.wo_id}</h1>
               <StatusBadge status={wo.status} />
             </div>
             <p className="text-sm text-muted-foreground">
-              {wo.customer} • {wo.item_code}
+              {wo.customer} • {wo.item_code} • Qty: {wo.quantity}
               {salesOrder && (
                 <>
                   {" • "}
@@ -582,6 +583,11 @@ const WorkOrderDetail = () => {
                 </>
               )}
             </p>
+            {wo.actual_cycle_time_hours && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Cycle Time: {wo.actual_cycle_time_hours.toFixed(2)} hours
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {canManageExternal && (
@@ -619,6 +625,16 @@ const WorkOrderDetail = () => {
             </Button>
           </div>
         </div>
+
+        {/* Stage Flow Breadcrumbs */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Production Workflow</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WorkOrderStageFlow currentStage={wo.current_stage} stageHistory={stageHistory} />
+          </CardContent>
+        </Card>
 
         {/* QC Gates Blocked Warning */}
         {qcGatesBlocked && (
@@ -1482,15 +1498,20 @@ const WorkOrderDetail = () => {
                   <SelectValue placeholder="Select stage" />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
-                  <SelectItem value="goods_in">Goods In</SelectItem>
-                  <SelectItem value="cutting_queue">Cutting Queue</SelectItem>
-                  <SelectItem value="cutting_in_progress">Cutting In Progress</SelectItem>
-                  <SelectItem value="cutting_complete">Cutting Complete</SelectItem>
-                  <SelectItem value="forging_queue">Forging Queue</SelectItem>
-                  <SelectItem value="forging_in_progress">Forging In Progress</SelectItem>
-                  <SelectItem value="forging_complete">Forging Complete</SelectItem>
-                  <SelectItem value="production">Production</SelectItem>
-                  <SelectItem value="qc">QC</SelectItem>
+                  <SelectItem value="production_planning">Production Planning</SelectItem>
+                  <SelectItem value="proforma_sent">Proforma Sent</SelectItem>
+                  <SelectItem value="raw_material_check">Raw Material Check</SelectItem>
+                  <SelectItem value="raw_material_order">Raw Material Order</SelectItem>
+                  <SelectItem value="raw_material_inwards">Raw Material Inwards (Goods In)</SelectItem>
+                  <SelectItem value="raw_material_qc">Raw Material QC</SelectItem>
+                  <SelectItem value="cutting">Cutting</SelectItem>
+                  <SelectItem value="forging">Forging</SelectItem>
+                  <SelectItem value="cnc_production">CNC / Production</SelectItem>
+                  <SelectItem value="first_piece_qc">First Piece QC</SelectItem>
+                  <SelectItem value="mass_production">Mass Production</SelectItem>
+                  <SelectItem value="buffing">Buffing</SelectItem>
+                  <SelectItem value="plating">Plating</SelectItem>
+                  <SelectItem value="blasting">Blasting</SelectItem>
                   <SelectItem value="packing">Packing</SelectItem>
                   <SelectItem value="dispatch">Dispatch</SelectItem>
                 </SelectContent>
