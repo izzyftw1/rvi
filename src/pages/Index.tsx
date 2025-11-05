@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { NavigationBar } from "@/components/NavigationBar";
 import { Button } from "@/components/ui/button";
 import rvLogo from "@/assets/rv-logo.jpg";
 import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
@@ -35,8 +36,6 @@ import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
 import { QCAlertsWidget } from "@/components/dashboard/QCAlertsWidget";
 import { LogisticsAlertsWidget } from "@/components/dashboard/LogisticsAlertsWidget";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { QuickActionsAccordion } from "@/components/dashboard/QuickActionsAccordion";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,7 +53,6 @@ const Index = () => {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [userRoles, setUserRoles] = useState<string[]>([]);
-  const [quickAccessOpen, setQuickAccessOpen] = useState(true);
   
   // KPI Metrics
   const [kpiMetrics, setKpiMetrics] = useState({
@@ -541,6 +539,9 @@ const Index = () => {
         </div>
       </header>
 
+      {/* Top Navigation Bar */}
+      <NavigationBar userRoles={userRoles} />
+
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Critical Alerts Bar */}
@@ -586,36 +587,6 @@ const Index = () => {
             <ExternalDashboard />
           </TabsContent>
         </Tabs>
-
-        {/* Quick Access Section - Collapsible */}
-        <Collapsible 
-          open={quickAccessOpen} 
-          onOpenChange={setQuickAccessOpen}
-          className="space-y-2"
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">Quick Access</h2>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                {quickAccessOpen ? (
-                  <>
-                    <ChevronUp className="h-4 w-4" />
-                    <span className="text-sm">Collapse</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4" />
-                    <span className="text-sm">Expand</span>
-                  </>
-                )}
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-          
-          <CollapsibleContent className="space-y-2 animate-accordion-down">
-            <QuickActionsAccordion userRoles={userRoles} />
-          </CollapsibleContent>
-        </Collapsible>
       </main>
     </div>
   );
