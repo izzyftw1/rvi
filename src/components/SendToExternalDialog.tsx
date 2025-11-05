@@ -288,7 +288,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               Process <span className="text-destructive">*</span>
             </Label>
             <Select 
-              value={process} 
+              value={process || processOptions[0]?.value || ""} 
               onValueChange={(value) => {
                 setProcess(value);
                 setErrors(prev => ({ ...prev, process: "" }));
@@ -299,8 +299,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               </SelectTrigger>
               <SelectContent>
                 {processOptions.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
+                  <SelectItem key={opt.value} value={opt.value || 'unknown'}>
+                    {opt.label || 'Unknown Process'}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -315,9 +315,9 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               Partner <span className="text-destructive">*</span>
             </Label>
             <Select 
-              value={partnerId} 
+              value={partnerId || (filteredPartners.length > 0 ? filteredPartners[0].id : "")} 
               onValueChange={handlePartnerChange}
-              disabled={!process}
+              disabled={!process || filteredPartners.length === 0}
             >
               <SelectTrigger id="partner" className={errors.partnerId ? "border-destructive" : ""}>
                 <SelectValue placeholder={!process ? "Select process first" : "Select partner"} />
@@ -329,8 +329,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                   </div>
                 ) : (
                   filteredPartners.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.partner_name}
+                    <SelectItem key={p.id} value={p.id || 'unknown'}>
+                      {p.partner_name || 'Unknown Partner'}
                     </SelectItem>
                   ))
                 )}
@@ -399,11 +399,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           {process === 'Job Work' && (
             <div className="space-y-2">
               <Label htmlFor="operation">Operation (Optional)</Label>
-              <Select value={operationTag} onValueChange={setOperationTag}>
+              <Select value={operationTag || ""} onValueChange={setOperationTag}>
                 <SelectTrigger id="operation">
                   <SelectValue placeholder="Select operation if applicable" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">None</SelectItem>
                   <SelectItem value="Op-A">Operation A</SelectItem>
                   <SelectItem value="Op-B">Operation B</SelectItem>
                   <SelectItem value="Op-C">Operation C</SelectItem>

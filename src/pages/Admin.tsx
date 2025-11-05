@@ -229,7 +229,10 @@ export default function Admin() {
                 <SelectContent>
                   <SelectItem value="none">Normal View (No Impersonation)</SelectItem>
                   {roles.map((role) => (
-                    <SelectItem key={role.value} value={role.value || 'unassigned'}>
+                    <SelectItem 
+                      key={role.value} 
+                      value={role.value && role.value.trim() !== '' ? role.value : 'unassigned'}
+                    >
                       {role.label || 'Unassigned'}
                     </SelectItem>
                   ))}
@@ -276,16 +279,20 @@ export default function Admin() {
                 <div>
                   <Label>Department *</Label>
                   <Select 
-                    value={newUser.department_id || ""} 
-                    onValueChange={(value) => setNewUser({ ...newUser, department_id: value })}
+                    value={newUser.department_id || (departments.length > 0 ? departments[0].id : "none")} 
+                    onValueChange={(value) => setNewUser({ ...newUser, department_id: value === "none" ? "" : value })}
                     required
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select department" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">No Department</SelectItem>
                       {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id || 'unassigned'}>
+                        <SelectItem 
+                          key={dept.id} 
+                          value={dept.id && dept.id.trim() !== '' ? dept.id : 'unassigned'}
+                        >
                           {dept.name || 'Unnamed Department'}
                         </SelectItem>
                       ))}
@@ -295,7 +302,7 @@ export default function Admin() {
                 <div>
                   <Label>Initial Role *</Label>
                   <Select 
-                    value={newUser.role || ""} 
+                    value={newUser.role || (roles.length > 0 ? roles[0].value : "")} 
                     onValueChange={(value) => setNewUser({ ...newUser, role: value })}
                     required
                   >
@@ -304,7 +311,10 @@ export default function Admin() {
                     </SelectTrigger>
                     <SelectContent>
                       {roles.map((role) => (
-                        <SelectItem key={role.value} value={role.value || 'unassigned'}>
+                        <SelectItem 
+                          key={role.value} 
+                          value={role.value && role.value.trim() !== '' ? role.value : 'unassigned'}
+                        >
                           {role.label || 'Unassigned'}
                         </SelectItem>
                       ))}
@@ -502,12 +512,20 @@ export default function Admin() {
               </div>
               <div>
                 <Label>Department</Label>
-                <Select value={editingUser.department_id || "none"} onValueChange={(value) => setEditingUser({ ...editingUser, department_id: value === "none" ? "" : value })}>
+                <Select 
+                  value={editingUser.department_id || (departments.length > 0 ? departments[0].id : "none")} 
+                  onValueChange={(value) => setEditingUser({ ...editingUser, department_id: value === "none" ? "" : value })}
+                >
                   <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Department</SelectItem>
                     {departments.map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id || 'unassigned'}>{dept.name || 'Unnamed Department'}</SelectItem>
+                      <SelectItem 
+                        key={dept.id} 
+                        value={dept.id && dept.id.trim() !== '' ? dept.id : 'unassigned'}
+                      >
+                        {dept.name || 'Unnamed Department'}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
