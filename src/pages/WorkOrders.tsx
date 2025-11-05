@@ -11,16 +11,17 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Settings2, Search, Download, Factory, CheckCircle2, PackageCheck, Truck, AlertTriangle, Filter, Clock, TrendingUp, Inbox, Scissors, Hammer, Box } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Settings2, Search, Download, Factory, CheckCircle2, PackageCheck, Truck, AlertTriangle, Filter, Clock, TrendingUp, Inbox, Scissors, Hammer, Box, FileDown, Calendar } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
-import { isPast, parseISO, differenceInDays } from "date-fns";
+import { isPast, parseISO, differenceInDays, format as formatDate } from "date-fns";
 import { downloadCSV, downloadPDF, formatExternalWIP } from "@/lib/exportHelpers";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const COLUMNS_KEY = "workorders_visible_columns";
 const FILTER_KEY = "workorders_last_filter";
@@ -88,12 +89,14 @@ const StageChip = memo(({
       <Icon className="h-3.5 w-3.5" />
       <span className="font-medium">{stage.label}</span>
       <span className={cn(
-        "ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold",
-        isActive 
-          ? "bg-background/20" 
-          : isExternal 
-            ? "bg-accent/20" 
-            : "bg-primary/20"
+        "ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold min-w-[1.5rem] text-center",
+        count === 0 
+          ? "bg-muted text-muted-foreground" 
+          : isActive 
+            ? "bg-background/20" 
+            : isExternal 
+              ? "bg-accent/20" 
+              : "bg-primary/20"
       )}>
         {count}
       </span>
@@ -110,7 +113,8 @@ const WorkOrderRow = memo(({
   onDelete, 
   onSendToExternal, 
   onReceiveFromExternal,
-  onNavigate 
+  onNavigate,
+  onStageClick
 }: any) => {
   const getShortWOId = () => {
     const itemCode = wo.item_code || '';
@@ -125,13 +129,47 @@ const WorkOrderRow = memo(({
 
   const getExternalWIPBadges = () => {
     if (!wo.external_wip || Object.keys(wo.external_wip).length === 0) return null;
+    
     return Object.entries(wo.external_wip)
       .filter(([_, qty]: any) => qty > 0)
-      .map(([process, qty]: any) => (
-        <Badge key={process} variant="outline" className="bg-accent/10 text-accent border-accent/30">
-          {process.replace('_', ' ')}: {qty} pcs
-        </Badge>
-      ));
+      .map(([process, qty]: any) => {
+        const move = wo.external_moves?.find((m: any) => m.process === process && m.status !== 'received_full');
+        const dueDate = move?.expected_return_date ? formatDate(parseISO(move.expected_return_date), 'MMM dd') : null;
+        const isOverdue = move?.expected_return_date && isPast(parseISO(move.expected_return_date));
+        
+        return (
+          <TooltipProvider key={process}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant="outline" 
+                  className={cn(
+                    "bg-accent/10 text-accent border-accent/30 gap-1",
+                    isOverdue && "border-destructive/50 bg-destructive/10"
+                  )}
+                >
+                  {process.replace('_', ' ')}: {qty}
+                  {dueDate && (
+                    <span className={cn(
+                      "text-xs",
+                      isOverdue && "text-destructive font-semibold"
+                    )}>
+                      • {dueDate}
+                    </span>
+                  )}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="font-medium">{process.replace('_', ' ')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {qty} pcs {dueDate ? `• Due ${dueDate}` : ''}
+                </p>
+                {isOverdue && <p className="text-xs text-destructive font-semibold">Overdue!</p>}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      });
   };
 
   const hasOverdue = wo.external_moves?.some((m: any) => 
@@ -157,16 +195,33 @@ const WorkOrderRow = memo(({
           <div className="md:col-span-3">
             <HoverCard>
               <HoverCardTrigger>
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-foreground hover:text-primary transition-colors">
-                    {getShortWOId()}
-                  </p>
-                  {hasOverdue && (
-                    <Badge variant="destructive" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {wo.overdue_moves_count || 1}
-                    </Badge>
-                  )}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-foreground hover:text-primary transition-colors">
+                      {getShortWOId()}
+                    </p>
+                    {hasOverdue && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {wo.overdue_moves_count || 1}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground line-clamp-1">
+                      {wo.customer}
+                    </p>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <p className="text-xs text-muted-foreground line-clamp-1">
+                      {wo.item_code}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Progress value={getProgressPercent()} className="h-1.5 flex-1" />
+                    <span className="text-xs font-medium text-muted-foreground min-w-[3rem]">
+                      {getProgressPercent()}%
+                    </span>
+                  </div>
                 </div>
               </HoverCardTrigger>
               <HoverCardContent className="w-80">
@@ -188,9 +243,6 @@ const WorkOrderRow = memo(({
                 </div>
               </HoverCardContent>
             </HoverCard>
-            {visibleColumns.customer && (
-              <p className="text-xs text-muted-foreground mt-1">{wo.customer}</p>
-            )}
           </div>
 
           {/* Item & Quantity */}
@@ -203,18 +255,31 @@ const WorkOrderRow = memo(({
             </div>
           )}
 
-          {/* Current Stage */}
+          {/* Current Stage - Clickable */}
           {visibleColumns.stage && (
             <div className="md:col-span-2">
-              <Badge 
-                className="font-medium"
-                style={{ 
-                  backgroundColor: getStageColor(),
-                  color: 'hsl(var(--primary-foreground))'
-                }}
-              >
-                {wo.current_stage?.replace('_', ' ').toUpperCase()}
-              </Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge 
+                      className="font-medium cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ 
+                        backgroundColor: getStageColor(),
+                        color: 'hsl(var(--primary-foreground))'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStageClick(wo.current_stage);
+                      }}
+                    >
+                      {wo.current_stage?.replace('_', ' ').toUpperCase()}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Click to filter by this stage
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           )}
 
@@ -559,6 +624,25 @@ const WorkOrders = () => {
           <Card className="shadow-lg">
             <CardContent className="pt-6 pb-4">
               <div className="space-y-4">
+                {/* Active Filter Indicator */}
+                {stageFilter !== 'all' && (
+                  <div className="flex items-center justify-between gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-medium">
+                        Active Filter: <span className="text-primary">{stageFilter.replace('_', ' ').toUpperCase()}</span>
+                      </p>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setStageFilter('all')}
+                    >
+                      Clear Filter
+                    </Button>
+                  </div>
+                )}
+
                 {/* Internal Stages */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
@@ -639,7 +723,7 @@ const WorkOrders = () => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
                     <Settings2 className="h-4 w-4 mr-2" />
-                    Columns
+                    View Options
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
@@ -657,22 +741,30 @@ const WorkOrders = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={handleExportCSV}>
-                    Export as CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportPDF}>
-                    Export as PDF
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon">
+                          <FileDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={handleExportCSV}>
+                          Export as CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExportPDF}>
+                          Export as PDF
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Download Excel Summary
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </CardContent>
         </Card>
@@ -800,6 +892,7 @@ const WorkOrders = () => {
                   setReceiptDialogOpen(true);
                 }}
                 onNavigate={(id: string) => navigate(`/work-orders/${id}`)}
+                onStageClick={(stage: string) => setStageFilter(stage)}
               />
             ))}
 
