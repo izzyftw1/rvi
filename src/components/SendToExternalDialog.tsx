@@ -35,6 +35,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const [qtySent, setQtySent] = useState<string>("");
   const [expectedReturnDate, setExpectedReturnDate] = useState<string>("");
   const [remarks, setRemarks] = useState<string>("");
+  const [operationTag, setOperationTag] = useState<string>("");
   const [partners, setPartners] = useState<ExternalPartner[]>([]);
   const [filteredPartners, setFilteredPartners] = useState<ExternalPartner[]>([]);
 
@@ -127,6 +128,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           expected_return_date: expectedReturnDate || null,
           challan_no: challanNo,
           remarks: remarks || null,
+          operation_tag: operationTag || null,
           created_by: user?.id,
         });
 
@@ -158,6 +160,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     setQtySent("");
     setExpectedReturnDate("");
     setRemarks("");
+    setOperationTag("");
   };
 
   return (
@@ -222,6 +225,23 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
               onChange={(e) => setExpectedReturnDate(e.target.value)}
             />
           </div>
+
+          {process === 'job_work' && (
+            <div className="space-y-2">
+              <Label>Operation (Optional)</Label>
+              <Select value={operationTag} onValueChange={setOperationTag}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select operation if applicable" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Op-A">Operation A</SelectItem>
+                  <SelectItem value="Op-B">Operation B</SelectItem>
+                  <SelectItem value="Op-C">Operation C</SelectItem>
+                  <SelectItem value="Op-D">Operation D</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Remarks</Label>

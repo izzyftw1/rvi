@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send } from "lucide-react";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
+import { ExternalMovementsTab } from "@/components/ExternalMovementsTab";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
@@ -1042,44 +1043,57 @@ const WorkOrderDetail = () => {
           </TabsContent>
 
           <TabsContent value="materials" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Material Issues</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {materialIssues.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No materials issued yet
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {materialIssues.map((issue: any) => (
-                      <div
-                        key={issue.id}
-                        className="flex items-center justify-between p-3 bg-secondary rounded-lg"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {issue.material_lots?.lot_id || "Unknown Lot"}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Heat: {issue.material_lots?.heat_no} • {issue.material_lots?.alloy}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">
-                            {issue.quantity_kg} {issue.uom}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(issue.issued_at).toLocaleDateString()}
-                          </p>
-                        </div>
+            <Tabs defaultValue="issues">
+              <TabsList>
+                <TabsTrigger value="issues">Material Issues</TabsTrigger>
+                <TabsTrigger value="external-movements">External Movements</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="issues">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Material Issues</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {materialIssues.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        No materials issued yet
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {materialIssues.map((issue: any) => (
+                          <div
+                            key={issue.id}
+                            className="flex items-center justify-between p-3 bg-secondary rounded-lg"
+                          >
+                            <div>
+                              <p className="font-medium">
+                                {issue.material_lots?.lot_id || "Unknown Lot"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Heat: {issue.material_lots?.heat_no} • {issue.material_lots?.alloy}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">
+                                {issue.quantity_kg} {issue.uom}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(issue.issued_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="external-movements">
+                <ExternalMovementsTab workOrderId={id || ""} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           <TabsContent value="qc" className="space-y-4">

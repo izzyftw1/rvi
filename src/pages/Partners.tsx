@@ -24,6 +24,7 @@ interface Partner {
   address: string | null;
   gst_number: string | null;
   active: boolean;
+  requires_return_qc: boolean;
 }
 
 const PROCESS_OPTIONS = [
@@ -53,6 +54,7 @@ const Partners = () => {
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [gstNumber, setGstNumber] = useState("");
+  const [requiresReturnQc, setRequiresReturnQc] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -97,6 +99,7 @@ const Partners = () => {
       setEmail(partner.email || "");
       setAddress(partner.address || "");
       setGstNumber(partner.gst_number || "");
+      setRequiresReturnQc(partner.requires_return_qc || false);
     } else {
       setEditingPartner(null);
       resetForm();
@@ -112,6 +115,7 @@ const Partners = () => {
     setEmail("");
     setAddress("");
     setGstNumber("");
+    setRequiresReturnQc(false);
   };
 
   const handleSave = async () => {
@@ -133,6 +137,7 @@ const Partners = () => {
         email: email || null,
         address: address || null,
         gst_number: gstNumber || null,
+        requires_return_qc: requiresReturnQc,
       };
 
       if (editingPartner) {
@@ -386,6 +391,14 @@ const Partners = () => {
             <div className="space-y-2">
               <Label>GST Number</Label>
               <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                checked={requiresReturnQc}
+                onCheckedChange={(checked) => setRequiresReturnQc(checked as boolean)}
+              />
+              <Label className="cursor-pointer">Require QC on Return Receipt</Label>
             </div>
           </div>
 
