@@ -44,7 +44,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const { hasAnyRole } = useUserRole();
   const [loading, setLoading] = useState(false);
   
-  const canCreate = hasAnyRole(['production', 'admin']);
+  const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
   const [process, setProcess] = useState<string>("");
   const [partnerId, setPartnerId] = useState<string>("");
   const [qtySent, setQtySent] = useState<string>("");

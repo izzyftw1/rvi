@@ -33,7 +33,10 @@ const WorkOrderDetail = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { isFinanceRole } = useUserRole();
+  const { isFinanceRole, hasAnyRole } = useUserRole();
+  
+  // Check if user can manage external processing
+  const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   const [wo, setWo] = useState<any>(null);
   const [salesOrder, setSalesOrder] = useState<any>(null);
   const [routingSteps, setRoutingSteps] = useState<any[]>([]);
@@ -581,14 +584,16 @@ const WorkOrderDetail = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => setShowExternalDialog(true)} 
-              variant="secondary"
-              size="sm"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Send to External
-            </Button>
+            {canManageExternal && (
+              <Button 
+                onClick={() => setShowExternalDialog(true)} 
+                variant="secondary"
+                size="sm"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Send to External
+              </Button>
+            )}
             <Button 
               onClick={() => setShowAssignmentDialog(true)} 
               variant="default"

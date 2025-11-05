@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Settings2, Search, Download, Factory, CheckCircle2, PackageCheck, Truck, AlertTriangle, Filter, Clock, TrendingUp, Inbox, Scissors, Hammer, Box, FileDown, Calendar } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
 import { isPast, parseISO, differenceInDays, format as formatDate } from "date-fns";
@@ -114,7 +115,8 @@ const WorkOrderRow = memo(({
   onSendToExternal, 
   onReceiveFromExternal,
   onNavigate,
-  onStageClick
+  onStageClick,
+  canManageExternal
 }: any) => {
   const getShortWOId = () => {
     const itemCode = wo.item_code || '';
@@ -316,21 +318,25 @@ const WorkOrderRow = memo(({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={(e) => {
-                  e.stopPropagation();
-                  onSendToExternal(wo);
-                }}>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send to External
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => {
-                  e.stopPropagation();
-                  onReceiveFromExternal(wo);
-                }}>
-                  <Package className="h-4 w-4 mr-2" />
-                  Receive from External
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                {canManageExternal && (
+                  <>
+                    <DropdownMenuItem onClick={(e) => {
+                      e.stopPropagation();
+                      onSendToExternal(wo);
+                    }}>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send to External
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => {
+                      e.stopPropagation();
+                      onReceiveFromExternal(wo);
+                    }}>
+                      <Package className="h-4 w-4 mr-2" />
+                      Receive from External
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem 
                   className="text-destructive"
                   onClick={(e) => {
@@ -358,6 +364,10 @@ const WorkOrders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { hasAnyRole } = useUserRole();
+  
+  // Check if user can manage external processing
+  const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   
   // Filters with localStorage persistence
   const [searchQuery, setSearchQuery] = useState("");
@@ -908,6 +918,7 @@ const WorkOrders = () => {
                 }}
                 onNavigate={(id: string) => navigate(`/work-orders/${id}`)}
                 onStageClick={(stage: string) => setStageFilter(stage)}
+                canManageExternal={canManageExternal}
               />
             ))}
 
