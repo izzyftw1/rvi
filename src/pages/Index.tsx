@@ -19,6 +19,8 @@ import { FloorKanban } from "@/components/dashboard/FloorKanban";
 import { useUserRole } from "@/hooks/useUserRole";
 import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
 import { TodayGlanceTimeline } from "@/components/dashboard/TodayGlanceTimeline";
+import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -436,11 +438,25 @@ const Index = () => {
         {/* KPI Banner - Compact 6 tiles */}
         <KPIBanner metrics={kpiData} />
 
-        {/* Live Floor Status - Kanban View */}
-        <FloorKanban />
+        {/* Tabbed View */}
+        <Tabs defaultValue="internal" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="internal">Internal Flow</TabsTrigger>
+            <TabsTrigger value="external">External Processing</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="internal" className="space-y-6 mt-6">
+            {/* Live Floor Status - Kanban View */}
+            <FloorKanban />
 
-        {/* Today at a Glance Timeline */}
-        <TodayGlanceTimeline limit={10} showViewAll={true} />
+            {/* Today at a Glance Timeline */}
+            <TodayGlanceTimeline limit={10} showViewAll={true} />
+          </TabsContent>
+
+          <TabsContent value="external" className="mt-6">
+            <ExternalDashboard />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
