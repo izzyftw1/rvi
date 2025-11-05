@@ -9,7 +9,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
 import { useNavigate } from "react-router-dom";
 import { format, isPast, parseISO, differenceInDays } from "date-fns";
-import { Package, AlertCircle, TrendingUp, FileText, ExternalLink } from "lucide-react";
+import { Package, AlertCircle, TrendingUp, FileText, ExternalLink, Download } from "lucide-react";
+import { downloadCSV, downloadPDF } from "@/lib/exportHelpers";
+import { useToast } from "@/hooks/use-toast";
 
 interface ExtendedMove {
   id: string;
@@ -28,6 +30,7 @@ interface ExtendedMove {
 
 const LogisticsDashboard = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [moves, setMoves] = useState<ExtendedMove[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +124,43 @@ const LogisticsDashboard = () => {
       m.process === 'plating' && 
       m.status === 'received_full'
     );
+  };
+
+  const handleExportOpenMoves = () => {
+    const openMoves = getOpenMoves();
+    const exportData = openMoves.map(m => ({
+      'WO ID': m.work_order?.display_id || '',
+      'Customer': m.work_order?.customer || '',
+      'Item': m.work_order?.item_code || '',
+      'Process': m.process.replace('_', ' ').toUpperCase(),
+      'Partner': m.partner?.name || '',
+      'Qty Sent': m.qty_sent,
+      'Qty Received': m.total_received || 0,
+      '% Complete': Math.round(((m.total_received || 0) / m.qty_sent) * 100),
+      'Expected Return': m.expected_return_date || 'N/A',
+      'Challan No': m.challan_no,
+    }));
+    downloadCSV(exportData, 'open_external_moves');
+    toast({ description: 'Open moves exported successfully' });
+  };
+
+  const handleExportOverdueMoves = () => {
+    const overdueMoves = getOverdueMoves();
+    const exportData = overdueMoves.map(m => ({
+      'WO ID': m.work_order?.display_id || '',
+      'Customer': m.work_order?.customer || '',
+      'Item': m.work_order?.item_code || '',
+      'Process': m.process.replace('_', ' ').toUpperCase(),
+      'Partner': m.partner?.name || '',
+      'Qty Sent': m.qty_sent,
+      'Qty Received': m.total_received || 0,
+      'Pending': m.qty_sent - (m.total_received || 0),
+      'Expected Return': m.expected_return_date || '',
+      'Days Overdue': m.expected_return_date ? differenceInDays(new Date(), parseISO(m.expected_return_date)) : 0,
+      'Challan No': m.challan_no,
+    }));
+    downloadCSV(exportData, 'overdue_external_moves');
+    toast({ description: 'Overdue moves exported successfully' });
   };
 
   const getPartnerStats = () => {
@@ -308,6 +348,12 @@ const LogisticsDashboard = () => {
           </TabsList>
 
           <TabsContent value="open" className="space-y-3 mt-4">
+            <div className="flex justify-end mb-4">
+              <Button onClick={handleExportOpenMoves} variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
             {openMoves.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
@@ -320,6 +366,12 @@ const LogisticsDashboard = () => {
           </TabsContent>
 
           <TabsContent value="overdue" className="space-y-3 mt-4">
+            <div className="flex justify-end mb-4">
+              <Button onClick={handleExportOverdueMoves} variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
             {overdueMoves.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">

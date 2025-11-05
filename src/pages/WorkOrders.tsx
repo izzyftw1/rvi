@@ -9,12 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Plus, AlertCircle, Trash2, Scissors, Hammer, Send, Package, MoreVertical, Settings2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Scissors, Hammer, Send, Package, MoreVertical, Settings2, Search, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
-import { isPast, parseISO } from "date-fns";
+import { isPast, parseISO, differenceInDays } from "date-fns";
+import { downloadCSV, downloadPDF, formatExternalWIP } from "@/lib/exportHelpers";
 
 const COLUMNS_KEY = "workorders_visible_columns";
 const DEFAULT_COLUMNS = {
@@ -214,6 +215,52 @@ const WorkOrders = () => {
     setVisibleColumns((prev: any) => ({ ...prev, [column]: !prev[column] }));
   };
 
+  const handleExportCSV = () => {
+    const exportData = filteredOrders.map(wo => ({
+      'WO ID': wo.display_id || wo.wo_id,
+      'Customer': wo.customer,
+      'Item Code': wo.item_code,
+      'Quantity': wo.quantity,
+      'Due Date': wo.due_date,
+      'Current Stage': wo.current_stage?.replace('_', ' ').toUpperCase(),
+      'External WIP': formatExternalWIP(wo.external_wip),
+      'Overdue Moves': wo.overdue_moves_count || 0,
+      'Qty at Partners': (wo.external_out_total || 0) - (wo.external_in_total || 0),
+      'Status': wo.status,
+    }));
+    downloadCSV(exportData, 'work_orders');
+    toast({ description: 'CSV export completed' });
+  };
+
+  const handleExportPDF = () => {
+    const exportData = filteredOrders.map(wo => ({
+      woId: wo.display_id || wo.wo_id,
+      customer: wo.customer,
+      item: wo.item_code,
+      qty: wo.quantity,
+      due: wo.due_date,
+      stage: wo.current_stage?.replace('_', ' ').toUpperCase(),
+      externalWip: formatExternalWIP(wo.external_wip),
+      overdue: wo.overdue_moves_count || 0,
+      qtyAtPartners: (wo.external_out_total || 0) - (wo.external_in_total || 0),
+    }));
+
+    const columns = [
+      { header: 'WO ID', dataKey: 'woId' },
+      { header: 'Customer', dataKey: 'customer' },
+      { header: 'Item', dataKey: 'item' },
+      { header: 'Qty', dataKey: 'qty' },
+      { header: 'Due', dataKey: 'due' },
+      { header: 'Stage', dataKey: 'stage' },
+      { header: 'External WIP', dataKey: 'externalWip' },
+      { header: 'Overdue', dataKey: 'overdue' },
+      { header: 'Qty @ Partners', dataKey: 'qtyAtPartners' },
+    ];
+
+    downloadPDF(exportData, 'work_orders', 'Work Orders Report', columns);
+    toast({ description: 'PDF export completed' });
+  };
+
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
@@ -226,10 +273,28 @@ const WorkOrders = () => {
             <h1 className="text-2xl font-bold">Work Orders</h1>
             <p className="text-sm text-muted-foreground">Manage production orders</p>
           </div>
-          <Button onClick={() => navigate("/work-orders/new")}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Work Order
-          </Button>
+          <div className="flex gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleExportCSV}>
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPDF}>
+                  Export as PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button onClick={() => navigate("/work-orders/new")}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Work Order
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
