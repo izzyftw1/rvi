@@ -15,9 +15,10 @@ import { z } from "zod";
 
 interface ExternalPartner {
   id: string;
-  partner_name: string;
-  process_type: string[];
-  lead_time_days?: number;
+  name: string;
+  process_type: string;
+  default_lead_time_days?: number;
+  is_active?: boolean;
 }
 
 // Validation schema
@@ -72,7 +73,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
   useEffect(() => {
     if (process && partners.length > 0) {
-      const filtered = partners.filter(p => p.process_type?.includes(process));
+      const filtered = partners.filter(p => p.process_type === process);
       setFilteredPartners(filtered);
       setPartnerId("");
       setExpectedReturnDate("");
@@ -82,11 +83,11 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
   const loadPartners = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("external_partners")
-        .select("id, partner_name, process_type, lead_time_days")
-        .eq("active", true)
-        .order("partner_name");
+        .select("id, name, process_type, default_lead_time_days, is_active")
+        .eq("is_active", true)
+        .order("name");
       
       if (error) {
         console.warn("Failed to load external partners:", error);
@@ -111,7 +112,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     const selectedPartner = partners.find(p => p.id === newPartnerId);
     // Set default 7 days return date if not specified
     if (selectedPartner) {
-      const defaultDays = selectedPartner.lead_time_days || 7;
+      const defaultDays = selectedPartner.default_lead_time_days || 7;
       const returnDate = addDays(new Date(), defaultDays);
       setExpectedReturnDate(format(returnDate, "yyyy-MM-dd"));
     }
@@ -198,8 +199,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     setLoading(true);
     try {
       // Check for duplicate challan number
-      const { data: existingChallan } = await supabase
-        .from("wo_external_moves" as any)
+      const { data: existingChallan } = await (supabase as any)
+        .from("wo_external_moves")
         .select("id")
         .eq("challan_no", challanNo)
         .maybeSingle();
@@ -212,13 +213,13 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { data: moveData, error } = await supabase
-        .from("wo_external_moves" as any)
+      const { data: moveData, error } = await (supabase as any)
+        .from("wo_external_moves")
         .insert([{
           work_order_id: workOrder.id,
           process,
           partner_id: partnerId,
-          qty_sent: qty,
+          quantity_sent: qty,
           expected_return_date: expectedReturnDate,
           challan_no: challanNo,
           remarks: remarks.trim() || null,
@@ -226,7 +227,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           created_by: user?.id,
         }])
         .select()
-        .single() as any;
+        .single();
 
       if (error) {
         // Handle unique constraint violation
@@ -242,7 +243,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       
       toast({
         title: "Challan Created Successfully",
-        description: `Challan #${challanNo} created for ${selectedPartner?.partner_name || "partner"}`,
+        description: `Challan #${challanNo} created for ${selectedPartner?.name || "partner"}`,
         action: (
           <Button
             variant="outline"
@@ -355,7 +356,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                 ) : (
                   filteredPartners.map(p => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.partner_name}
+                      {p.name}
                     </SelectItem>
                   ))
                 )}
