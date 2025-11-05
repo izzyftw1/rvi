@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, TrendingUp, AlertCircle } from "lucide-react";
 import { differenceInDays, parseISO, isPast } from "date-fns";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface Partner {
   id: string;
@@ -35,11 +36,14 @@ const PROCESS_OPTIONS = [
 
 const Partners = () => {
   const { toast } = useToast();
+  const { hasAnyRole } = useUserRole();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [moves, setMoves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
+  
+  const canManage = hasAnyRole(['logistics', 'admin']);
   
   // Form state
   const [name, setName] = useState("");
@@ -235,10 +239,12 @@ const Partners = () => {
             <h1 className="text-2xl font-bold">External Partners</h1>
             <p className="text-sm text-muted-foreground">Manage external processing partners</p>
           </div>
-          <Button onClick={() => openDialog()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Partner
-          </Button>
+          {canManage && (
+            <Button onClick={() => openDialog()}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Partner
+            </Button>
+          )}
         </div>
 
         <div className="grid gap-4">
@@ -259,14 +265,16 @@ const Partners = () => {
                         ))}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openDialog(partner)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDelete(partner)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    {canManage && (
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openDialog(partner)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(partner)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>

@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface ExternalPartner {
   id: string;
@@ -25,7 +26,10 @@ interface SendToExternalDialogProps {
 
 export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess }: SendToExternalDialogProps) => {
   const { toast } = useToast();
+  const { hasAnyRole } = useUserRole();
   const [loading, setLoading] = useState(false);
+  
+  const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
   const [process, setProcess] = useState<string>("");
   const [partnerId, setPartnerId] = useState<string>("");
   const [qtySent, setQtySent] = useState<string>("");
@@ -78,6 +82,15 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   };
 
   const handleSubmit = async () => {
+    if (!canCreate) {
+      toast({
+        title: "Permission denied",
+        description: "You do not have permission to create external moves",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!process || !partnerId || !qtySent) {
       toast({
         title: "Missing fields",
@@ -225,7 +238,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button onClick={handleSubmit} disabled={loading || !canCreate}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Challan
           </Button>

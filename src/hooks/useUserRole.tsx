@@ -13,7 +13,8 @@ export type UserRole =
   | 'sales'
   | 'admin'
   | 'accounts'
-  | 'purchase';
+  | 'purchase'
+  | 'logistics';
 
 export const useUserRole = () => {
   const [roles, setRoles] = useState<UserRole[]>([]);

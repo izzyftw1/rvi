@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ExternalReceiptDialog } from "./ExternalReceiptDialog";
 import { format, isPast } from "date-fns";
 import { Package, TrendingUp, Calendar, AlertCircle } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface ExternalMove {
   id: string;
@@ -42,11 +43,14 @@ interface ExternalProcessingTabProps {
 }
 
 export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProps) => {
+  const { hasAnyRole } = useUserRole();
   const [moves, setMoves] = useState<ExternalMove[]>([]);
   const [receipts, setReceipts] = useState<ExternalReceipt[]>([]);
   const [partners, setPartners] = useState<ExternalPartner[]>([]);
   const [selectedMove, setSelectedMove] = useState<ExternalMove | null>(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  
+  const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
 
   useEffect(() => {
     loadData();
@@ -162,7 +166,7 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
                         Partner: {getPartnerName(move.partner_id)}
                       </div>
                     </div>
-                    {move.status !== 'received_full' && (
+                    {canCreate && move.status !== 'received_full' && (
                       <Button
                         size="sm"
                         onClick={() => {

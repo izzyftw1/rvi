@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface ExternalReceiptDialogProps {
   open: boolean;
@@ -17,7 +18,10 @@ interface ExternalReceiptDialogProps {
 
 export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: ExternalReceiptDialogProps) => {
   const { toast } = useToast();
+  const { hasAnyRole } = useUserRole();
   const [loading, setLoading] = useState(false);
+  
+  const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
   const [qtyReceived, setQtyReceived] = useState<string>("");
   const [grnNo, setGrnNo] = useState<string>("");
   const [rate, setRate] = useState<string>("");
@@ -29,6 +33,15 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
   };
 
   const handleSubmit = async () => {
+    if (!canCreate) {
+      toast({
+        title: "Permission denied",
+        description: "You do not have permission to create external receipts",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!qtyReceived) {
       toast({
         title: "Missing quantity",
@@ -151,7 +164,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button onClick={handleSubmit} disabled={loading || !canCreate}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Record Receipt
           </Button>
