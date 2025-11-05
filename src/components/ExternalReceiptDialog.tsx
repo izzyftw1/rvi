@@ -55,7 +55,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       const { data: { user } } = await supabase.auth.getUser();
 
       const { error } = await supabase
-        .from("wo_external_receipts")
+        .from("wo_external_receipts" as any)
         .insert({
           move_id: move.id,
           qty_received: qty,

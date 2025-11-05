@@ -8,15 +8,44 @@ import { ExternalReceiptDialog } from "./ExternalReceiptDialog";
 import { format, isPast } from "date-fns";
 import { Package, TrendingUp, Calendar, AlertCircle } from "lucide-react";
 
+interface ExternalMove {
+  id: string;
+  work_order_id: string;
+  process: string;
+  qty_sent: number;
+  status: string;
+  partner_id: string;
+  expected_return_date: string | null;
+  dispatch_date: string;
+  challan_no: string;
+  remarks: string | null;
+  receipts?: ExternalReceipt[];
+  total_received?: number;
+}
+
+interface ExternalReceipt {
+  id: string;
+  move_id: string;
+  qty_received: number;
+  receipt_date: string;
+  grn_no: string | null;
+  remarks: string | null;
+}
+
+interface ExternalPartner {
+  id: string;
+  name: string;
+}
+
 interface ExternalProcessingTabProps {
   workOrderId: string;
 }
 
 export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProps) => {
-  const [moves, setMoves] = useState<any[]>([]);
-  const [receipts, setReceipts] = useState<any[]>([]);
-  const [partners, setPartners] = useState<any[]>([]);
-  const [selectedMove, setSelectedMove] = useState<any>(null);
+  const [moves, setMoves] = useState<ExternalMove[]>([]);
+  const [receipts, setReceipts] = useState<ExternalReceipt[]>([]);
+  const [partners, setPartners] = useState<ExternalPartner[]>([]);
+  const [selectedMove, setSelectedMove] = useState<ExternalMove | null>(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -36,22 +65,22 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
   const loadData = async () => {
     const [movesRes, receiptsRes, partnersRes] = await Promise.all([
       supabase
-        .from("wo_external_moves")
-        .select("*")
+        .from("wo_external_moves" as any)
+        .select("id, work_order_id, process, qty_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
         .eq("work_order_id", workOrderId)
         .order("dispatch_date", { ascending: false }),
       supabase
-        .from("wo_external_receipts")
-        .select("*")
+        .from("wo_external_receipts" as any)
+        .select("id, move_id, qty_received, receipt_date, grn_no, remarks")
         .order("receipt_date", { ascending: false }),
       supabase
-        .from("external_partners")
-        .select("*"),
+        .from("external_partners" as any)
+        .select("id, name"),
     ]);
 
-    const movesData = movesRes.data || [];
-    const receiptsData = receiptsRes.data || [];
-    const partnersData = partnersRes.data || [];
+    const movesData = (movesRes.data || []) as unknown as ExternalMove[];
+    const receiptsData = (receiptsRes.data || []) as unknown as ExternalReceipt[];
+    const partnersData = (partnersRes.data || []) as unknown as ExternalPartner[];
 
     // Aggregate receipts per move
     const movesWithReceipts = movesData.map(m => {
@@ -85,7 +114,7 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
   };
 
   const groupByProcess = () => {
-    const grouped: Record<string, any[]> = {};
+    const grouped: Record<string, ExternalMove[]> = {};
     moves.forEach(m => {
       if (!grouped[m.process]) grouped[m.process] = [];
       grouped[m.process].push(m);
@@ -111,8 +140,8 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
             <CardTitle className="text-lg capitalize">{process.replace("_", " ")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {processMove.map((move: any) => {
-              const progress = move.qty_sent > 0 ? (move.total_received / move.qty_sent) * 100 : 0;
+            {processMove.map((move: ExternalMove) => {
+              const progress = move.qty_sent > 0 ? ((move.total_received || 0) / move.qty_sent) * 100 : 0;
               const overdue = isOverdue(move);
 
               return (

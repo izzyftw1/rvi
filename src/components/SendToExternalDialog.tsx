@@ -10,6 +10,12 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 
+interface ExternalPartner {
+  id: string;
+  name: string;
+  process_types: string[];
+}
+
 interface SendToExternalDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,8 +31,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const [qtySent, setQtySent] = useState<string>("");
   const [expectedReturnDate, setExpectedReturnDate] = useState<string>("");
   const [remarks, setRemarks] = useState<string>("");
-  const [partners, setPartners] = useState<any[]>([]);
-  const [filteredPartners, setFilteredPartners] = useState<any[]>([]);
+  const [partners, setPartners] = useState<ExternalPartner[]>([]);
+  const [filteredPartners, setFilteredPartners] = useState<ExternalPartner[]>([]);
 
   const processOptions = [
     { value: "job_work", label: "Job Work", prefix: "JW" },
@@ -50,11 +56,11 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
   const loadPartners = async () => {
     const { data } = await supabase
-      .from("external_partners")
-      .select("*")
+      .from("external_partners" as any)
+      .select("id, name, process_types")
       .eq("active", true)
       .order("name");
-    setPartners(data || []);
+    setPartners((data || []) as unknown as ExternalPartner[]);
   };
 
   const generateChallanNo = (processType: string) => {
@@ -99,7 +105,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       const { data: { user } } = await supabase.auth.getUser();
 
       const { error } = await supabase
-        .from("wo_external_moves")
+        .from("wo_external_moves" as any)
         .insert({
           work_order_id: workOrder.id,
           process,

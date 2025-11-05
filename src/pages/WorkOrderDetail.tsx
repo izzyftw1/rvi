@@ -280,8 +280,8 @@ const WorkOrderDetail = () => {
 
       // Load external moves
       const { data: movesData } = await supabase
-        .from("wo_external_moves")
-        .select("*")
+        .from("wo_external_moves" as any)
+        .select("id, work_order_id, process, qty_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
         .eq("work_order_id", id)
         .order("dispatch_date", { ascending: false });
       
