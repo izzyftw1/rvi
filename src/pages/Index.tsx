@@ -24,6 +24,7 @@ import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
 import { QCAlertsWidget } from "@/components/dashboard/QCAlertsWidget";
 import { LogisticsAlertsWidget } from "@/components/dashboard/LogisticsAlertsWidget";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { QuickActionsAccordion } from "@/components/dashboard/QuickActionsAccordion";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -459,6 +460,12 @@ const Index = () => {
             <ExternalDashboard />
           </TabsContent>
         </Tabs>
+
+        {/* Quick Access Section */}
+        <div className="mt-8">
+          <h2 className="text-xl font-bold mb-4">Quick Access</h2>
+          <QuickActionsAccordion />
+        </div>
       </main>
     </div>
   );
