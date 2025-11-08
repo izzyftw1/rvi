@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -395,6 +395,7 @@ WorkOrderRow.displayName = "WorkOrderRow";
 
 const WorkOrders = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -404,9 +405,12 @@ const WorkOrders = () => {
   // Check if user can manage external processing
   const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   
-  // Filters with localStorage persistence
+  // Filters with localStorage persistence and URL parameter support
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<string>(() => {
+    // Check URL parameter first, then localStorage
+    const urlStage = searchParams.get('stage');
+    if (urlStage) return urlStage;
     const saved = localStorage.getItem(FILTER_KEY);
     return saved || "all";
   });
@@ -528,10 +532,18 @@ const WorkOrders = () => {
     }
   }, [lastUpdate, loadWorkOrders]);
 
-  // Persist filter selection
+  // Update URL when stage filter changes
   useEffect(() => {
     localStorage.setItem(FILTER_KEY, stageFilter);
-  }, [stageFilter]);
+    // Update URL parameter if filter is not "all"
+    if (stageFilter !== "all") {
+      searchParams.set('stage', stageFilter);
+      setSearchParams(searchParams, { replace: true });
+    } else {
+      searchParams.delete('stage');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [stageFilter, searchParams, setSearchParams]);
 
   useEffect(() => {
     localStorage.setItem(COLUMNS_KEY, JSON.stringify(visibleColumns));

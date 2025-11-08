@@ -163,34 +163,53 @@ export const FloorKanban = () => {
         });
       });
 
-      // External Processing Stages - fetch from wo_external_moves
+      // External Processing Stages - fetch from both work_orders and wo_external_moves
       const externalStages = [
-        { type: 'job_work', label: 'Job Work', icon: Factory },
-        { type: 'plating', label: 'Plating', icon: Sparkles },
-        { type: 'buffing', label: 'Buffing', icon: Wind },
-        { type: 'blasting', label: 'Blasting', icon: Hammer },
-        { type: 'forging', label: 'Forging (Ext)', icon: Flame }
+        { type: 'Job Work', label: 'Job Work', icon: Factory, woStage: 'job_work' },
+        { type: 'Plating', label: 'Plating', icon: Sparkles, woStage: 'plating' },
+        { type: 'Buffing', label: 'Buffing', icon: Wind, woStage: 'buffing' },
+        { type: 'Blasting', label: 'Blasting', icon: Hammer, woStage: 'blasting' },
+        { type: 'Forging', label: 'Forging (Ext)', icon: Flame, woStage: 'forging' }
       ];
 
-      externalStages.forEach(({ type, label, icon }) => {
-        // Filter moves by process type and active status
+      externalStages.forEach(({ type, label, icon, woStage }) => {
+        // Get work orders with current_stage matching this process
+        const stageWOs = workOrders.filter(wo => 
+          wo.current_stage?.toLowerCase() === woStage.toLowerCase() ||
+          wo.external_process_type?.toLowerCase() === type.toLowerCase()
+        );
+        
+        // Filter external moves by process type and active status
         const typeMoves = moves.filter(m => 
           m.process?.toLowerCase() === type.toLowerCase() &&
           ['sent', 'in_transit', 'partial'].includes(m.status)
         );
         
-        // Calculate totals
-        const totalSentPcs = typeMoves.reduce((sum, m) => sum + (m.qty_sent || 0), 0);
-        const totalReturnedPcs = typeMoves.reduce((sum, m) => sum + (m.qty_returned || 0), 0);
-        const wipPcs = totalSentPcs - totalReturnedPcs;
+        // Calculate WIP from external moves
+        const totalSentPcs = typeMoves.reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
+        const totalReturnedPcs = typeMoves.reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
+        const wipPcsFromMoves = totalSentPcs - totalReturnedPcs;
         
-        // Calculate weight (assuming gross_weight_per_pc from work_orders)
-        const totalKg = typeMoves.reduce((sum, m) => {
+        // Calculate WIP from work orders
+        const wipPcsFromWOs = stageWOs.reduce((sum, wo) => sum + (wo.qty_external_wip || 0), 0);
+        
+        // Total WIP (combine both sources)
+        const totalWipPcs = wipPcsFromMoves + wipPcsFromWOs;
+        
+        // Calculate weight from external moves
+        const moveKg = typeMoves.reduce((sum, m) => {
           const woData = m.work_orders;
-          const qtyInTransit = (m.qty_sent || 0) - (m.qty_returned || 0);
+          const qtyInTransit = (m.quantity_sent || 0) - (m.quantity_returned || 0);
           const weightPerPc = woData?.gross_weight_per_pc || 0;
           return sum + (qtyInTransit * weightPerPc / 1000);
         }, 0);
+        
+        // Calculate weight from work orders
+        const woKg = stageWOs.reduce((sum, wo) => {
+          return sum + ((wo.qty_external_wip || 0) * (wo.gross_weight_per_pc || 0) / 1000);
+        }, 0);
+        
+        const totalKg = moveKg + woKg;
         
         // Calculate average wait time
         const totalWaitHours = typeMoves.reduce((sum, m) => {
@@ -212,18 +231,21 @@ export const FloorKanban = () => {
           .sort()
           .slice(0, 3);
 
+        // Total active jobs (unique count of work orders + external moves)
+        const totalActiveJobs = stageWOs.length + typeMoves.length;
+
         stagesData.push({
           stage: label,
           icon,
-          count: typeMoves.length,
-          totalPcs: wipPcs,
+          count: totalActiveJobs,
+          totalPcs: totalWipPcs,
           totalKg: totalKg,
           avgWaitHours: avgWait,
           status: getStatus(avgWait),
-          onClick: () => navigate(`/logistics?filter=${type}`),
+          onClick: () => navigate(`/work-orders?stage=${woStage}`),
           isExternal: true,
           breakdown: {
-            activeJobs: typeMoves.length,
+            activeJobs: totalActiveJobs,
             pendingReturns: typeMoves.filter(m => m.status === 'sent').length,
             overdueCount,
             expectedReturns
