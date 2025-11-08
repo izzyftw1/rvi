@@ -1521,6 +1521,77 @@ export type Database = {
           },
         ]
       }
+      material_movements: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          movement_type: string
+          partner_id: string | null
+          process_type: string
+          qty: number
+          remarks: string | null
+          timestamp: string
+          weight: number | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          movement_type: string
+          partner_id?: string | null
+          process_type: string
+          qty: number
+          remarks?: string | null
+          timestamp?: string
+          weight?: number | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          movement_type?: string
+          partner_id?: string | null
+          process_type?: string
+          qty?: number
+          remarks?: string | null
+          timestamp?: string
+          weight?: number | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_movements_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_movements_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_requirements: {
         Row: {
           created_at: string | null
@@ -3953,6 +4024,7 @@ export type Database = {
           hidden_financial: boolean | null
           id: string
           item_code: string
+          material_location: string | null
           material_size_mm: string | null
           net_weight_per_pc: number | null
           priority: number | null
@@ -4003,6 +4075,7 @@ export type Database = {
           hidden_financial?: boolean | null
           id?: string
           item_code: string
+          material_location?: string | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           priority?: number | null
@@ -4053,6 +4126,7 @@ export type Database = {
           hidden_financial?: boolean | null
           id?: string
           item_code?: string
+          material_location?: string | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           priority?: number | null

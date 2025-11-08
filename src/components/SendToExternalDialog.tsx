@@ -277,6 +277,33 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         throw error;
       }
 
+      // Get partner name for material location
+      const selectedPartner = partners.find(p => p.id === partnerId);
+      const partnerName = selectedPartner?.name || 'External Partner';
+      
+      // Calculate weight
+      const weightPerPc = workOrder.gross_weight_per_pc || 0;
+      const totalWeight = (qty * weightPerPc) / 1000; // Convert grams to kg
+      
+      // Log material movement (OUT)
+      const { error: movementError } = await supabase
+        .from("material_movements")
+        .insert({
+          work_order_id: workOrder.id,
+          process_type: process,
+          movement_type: 'out',
+          qty: qty,
+          weight: totalWeight,
+          partner_id: partnerId,
+          remarks: remarks.trim() || null,
+          created_by: user?.id,
+        });
+      
+      if (movementError) {
+        console.error("Failed to log material movement:", movementError);
+        // Don't fail the operation, just log the error
+      }
+      
       // Update work order with external processing status and set current_stage to match process
       const currentWip = workOrder.qty_external_wip || 0;
       
@@ -297,6 +324,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           external_status: 'sent',
           external_process_type: process,
           qty_external_wip: currentWip + qty,
+          material_location: partnerName,
           updated_at: new Date().toISOString(),
         })
         .eq("id", workOrder.id);
@@ -308,12 +336,10 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
       // Reload quantity tracking
       await loadQuantityTracking();
-
-      const selectedPartner = partners.find(p => p.id === partnerId);
       
       toast({
-        title: "Success",
-        description: `Work Order moved to ${process}. Challan created and sent to ${selectedPartner?.name || "partner"}.`,
+        title: "Material Sent",
+        description: `Material sent to ${partnerName} for ${process} - ${qty} pcs (${totalWeight.toFixed(2)} kg).`,
       });
 
       onSuccess();

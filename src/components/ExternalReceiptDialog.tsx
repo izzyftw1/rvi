@@ -104,6 +104,35 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
 
       if (receiptError) throw receiptError;
 
+      // Calculate weight
+      const { data: woWeightData } = await supabase
+        .from("work_orders")
+        .select("gross_weight_per_pc")
+        .eq("id", move.work_order_id)
+        .single();
+      
+      const weightPerPc = woWeightData?.gross_weight_per_pc || 0;
+      const totalWeight = (qty * weightPerPc) / 1000; // Convert grams to kg
+
+      // Log material movement (IN)
+      const { error: movementError } = await supabase
+        .from("material_movements")
+        .insert({
+          work_order_id: move.work_order_id,
+          process_type: move.process,
+          movement_type: 'in',
+          qty: qty,
+          weight: totalWeight,
+          partner_id: move.partner_id,
+          remarks: remarks?.trim() || null,
+          created_by: user?.id,
+        });
+      
+      if (movementError) {
+        console.error("Failed to log material movement:", movementError);
+        // Don't fail the operation
+      }
+
       // Update work order to reduce qty_external_wip
       const { data: woData, error: woFetchError } = await supabase
         .from("work_orders")
@@ -147,18 +176,21 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
             updateData.current_stage = (stageMap[flowData.next_process] || flowData.next_process.toLowerCase().replace(' ', '_')) as any;
             updateData.external_process_type = flowData.is_external ? flowData.next_process : null;
             updateData.external_status = flowData.is_external ? 'pending' : null;
+            updateData.material_location = flowData.is_external ? 'Pending Assignment' : 'Factory';
           } else {
             // No next process - mark as ready for dispatch
             updateData.current_stage = 'dispatch' as any;
             updateData.ready_for_dispatch = true;
             updateData.external_status = null;
             updateData.external_process_type = null;
+            updateData.material_location = 'Factory';
           }
         } else {
           // Fallback: move to production if no process flow found
           updateData.current_stage = 'production' as any;
           updateData.external_status = null;
           updateData.external_process_type = null;
+          updateData.material_location = 'Factory';
         }
       }
 
@@ -177,8 +209,8 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         '';
 
       toast({
-        title: "Success",
-        description: `Received ${qty} items${newWip === 0 ? `. Work order moved to ${nextStageName}.` : '.'}`,
+        title: "Material Received",
+        description: `Material returned from ${move.process} - ${qty} pcs ready for ${nextStageName || 'next step'}.`,
       });
 
       onSuccess();

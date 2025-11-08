@@ -32,6 +32,7 @@ import { ProductionLogForm } from "@/components/ProductionLogForm";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 import { MaterialQCApproval } from "@/components/MaterialQCApproval";
 import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
+import { MaterialMovementTimeline } from "@/components/MaterialMovementTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
 import { OEEWidget } from "@/components/OEEWidget";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -755,6 +756,12 @@ const WorkOrderDetail = () => {
                 </p>
               </div>
               <div>
+                <p className="text-sm text-muted-foreground">Material Location</p>
+                <Badge variant={wo.material_location === 'Factory' ? 'default' : 'outline'} className="text-sm">
+                  {wo.material_location || 'Factory'}
+                </Badge>
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground">Customer PO / Sales Order</p>
                 {salesOrder ? (
                   <button 
@@ -944,7 +951,10 @@ const WorkOrderDetail = () => {
 
           <TabsContent value="external" className="space-y-4">
             {activeTab === 'external' && (
-              <EnhancedExternalTab workOrderId={id || ""} />
+              <>
+                <MaterialMovementTimeline workOrderId={id || ""} />
+                <EnhancedExternalTab workOrderId={id || ""} />
+              </>
             )}
           </TabsContent>
 
