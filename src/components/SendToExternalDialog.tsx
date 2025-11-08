@@ -56,6 +56,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   const [filteredPartners, setFilteredPartners] = useState<ExternalPartner[]>([]);
   const [partnersError, setPartnersError] = useState<string | null>(null);
   
+  // Quantity tracking
+  const [totalSentQty, setTotalSentQty] = useState(0);
+  const [totalReceivedQty, setTotalReceivedQty] = useState(0);
+  const [remainingQty, setRemainingQty] = useState(0);
+  const [loadingQty, setLoadingQty] = useState(false);
+  
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -70,7 +76,10 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
   useEffect(() => {
     loadPartners();
-  }, []);
+    if (workOrder?.id) {
+      loadQuantityTracking();
+    }
+  }, [workOrder?.id]);
 
   useEffect(() => {
     if (process && partners.length > 0) {
@@ -84,6 +93,35 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       setFilteredPartners([]);
     }
   }, [process, partners]);
+
+  const loadQuantityTracking = async () => {
+    if (!workOrder?.id) return;
+    
+    setLoadingQty(true);
+    try {
+      // Fetch all external moves for this work order
+      const { data: moves, error } = await supabase
+        .from("wo_external_moves")
+        .select("quantity_sent, quantity_returned")
+        .eq("work_order_id", workOrder.id)
+        .in("status", ["sent", "in_transit", "partial"]);
+      
+      if (error) throw error;
+      
+      const totalSent = (moves || []).reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
+      const totalReceived = (moves || []).reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
+      const remaining = (workOrder.quantity || 0) - totalSent + totalReceived;
+      
+      setTotalSentQty(totalSent);
+      setTotalReceivedQty(totalReceived);
+      setRemainingQty(Math.max(0, remaining));
+    } catch (error) {
+      console.error("Error loading quantity tracking:", error);
+      setRemainingQty(workOrder.quantity || 0);
+    } finally {
+      setLoadingQty(false);
+    }
+  };
 
   const loadPartners = async () => {
     try {
@@ -130,10 +168,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   };
 
   const getMaxQty = () => {
-    if (!workOrder) return 0;
-    const remaining = (workOrder.quantity || 0) - 
-      ((workOrder.external_out_total || 0) - (workOrder.external_in_total || 0));
-    return Math.max(0, remaining);
+    return remainingQty;
   };
 
   const validateForm = (): boolean => {
@@ -243,12 +278,13 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       }
 
       // Update work order with external processing status
+      const currentWip = workOrder.qty_external_wip || 0;
       const { error: updateError } = await supabase
         .from("work_orders")
         .update({
           external_status: 'sent',
           external_process_type: process,
-          qty_external_wip: qty,
+          qty_external_wip: currentWip + qty,
           updated_at: new Date().toISOString(),
         })
         .eq("id", workOrder.id);
@@ -258,23 +294,14 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         // Don't fail the operation if WO update fails, just log it
       }
 
+      // Reload quantity tracking
+      await loadQuantityTracking();
+
       const selectedPartner = partners.find(p => p.id === partnerId);
       
       toast({
         title: "Success",
         description: `Work Order moved to ${process}. Challan created and sent to ${selectedPartner?.name || "partner"}.`,
-        action: (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              window.location.href = `/work-orders/${workOrder.id}?tab=external`;
-            }}
-          >
-            <ExternalLink className="h-3 w-3 mr-1" />
-            View Details
-          </Button>
-        ),
       });
 
       onSuccess();
@@ -313,15 +340,32 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Availability Alert */}
-          {workOrder && getMaxQty() === 0 && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No quantity available for external processing. All items are already sent or completed.
-              </AlertDescription>
-            </Alert>
-          )}
+          {/* Quantity Summary Alert */}
+          <Alert className={remainingQty === 0 ? "border-destructive" : "border-primary"}>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {loadingQty ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading quantity info...
+                </span>
+              ) : (
+                <div className="space-y-1 text-sm">
+                  <p><strong>Total Order:</strong> {workOrder?.quantity || 0} pcs</p>
+                  <p><strong>Sent to External:</strong> {totalSentQty} pcs</p>
+                  <p><strong>Received Back:</strong> {totalReceivedQty} pcs</p>
+                  <p className="font-semibold text-primary">
+                    <strong>Available to Send:</strong> {remainingQty} pcs
+                  </p>
+                  {remainingQty === 0 && (
+                    <p className="text-destructive font-semibold mt-2">
+                      All pieces already sent to external partners. Wait for receipts before sending more.
+                    </p>
+                  )}
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
 
           {/* Partners Error Alert */}
           {partnersError && (
@@ -514,10 +558,10 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={loading || !canCreate || getMaxQty() === 0}
+            disabled={loading || !canCreate || remainingQty === 0 || loadingQty}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create Challan
+            {remainingQty === 0 ? "No Quantity Available" : "Create Challan"}
           </Button>
         </DialogFooter>
       </DialogContent>

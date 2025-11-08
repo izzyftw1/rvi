@@ -8,6 +8,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { z } from "zod";
+
+// Validation schema for external receipt
+const receiptSchema = z.object({
+  qtyReceived: z.number()
+    .positive("Quantity must be greater than 0")
+    .max(999999, "Quantity too large"),
+  grnNo: z.string().max(100, "GRN number too long").optional(),
+  rate: z.number().positive("Rate must be positive").optional(),
+  remarks: z.string().max(500, "Remarks must be less than 500 characters").optional(),
+});
 
 interface ExternalReceiptDialogProps {
   open: boolean;
@@ -42,24 +53,36 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       return;
     }
     
-    if (!qtyReceived) {
-      toast({
-        title: "Missing quantity",
-        description: "Please enter quantity received",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    // Validate inputs
     const qty = parseFloat(qtyReceived);
     const maxQty = getMaxReceivable();
-
-    if (qty <= 0 || qty > maxQty) {
-      toast({
-        title: "Invalid quantity",
-        description: `Quantity must be between 1 and ${maxQty}`,
-        variant: "destructive",
+    
+    try {
+      // Validate with Zod schema
+      receiptSchema.parse({
+        qtyReceived: qty,
+        grnNo: grnNo?.trim() || undefined,
+        rate: rate ? parseFloat(rate) : undefined,
+        remarks: remarks?.trim() || undefined,
       });
+      
+      // Additional validation for max quantity
+      if (qty > maxQty) {
+        toast({
+          title: "Invalid quantity",
+          description: `Quantity cannot exceed ${maxQty} (remaining to receive)`,
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Validation Error",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      }
       return;
     }
 
@@ -67,7 +90,8 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
+      // Insert receipt record
+      const { error: receiptError } = await supabase
         .from("wo_external_receipts" as any)
         .insert({
           move_id: move.id,
@@ -78,11 +102,47 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
           created_by: user?.id,
         });
 
-      if (error) throw error;
+      if (receiptError) throw receiptError;
+
+      // Update work order to reduce qty_external_wip
+      const { data: woData, error: woFetchError } = await supabase
+        .from("work_orders")
+        .select("qty_external_wip, current_stage")
+        .eq("id", move.work_order_id)
+        .single();
+
+      if (woFetchError) throw woFetchError;
+
+      const currentWip = woData.qty_external_wip || 0;
+      const newWip = Math.max(0, currentWip - qty);
+
+      // Prepare update object
+      const updateData: any = {
+        qty_external_wip: newWip,
+        updated_at: new Date().toISOString(),
+      };
+
+      // If WIP reaches zero and work order is in external stage, move to next stage (production)
+      if (newWip === 0 && woData.current_stage && 
+          ['job_work', 'plating', 'buffing', 'blasting', 'forging'].includes(woData.current_stage)) {
+        updateData.current_stage = 'production';
+        updateData.external_status = null;
+        updateData.external_process_type = null;
+      }
+
+      const { error: woUpdateError } = await supabase
+        .from("work_orders")
+        .update(updateData)
+        .eq("id", move.work_order_id);
+
+      if (woUpdateError) {
+        console.error("Failed to update work order:", woUpdateError);
+        // Don't fail the operation if WO update fails
+      }
 
       toast({
         title: "Success",
-        description: `Received ${qty} items`,
+        description: `Received ${qty} items${newWip === 0 ? '. Work order moved to production stage.' : '.'}`,
       });
 
       onSuccess();
@@ -133,8 +193,14 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
             <Label>Partner GRN/Invoice No</Label>
             <Input
               value={grnNo}
-              onChange={(e) => setGrnNo(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value.length <= 100) {
+                  setGrnNo(value);
+                }
+              }}
               placeholder="Optional"
+              maxLength={100}
             />
           </div>
 
@@ -143,6 +209,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
             <Input
               type="number"
               step="0.01"
+              min="0"
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="Optional"
@@ -153,10 +220,19 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
             <Label>Remarks</Label>
             <Textarea
               value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value.length <= 500) {
+                  setRemarks(value);
+                }
+              }}
               placeholder="Optional notes"
               rows={2}
+              maxLength={500}
             />
+            <p className="text-xs text-muted-foreground">
+              {remarks.length}/500 characters
+            </p>
           </div>
         </div>
 
