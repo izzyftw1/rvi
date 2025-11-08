@@ -4,6 +4,9 @@ import { format, addHours, addDays, differenceInMinutes, isWeekend } from "date-
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { JobCard } from "./JobCard";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Assignment {
   id: string;
@@ -37,6 +40,8 @@ interface TimelineViewProps {
   zoomLevel: "hour" | "day" | "week";
   onDrop: (assignmentId: string, newMachineId: string) => void;
   utilization: Record<string, number>;
+  loading?: boolean;
+  onUpdate: () => void;
 }
 
 export const TimelineView = ({
@@ -48,6 +53,8 @@ export const TimelineView = ({
   zoomLevel,
   onDrop,
   utilization,
+  loading = false,
+  onUpdate,
 }: TimelineViewProps) => {
   const [collapsedMachines, setCollapsedMachines] = useState<Set<string>>(new Set());
 
@@ -105,6 +112,33 @@ export const TimelineView = ({
 
   const timeLabels = generateTimeLabels();
 
+  if (loading) {
+    return (
+      <div className="overflow-x-auto rounded-lg border bg-card">
+        <div className="inline-block min-w-full">
+          <div className="flex sticky top-0 z-20 bg-card shadow-sm">
+            <div className="w-64 flex-shrink-0 border-r bg-muted p-3">
+              <Skeleton className="h-5 w-3/4" />
+            </div>
+            <div className="flex-1 p-3">
+              <Skeleton className="h-5 w-full" />
+            </div>
+          </div>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex border-b">
+              <div className="w-64 flex-shrink-0 border-r p-2">
+                <Skeleton className="h-12 w-full" />
+              </div>
+              <div className="flex-1 p-2">
+                <Skeleton className="h-12 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
       <div className="inline-block min-w-full">
@@ -158,27 +192,35 @@ export const TimelineView = ({
         </div>
 
         {/* Machine Rows */}
-        {machines.map((machine) => {
-          const machineAssignments = assignments.filter((a) => a.machine_id === machine.id);
-          const isCollapsed = collapsedMachines.has(machine.id);
-          const machineUtil = utilization[machine.id] || 0;
+        {machines.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <p className="text-sm">No machines available</p>
+          </div>
+        ) : (
+          machines.map((machine) => {
+            const machineAssignments = assignments.filter((a) => a.machine_id === machine.id);
+            const isCollapsed = collapsedMachines.has(machine.id);
+            const machineUtil = utilization[machine.id] || 0;
 
-          return (
-            <MachineRow
-              key={machine.id}
-              machine={machine}
-              assignments={machineAssignments}
-              isCollapsed={isCollapsed}
-              onToggle={() => toggleMachine(machine.id)}
-              timelineStart={timelineStart}
-              timelineWidth={timelineWidth}
-              pixelsPerMinute={pixelsPerMinute}
-              utilization={machineUtil}
-              getUtilizationColor={getUtilizationColor}
-              onDrop={onDrop}
-            />
-          );
-        })}
+            return (
+              <MachineRow
+                key={machine.id}
+                machine={machine}
+                assignments={machineAssignments}
+                allAssignments={assignments}
+                isCollapsed={isCollapsed}
+                onToggle={() => toggleMachine(machine.id)}
+                timelineStart={timelineStart}
+                timelineWidth={timelineWidth}
+                pixelsPerMinute={pixelsPerMinute}
+                utilization={machineUtil}
+                getUtilizationColor={getUtilizationColor}
+                onDrop={onDrop}
+                onUpdate={onUpdate}
+              />
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -187,6 +229,7 @@ export const TimelineView = ({
 interface MachineRowProps {
   machine: Machine;
   assignments: any[];
+  allAssignments: any[];
   isCollapsed: boolean;
   onToggle: () => void;
   timelineStart: Date;
@@ -195,11 +238,13 @@ interface MachineRowProps {
   utilization: number;
   getUtilizationColor: (util: number) => string;
   onDrop: (assignmentId: string, newMachineId: string) => void;
+  onUpdate: () => void;
 }
 
 const MachineRow = ({
   machine,
   assignments,
+  allAssignments,
   isCollapsed,
   onToggle,
   timelineStart,
@@ -208,12 +253,30 @@ const MachineRow = ({
   utilization,
   getUtilizationColor,
   onDrop,
+  onUpdate,
 }: MachineRowProps) => {
   const [{ isOver }, drop] = useDrop(() => ({
     accept: "assignment",
-    drop: (item: { id: string; machineId: string }) => {
+    drop: async (item: { id: string; machineId: string; originalStart: string; originalEnd: string }) => {
       if (item.machineId !== machine.id) {
-        onDrop(item.id, machine.id);
+        // Update machine assignment
+        try {
+          const { error } = await supabase
+            .from('wo_machine_assignments')
+            .update({ machine_id: machine.id })
+            .eq('id', item.id);
+
+          if (error) throw error;
+
+          toast.success("Job moved to new machine", {
+            description: `Assigned to ${machine.machine_id}`
+          });
+
+          onUpdate();
+        } catch (error) {
+          console.error('Failed to move job:', error);
+          toast.error("Failed to move job");
+        }
       }
     },
     collect: (monitor) => ({
@@ -274,6 +337,8 @@ const MachineRow = ({
               assignment={assignment}
               timelineStart={timelineStart}
               pixelsPerMinute={pixelsPerMinute}
+              onUpdate={onUpdate}
+              allAssignments={allAssignments}
             />
           ))}
         </div>

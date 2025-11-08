@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export const GanttScheduler = () => {
   const [machines, setMachines] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("day");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>("timeline");
@@ -51,24 +52,8 @@ export const GanttScheduler = () => {
   const [selectedShift, setSelectedShift] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    loadData();
-
-    const channel = supabase
-      .channel("gantt-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "wo_machine_assignments" },
-        () => loadData()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const loadData = async () => {
+  
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -107,27 +92,58 @@ export const GanttScheduler = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadData();
+
+    let timeout: NodeJS.Timeout;
+    const channel = supabase
+      .channel("gantt-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "wo_machine_assignments" },
+        () => {
+          clearTimeout(timeout);
+          timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "machines" },
+        () => {
+          clearTimeout(timeout);
+          timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => {
+          clearTimeout(timeout);
+          timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearTimeout(timeout);
+      supabase.removeChannel(channel);
+    };
+  }, [loadData]);
+
+  useEffect(() => {
+    if (lastUpdate > 0) {
+      loadData();
+    }
+  }, [lastUpdate, loadData]);
 
   const handleDrop = async (assignmentId: string, newMachineId: string) => {
-    try {
-      const { error } = await supabase
-        .from("wo_machine_assignments")
-        .update({ machine_id: newMachineId })
-        .eq("id", assignmentId);
+    // Handled in TimelineView's drop handler
+  };
 
-      if (error) throw error;
-
-      toast({
-        title: "Reassigned",
-        description: "Work order successfully moved to new machine",
-      });
-
-      loadData();
-    } catch (error: any) {
-      console.error("Error reassigning:", error);
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
+  const handleUpdate = () => {
+    setLastUpdate(Date.now());
   };
 
   // Timeline calculations
@@ -380,16 +396,18 @@ export const GanttScheduler = () => {
                 </CardContent>
               </Card>
             ) : (
-              <TimelineView
-                machines={filteredMachines}
-                assignments={filteredAssignments}
-                timelineStart={timelineStart}
-                timelineEnd={timelineEnd}
-                pixelsPerMinute={pixelsPerMinute}
-                zoomLevel={zoomLevel}
-                onDrop={handleDrop}
-                utilization={utilization}
-              />
+            <TimelineView
+              machines={filteredMachines}
+              assignments={filteredAssignments}
+              timelineStart={timelineStart}
+              timelineEnd={timelineEnd}
+              pixelsPerMinute={pixelsPerMinute}
+              zoomLevel={zoomLevel}
+              onDrop={handleDrop}
+              utilization={utilization}
+              loading={loading}
+              onUpdate={handleUpdate}
+            />
             )}
           </TabsContent>
 
