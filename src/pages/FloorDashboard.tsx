@@ -179,6 +179,8 @@ const FloorDashboard = () => {
 
   useEffect(() => {
     loadData();
+    // Auto-refresh every 30 seconds
+    const refreshInterval = setInterval(loadData, 30000);
 
     let timeout: NodeJS.Timeout;
     const channel = supabase
@@ -195,9 +197,14 @@ const FloorDashboard = () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "wo_machine_assignments" }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
       .subscribe();
 
     return () => {
+      clearInterval(refreshInterval);
       clearTimeout(timeout);
       supabase.removeChannel(channel);
     };

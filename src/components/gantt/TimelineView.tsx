@@ -94,11 +94,14 @@ export const TimelineView = ({
   };
 
   const getUtilizationColor = (util: number) => {
-    if (util >= 90) return "bg-danger/20";
-    if (util >= 70) return "bg-warning/20";
-    if (util >= 50) return "bg-success/20";
-    return "bg-muted/20";
+    if (util >= 90) return "hsl(var(--destructive) / 0.2)"; // Red = behind
+    if (util >= 70) return "hsl(var(--warning) / 0.2)";     // Yellow = running behind  
+    if (util >= 50) return "hsl(var(--success) / 0.2)";     // Green = on schedule
+    return "hsl(var(--primary) / 0.15)";                    // Blue = ahead
   };
+
+  // Current time indicator
+  const currentTimeOffset = differenceInMinutes(new Date(), timelineStart) * pixelsPerMinute;
 
   const timeLabels = generateTimeLabels();
 
@@ -141,6 +144,16 @@ export const TimelineView = ({
                 );
               })}
             </div>
+            
+            {/* Current time line */}
+            {currentTimeOffset > 0 && currentTimeOffset < timelineWidth && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-destructive z-10 pointer-events-none"
+                style={{ left: `${currentTimeOffset}px` }}
+              >
+                <div className="absolute -top-2 -left-2 w-4 h-4 bg-destructive rounded-full animate-pulse" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -229,12 +242,17 @@ const MachineRow = ({
             <div className="text-xs text-muted-foreground truncate">{machine.name}</div>
             <div className="flex items-center gap-2 mt-1">
               <div className="text-[10px] text-muted-foreground">
-                Util: {utilization.toFixed(0)}%
+                {utilization >= 90 ? '🔴' : utilization >= 70 ? '🟡' : '🟢'} {utilization.toFixed(0)}%
               </div>
               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${getUtilizationColor(utilization)}`}
-                  style={{ width: `${utilization}%` }}
+                  className="h-full transition-all duration-300"
+                  style={{ 
+                    width: `${utilization}%`,
+                    backgroundColor: utilization >= 90 ? 'hsl(var(--destructive))' : 
+                                   utilization >= 70 ? 'hsl(var(--warning))' : 
+                                   'hsl(var(--success))'
+                  }}
                 />
               </div>
             </div>

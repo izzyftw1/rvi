@@ -29,6 +29,7 @@ interface JobCardProps {
 
 export const JobCard = ({ assignment, timelineStart, pixelsPerMinute }: JobCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isDraggingResize, setIsDraggingResize] = useState<'start' | 'end' | null>(null);
   
   const [{ isDragging }, drag] = useDrag(() => ({
     type: "assignment",
@@ -42,6 +43,42 @@ export const JobCard = ({ assignment, timelineStart, pixelsPerMinute }: JobCardP
   const end = new Date(assignment.scheduled_end);
   const leftOffset = differenceInMinutes(start, timelineStart) * pixelsPerMinute;
   const width = differenceInMinutes(end, start) * pixelsPerMinute;
+
+  const handleResizeStart = (e: React.MouseEvent, edge: 'start' | 'end') => {
+    e.stopPropagation();
+    setIsDraggingResize(edge);
+    
+    const initialX = e.clientX;
+    const initialLeft = leftOffset;
+    const initialWidth = width;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - initialX;
+      const deltaMinutes = deltaX / pixelsPerMinute;
+      
+      if (edge === 'start') {
+        const newStart = new Date(start.getTime() + deltaMinutes * 60000);
+        // Snap to 15-minute intervals
+        const roundedMinutes = Math.round(newStart.getMinutes() / 15) * 15;
+        newStart.setMinutes(roundedMinutes, 0, 0);
+        console.log('Resize start:', newStart);
+      } else {
+        const newEnd = new Date(end.getTime() + deltaMinutes * 60000);
+        const roundedMinutes = Math.round(newEnd.getMinutes() / 15) * 15;
+        newEnd.setMinutes(roundedMinutes, 0, 0);
+        console.log('Resize end:', newEnd);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingResize(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -68,8 +105,8 @@ export const JobCard = ({ assignment, timelineStart, pixelsPerMinute }: JobCardP
   return (
     <div
       ref={drag}
-      className={`absolute cursor-move transition-all duration-200 ${
-        isDragging ? "opacity-50 z-50" : "z-10"
+      className={`absolute cursor-move transition-all duration-200 group ${
+        isDragging || isDraggingResize ? "opacity-50 z-50" : "z-10"
       }`}
       style={{
         left: `${leftOffset}px`,
@@ -79,6 +116,13 @@ export const JobCard = ({ assignment, timelineStart, pixelsPerMinute }: JobCardP
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
+      {/* Resize handle - Start */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/30 opacity-0 group-hover:opacity-100 transition-opacity z-30 hover:bg-white/50"
+        onMouseDown={(e) => handleResizeStart(e, 'start')}
+        title="Drag to adjust start time"
+      />
+      
       <Card
         className={`${getStatusColor(
           assignment.status
@@ -127,6 +171,13 @@ export const JobCard = ({ assignment, timelineStart, pixelsPerMinute }: JobCardP
           )}
         </div>
       </Card>
+
+      {/* Resize handle - End */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white/30 opacity-0 group-hover:opacity-100 transition-opacity z-30 hover:bg-white/50"
+        onMouseDown={(e) => handleResizeStart(e, 'end')}
+        title="Drag to adjust end time"
+      />
     </div>
   );
 };

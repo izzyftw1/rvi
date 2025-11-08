@@ -45,6 +45,9 @@ const CNCDashboard = () => {
   useEffect(() => {
     if (currentSite) {
       loadMachines();
+      // Auto-refresh every 30 seconds
+      const interval = setInterval(loadMachines, 30000);
+      return () => clearInterval(interval);
     }
   }, [currentSite]);
 
@@ -61,6 +64,16 @@ const CNCDashboard = () => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "wo_machine_assignments" },
+        () => loadMachines()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => loadMachines()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "production_logs" },
         () => loadMachines()
       )
       .subscribe();

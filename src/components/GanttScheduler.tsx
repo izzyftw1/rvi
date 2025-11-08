@@ -72,20 +72,32 @@ export const GanttScheduler = () => {
     try {
       setLoading(true);
 
-      const [machinesRes, assignmentsRes] = await Promise.all([
+      const [machinesRes, assignmentsRes, workOrdersRes] = await Promise.all([
         supabase.from("machines").select("*").order("machine_id", { ascending: true }),
         supabase
           .from("wo_machine_assignments")
           .select(`
             *,
-            work_order:work_orders(wo_id, display_id, item_code, customer)
+            work_order:work_orders(
+              wo_id, 
+              display_id, 
+              item_code, 
+              customer, 
+              quantity,
+              cycle_time_seconds
+            )
           `)
           .in("status", ["scheduled", "running", "paused"])
           .order("scheduled_start", { ascending: true }),
+        supabase
+          .from("work_orders")
+          .select("*")
+          .in("status", ["pending", "in_progress"])
       ]);
 
       if (machinesRes.error) throw machinesRes.error;
       if (assignmentsRes.error) throw assignmentsRes.error;
+      if (workOrdersRes.error) throw workOrdersRes.error;
 
       setMachines(machinesRes.data || []);
       setAssignments(assignmentsRes.data || []);
