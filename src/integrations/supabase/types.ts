@@ -2342,6 +2342,59 @@ export type Database = {
         }
         Relationships: []
       }
+      qc_measurements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dimension_name: string
+          id: string
+          is_within_tolerance: boolean | null
+          lower_limit: number
+          measured_value: number
+          qc_record_id: string
+          remarks: string | null
+          sample_number: number
+          unit: string
+          upper_limit: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dimension_name: string
+          id?: string
+          is_within_tolerance?: boolean | null
+          lower_limit: number
+          measured_value: number
+          qc_record_id: string
+          remarks?: string | null
+          sample_number: number
+          unit: string
+          upper_limit: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dimension_name?: string
+          id?: string
+          is_within_tolerance?: boolean | null
+          lower_limit?: number
+          measured_value?: number
+          qc_record_id?: string
+          remarks?: string | null
+          sample_number?: number
+          unit?: string
+          upper_limit?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qc_measurements_qc_record_id_fkey"
+            columns: ["qc_record_id"]
+            isOneToOne: false
+            referencedRelation: "qc_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qc_records: {
         Row: {
           approved_by: string | null
@@ -4030,6 +4083,7 @@ export type Database = {
           priority: number | null
           production_allowed: boolean | null
           production_end: string | null
+          production_locked: boolean | null
           production_start: string | null
           qc_first_piece_approved_at: string | null
           qc_first_piece_approved_by: string | null
@@ -4041,6 +4095,7 @@ export type Database = {
           qc_material_passed: boolean
           qc_material_remarks: string | null
           qc_material_status: string | null
+          qc_status: string | null
           qty_external_wip: number | null
           quantity: number
           ready_for_dispatch: boolean | null
@@ -4081,6 +4136,7 @@ export type Database = {
           priority?: number | null
           production_allowed?: boolean | null
           production_end?: string | null
+          production_locked?: boolean | null
           production_start?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
@@ -4092,6 +4148,7 @@ export type Database = {
           qc_material_passed?: boolean
           qc_material_remarks?: string | null
           qc_material_status?: string | null
+          qc_status?: string | null
           qty_external_wip?: number | null
           quantity: number
           ready_for_dispatch?: boolean | null
@@ -4132,6 +4189,7 @@ export type Database = {
           priority?: number | null
           production_allowed?: boolean | null
           production_end?: string | null
+          production_locked?: boolean | null
           production_start?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
@@ -4143,6 +4201,7 @@ export type Database = {
           qc_material_passed?: boolean
           qc_material_remarks?: string | null
           qc_material_status?: string | null
+          qc_status?: string | null
           qty_external_wip?: number | null
           quantity?: number
           ready_for_dispatch?: boolean | null

@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import { QCGateControls } from "./QCGateControls";
+import { QCInspectionForm } from "./QCInspectionForm";
+import { supabase } from "@/integrations/supabase/client";
 
 interface QCRecord {
   id: string;
@@ -37,6 +39,27 @@ export const QCRecordsTab = ({ records, woId, workOrder, onUpdate }: QCRecordsTa
   const [operatorFilter, setOperatorFilter] = useState<string>("all");
   const [operationFilter, setOperationFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [activeQcForm, setActiveQcForm] = useState<string | null>(null);
+  const [qcGates, setQcGates] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadQCGates();
+  }, [woId]);
+
+  const loadQCGates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('qc_records')
+        .select('*')
+        .eq('wo_id', woId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setQcGates(data || []);
+    } catch (error) {
+      console.error('Error loading QC gates:', error);
+    }
+  };
 
   const uniqueMachines = Array.from(
     new Set(records.map((r) => r.machines?.machine_id).filter(Boolean))
@@ -109,7 +132,7 @@ export const QCRecordsTab = ({ records, woId, workOrder, onUpdate }: QCRecordsTa
   };
 
   return (
-    <>
+    <div className="space-y-4">
       <QCGateControls 
         woId={workOrder.id}
         materialQC={{
@@ -126,6 +149,61 @@ export const QCRecordsTab = ({ records, woId, workOrder, onUpdate }: QCRecordsTa
         }}
         onUpdate={onUpdate}
       />
+
+      {/* QC Gates Section */}
+      {qcGates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5" />
+              Quality Control Gates
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {qcGates.map(gate => (
+              <div key={gate.id}>
+                {activeQcForm === gate.id ? (
+                  <QCInspectionForm
+                    workOrderId={woId}
+                    itemCode={workOrder?.item_code || ''}
+                    revision={workOrder?.revision || '0'}
+                    qcRecordId={gate.id}
+                    qcType={gate.qc_type}
+                    onComplete={() => {
+                      setActiveQcForm(null);
+                      loadQCGates();
+                      onUpdate?.();
+                    }}
+                  />
+                ) : (
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="font-semibold">{gate.qc_id}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Type: {gate.qc_type?.replace('_', ' ').toUpperCase()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant={
+                        gate.result === 'pass' ? 'default' :
+                        gate.result === 'fail' ? 'destructive' :
+                        'outline'
+                      }>
+                        {gate.result || 'pending'}
+                      </Badge>
+                      {gate.result === 'pending' && (
+                        <Button onClick={() => setActiveQcForm(gate.id)}>
+                          Start QC Check
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       
       <Card>
         <CardHeader>
@@ -299,6 +377,6 @@ export const QCRecordsTab = ({ records, woId, workOrder, onUpdate }: QCRecordsTa
         )}
       </CardContent>
     </Card>
-    </>
+    </div>
   );
 };
