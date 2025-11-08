@@ -3914,6 +3914,8 @@ export type Database = {
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string
+          external_process_type: string | null
+          external_status: string | null
           financial_snapshot: Json | null
           forging_required: boolean | null
           forging_vendor: string | null
@@ -3937,6 +3939,7 @@ export type Database = {
           qc_material_passed: boolean
           qc_material_remarks: string | null
           qc_material_status: string | null
+          qty_external_wip: number | null
           quantity: number
           revision: string | null
           sales_order: string | null
@@ -3960,6 +3963,8 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date: string
+          external_process_type?: string | null
+          external_status?: string | null
           financial_snapshot?: Json | null
           forging_required?: boolean | null
           forging_vendor?: string | null
@@ -3983,6 +3988,7 @@ export type Database = {
           qc_material_passed?: boolean
           qc_material_remarks?: string | null
           qc_material_status?: string | null
+          qty_external_wip?: number | null
           quantity: number
           revision?: string | null
           sales_order?: string | null
@@ -4006,6 +4012,8 @@ export type Database = {
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string
+          external_process_type?: string | null
+          external_status?: string | null
           financial_snapshot?: Json | null
           forging_required?: boolean | null
           forging_vendor?: string | null
@@ -4029,6 +4037,7 @@ export type Database = {
           qc_material_passed?: boolean
           qc_material_remarks?: string | null
           qc_material_status?: string | null
+          qty_external_wip?: number | null
           quantity?: number
           revision?: string | null
           sales_order?: string | null

@@ -242,11 +242,27 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         throw error;
       }
 
+      // Update work order with external processing status
+      const { error: updateError } = await supabase
+        .from("work_orders")
+        .update({
+          external_status: 'sent',
+          external_process_type: process,
+          qty_external_wip: qty,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workOrder.id);
+
+      if (updateError) {
+        console.error("Failed to update work order:", updateError);
+        // Don't fail the operation if WO update fails, just log it
+      }
+
       const selectedPartner = partners.find(p => p.id === partnerId);
       
       toast({
-        title: "Challan Created Successfully",
-        description: `Challan #${challanNo} created for ${selectedPartner?.name || "partner"}`,
+        title: "Success",
+        description: `Work Order moved to ${process}. Challan created and sent to ${selectedPartner?.name || "partner"}.`,
         action: (
           <Button
             variant="outline"
