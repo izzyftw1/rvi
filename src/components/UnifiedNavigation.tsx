@@ -17,7 +17,6 @@ import {
   FileSpreadsheet,
   Handshake,
   Menu,
-  QrCode,
   LogOut,
   Settings,
   Shield,
@@ -211,8 +210,8 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
     <header className="sticky top-0 z-50 bg-background border-b shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Left: Logo + Scan Console */}
-          <div className="flex items-center gap-4">
+          {/* Left: Logo */}
+          <div className="flex items-center">
             <div 
               className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
               onClick={() => navigate("/")}
@@ -227,18 +226,6 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                 <p className="text-[10px] text-muted-foreground">Manufacturing Control Center</p>
               </div>
             </div>
-
-            <Separator orientation="vertical" className="h-8 hidden lg:block" />
-
-            <Button 
-              onClick={() => navigate("/scan-console")} 
-              variant="default"
-              size="sm"
-              className="gap-2 hidden lg:flex"
-            >
-              <QrCode className="h-4 w-4" />
-              Scan Console
-            </Button>
           </div>
 
           {/* Center: Desktop Navigation Menus */}
@@ -396,16 +383,6 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                 </SheetHeader>
                 <ScrollArea className="h-[calc(100vh-70px)]">
                   <div className="px-4 py-3 space-y-4">
-                    {/* Mobile: Scan Console */}
-                    <Button 
-                      onClick={() => handleNavigate("/scan-console")} 
-                      variant="default"
-                      className="w-full gap-2"
-                    >
-                      <QrCode className="h-4 w-4" />
-                      Scan Console
-                    </Button>
-
                     {/* Mobile: Global Search */}
                     <GlobalSearch />
 
