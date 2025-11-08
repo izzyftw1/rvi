@@ -1224,10 +1224,13 @@ export type Database = {
           department_id: string | null
           estimated_completion: string | null
           id: string
+          last_qc_check_at: string | null
           location: string | null
           machine_id: string
           name: string
+          next_qc_check_due: string | null
           operator_id: string | null
+          qc_status: string | null
           site_id: string | null
           status: string | null
           updated_at: string
@@ -1240,10 +1243,13 @@ export type Database = {
           department_id?: string | null
           estimated_completion?: string | null
           id?: string
+          last_qc_check_at?: string | null
           location?: string | null
           machine_id: string
           name: string
+          next_qc_check_due?: string | null
           operator_id?: string | null
+          qc_status?: string | null
           site_id?: string | null
           status?: string | null
           updated_at?: string
@@ -1256,10 +1262,13 @@ export type Database = {
           department_id?: string | null
           estimated_completion?: string | null
           id?: string
+          last_qc_check_at?: string | null
           location?: string | null
           machine_id?: string
           name?: string
+          next_qc_check_due?: string | null
           operator_id?: string | null
+          qc_status?: string | null
           site_id?: string | null
           status?: string | null
           updated_at?: string
@@ -2458,6 +2467,89 @@ export type Database = {
           },
           {
             foreignKeyName: "qc_records_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qc_summary: {
+        Row: {
+          avg_value: number
+          created_at: string
+          dimension_name: string
+          id: string
+          last_updated: string
+          lower_limit: number
+          machine_id: string
+          max_value: number
+          min_value: number
+          operation: Database["public"]["Enums"]["operation_letter"]
+          sample_count: number
+          unit: string
+          upper_limit: number
+          within_tolerance: boolean
+          wo_id: string
+        }
+        Insert: {
+          avg_value: number
+          created_at?: string
+          dimension_name: string
+          id?: string
+          last_updated?: string
+          lower_limit: number
+          machine_id: string
+          max_value: number
+          min_value: number
+          operation: Database["public"]["Enums"]["operation_letter"]
+          sample_count: number
+          unit: string
+          upper_limit: number
+          within_tolerance: boolean
+          wo_id: string
+        }
+        Update: {
+          avg_value?: number
+          created_at?: string
+          dimension_name?: string
+          id?: string
+          last_updated?: string
+          lower_limit?: number
+          machine_id?: string
+          max_value?: number
+          min_value?: number
+          operation?: Database["public"]["Enums"]["operation_letter"]
+          sample_count?: number
+          unit?: string
+          upper_limit?: number
+          within_tolerance?: boolean
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qc_summary_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_summary_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "qc_summary_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_summary_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
@@ -4487,6 +4579,7 @@ export type Database = {
         Returns: undefined
       }
       mark_overdue_invoices: { Args: never; Returns: undefined }
+      mark_overdue_qc_checks: { Args: never; Returns: undefined }
       notify_users: {
         Args: {
           _entity_id?: string
