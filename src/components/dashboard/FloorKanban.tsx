@@ -165,11 +165,11 @@ export const FloorKanban = () => {
 
       // External Processing Stages - fetch from both work_orders and wo_external_moves
       const externalStages = [
+        { type: 'Forging', label: 'Forging (Ext)', icon: Flame, woStage: 'forging' },
         { type: 'Job Work', label: 'Job Work', icon: Factory, woStage: 'job_work' },
         { type: 'Plating', label: 'Plating', icon: Sparkles, woStage: 'plating' },
         { type: 'Buffing', label: 'Buffing', icon: Wind, woStage: 'buffing' },
         { type: 'Blasting', label: 'Blasting', icon: Hammer, woStage: 'blasting' },
-        { type: 'Forging', label: 'Forging (Ext)', icon: Flame, woStage: 'forging' }
       ];
 
       externalStages.forEach(({ type, label, icon, woStage }) => {

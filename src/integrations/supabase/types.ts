@@ -1961,6 +1961,36 @@ export type Database = {
         }
         Relationships: []
       }
+      process_flow: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_external: boolean | null
+          next_process: string | null
+          process_type: string
+          sequence_no: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_external?: boolean | null
+          next_process?: string | null
+          process_type: string
+          sequence_no: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_external?: boolean | null
+          next_process?: string | null
+          process_type?: string
+          sequence_no?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       processing_costs: {
         Row: {
           cost_amount: number
@@ -3941,6 +3971,7 @@ export type Database = {
           qc_material_status: string | null
           qty_external_wip: number | null
           quantity: number
+          ready_for_dispatch: boolean | null
           revision: string | null
           sales_order: string | null
           site_id: string | null
@@ -3990,6 +4021,7 @@ export type Database = {
           qc_material_status?: string | null
           qty_external_wip?: number | null
           quantity: number
+          ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
           site_id?: string | null
@@ -4039,6 +4071,7 @@ export type Database = {
           qc_material_status?: string | null
           qty_external_wip?: number | null
           quantity?: number
+          ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
           site_id?: string | null

@@ -42,7 +42,6 @@ const DEFAULT_COLUMNS = {
 const INTERNAL_STAGES = [
   { value: 'goods_in', label: 'Goods In', icon: Inbox, color: 'hsl(var(--muted))' },
   { value: 'cutting_queue', label: 'Cutting', icon: Scissors, color: 'hsl(210 90% 52%)' },
-  { value: 'forging_queue', label: 'Forging', icon: Hammer, color: 'hsl(38 92% 50%)' },
   { value: 'production', label: 'Production', icon: Factory, color: 'hsl(210 90% 42%)' },
   { value: 'qc', label: 'QC', icon: CheckCircle2, color: 'hsl(142 76% 36%)' },
   { value: 'packing', label: 'Packing', icon: Box, color: 'hsl(210 70% 40%)' },
@@ -50,11 +49,11 @@ const INTERNAL_STAGES = [
 ];
 
 const EXTERNAL_STAGES = [
+  { value: 'forging', label: 'Forging (Ext)', icon: Hammer },
   { value: 'job_work', label: 'Job Work', icon: Package },
   { value: 'plating', label: 'Plating', icon: PackageCheck },
   { value: 'buffing', label: 'Buffing', icon: Package },
   { value: 'blasting', label: 'Blasting', icon: Package },
-  { value: 'forging', label: 'Forging (Ext)', icon: Hammer },
 ];
 
 // Memoized Stage Chip Component

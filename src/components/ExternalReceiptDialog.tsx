@@ -107,7 +107,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       // Update work order to reduce qty_external_wip
       const { data: woData, error: woFetchError } = await supabase
         .from("work_orders")
-        .select("qty_external_wip, current_stage")
+        .select("qty_external_wip, current_stage, external_process_type")
         .eq("id", move.work_order_id)
         .single();
 
@@ -122,12 +122,44 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         updated_at: new Date().toISOString(),
       };
 
-      // If WIP reaches zero and work order is in external stage, move to next stage (production)
-      if (newWip === 0 && woData.current_stage && 
-          ['job_work', 'plating', 'buffing', 'blasting', 'forging'].includes(woData.current_stage)) {
-        updateData.current_stage = 'production';
-        updateData.external_status = null;
-        updateData.external_process_type = null;
+      // If WIP reaches zero, look up next process from process_flow
+      if (newWip === 0) {
+        const currentProcess = woData.external_process_type || move.process;
+        
+        // Fetch next process from process_flow
+        const { data: flowData, error: flowError } = await supabase
+          .from("process_flow")
+          .select("next_process, is_external")
+          .eq("process_type", currentProcess)
+          .single();
+        
+        if (!flowError && flowData) {
+          if (flowData.next_process) {
+            // Move to next process in the chain
+            const stageMap: Record<string, string> = {
+              'Forging': 'forging',
+              'Plating': 'plating',
+              'Buffing': 'buffing',
+              'Blasting': 'blasting',
+              'Job Work': 'job_work',
+              'Dispatch': 'dispatch',
+            };
+            updateData.current_stage = (stageMap[flowData.next_process] || flowData.next_process.toLowerCase().replace(' ', '_')) as any;
+            updateData.external_process_type = flowData.is_external ? flowData.next_process : null;
+            updateData.external_status = flowData.is_external ? 'pending' : null;
+          } else {
+            // No next process - mark as ready for dispatch
+            updateData.current_stage = 'dispatch' as any;
+            updateData.ready_for_dispatch = true;
+            updateData.external_status = null;
+            updateData.external_process_type = null;
+          }
+        } else {
+          // Fallback: move to production if no process flow found
+          updateData.current_stage = 'production' as any;
+          updateData.external_status = null;
+          updateData.external_process_type = null;
+        }
       }
 
       const { error: woUpdateError } = await supabase
@@ -140,9 +172,13 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         // Don't fail the operation if WO update fails
       }
 
+      const nextStageName = updateData.current_stage ? 
+        updateData.current_stage.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 
+        '';
+
       toast({
         title: "Success",
-        description: `Received ${qty} items${newWip === 0 ? '. Work order moved to production stage.' : '.'}`,
+        description: `Received ${qty} items${newWip === 0 ? `. Work order moved to ${nextStageName}.` : '.'}`,
       });
 
       onSuccess();

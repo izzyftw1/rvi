@@ -277,11 +277,23 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         throw error;
       }
 
-      // Update work order with external processing status
+      // Update work order with external processing status and set current_stage to match process
       const currentWip = workOrder.qty_external_wip || 0;
+      
+      // Map process type to stage value
+      const stageMap: Record<string, string> = {
+        'Forging': 'forging',
+        'Plating': 'plating',
+        'Buffing': 'buffing',
+        'Blasting': 'blasting',
+        'Job Work': 'job_work',
+        'Heat Treatment': 'heat_treatment',
+      };
+      
       const { error: updateError } = await supabase
         .from("work_orders")
         .update({
+          current_stage: (stageMap[process] || process.toLowerCase().replace(' ', '_')) as any,
           external_status: 'sent',
           external_process_type: process,
           qty_external_wip: currentWip + qty,
