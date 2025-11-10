@@ -10,7 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronDown, ChevronRight, Plus, Package, AlertCircle, CheckCircle, Clock } from "lucide-react";
-import { RPOModal } from "@/components/RPOModal";
+import { RawMaterialPOModal } from "@/components/procurement/RawMaterialPOModal";
 
 interface MaterialRequirement {
   id: string;
@@ -487,25 +487,19 @@ export default function MaterialRequirementsDashboard() {
         </Card>
       </div>
 
-      {/* RPO Modal */}
+      {/* Raw Material PO Modal */}
       {selectedRequirement && (
-        <RPOModal
+        <RawMaterialPOModal
           open={rpoModalOpen}
           onClose={() => {
             setRpoModalOpen(false);
             setSelectedRequirement(null);
           }}
-          materialSize={selectedRequirement.material_size_mm.toString()}
+          materialGrade={selectedRequirement.material_grade}
+          alloy={selectedRequirement.alloy}
           deficitKg={Math.abs(selectedRequirement.surplus_deficit_kg)}
-          linkedWorkOrders={[{
-            wo_id: selectedRequirement.wo_number || '',
-            id: selectedRequirement.wo_id,
-            item_code: selectedRequirement.material_grade
-          }]}
-          linkedSalesOrders={[{
-            so_id: '',
-            id: selectedRequirement.so_id
-          }]}
+          linkedWOIds={[selectedRequirement.wo_id]}
+          linkedRequirementIds={[selectedRequirement.id]}
           onSuccess={() => {
             loadRequirements();
             toast({

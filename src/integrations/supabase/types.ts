@@ -698,6 +698,59 @@ export type Database = {
           },
         ]
       }
+      grn_receipts: {
+        Row: {
+          alloy: string
+          created_at: string
+          grn_no: string
+          id: string
+          lot_number: string
+          material_grade: string
+          po_id: string | null
+          received_by: string | null
+          received_date: string
+          received_qty_kg: number
+          remarks: string | null
+          supplier_batch_ref: string | null
+        }
+        Insert: {
+          alloy: string
+          created_at?: string
+          grn_no: string
+          id?: string
+          lot_number: string
+          material_grade: string
+          po_id?: string | null
+          received_by?: string | null
+          received_date?: string
+          received_qty_kg: number
+          remarks?: string | null
+          supplier_batch_ref?: string | null
+        }
+        Update: {
+          alloy?: string
+          created_at?: string
+          grn_no?: string
+          id?: string
+          lot_number?: string
+          material_grade?: string
+          po_id?: string | null
+          received_by?: string | null
+          received_date?: string
+          received_qty_kg?: number
+          remarks?: string | null
+          supplier_batch_ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grn_receipts_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "raw_material_po"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hourly_qc_checks: {
         Row: {
           check_datetime: string
@@ -2685,6 +2738,71 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      raw_material_po: {
+        Row: {
+          alloy: string
+          created_at: string
+          created_by: string | null
+          expected_date: string
+          id: string
+          linked_requirement_ids: Json
+          linked_wo_ids: Json
+          material_grade: string
+          po_id: string
+          qty_kg: number
+          rate_per_kg: number
+          remarks: string | null
+          status: string
+          supplier_id: string | null
+          total_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          alloy: string
+          created_at?: string
+          created_by?: string | null
+          expected_date: string
+          id?: string
+          linked_requirement_ids?: Json
+          linked_wo_ids?: Json
+          material_grade: string
+          po_id: string
+          qty_kg: number
+          rate_per_kg: number
+          remarks?: string | null
+          status?: string
+          supplier_id?: string | null
+          total_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          alloy?: string
+          created_at?: string
+          created_by?: string | null
+          expected_date?: string
+          id?: string
+          linked_requirement_ids?: Json
+          linked_wo_ids?: Json
+          material_grade?: string
+          po_id?: string
+          qty_kg?: number
+          rate_per_kg?: number
+          remarks?: string | null
+          status?: string
+          supplier_id?: string | null
+          total_value?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_material_po_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -4677,6 +4795,8 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
+      generate_grn_number: { Args: never; Returns: string }
+      generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
       get_user_site_id: { Args: { _user_id: string }; Returns: string }
       get_wo_progress: {
