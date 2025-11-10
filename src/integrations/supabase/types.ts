@@ -1530,6 +1530,42 @@ export type Database = {
           },
         ]
       }
+      material_master: {
+        Row: {
+          alloy: string
+          conversion_factor: number | null
+          created_at: string
+          density: number
+          id: string
+          material_name: string
+          shape_type: string
+          size_mm: number
+          updated_at: string
+        }
+        Insert: {
+          alloy: string
+          conversion_factor?: number | null
+          created_at?: string
+          density?: number
+          id?: string
+          material_name: string
+          shape_type: string
+          size_mm: number
+          updated_at?: string
+        }
+        Update: {
+          alloy?: string
+          conversion_factor?: number | null
+          created_at?: string
+          density?: number
+          id?: string
+          material_name?: string
+          shape_type?: string
+          size_mm?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       material_movements: {
         Row: {
           created_at: string | null
@@ -1624,6 +1660,102 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      material_requirements_v2: {
+        Row: {
+          alloy: string
+          created_at: string
+          customer: string
+          customer_id: string | null
+          due_date: string | null
+          gross_wt_pc: number
+          id: string
+          material_grade: string
+          material_size_mm: number
+          net_wt_pc: number
+          qty_pcs: number
+          so_id: string | null
+          status: string
+          total_gross_kg: number | null
+          total_net_kg: number | null
+          updated_at: string
+          wo_id: string | null
+        }
+        Insert: {
+          alloy: string
+          created_at?: string
+          customer: string
+          customer_id?: string | null
+          due_date?: string | null
+          gross_wt_pc: number
+          id?: string
+          material_grade: string
+          material_size_mm: number
+          net_wt_pc: number
+          qty_pcs: number
+          so_id?: string | null
+          status?: string
+          total_gross_kg?: number | null
+          total_net_kg?: number | null
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Update: {
+          alloy?: string
+          created_at?: string
+          customer?: string
+          customer_id?: string | null
+          due_date?: string | null
+          gross_wt_pc?: number
+          id?: string
+          material_grade?: string
+          material_size_mm?: number
+          net_wt_pc?: number
+          qty_pcs?: number
+          so_id?: string | null
+          status?: string
+          total_gross_kg?: number | null
+          total_net_kg?: number | null
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_requirements_v2_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "material_requirements_v2_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_v2_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_v2_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_v2_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       non_consumable_usage: {
         Row: {
