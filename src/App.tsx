@@ -39,6 +39,7 @@ import DepartmentDetail from "./pages/DepartmentDetail";
 import MaterialRequirements from "./pages/MaterialRequirements";
 import MaterialRequirementsDashboard from "./pages/MaterialRequirementsDashboard";
 import StageDetailView from "./pages/StageDetailView";
+import ExternalProcessingDetail from "./pages/ExternalProcessingDetail";
 import Maintenance from "./pages/Maintenance";
 import Admin from "./pages/Admin";
 import FactoryCalendar from "./pages/FactoryCalendar";
@@ -133,6 +134,7 @@ const App = () => (
           <Route path="/logistics-dashboard" element={<LogisticsDashboard />} />
           <Route path="/partners" element={<Partners />} />
           <Route path="/partner-performance" element={<PartnerPerformance />} />
+          <Route path="/external-processing/:processName" element={<ExternalProcessingDetail />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Route>

@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ExternalProcessingDetailDrawer } from "./ExternalProcessingDetailDrawer";
 
 interface HeatmapData {
   job_work: { pcs: number; kg: number; activeMoves: number; overdue: number };
@@ -70,6 +71,8 @@ export const ExternalDashboard = () => {
   });
   const [overdueReturns, setOverdueReturns] = useState<OverdueReturn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     loadExternalData();
@@ -190,8 +193,8 @@ export const ExternalDashboard = () => {
   };
 
   const handleCellClick = (processType: string, metric: typeof METRICS[number]) => {
-    // Navigate to logistics/external processing page with filters
-    navigate(`/logistics?process=${processType}&filter=${metric}`);
+    setSelectedProcess(processType);
+    setDrawerOpen(true);
   };
 
   const getProcessLabel = (key: string) => {
@@ -212,9 +215,10 @@ export const ExternalDashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Heatmap */}
-      <Card>
+    <>
+      <div className="space-y-6">
+        {/* Heatmap */}
+        <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
@@ -336,6 +340,15 @@ export const ExternalDashboard = () => {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+
+      {/* Detail Drawer */}
+      <ExternalProcessingDetailDrawer
+        processType={selectedProcess}
+        processLabel={getProcessLabel(selectedProcess || '')}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+      />
+    </>
   );
 };
