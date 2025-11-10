@@ -48,6 +48,7 @@ import SupplierLedger from "./pages/SupplierLedger";
 import PurchaseSettings from "./pages/PurchaseSettings";
 import MaterialProcurementDashboard from "./pages/MaterialProcurementDashboard";
 import ProcurementDashboard from "./pages/ProcurementDashboard";
+import InventoryProcurementControlCenter from "./pages/InventoryProcurementControlCenter";
 import RPOInventoryReport from "./pages/RPOInventoryReport";
 import ReconciliationReport from "./pages/ReconciliationReport";
 import FinanceDashboard from "./pages/finance/FinanceDashboard";
@@ -88,6 +89,7 @@ const App = () => (
           <Route path="/purchase/settings" element={<PurchaseSettings />} />
           <Route path="/purchase/dashboard" element={<MaterialProcurementDashboard />} />
           <Route path="/procurement" element={<ProcurementDashboard />} />
+          <Route path="/inventory-procurement" element={<InventoryProcurementControlCenter />} />
           <Route path="/reports/rpo-inventory" element={<RPOInventoryReport />} />
           <Route path="/reports/reconciliation" element={<ReconciliationReport />} />
           <Route path="/suppliers/:id/ledger" element={<SupplierLedger />} />

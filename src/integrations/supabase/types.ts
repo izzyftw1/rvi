@@ -4589,6 +4589,31 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory_procurement_status: {
+        Row: {
+          alloy: string | null
+          available_kg: number | null
+          committed_kg: number | null
+          deficit_kg: number | null
+          density: number | null
+          id: string | null
+          last_grn_date: string | null
+          material_name: string | null
+          open_po_count: number | null
+          open_po_value: number | null
+          overdue_po_count: number | null
+          pending_qc_count: number | null
+          recent_grn_count: number | null
+          shape_type: string | null
+          size_mm: number | null
+          status: string | null
+          total_inventory_kg: number | null
+          total_on_order_kg: number | null
+          total_received_kg: number | null
+          total_required_kg: number | null
+        }
+        Relationships: []
+      }
       v_machine_daily: {
         Row: {
           date: string | null
@@ -4798,6 +4823,14 @@ export type Database = {
       generate_grn_number: { Args: never; Returns: string }
       generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
+      get_material_links: {
+        Args: { _alloy: string; _material_grade: string }
+        Returns: {
+          linked_grn_ids: string[]
+          linked_po_ids: string[]
+          linked_wo_ids: string[]
+        }[]
+      }
       get_user_site_id: { Args: { _user_id: string }; Returns: string }
       get_wo_progress: {
         Args: { _wo_id: string }
