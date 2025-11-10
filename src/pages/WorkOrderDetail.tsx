@@ -35,6 +35,8 @@ import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
 import { MaterialMovementTimeline } from "@/components/MaterialMovementTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
 import { OEEWidget } from "@/components/OEEWidget";
+import { QCStageCard } from "@/components/qc/QCStageCard";
+import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
 const WorkOrderDetail = () => {
@@ -71,6 +73,7 @@ const WorkOrderDetail = () => {
   const [showExternalDialog, setShowExternalDialog] = useState(false);
   const [externalMoves, setExternalMoves] = useState<any[]>([]);
   const [showAuditModal, setShowAuditModal] = useState(false);
+  const [qcApprovers, setQcApprovers] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<string>(() => {
     return localStorage.getItem('wo-detail-active-tab') || 'production';
   });
@@ -309,6 +312,28 @@ const WorkOrderDetail = () => {
         .order("dispatch_date", { ascending: false });
       
       setExternalMoves(movesData || []);
+
+      // Load QC approver names
+      if (woData) {
+        const approverIds = [
+          woData.qc_raw_material_approved_by,
+          woData.qc_first_piece_approved_by,
+          woData.qc_final_approved_by
+        ].filter(Boolean);
+
+        if (approverIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', approverIds);
+
+          const approversMap: Record<string, string> = {};
+          profiles?.forEach(p => {
+            approversMap[p.id] = p.full_name;
+          });
+          setQcApprovers(approversMap);
+        }
+      }
     } catch (error) {
       console.error("Error loading WO data:", error);
     } finally {
@@ -939,7 +964,54 @@ const WorkOrderDetail = () => {
 
           <TabsContent value="qc" className="space-y-4">
             {activeTab === 'qc' && (
-              <EnhancedQCRecords qcRecords={qcRecords} workOrder={wo} />
+              <div className="space-y-6">
+                {/* QC Stages */}
+                <div className="grid gap-4">
+                  <QCStageCard
+                    woId={id || ''}
+                    qcType="incoming"
+                    status={wo.qc_raw_material_status || 'pending'}
+                    approvedAt={wo.qc_raw_material_approved_at}
+                    approvedByName={wo.qc_raw_material_approved_by ? qcApprovers[wo.qc_raw_material_approved_by] : undefined}
+                    remarks={wo.qc_raw_material_remarks}
+                    onUpdate={loadWorkOrderData}
+                  />
+                  
+                  <QCStageCard
+                    woId={id || ''}
+                    qcType="first_piece"
+                    status={wo.qc_first_piece_status || 'pending'}
+                    approvedAt={wo.qc_first_piece_approved_at}
+                    approvedByName={wo.qc_first_piece_approved_by ? qcApprovers[wo.qc_first_piece_approved_by] : undefined}
+                    remarks={wo.qc_first_piece_remarks}
+                    onUpdate={loadWorkOrderData}
+                    isLocked={wo.qc_raw_material_status !== 'passed' && wo.qc_raw_material_status !== 'waived'}
+                  />
+                  
+                  <QCStageCard
+                    woId={id || ''}
+                    qcType="final"
+                    status={wo.qc_final_status || 'pending'}
+                    approvedAt={wo.qc_final_approved_at}
+                    approvedByName={wo.qc_final_approved_by ? qcApprovers[wo.qc_final_approved_by] : undefined}
+                    remarks={wo.qc_final_remarks}
+                    onUpdate={loadWorkOrderData}
+                  />
+                </div>
+
+                {/* Final QC Report Generator */}
+                {wo.status === 'completed' && (
+                  <FinalQCReportGenerator
+                    woId={id || ''}
+                    woNumber={wo.display_id || wo.wo_id}
+                    customer={wo.customer}
+                    itemCode={wo.item_code}
+                  />
+                )}
+
+                {/* Legacy QC Records Display */}
+                <EnhancedQCRecords qcRecords={qcRecords} workOrder={wo} />
+              </div>
             )}
           </TabsContent>
 

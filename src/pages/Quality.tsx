@@ -205,9 +205,9 @@ const Quality = () => {
               Real-time inspection tracking and quality metrics
             </p>
           </div>
-          <Button onClick={() => navigate("/qc-incoming")} variant="default">
+          <Button onClick={() => navigate("/hourly-qc")} variant="default">
             <CheckCircle2 className="h-4 w-4 mr-2" />
-            New QC Inspection
+            Start Hourly QC
           </Button>
         </div>
 

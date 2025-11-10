@@ -2621,6 +2621,8 @@ export type Database = {
         Row: {
           approved_by: string | null
           created_at: string
+          digital_signature: Json | null
+          file_upload_url: string | null
           id: string
           measurements: Json | null
           oes_xrf_file: string | null
@@ -2631,11 +2633,15 @@ export type Database = {
           remarks: string | null
           result: Database["public"]["Enums"]["qc_result"]
           step_id: string | null
+          tested_on: string | null
+          waive_reason: string | null
           wo_id: string
         }
         Insert: {
           approved_by?: string | null
           created_at?: string
+          digital_signature?: Json | null
+          file_upload_url?: string | null
           id?: string
           measurements?: Json | null
           oes_xrf_file?: string | null
@@ -2646,11 +2652,15 @@ export type Database = {
           remarks?: string | null
           result: Database["public"]["Enums"]["qc_result"]
           step_id?: string | null
+          tested_on?: string | null
+          waive_reason?: string | null
           wo_id: string
         }
         Update: {
           approved_by?: string | null
           created_at?: string
+          digital_signature?: Json | null
+          file_upload_url?: string | null
           id?: string
           measurements?: Json | null
           oes_xrf_file?: string | null
@@ -2661,6 +2671,8 @@ export type Database = {
           remarks?: string | null
           result?: Database["public"]["Enums"]["qc_result"]
           step_id?: string | null
+          tested_on?: string | null
+          waive_reason?: string | null
           wo_id?: string
         }
         Relationships: [
@@ -4469,6 +4481,10 @@ export type Database = {
           production_end: string | null
           production_locked: boolean | null
           production_start: string | null
+          qc_final_approved_at: string | null
+          qc_final_approved_by: string | null
+          qc_final_remarks: string | null
+          qc_final_status: string | null
           qc_first_piece_approved_at: string | null
           qc_first_piece_approved_by: string | null
           qc_first_piece_passed: boolean
@@ -4479,6 +4495,10 @@ export type Database = {
           qc_material_passed: boolean
           qc_material_remarks: string | null
           qc_material_status: string | null
+          qc_raw_material_approved_at: string | null
+          qc_raw_material_approved_by: string | null
+          qc_raw_material_remarks: string | null
+          qc_raw_material_status: string | null
           qc_status: string | null
           qty_external_wip: number | null
           quantity: number
@@ -4522,6 +4542,10 @@ export type Database = {
           production_end?: string | null
           production_locked?: boolean | null
           production_start?: string | null
+          qc_final_approved_at?: string | null
+          qc_final_approved_by?: string | null
+          qc_final_remarks?: string | null
+          qc_final_status?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean
@@ -4532,6 +4556,10 @@ export type Database = {
           qc_material_passed?: boolean
           qc_material_remarks?: string | null
           qc_material_status?: string | null
+          qc_raw_material_approved_at?: string | null
+          qc_raw_material_approved_by?: string | null
+          qc_raw_material_remarks?: string | null
+          qc_raw_material_status?: string | null
           qc_status?: string | null
           qty_external_wip?: number | null
           quantity: number
@@ -4575,6 +4603,10 @@ export type Database = {
           production_end?: string | null
           production_locked?: boolean | null
           production_start?: string | null
+          qc_final_approved_at?: string | null
+          qc_final_approved_by?: string | null
+          qc_final_remarks?: string | null
+          qc_final_status?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean
@@ -4585,6 +4617,10 @@ export type Database = {
           qc_material_passed?: boolean
           qc_material_remarks?: string | null
           qc_material_status?: string | null
+          qc_raw_material_approved_at?: string | null
+          qc_raw_material_approved_by?: string | null
+          qc_raw_material_remarks?: string | null
+          qc_raw_material_status?: string | null
           qc_status?: string | null
           qty_external_wip?: number | null
           quantity?: number
