@@ -208,172 +208,14 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
 
   return (
     <header className="sticky top-0 z-50 bg-background border-b shadow-sm">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16 gap-4">
-          {/* Left: Logo */}
-          <div className="flex items-center">
-            <div 
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
-              onClick={() => navigate("/")}
-            >
-              <img 
-                src={rvLogo} 
-                alt="RV Industries" 
-                className="h-10 object-contain"
-              />
-              <div className="hidden sm:block">
-                <h1 className="text-base font-bold leading-tight">R.V. Industries</h1>
-                <p className="text-[10px] text-muted-foreground">Manufacturing Control Center</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Center: Desktop Navigation Menus */}
-          <nav className="hidden lg:flex items-center gap-1 flex-1 justify-center">
-            {visibleGroups.map((group) => {
-              const GroupIcon = group.icon;
-              return (
-                <DropdownMenu key={group.title}>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="gap-2 h-9 px-3 hover:bg-muted"
-                      onMouseEnter={() => setHoveredMenu(group.title)}
-                    >
-                      <GroupIcon className="h-4 w-4" />
-                      <span className="text-sm">{group.title}</span>
-                      <ChevronDown className="h-3 w-3 opacity-50" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent 
-                    align="start" 
-                    className="w-56 bg-popover shadow-lg border z-[100]"
-                    onMouseLeave={() => setHoveredMenu(null)}
-                  >
-                    {group.items.map((item) => {
-                      const ItemIcon = item.icon;
-                      return (
-                        <DropdownMenuItem
-                          key={item.path}
-                          onClick={() => handleNavigate(item.path)}
-                          className="gap-3 cursor-pointer"
-                        >
-                          <ItemIcon className="h-4 w-4" />
-                          {item.label}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-            })}
-
-            {/* Admin Menu */}
-            {isAdmin && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="gap-2 h-9 px-3 hover:bg-muted"
-                  >
-                    <Shield className="h-4 w-4" />
-                    <span className="text-sm">Admin</span>
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56 bg-popover shadow-lg border z-[100]">
-                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
-                    <Users className="h-4 w-4" />
-                    Users
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
-                    <UserCog className="h-4 w-4" />
-                    Roles & Permissions
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">Factory Tools</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => handleNavigate("/maintenance")} className="gap-3">
-                    <Wrench className="h-4 w-4" />
-                    Maintenance
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleNavigate("/factory-calendar")} className="gap-3">
-                    <Calendar className="h-4 w-4" />
-                    Factory Calendar
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
-                    <Settings className="h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </nav>
-
-          {/* Right: Search, Site Selector, User Menu */}
-          <div className="flex items-center gap-3">
-            {/* Global Search - Desktop */}
-            <div className="hidden lg:block">
-              <GlobalSearch />
-            </div>
-
-            {/* Site Selector - Desktop */}
-            {!sitesLoading && availableSites.length > 0 && (
-              <div className="hidden lg:flex items-center gap-2">
-                <Factory className="h-4 w-4 text-muted-foreground" />
-                <Select
-                  value={currentSite?.id || ""}
-                  onValueChange={(value) => {
-                    const site = availableSites.find(s => s.id === value);
-                    if (site) setCurrentSite(site);
-                  }}
-                >
-                  <SelectTrigger className="w-[180px] h-9">
-                    <SelectValue placeholder="Select site" />
-                  </SelectTrigger>
-                  <SelectContent className="z-[100]">
-                    {availableSites.map((site) => (
-                      <SelectItem key={site.id} value={site.id}>
-                        {site.name} ({site.code})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* User Avatar Menu - Desktop */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild className="hidden lg:flex">
-                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-primary text-primary-foreground">
-                      {profile?.full_name ? getInitials(profile.full_name) : 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-popover shadow-lg border z-[100]">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
-                    <p className="text-xs leading-none text-muted-foreground capitalize">
-                      {profile?.role?.replace('_', ' ') || 'Role'}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="gap-2 text-destructive focus:text-destructive cursor-pointer">
-                  <LogOut className="h-4 w-4" />
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
+      <div className="w-full px-3 sm:px-4">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
+          {/* Left: Logo + Mobile Menu */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             {/* Mobile Menu Toggle */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
@@ -387,6 +229,34 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                     <GlobalSearch />
 
                     <Separator />
+
+                    {/* Mobile: Site Selector */}
+                    {!sitesLoading && availableSites.length > 0 && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Factory className="h-4 w-4 text-muted-foreground" />
+                          <Select
+                            value={currentSite?.id || ""}
+                            onValueChange={(value) => {
+                              const site = availableSites.find(s => s.id === value);
+                              if (site) setCurrentSite(site);
+                            }}
+                          >
+                            <SelectTrigger className="w-full h-9">
+                              <SelectValue placeholder="Select site" />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100]">
+                              {availableSites.map((site) => (
+                                <SelectItem key={site.id} value={site.id}>
+                                  {site.name} ({site.code})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Separator />
+                      </>
+                    )}
 
                     {/* Mobile: Navigation Groups */}
                     {visibleGroups.map((group) => {
@@ -487,6 +357,165 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                 </ScrollArea>
               </SheetContent>
             </Sheet>
+
+            {/* Logo */}
+            <div 
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
+              onClick={() => navigate("/")}
+            >
+              <img 
+                src={rvLogo} 
+                alt="RV Industries" 
+                className="h-8 sm:h-10 object-contain"
+              />
+              <div className="hidden md:block">
+                <h1 className="text-sm sm:text-base font-bold leading-tight">R.V. Industries</h1>
+                <p className="text-[10px] text-muted-foreground hidden sm:block">Manufacturing Control Center</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Center: Desktop Navigation Menus - Compact */}
+          <nav className="hidden lg:flex items-center gap-1 overflow-x-auto scrollbar-hide">
+            {visibleGroups.map((group) => {
+              const GroupIcon = group.icon;
+              return (
+                <DropdownMenu key={group.title}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="gap-1.5 h-9 px-2.5 hover:bg-muted flex-shrink-0 text-xs"
+                      onMouseEnter={() => setHoveredMenu(group.title)}
+                    >
+                      <GroupIcon className="h-3.5 w-3.5" />
+                      <span className="hidden xl:inline">{group.title}</span>
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent 
+                    align="start" 
+                    className="w-56 bg-popover shadow-lg border z-[100]"
+                    onMouseLeave={() => setHoveredMenu(null)}
+                  >
+                    {group.items.map((item) => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={item.path}
+                          onClick={() => handleNavigate(item.path)}
+                          className="gap-3 cursor-pointer"
+                        >
+                          <ItemIcon className="h-4 w-4" />
+                          {item.label}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            })}
+
+            {/* Admin Menu */}
+            {isAdmin && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="gap-1.5 h-9 px-2.5 hover:bg-muted flex-shrink-0 text-xs"
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    <span className="hidden xl:inline">Admin</span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56 bg-popover shadow-lg border z-[100]">
+                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
+                    <Users className="h-4 w-4" />
+                    Users
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
+                    <UserCog className="h-4 w-4" />
+                    Roles & Permissions
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">Factory Tools</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => handleNavigate("/maintenance")} className="gap-3">
+                    <Wrench className="h-4 w-4" />
+                    Maintenance
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleNavigate("/factory-calendar")} className="gap-3">
+                    <Calendar className="h-4 w-4" />
+                    Factory Calendar
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </nav>
+
+          {/* Right: Search, Site Selector (compact), User Menu */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
+            {/* Global Search - Desktop */}
+            <div className="hidden lg:block">
+              <GlobalSearch />
+            </div>
+
+            {/* Site Selector - Compact for Desktop */}
+            {!sitesLoading && availableSites.length > 0 && (
+              <div className="hidden lg:block">
+                <Select
+                  value={currentSite?.id || ""}
+                  onValueChange={(value) => {
+                    const site = availableSites.find(s => s.id === value);
+                    if (site) setCurrentSite(site);
+                  }}
+                >
+                  <SelectTrigger className="w-[140px] h-9 text-xs">
+                    <Factory className="h-3.5 w-3.5 mr-1.5" />
+                    <SelectValue placeholder="Site" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[100]">
+                    {availableSites.map((site) => (
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* User Avatar Menu - Desktop */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild className="hidden lg:flex flex-shrink-0">
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0">
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                      {profile?.full_name ? getInitials(profile.full_name) : 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-popover shadow-lg border z-[100]">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
+                    <p className="text-xs leading-none text-muted-foreground capitalize">
+                      {profile?.role?.replace('_', ' ') || 'Role'}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="gap-2 text-destructive focus:text-destructive cursor-pointer">
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
