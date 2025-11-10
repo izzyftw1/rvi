@@ -2564,6 +2564,63 @@ export type Database = {
         }
         Relationships: []
       }
+      qc_final_reports: {
+        Row: {
+          created_at: string | null
+          file_path: string
+          file_url: string
+          generated_at: string | null
+          generated_by: string | null
+          id: string
+          remarks: string | null
+          report_data: Json | null
+          updated_at: string | null
+          version_number: number
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_path: string
+          file_url: string
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          remarks?: string | null
+          report_data?: Json | null
+          updated_at?: string | null
+          version_number?: number
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string | null
+          file_path?: string
+          file_url?: string
+          generated_at?: string | null
+          generated_by?: string | null
+          id?: string
+          remarks?: string | null
+          report_data?: Json | null
+          updated_at?: string | null
+          version_number?: number
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qc_final_reports_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_final_reports_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qc_measurements: {
         Row: {
           created_at: string
