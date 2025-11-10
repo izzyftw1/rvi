@@ -181,17 +181,128 @@ export const generateProformaInvoice = (data: ProformaInvoiceData): jsPDF => {
 };
 
 export const generateProformaFromSalesOrder = (salesOrder: any, customer: any): jsPDF => {
-  // Generate proforma number from SO
-  const proformaNo = `${salesOrder.so_id}-PI`;
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+  let yPos = 20;
   
-  // Parse items - handle both string and array formats
+  // === HEADER SECTION ===
+  // Company Logo and Name
+  doc.setFontSize(22);
+  doc.setFont("helvetica", "bold");
+  doc.text("R.V. INDUSTRIES", pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 6;
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Manufacturer of HIGH PRECISION Brass & Stainless Steel Components", pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 5;
+  doc.setFontSize(8);
+  doc.text("K-1/212, G.I.D.C. Shankar Tekri, Udyognagar, Jamnagar - 361004 (Gujarat) India", pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 4;
+  doc.text("Email: sales@brasspartsindia.net | Web: www.brasspartsindia.net", pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 4;
+  doc.text("ISO 9001:2015 | TÜV SÜD | RoHS Compliant", pageWidth / 2, yPos, { align: "center" });
+  
+  // Horizontal line
+  yPos += 5;
+  doc.setLineWidth(0.5);
+  doc.line(14, yPos, pageWidth - 14, yPos);
+  
+  // === PROFORMA DETAILS ===
+  yPos += 8;
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("PROFORMA INVOICE", pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 10;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  
+  // Left column: Proforma details
+  const leftCol = 14;
+  const rightCol = pageWidth / 2 + 10;
+  
+  doc.setFont("helvetica", "bold");
+  doc.text("Proforma Invoice No:", leftCol, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${salesOrder.so_id}-PI`, leftCol + 45, yPos);
+  
+  doc.setFont("helvetica", "bold");
+  doc.text("Date:", rightCol, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.text(new Date().toLocaleDateString('en-GB').replace(/\//g, '-'), rightCol + 15, yPos);
+  
+  yPos += 6;
+  doc.setFont("helvetica", "bold");
+  doc.text("Sales Order No:", leftCol, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.text(salesOrder.so_id || 'N/A', leftCol + 45, yPos);
+  
+  doc.setFont("helvetica", "bold");
+  doc.text("PO Date:", rightCol, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    salesOrder.po_date 
+      ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-')
+      : 'N/A',
+    rightCol + 15,
+    yPos
+  );
+  
+  yPos += 6;
+  doc.setFont("helvetica", "bold");
+  doc.text("Customer PO No:", leftCol, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.text(salesOrder.po_number || 'N/A', leftCol + 45, yPos);
+  
+  // === CUSTOMER DETAILS ===
+  yPos += 10;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Bill To:", leftCol, yPos);
+  
+  yPos += 6;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.text(customer?.customer_name || salesOrder.customer || 'Customer Name', leftCol, yPos);
+  
+  if (customer?.address_line_1) {
+    yPos += 5;
+    doc.text(customer.address_line_1, leftCol, yPos);
+  }
+  
+  if (customer?.city || customer?.state) {
+    yPos += 5;
+    const location = [customer?.city, customer?.state, customer?.pincode].filter(Boolean).join(', ');
+    doc.text(location, leftCol, yPos);
+  }
+  
+  if (customer?.country) {
+    yPos += 5;
+    doc.text(customer.country, leftCol, yPos);
+  }
+  
+  if (customer?.gst_number) {
+    yPos += 5;
+    doc.setFont("helvetica", "bold");
+    doc.text("GST No: ", leftCol, yPos);
+    doc.setFont("helvetica", "normal");
+    doc.text(customer.gst_number, leftCol + 18, yPos);
+  }
+  
+  // === ITEMS TABLE ===
+  yPos += 10;
+  
+  // Parse items
   let items = [];
   if (salesOrder.items) {
     if (typeof salesOrder.items === 'string') {
       try {
         items = JSON.parse(salesOrder.items);
       } catch (e) {
-        console.error("Failed to parse items:", e);
         items = [];
       }
     } else if (Array.isArray(salesOrder.items)) {
@@ -199,44 +310,145 @@ export const generateProformaFromSalesOrder = (salesOrder: any, customer: any): 
     }
   }
   
-  const proformaItems = items.map((item: any, index: number) => ({
-    srNo: index + 1,
-    description: `${item.item_code || 'Item'} - ${item.drawing_number || ''}`,
-    material: item.alloy || item.material_size_mm || 'As specified',
-    quantity: item.quantity || 0,
-    pricePerPc: Number(item.price_per_pc || 0),
-    totalAmount: Number(item.line_amount || (item.quantity * item.price_per_pc) || 0)
-  }));
+  const tableHeaders = [
+    ['Sr No', 'Item Code', 'Description', 'Qty', 'Unit', `Unit Price\n(${salesOrder.currency || 'USD'})`, `Amount\n(${salesOrder.currency || 'USD'})`]
+  ];
   
-  const data: ProformaInvoiceData = {
-    proformaNo: proformaNo,
-    date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-    customer: {
-      name: customer?.customer_name || salesOrder.customer || 'Customer Name',
-      address: customer?.city || salesOrder.customer || '',
-      city: customer?.state && customer?.country 
-        ? `${customer.state}, ${customer.country}`.trim() 
-        : '',
-      attention: customer?.primary_contact_name,
-      phone: customer?.primary_contact_phone
+  const tableData = items.map((item: any, index: number) => [
+    (index + 1).toString(),
+    item.item_code || '-',
+    `${item.alloy || ''} ${item.material_size_mm || ''}`.trim() || 'As per spec',
+    item.quantity?.toString() || '0',
+    'PCS',
+    item.price_per_pc ? Number(item.price_per_pc).toFixed(4) : '0.0000',
+    item.line_amount ? Number(item.line_amount).toFixed(2) : '0.00'
+  ]);
+  
+  autoTable(doc, {
+    head: tableHeaders,
+    body: tableData,
+    startY: yPos,
+    theme: 'grid',
+    styles: { 
+      fontSize: 9,
+      cellPadding: 3
     },
-    poNumber: salesOrder.po_number || 'N/A',
-    poDate: salesOrder.po_date 
-      ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-')
-      : new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-    items: proformaItems,
-    currency: salesOrder.currency || 'USD',
-    paymentTerms: salesOrder.advance_payment 
-      ? `Advance Payment: ${salesOrder.currency || 'USD'} ${salesOrder.advance_payment.calculated_amount?.toFixed(2) || '0.00'} (${salesOrder.advance_payment.type === 'percentage' ? salesOrder.advance_payment.value + '%' : 'Fixed'})`
-      : salesOrder.payment_terms_days 
-        ? `Payment within ${salesOrder.payment_terms_days} days` 
-        : '100% Advance Payment',
-    delivery: salesOrder.expected_delivery_date
-      ? `${Math.ceil((new Date(salesOrder.expected_delivery_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} Days from the date of PO`
-      : '20 Days from the date of PO Copy with advance payment',
-    incoterms: salesOrder.incoterm || '-',
-    quantityTolerance: '10% quantity or value plus/minus can happen at the time of production.'
-  };
+    headStyles: { 
+      fillColor: [70, 70, 70],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'center'
+    },
+    columnStyles: {
+      0: { cellWidth: 15, halign: 'center' },
+      1: { cellWidth: 30 },
+      2: { cellWidth: 50 },
+      3: { cellWidth: 20, halign: 'right' },
+      4: { cellWidth: 20, halign: 'center' },
+      5: { cellWidth: 25, halign: 'right' },
+      6: { cellWidth: 30, halign: 'right' }
+    }
+  });
   
-  return generateProformaInvoice(data);
+  // === TOTALS SECTION ===
+  yPos = (doc as any).lastAutoTable.finalY + 10;
+  
+  const subtotal = items.reduce((sum: number, item: any) => sum + (Number(item.line_amount) || 0), 0);
+  const gstPercent = customer?.gst_type === 'domestic' ? 18 : 0;
+  const gstAmount = (subtotal * gstPercent) / 100;
+  const total = subtotal + gstAmount;
+  
+  // Totals box on the right
+  const totalsX = pageWidth - 80;
+  const totalsWidth = 66;
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  
+  // Subtotal
+  doc.text("Subtotal:", totalsX, yPos);
+  doc.text(`${salesOrder.currency || 'USD'} ${subtotal.toFixed(2)}`, totalsX + totalsWidth, yPos, { align: 'right' });
+  
+  if (gstPercent > 0) {
+    yPos += 6;
+    doc.text(`GST (${gstPercent}%):`, totalsX, yPos);
+    doc.text(`${salesOrder.currency || 'USD'} ${gstAmount.toFixed(2)}`, totalsX + totalsWidth, yPos, { align: 'right' });
+  }
+  
+  yPos += 6;
+  doc.setLineWidth(0.3);
+  doc.line(totalsX, yPos - 2, totalsX + totalsWidth, yPos - 2);
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Total:", totalsX, yPos);
+  doc.text(`${salesOrder.currency || 'USD'} ${total.toFixed(2)}`, totalsX + totalsWidth, yPos, { align: 'right' });
+  
+  // === PAYMENT SUMMARY ===
+  yPos += 10;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Payment Summary:", leftCol, yPos);
+  
+  yPos += 7;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  
+  let advanceAmount = 0;
+  if (salesOrder.advance_payment) {
+    advanceAmount = salesOrder.advance_payment.calculated_amount || 0;
+    const advanceDisplay = salesOrder.advance_payment.type === 'percentage'
+      ? `${salesOrder.advance_payment.value}% (${salesOrder.currency || 'USD'} ${advanceAmount.toFixed(2)})`
+      : `${salesOrder.currency || 'USD'} ${advanceAmount.toFixed(2)}`;
+    
+    doc.text("Advance Payment:", leftCol, yPos);
+    doc.setFont("helvetica", "bold");
+    doc.text(advanceDisplay, leftCol + 50, yPos);
+    doc.setFont("helvetica", "normal");
+  } else {
+    doc.text("Advance Payment:", leftCol, yPos);
+    doc.text("Not specified", leftCol + 50, yPos);
+  }
+  
+  yPos += 6;
+  const balancePayable = total - advanceAmount;
+  doc.text("Balance Payable:", leftCol, yPos);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${salesOrder.currency || 'USD'} ${balancePayable.toFixed(2)}`, leftCol + 50, yPos);
+  
+  // === TERMS & CONDITIONS ===
+  yPos += 12;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Terms & Conditions:", leftCol, yPos);
+  
+  yPos += 7;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  
+  const terms = [
+    `Incoterms: ${salesOrder.incoterm || 'EXW'}`,
+    `Payment Terms: ${salesOrder.payment_terms_days ? `${salesOrder.payment_terms_days} days` : 'As agreed'}`,
+    `Delivery: ${salesOrder.expected_delivery_date 
+      ? `Expected by ${new Date(salesOrder.expected_delivery_date).toLocaleDateString('en-GB')}`
+      : 'As per agreement'}`,
+    `Quantity Tolerance: ±10% variation is acceptable`
+  ];
+  
+  terms.forEach(term => {
+    doc.text(`• ${term}`, leftCol + 2, yPos);
+    yPos += 5;
+  });
+  
+  // === FOOTER ===
+  const footerY = doc.internal.pageSize.height - 15;
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(100, 100, 100);
+  doc.text("This is a computer-generated Proforma Invoice.", pageWidth / 2, footerY, { align: "center" });
+  
+  doc.setFont("helvetica", "normal");
+  doc.text("For R.V. Industries | Authorized Signatory", pageWidth / 2, footerY + 5, { align: "center" });
+  
+  return doc;
 };

@@ -427,7 +427,9 @@ export default function Sales() {
 
   const handleDownloadProforma = async (order: any) => {
     try {
-      // Fetch customer details if customer_id exists
+      setLoading(true);
+      
+      // Fetch customer details
       let customer = null;
       if (order.customer_id) {
         const { data } = await supabase
@@ -441,16 +443,129 @@ export default function Sales() {
       console.log("Generating proforma for order:", order);
       console.log("Customer data:", customer);
       
+      // Generate PDF
       const pdf = generateProformaFromSalesOrder(order, customer);
-      pdf.save(`Proforma_${order.so_id}.pdf`);
+      const pdfBlob = pdf.output('blob');
+      const proformaNo = `${order.so_id}-PI`;
+      const fileName = `${proformaNo}.pdf`;
       
-      toast({ description: `Proforma invoice downloaded for ${order.so_id}` });
+      // Upload to Supabase Storage
+      const filePath = `${order.customer_id || 'unknown'}/${fileName}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('proforma-invoices')
+        .upload(filePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('proforma-invoices')
+        .getPublicUrl(filePath);
+
+      // Save metadata to database
+      const { data: proformaRecord, error: dbError } = await supabase
+        .from('proforma_invoices')
+        .insert({
+          sales_order_id: order.id,
+          proforma_no: proformaNo,
+          file_path: filePath,
+          file_url: urlData.publicUrl,
+          generated_by: user?.id
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // Download the PDF
+      pdf.save(fileName);
+      
+      toast({ description: `Proforma invoice generated and saved for ${order.so_id}` });
+      await loadSalesOrders();
     } catch (error: any) {
       console.error("Error generating proforma:", error);
       toast({ 
         variant: "destructive", 
         description: `Failed to generate proforma: ${error.message || 'Unknown error'}` 
       });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailProforma = async (order: any) => {
+    try {
+      setLoading(true);
+      
+      // Check if proforma exists
+      const { data: proformaData } = await supabase
+        .from('proforma_invoices')
+        .select('*')
+        .eq('sales_order_id', order.id)
+        .order('generated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!proformaData) {
+        toast({
+          variant: "destructive",
+          description: "Please generate the proforma invoice first"
+        });
+        return;
+      }
+
+      // Get customer email
+      let customerEmail = null;
+      if (order.customer_id) {
+        const { data: customerData } = await supabase
+          .from('customer_master')
+          .select('primary_contact_email')
+          .eq('id', order.customer_id)
+          .maybeSingle();
+        customerEmail = customerData?.primary_contact_email;
+      }
+
+      if (!customerEmail) {
+        toast({
+          variant: "destructive",
+          description: "Customer email not found. Please update customer details."
+        });
+        return;
+      }
+
+      // Call edge function to send email
+      const { data, error } = await supabase.functions.invoke('send-proforma-email', {
+        body: {
+          proformaId: proformaData.id,
+          customerEmail: customerEmail,
+          customerName: order.customer,
+          salesOrderNo: order.so_id,
+          proformaNo: proformaData.proforma_no,
+          pdfUrl: proformaData.file_url
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast({ 
+          description: `Proforma invoice emailed to ${customerEmail}` 
+        });
+        await loadSalesOrders();
+      } else {
+        throw new Error(data?.error || 'Failed to send email');
+      }
+    } catch (error: any) {
+      console.error("Error emailing proforma:", error);
+      toast({
+        variant: "destructive",
+        description: `Failed to email proforma: ${error.message || 'Unknown error'}`
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -786,14 +901,27 @@ export default function Sales() {
                   </div>
                   <div className="flex gap-2">
                     {order.status === 'approved' && (
-                      <Button 
-                        size="sm" 
-                        variant="default"
-                        onClick={() => handleDownloadProforma(order)}
-                        title="Download Proforma Invoice"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="default"
+                          onClick={() => handleDownloadProforma(order)}
+                          title="Generate & Download Proforma Invoice"
+                          disabled={loading}
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Download PI
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleEmailProforma(order)}
+                          title="Email Proforma Invoice to Customer"
+                          disabled={loading}
+                        >
+                          Email PI
+                        </Button>
+                      </>
                     )}
                     <Button size="sm" variant="outline" onClick={() => {
                       setSelectedOrder(order);

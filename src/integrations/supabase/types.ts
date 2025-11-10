@@ -2493,6 +2493,56 @@ export type Database = {
           },
         ]
       }
+      proforma_invoices: {
+        Row: {
+          created_at: string
+          file_path: string
+          file_url: string | null
+          generated_at: string
+          generated_by: string | null
+          id: string
+          proforma_no: string
+          sales_order_id: string
+          sent_at: string | null
+          sent_to_email: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          file_path: string
+          file_url?: string | null
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          proforma_no: string
+          sales_order_id: string
+          sent_at?: string | null
+          sent_to_email?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          file_path?: string
+          file_url?: string | null
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          proforma_no?: string
+          sales_order_id?: string
+          sent_at?: string | null
+          sent_to_email?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proforma_invoices_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_orders: {
         Row: {
           approved_at: string | null
