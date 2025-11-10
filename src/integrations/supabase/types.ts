@@ -2676,6 +2676,7 @@ export type Database = {
       }
       qc_records: {
         Row: {
+          approved_at: string | null
           approved_by: string | null
           created_at: string
           digital_signature: Json | null
@@ -2695,6 +2696,7 @@ export type Database = {
           wo_id: string
         }
         Insert: {
+          approved_at?: string | null
           approved_by?: string | null
           created_at?: string
           digital_signature?: Json | null
@@ -2714,6 +2716,7 @@ export type Database = {
           wo_id: string
         }
         Update: {
+          approved_at?: string | null
           approved_by?: string | null
           created_at?: string
           digital_signature?: Json | null
