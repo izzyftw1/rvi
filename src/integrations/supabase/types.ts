@@ -4589,6 +4589,21 @@ export type Database = {
         }
         Relationships: []
       }
+      dashboard_summary_vw: {
+        Row: {
+          due_today: number | null
+          external_wip_pcs: number | null
+          late_deliveries: number | null
+          maintenance_overdue: number | null
+          material_waiting_qc: number | null
+          on_time_rate_7d: number | null
+          orders_in_pipeline: number | null
+          orders_in_production: number | null
+          qc_pending_approval: number | null
+          work_orders_delayed: number | null
+        }
+        Relationships: []
+      }
       external_processing_summary_vw: {
         Row: {
           active_moves: number | null
@@ -4596,6 +4611,16 @@ export type Database = {
           overdue: number | null
           pcs_total: number | null
           process_name: string | null
+        }
+        Relationships: []
+      }
+      internal_flow_summary_vw: {
+        Row: {
+          active_jobs: number | null
+          avg_wait_hours: number | null
+          kg_remaining: number | null
+          pcs_remaining: number | null
+          stage_name: string | null
         }
         Relationships: []
       }

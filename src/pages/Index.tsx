@@ -1,83 +1,76 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { 
   Factory, 
   Package, 
   Truck, 
   CheckCircle2,
-  LogOut,
-  Shield,
   AlertTriangle,
   ClipboardCheck,
-  QrCode,
-  ChevronDown,
-  ChevronUp,
-  Settings,
-  Users,
-  Building2,
-  Handshake,
-  Store,
   Wrench,
-  FileText,
-  Award,
-  ScrollText
+  Clock
 } from "lucide-react";
-import { KPIBanner } from "@/components/dashboard/KPIBanner";
-import { FloorKanban } from "@/components/dashboard/FloorKanban";
-import { useUserRole } from "@/hooks/useUserRole";
-import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
-import { TodayGlanceTimeline } from "@/components/dashboard/TodayGlanceTimeline";
-import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
-import { QCAlertsWidget } from "@/components/dashboard/QCAlertsWidget";
-import { LogisticsAlertsWidget } from "@/components/dashboard/LogisticsAlertsWidget";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
+import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
+import { cn } from "@/lib/utils";
+
+interface DashboardSummary {
+  material_waiting_qc: number;
+  maintenance_overdue: number;
+  work_orders_delayed: number;
+  qc_pending_approval: number;
+  orders_in_pipeline: number;
+  orders_in_production: number;
+  external_wip_pcs: number;
+  late_deliveries: number;
+  due_today: number;
+  on_time_rate_7d: number;
+}
+
+interface InternalFlowStage {
+  stage_name: string;
+  active_jobs: number;
+  pcs_remaining: number;
+  kg_remaining: number;
+  avg_wait_hours: number;
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  goods_in: 'Goods In',
+  cutting: 'Cutting',
+  forging: 'Forging',
+  production: 'Production',
+  quality: 'Quality',
+  packing: 'Packing',
+  dispatch: 'Dispatch'
+};
+
+const STAGE_ICONS: Record<string, any> = {
+  goods_in: Package,
+  cutting: Factory,
+  forging: Factory,
+  production: Factory,
+  quality: ClipboardCheck,
+  packing: Package,
+  dispatch: Truck
+};
 
 const Index = () => {
   const navigate = useNavigate();
-  const { isSuperAdmin, isFinanceRole, hasRole } = useUserRole();
   const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [userRoles, setUserRoles] = useState<string[]>([]);
-  
-  // KPI Metrics
-  const [kpiMetrics, setKpiMetrics] = useState({
-    ordersPipeline: 0,
-    ordersProduction: 0,
-    externalWIP: 0,
-    lateDeliveries: 0,
-    dueToday: 0,
-    ontimeRate7d: 0,
-  });
-
-  // Floor Stats
-  const [floorStats, setFloorStats] = useState({
-    goods_in: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
-    production: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
-    qc: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
-    packing: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
-    dispatch: { count: 0, pcs: 0, kg: 0, avgWait: 0 },
-  });
-
-  const [todayEvents, setTodayEvents] = useState<any[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [internalFlow, setInternalFlow] = useState<InternalFlowStage[]>([]);
 
   useEffect(() => {
-    // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser(session.user);
-        loadProfile(session.user.id);
         loadDashboardData();
       } else {
         navigate("/auth");
@@ -85,11 +78,9 @@ const Index = () => {
       setLoading(false);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setUser(session.user);
-        loadProfile(session.user.id);
         loadDashboardData();
       } else {
         navigate("/auth");
@@ -101,179 +92,55 @@ const Index = () => {
     };
   }, [navigate]);
 
-  // Throttled realtime for KPIs - separate channel
-  const loadKPIsCallback = useCallback(() => {
-    if (user) loadKPIs();
-  }, [user, userRoles]);
+  useEffect(() => {
+    if (!user) return;
 
-  useThrottledRealtime({
-    channelName: 'dashboard-kpis',
-    tables: ['work_orders', 'sales_orders', 'qc_records', 'wo_external_moves'],
-    onUpdate: loadKPIsCallback,
-    throttleMs: 10000, // 10 seconds for KPIs
-    cacheMs: 30000, // 30 seconds cache
-  });
+    // Real-time subscriptions
+    const channel = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => loadDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, () => loadDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => loadDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hourly_qc_checks' }, () => loadDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_logs' }, () => loadDashboardData())
+      .subscribe();
 
-  const loadProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    
-    if (data) {
-      setProfile(data);
-    }
-
-    // Load user roles
-    const { data: rolesData } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    
-    if (rolesData) {
-      setUserRoles(rolesData.map(r => r.role));
-    }
-  };
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const loadDashboardData = async () => {
     try {
-      await loadKPIs();
+      // Load summary data
+      const { data: summaryData, error: summaryError } = await supabase
+        .from('dashboard_summary_vw')
+        .select('*')
+        .single();
+
+      if (!summaryError && summaryData) {
+        setSummary(summaryData);
+      }
+
+      // Load internal flow data
+      const { data: flowData, error: flowError } = await supabase
+        .from('internal_flow_summary_vw')
+        .select('*');
+
+      if (!flowError && flowData) {
+        setInternalFlow(flowData);
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
   };
 
-  const loadKPIs = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-    // Check if user is QC role
-    const isQC = userRoles.includes('quality');
-
-    if (isQC) {
-      // QC-specific KPIs
-      // Material Tests Pending
-      const { count: materialTests } = await supabase
-        .from('qc_records')
-        .select('*', { count: 'exact', head: true })
-        .eq('qc_type', 'incoming')
-        .eq('result', 'pending');
-
-      // First-Piece Due (24h)
-      const { data: firstPieceDue } = await supabase
-        .from('qc_records')
-        .select('*, work_orders!inner(due_date)')
-        .eq('qc_type', 'first_piece')
-        .eq('result', 'pending')
-        .lte('work_orders.due_date', tomorrowStr);
-
-      // QC Holds
-      const { count: qcHolds } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('production_allowed', false)
-        .neq('status', 'completed');
-
-      // Orders in Production (still useful for QC)
-      const { count: production } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['in_progress', 'pending']);
-
-      // Late Deliveries
-      const { count: late } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .lt('due_date', today)
-        .neq('status', 'completed');
-
-      // Due Today
-      const { count: dueToday } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('due_date', today)
-        .neq('status', 'completed');
-
-      setKpiMetrics({
-        ordersPipeline: materialTests || 0, // Repurposed
-        ordersProduction: production || 0,
-        externalWIP: firstPieceDue?.length || 0, // Repurposed
-        lateDeliveries: late || 0,
-        dueToday: qcHolds || 0, // Repurposed
-        ontimeRate7d: dueToday || 0, // Repurposed
-      });
-    } else {
-      // Default KPIs for Production/Logistics/Others
-      // Orders in Pipeline (pending/approved sales orders)
-      const { count: pipeline } = await supabase
-        .from('sales_orders')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['pending', 'approved']);
-
-      // Orders in Production
-      const { count: production } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['in_progress', 'pending']);
-
-      // External WIP (count pieces sent out but not returned)
-      const { data: externalMoves } = await supabase
-        .from('wo_external_moves' as any)
-        .select('qty_sent, qty_returned')
-        .is('returned_date', null);
-      
-      const externalWIP = externalMoves?.reduce((sum: number, move: any) => {
-        return sum + (move.qty_sent - (move.qty_returned || 0));
-      }, 0) || 0;
-
-      // Late Deliveries
-      const { count: late } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .lt('due_date', today)
-        .neq('status', 'completed');
-
-      // Due Today
-      const { count: dueToday } = await supabase
-        .from('work_orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('due_date', today)
-        .neq('status', 'completed');
-
-      // On-time Rate 7d
-      const { data: completedLast7d } = await supabase
-        .from('work_orders')
-        .select('due_date, updated_at')
-        .eq('status', 'completed')
-        .gte('updated_at', sevenDaysAgo);
-      
-      const ontimeCount = completedLast7d?.filter(wo => {
-        return new Date(wo.updated_at) <= new Date(wo.due_date);
-      }).length || 0;
-      
-      const totalCompleted = completedLast7d?.length || 0;
-      const ontimeRate7d = totalCompleted > 0 ? Math.round((ontimeCount / totalCompleted) * 100) : 100;
-
-      setKpiMetrics({
-        ordersPipeline: pipeline || 0,
-        ordersProduction: production || 0,
-        externalWIP,
-        lateDeliveries: late || 0,
-        dueToday: dueToday || 0,
-        ontimeRate7d,
-      });
-    }
+  const handleHeaderCardClick = (route: string, query?: string) => {
+    navigate(query ? `${route}?${query}` : route);
   };
 
-  // Removed loadFloorStatus and loadTodayEvents - moved to individual components with throttling
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/auth");
+  const handleStageClick = (stageName: string) => {
+    navigate(`/production-progress?stage=${stageName}`);
   };
 
   if (loading) {
@@ -287,148 +154,201 @@ const Index = () => {
     );
   }
 
-  // Prepare KPI data based on role
-  const isQC = userRoles.includes('quality');
-  
-  const kpiData = isQC ? [
-    {
-      label: "Material Tests Pending",
-      value: kpiMetrics.ordersPipeline.toString(),
-      status: (kpiMetrics.ordersPipeline === 0 ? 'good' : 
-              kpiMetrics.ordersPipeline <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: Package,
-      onClick: () => navigate("/qc-incoming")
-    },
-    {
-      label: "Orders in Production",
-      value: kpiMetrics.ordersProduction.toString(),
-      status: 'good' as const,
-      icon: Factory,
-      onClick: () => navigate("/production-progress")
-    },
-    {
-      label: "First-Piece Due (24h)",
-      value: kpiMetrics.externalWIP.toString(),
-      status: (kpiMetrics.externalWIP === 0 ? 'good' : 
-              kpiMetrics.externalWIP <= 2 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: ClipboardCheck,
-      onClick: () => navigate("/quality")
-    },
-    {
-      label: "Late Deliveries",
-      value: kpiMetrics.lateDeliveries.toString(),
-      status: (kpiMetrics.lateDeliveries === 0 ? 'good' : 
-              kpiMetrics.lateDeliveries <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: AlertTriangle,
-      onClick: () => navigate("/work-orders")
-    },
-    {
-      label: "QC Holds",
-      value: kpiMetrics.dueToday.toString(),
-      status: (kpiMetrics.dueToday === 0 ? 'good' : 
-              kpiMetrics.dueToday <= 2 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: AlertTriangle,
-      onClick: () => navigate("/quality")
-    },
-    {
-      label: "Due Today",
-      value: kpiMetrics.ontimeRate7d.toString(),
-      status: (kpiMetrics.ontimeRate7d === 0 ? 'good' : 
-              kpiMetrics.ontimeRate7d <= 5 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: CheckCircle2,
-      onClick: () => navigate("/work-orders")
-    }
-  ] : [
-    {
-      label: "Orders in Pipeline",
-      value: kpiMetrics.ordersPipeline.toString(),
-      status: 'good' as const,
-      icon: Package,
-      onClick: () => navigate("/sales")
-    },
-    {
-      label: "Orders in Production",
-      value: kpiMetrics.ordersProduction.toString(),
-      status: 'good' as const,
-      icon: Factory,
-      onClick: () => navigate("/production-progress")
-    },
-    {
-      label: "External WIP pcs",
-      value: kpiMetrics.externalWIP.toString(),
-      status: (kpiMetrics.externalWIP === 0 ? 'good' : 
-              kpiMetrics.externalWIP <= 500 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: Truck,
-      onClick: () => navigate("/logistics")
-    },
-    {
-      label: "Late Deliveries",
-      value: kpiMetrics.lateDeliveries.toString(),
-      status: (kpiMetrics.lateDeliveries === 0 ? 'good' : 
-              kpiMetrics.lateDeliveries <= 3 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: AlertTriangle,
-      onClick: () => navigate("/work-orders")
-    },
-    {
-      label: "Due Today",
-      value: kpiMetrics.dueToday.toString(),
-      status: (kpiMetrics.dueToday === 0 ? 'good' : 
-              kpiMetrics.dueToday <= 5 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: ClipboardCheck,
-      onClick: () => navigate("/work-orders")
-    },
-    {
-      label: "On-time Rate 7d",
-      value: `${kpiMetrics.ontimeRate7d}%`,
-      status: (kpiMetrics.ontimeRate7d >= 90 ? 'good' : 
-              kpiMetrics.ontimeRate7d >= 75 ? 'warning' : 'critical') as 'good' | 'warning' | 'critical',
-      icon: CheckCircle2,
-      onClick: () => navigate("/reports")
-    }
-  ];
-
+  const getStageBadgeColor = (activeJobs: number) => {
+    if (activeJobs === 0) return 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200';
+    if (activeJobs <= 5) return 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200';
+    if (activeJobs <= 10) return 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 border-yellow-200';
+    return 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border-red-200';
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Critical Alerts Bar */}
         <CriticalAlertsBar />
 
-        {/* KPI Banner - Compact 6 tiles */}
-        <KPIBanner metrics={kpiData} />
+        {/* Header Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card 
+                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
+                  onClick={() => handleHeaderCardClick('/qc-incoming', 'status=pending')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Material Waiting QC</p>
+                        <p className="text-2xl font-bold">{summary?.material_waiting_qc || 0}</p>
+                      </div>
+                      <Package className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Material lots pending QC approval</p>
+              </TooltipContent>
+            </Tooltip>
 
-        {/* Role-specific alerts */}
-        {userRoles.includes('quality') && (
-          <QCAlertsWidget />
-        )}
-        {userRoles.includes('logistics') && (
-          <LogisticsAlertsWidget />
-        )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card 
+                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
+                  onClick={() => handleHeaderCardClick('/maintenance', 'status=overdue')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Maintenance Overdue</p>
+                        <p className="text-2xl font-bold">{summary?.maintenance_overdue || 0}</p>
+                      </div>
+                      <Wrench className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Active maintenance tasks not yet completed</p>
+              </TooltipContent>
+            </Tooltip>
 
-        {/* Tabbed View - Default tab based on role */}
-        <Tabs 
-          defaultValue={userRoles.includes('logistics') ? 'external' : 'internal'} 
-          className="w-full"
-        >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card 
+                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
+                  onClick={() => handleHeaderCardClick('/work-orders', 'status=delayed')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Work Orders Delayed</p>
+                        <p className="text-2xl font-bold">{summary?.work_orders_delayed || 0}</p>
+                      </div>
+                      <Clock className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Work orders past their due date</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card 
+                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
+                  onClick={() => handleHeaderCardClick('/quality', 'status=pending')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">QC Pending Approval</p>
+                        <p className="text-2xl font-bold">{summary?.qc_pending_approval || 0}</p>
+                      </div>
+                      <ClipboardCheck className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>QC checks awaiting approval</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {/* Mid Summary - Status Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/work-orders', 'status=pending')}>
+            <CardContent className="p-4 text-center">
+              <div className="text-3xl font-bold text-green-600">{summary?.orders_in_pipeline || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">Orders in Pipeline</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/production-progress')}>
+            <CardContent className="p-4 text-center">
+              <div className="text-3xl font-bold text-blue-600">{summary?.orders_in_production || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">Orders in Production</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/logistics')}>
+            <CardContent className="p-4 text-center">
+              <div className="text-3xl font-bold text-purple-600">{summary?.external_wip_pcs || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">External WIP pcs</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/dispatch', 'status=late')}>
+            <CardContent className="p-4 text-center">
+              <div className="text-3xl font-bold text-red-600">{summary?.late_deliveries || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">Late Deliveries</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/work-orders', 'due=today')}>
+            <CardContent className="p-4 text-center">
+              <div className="text-3xl font-bold text-orange-600">{summary?.due_today || 0}</div>
+              <p className="text-sm text-muted-foreground mt-1">Due Today</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/reports')}>
+            <CardContent className="p-4 text-center">
+              <div className="text-3xl font-bold text-teal-600">{summary?.on_time_rate_7d || 100}%</div>
+              <p className="text-sm text-muted-foreground mt-1">On-Time Rate 7d</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tabbed View */}
+        <Tabs defaultValue="internal" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="internal">Internal Flow</TabsTrigger>
             <TabsTrigger value="external">External Processing</TabsTrigger>
           </TabsList>
           
           <TabsContent value="internal" className="space-y-6 mt-6">
-            {/* Live Floor Status - Kanban View */}
-            {!userRoles.includes('quality') && <FloorKanban />}
-
-            {/* Today at a Glance Timeline */}
-            <TodayGlanceTimeline limit={10} showViewAll={true} />
-
-            {/* QC sees simplified kanban */}
-            {userRoles.includes('quality') && (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm">Internal flow view available. Switch to External tab for detailed processing.</p>
-              </div>
-            )}
+            {/* Internal Flow Kanban */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+              {internalFlow.map((stage) => {
+                const Icon = STAGE_ICONS[stage.stage_name];
+                return (
+                  <Card 
+                    key={stage.stage_name}
+                    className="cursor-pointer hover:shadow-lg transition-all hover:scale-105"
+                    onClick={() => handleStageClick(stage.stage_name)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex flex-col items-center space-y-3">
+                        <Icon className="h-8 w-8 text-primary" />
+                        <h3 className="font-semibold text-center text-sm">{STAGE_LABELS[stage.stage_name]}</h3>
+                        <Badge variant="outline" className={cn("font-mono text-lg px-3 py-1", getStageBadgeColor(stage.active_jobs))}>
+                          {stage.active_jobs}
+                        </Badge>
+                        <div className="text-center space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            {Math.round(stage.pcs_remaining || 0)} pcs
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {(stage.kg_remaining || 0).toFixed(1)} kg
+                          </p>
+                          {stage.avg_wait_hours > 0 && (
+                            <p className="text-xs text-orange-600 font-medium">
+                              ~{Math.round(stage.avg_wait_hours)}h wait
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </TabsContent>
 
           <TabsContent value="external" className="mt-6">
