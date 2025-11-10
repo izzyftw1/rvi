@@ -174,13 +174,13 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       ]
     },
     {
-      title: "External Processes",
-      icon: Handshake,
-      allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
+      title: "Admin",
+      icon: AlertCircle,
+      allowedRoles: ['admin'],
       items: [
-        { label: "External Partners", path: "/partners", icon: Handshake },
-        { label: "External Moves", path: "/logistics", icon: Truck },
-        { label: "Partner Performance", path: "/partner-performance", icon: PackageCheck },
+        { label: "User Management", path: "/admin", icon: Users },
+        { label: "Site Settings", path: "/admin", icon: Box },
+        { label: "Factory Calendar", path: "/factory-calendar", icon: FileText },
       ]
     }
   ];
