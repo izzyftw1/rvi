@@ -52,6 +52,7 @@ export default function Sales() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [historicalLineItems, setHistoricalLineItems] = useState<any[]>([]);
+  const [materialSpecs, setMaterialSpecs] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     customer_id: "",
@@ -65,7 +66,8 @@ export default function Sales() {
     gst_type: "domestic",
     gst_number: "",
     incoterm: "EXW",
-    gst_percent: 18
+    gst_percent: 18,
+    advance_payment: ""
   });
   
   const [lineItems, setLineItems] = useState<LineItem[]>([{
@@ -94,8 +96,16 @@ export default function Sales() {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders(), loadHistoricalLineItems()]);
+    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders(), loadHistoricalLineItems(), loadMaterialSpecs()]);
     setLoading(false);
+  };
+
+  const loadMaterialSpecs = async () => {
+    const { data } = await supabase
+      .from("material_specs")
+      .select("*")
+      .order("size_label", { ascending: true });
+    if (data) setMaterialSpecs(data);
   };
 
   const loadHistoricalLineItems = async () => {
@@ -279,6 +289,23 @@ export default function Sales() {
 
       const { subtotal, gstAmount, total } = calculateTotals();
 
+      // Calculate advance payment
+      let advancePaymentData = null;
+      if (formData.advance_payment) {
+        const input = formData.advance_payment.trim();
+        const isPercentage = input.includes('%');
+        const value = parseFloat(input.replace('%', ''));
+        
+        if (!isNaN(value)) {
+          advancePaymentData = {
+            type: isPercentage ? 'percentage' : 'fixed',
+            value: value,
+            calculated_amount: isPercentage ? (total * value / 100) : value,
+            currency: formData.currency
+          };
+        }
+      }
+
       // Get selected customer data
       const selectedCustomer = customers.find(c => c.id === formData.customer_id);
       if (!selectedCustomer) {
@@ -300,6 +327,7 @@ export default function Sales() {
           incoterm: formData.incoterm,
           expected_delivery_date: formData.expected_delivery_date || null,
           drawing_number: formData.drawing_number || null,
+          advance_payment: advancePaymentData,
           items: (lineItems || []).map((item: any) => ({
             item_code: item.item_code,
             quantity: Number(item.quantity) || 0,
@@ -362,7 +390,8 @@ export default function Sales() {
         gst_type: "domestic",
         gst_number: "",
         incoterm: "EXW",
-        gst_percent: 18
+        gst_percent: 18,
+        advance_payment: ""
       });
       setLineItems([{
         line_number: 1,
@@ -571,6 +600,16 @@ export default function Sales() {
                       />
                     </div>
                   )}
+
+                  <div className="space-y-2">
+                    <Label>Advance Payment</Label>
+                    <Input
+                      value={formData.advance_payment}
+                      onChange={(e) => setFormData({...formData, advance_payment: e.target.value})}
+                      placeholder="e.g., 30% or 5000"
+                    />
+                    <p className="text-xs text-muted-foreground">Enter % or fixed amount</p>
+                  </div>
                 </div>
               </div>
 
@@ -637,20 +676,30 @@ export default function Sales() {
                           <TableCell>
                             <Select value={item.alloy} onValueChange={(v) => updateLineItemField(idx, 'alloy', v)} required>
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select" />
+                                <SelectValue placeholder="Select grade" />
                               </SelectTrigger>
                               <SelectContent className="bg-background z-50">
-                                {ALLOYS.map(group => (
-                                  <div key={group.group}>
-                                    <SelectItem value={`__${group.group}__`} disabled className="font-semibold">{group.group}</SelectItem>
-                                    {group.items.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                                  </div>
+                                {[...new Set(materialSpecs.map(s => s.grade_label))].map(grade => (
+                                  <SelectItem key={grade} value={grade}>{grade}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </TableCell>
                           <TableCell>
-                            <Input value={item.material_size || ""} onChange={(e) => updateLineItemField(idx, 'material_size', e.target.value)} placeholder="e.g., Ø12mm" />
+                            <Select value={item.material_size} onValueChange={(v) => updateLineItemField(idx, 'material_size', v)}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select size" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-background z-50">
+                                {[...new Set(materialSpecs.map(s => s.size_label))].sort((a, b) => {
+                                  const numA = parseInt(a);
+                                  const numB = parseInt(b);
+                                  return numA - numB;
+                                }).map(size => (
+                                  <SelectItem key={size} value={size}>{size}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell>
                             <Input type="number" step="0.01" value={item.net_weight_per_pc_g || ""} onChange={(e) => updateLineItemField(idx, 'net_weight_per_pc_g', parseFloat(e.target.value))} />

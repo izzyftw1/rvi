@@ -226,9 +226,11 @@ export const generateProformaFromSalesOrder = (salesOrder: any, customer: any): 
       : new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     items: proformaItems,
     currency: salesOrder.currency || 'USD',
-    paymentTerms: salesOrder.payment_terms_days 
-      ? `Payment within ${salesOrder.payment_terms_days} days` 
-      : '100% Advance Payment',
+    paymentTerms: salesOrder.advance_payment 
+      ? `Advance Payment: ${salesOrder.currency || 'USD'} ${salesOrder.advance_payment.calculated_amount?.toFixed(2) || '0.00'} (${salesOrder.advance_payment.type === 'percentage' ? salesOrder.advance_payment.value + '%' : 'Fixed'})`
+      : salesOrder.payment_terms_days 
+        ? `Payment within ${salesOrder.payment_terms_days} days` 
+        : '100% Advance Payment',
     delivery: salesOrder.expected_delivery_date
       ? `${Math.ceil((new Date(salesOrder.expected_delivery_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} Days from the date of PO`
       : '20 Days from the date of PO Copy with advance payment',

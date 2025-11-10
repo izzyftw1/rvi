@@ -1831,6 +1831,30 @@ export type Database = {
           },
         ]
       }
+      material_specs: {
+        Row: {
+          created_at: string
+          grade_label: string
+          id: string
+          size_label: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          grade_label: string
+          id?: string
+          size_label: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          grade_label?: string
+          id?: string
+          size_label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       non_consumable_usage: {
         Row: {
           created_at: string
@@ -3583,6 +3607,7 @@ export type Database = {
       }
       sales_orders: {
         Row: {
+          advance_payment: Json | null
           approved_at: string | null
           approved_by: string | null
           created_at: string | null
@@ -3612,6 +3637,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          advance_payment?: Json | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
@@ -3641,6 +3667,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          advance_payment?: Json | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
