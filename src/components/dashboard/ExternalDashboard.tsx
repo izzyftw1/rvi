@@ -82,39 +82,28 @@ export const ExternalDashboard = () => {
 
   useThrottledRealtime({
     channelName: 'dashboard-external-heatmap',
-    tables: ['wo_external_moves', 'wo_external_receipts'],
+    tables: ['wo_external_moves', 'work_orders'],
     onUpdate: loadExternalDataCallback,
-    throttleMs: 5000, // 5 seconds throttle
-    cacheMs: 30000, // 30 seconds cache
+    throttleMs: 3000,
+    cacheMs: 15000,
   });
 
   const loadExternalData = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Fetch external moves with partner info and receipts
-      const [movesResult, receiptsResult, workOrdersResult, partnersResult] = await Promise.all([
-        supabase.from('wo_external_moves').select('*'),
-        supabase.from('wo_external_receipts').select('*'),
-        supabase.from('work_orders').select('id, display_id, wo_id, gross_weight_per_pc'),
-        supabase.from('external_partners').select('id, name')
-      ]);
+      // Use the new SQL view for aggregated data
+      const { data: summaryData, error: summaryError } = await supabase
+        .from('external_processing_summary_vw')
+        .select('*');
 
-      if (movesResult.error) {
-        console.warn('Could not load external partners:', movesResult.error);
+      if (summaryError) {
+        console.error('Error loading external processing summary:', summaryError);
         setLoading(false);
         return;
       }
 
-      const moves: any[] = movesResult.data || [];
-      const receipts: any[] = receiptsResult.data || [];
-      const workOrders: any[] = workOrdersResult.data || [];
-      const partners: any[] = partnersResult.data || [];
-
-      // Build partner name map
-      const partnerMap = new Map(partners.map(p => [p.id, p.name]));
-
-      // Build heatmap data
+      // Initialize with zeros
       const data: HeatmapData = {
         job_work: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
         plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
@@ -123,49 +112,63 @@ export const ExternalDashboard = () => {
         forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
       };
 
-      const overdueList: OverdueReturn[] = [];
-
-      PROCESS_CONFIG.forEach(({ key }) => {
-        const processMoves = moves.filter(m => m.process === key);
-        
-        processMoves.forEach(move => {
-          const moveReceipts = receipts.filter(r => r.move_id === move.id);
-          const totalReceived = moveReceipts.reduce((sum, r) => sum + (r.received_qty || 0), 0);
-          const pending = (move.quantity_sent || 0) - totalReceived;
-
-          if (pending > 0 || !move.returned_date) {
-            const wo = workOrders.find(w => w.id === move.work_order_id);
-            const weightPerPc = wo?.gross_weight_per_pc || 0;
-
-            data[key].pcs += pending;
-            data[key].kg += (pending * weightPerPc) / 1000;
-            data[key].activeMoves += 1;
-
-            // Check if overdue
-            if (move.expected_return_date && move.expected_return_date < today && !move.returned_date) {
-              data[key].overdue += 1;
-
-              const daysOverdue = Math.floor(
-                (new Date().getTime() - new Date(move.expected_return_date).getTime()) / (1000 * 60 * 60 * 24)
-              );
-
-              overdueList.push({
-                id: move.id,
-                wo_display_id: wo?.display_id || wo?.wo_id || 'N/A',
-                process_type: key,
-                partner_name: partnerMap.get(move.partner_id) || 'Unknown',
-                dispatch_date: move.dispatch_date || move.created_at,
-                expected_return_date: move.expected_return_date,
-                pcs_pending: pending,
-                days_overdue: daysOverdue
-              });
-            }
-          }
-        });
+      // Map summary data to heatmap structure
+      summaryData?.forEach((row: any) => {
+        const processKey = row.process_name as keyof HeatmapData;
+        if (data[processKey]) {
+          data[processKey] = {
+            pcs: Math.round(row.pcs_total || 0),
+            kg: parseFloat((row.kg_total || 0).toFixed(1)),
+            activeMoves: row.active_moves || 0,
+            overdue: row.overdue || 0
+          };
+        }
       });
 
       setHeatmapData(data);
-      setOverdueReturns(overdueList.sort((a, b) => b.days_overdue - a.days_overdue).slice(0, 10));
+
+      // Load overdue details for the table
+      const { data: movesData, error: movesError } = await supabase
+        .from('wo_external_moves')
+        .select(`
+          id,
+          process,
+          dispatch_date,
+          expected_return_date,
+          quantity_sent,
+          quantity_returned,
+          partner_id,
+          work_order_id,
+          work_orders!work_order_id(display_id, wo_number, gross_weight_per_pc),
+          external_partners!partner_id(name)
+        `)
+        .lt('expected_return_date', today)
+        .is('returned_date', null)
+        .order('expected_return_date', { ascending: true })
+        .limit(10);
+
+      if (!movesError && movesData) {
+        const overdueList: OverdueReturn[] = movesData.map((move: any) => {
+          const pending = (move.quantity_sent || 0) - (move.quantity_returned || 0);
+          const daysOverdue = Math.floor(
+            (new Date().getTime() - new Date(move.expected_return_date).getTime()) / (1000 * 60 * 60 * 24)
+          );
+
+          return {
+            id: move.id,
+            wo_display_id: move.work_orders?.display_id || move.work_orders?.wo_number || 'N/A',
+            process_type: move.process,
+            partner_name: move.external_partners?.name || 'Unknown',
+            dispatch_date: move.dispatch_date || '',
+            expected_return_date: move.expected_return_date || '',
+            pcs_pending: pending,
+            days_overdue: daysOverdue
+          };
+        });
+
+        setOverdueReturns(overdueList);
+      }
+
       setLoading(false);
     } catch (error) {
       console.error('Error loading external data:', error);

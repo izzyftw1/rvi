@@ -4589,6 +4589,16 @@ export type Database = {
         }
         Relationships: []
       }
+      external_processing_summary_vw: {
+        Row: {
+          active_moves: number | null
+          kg_total: number | null
+          overdue: number | null
+          pcs_total: number | null
+          process_name: string | null
+        }
+        Relationships: []
+      }
       inventory_procurement_status: {
         Row: {
           alloy: string | null
