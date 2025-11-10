@@ -40,7 +40,6 @@ import MaterialRequirements from "./pages/MaterialRequirements";
 import MaterialRequirementsDashboard from "./pages/MaterialRequirementsDashboard";
 import StageDetailView from "./pages/StageDetailView";
 import ExternalProcessingDetail from "./pages/ExternalProcessingDetail";
-import Maintenance from "./pages/Maintenance";
 import Admin from "./pages/Admin";
 import FactoryCalendar from "./pages/FactoryCalendar";
 import ProductionProgress from "./pages/ProductionProgress";
@@ -116,7 +115,6 @@ const App = () => (
           <Route path="/material-requirements" element={<MaterialRequirements />} />
           <Route path="/material-requirements-v2" element={<MaterialRequirementsDashboard />} />
           <Route path="/stage/:stage" element={<StageDetailView />} />
-          <Route path="/maintenance" element={<Maintenance />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/factory-calendar" element={<FactoryCalendar />} />
           <Route path="/production-progress" element={<ProductionProgress />} />

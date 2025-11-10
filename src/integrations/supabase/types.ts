@@ -820,6 +820,13 @@ export type Database = {
             foreignKeyName: "hourly_qc_checks_machine_id_fkey"
             columns: ["machine_id"]
             isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "hourly_qc_checks_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
@@ -1249,6 +1256,13 @@ export type Database = {
             foreignKeyName: "machine_daily_metrics_machine_id_fkey"
             columns: ["machine_id"]
             isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "machine_daily_metrics_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
@@ -1403,6 +1417,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "maintenance_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
           {
             foreignKeyName: "maintenance_logs_machine_id_fkey"
             columns: ["machine_id"]
@@ -2377,6 +2398,13 @@ export type Database = {
             foreignKeyName: "production_logs_machine_id_fkey"
             columns: ["machine_id"]
             isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "production_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
@@ -2712,6 +2740,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_summary_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
           {
             foreignKeyName: "qc_summary_machine_id_fkey"
             columns: ["machine_id"]
@@ -4250,6 +4285,13 @@ export type Database = {
             foreignKeyName: "wo_machine_assignments_machine_id_fkey"
             columns: ["machine_id"]
             isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "wo_machine_assignments_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
@@ -4648,6 +4690,79 @@ export type Database = {
           total_required_kg: number | null
         }
         Relationships: []
+      }
+      machine_status_vw: {
+        Row: {
+          active_maintenance_id: string | null
+          base_status: string | null
+          created_at: string | null
+          current_operator_id: string | null
+          current_state: string | null
+          current_wo_id: string | null
+          department_id: string | null
+          downtime_hours: number | null
+          downtime_hours_30d: number | null
+          downtime_reason: string | null
+          last_maintenance_date: string | null
+          location: string | null
+          machine_code: string | null
+          machine_id: string | null
+          machine_name: string | null
+          maintenance_count_30d: number | null
+          maintenance_end: string | null
+          maintenance_start: string | null
+          operator_id: string | null
+          running_item: string | null
+          running_wo: string | null
+          running_wo_display: string | null
+          site_id: string | null
+          updated_at: string | null
+          uptime_7d: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machines_current_wo_id_fkey"
+            columns: ["current_wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machines_current_wo_id_fkey"
+            columns: ["current_wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machines_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machines_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machines_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "v_operator_daily"
+            referencedColumns: ["operator_id"]
+          },
+          {
+            foreignKeyName: "machines_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       v_machine_daily: {
         Row: {
