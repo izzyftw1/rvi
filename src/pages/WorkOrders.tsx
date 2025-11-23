@@ -49,11 +49,11 @@ const INTERNAL_STAGES = [
 ];
 
 const EXTERNAL_STAGES = [
-  { value: 'forging', label: 'Forging (Ext)', icon: Hammer },
-  { value: 'job_work', label: 'Job Work', icon: Package },
-  { value: 'plating', label: 'Plating', icon: PackageCheck },
-  { value: 'buffing', label: 'Buffing', icon: Package },
-  { value: 'blasting', label: 'Blasting', icon: Package },
+  { value: 'forging', label: 'Forging (Ext)', icon: Hammer, process: 'Forging' },
+  { value: 'job_work', label: 'Job Work', icon: Package, process: 'Job Work' },
+  { value: 'plating', label: 'Plating', icon: PackageCheck, process: 'Plating' },
+  { value: 'buffing', label: 'Buffing', icon: Package, process: 'Buffing' },
+  { value: 'blasting', label: 'Blasting', icon: Package, process: 'Blasting' },
 ];
 
 // Memoized Stage Chip Component
@@ -564,9 +564,12 @@ const WorkOrders = () => {
 
     if (stageFilter !== "all") {
       if (EXTERNAL_STAGES.some(s => s.value === stageFilter)) {
+        // For external stages, filter by external moves with matching process
+        const externalStage = EXTERNAL_STAGES.find(s => s.value === stageFilter);
         filtered = filtered.filter(wo =>
-          (wo.external_wip && wo.external_wip[stageFilter] > 0) ||
-          wo.external_moves?.some((m: any) => m.process === stageFilter && m.status !== 'received_full')
+          wo.external_moves?.some((m: any) => 
+            m.process === externalStage?.process && m.status !== 'received_full'
+          )
         );
       } else {
         filtered = filtered.filter(wo => wo.current_stage === stageFilter);
@@ -589,8 +592,11 @@ const WorkOrders = () => {
     });
     
     EXTERNAL_STAGES.forEach(stage => {
+      // Count work orders that have external moves for this process type
       counts[stage.value] = workOrders.filter(wo => 
-        wo.external_wip && wo.external_wip[stage.value] > 0
+        wo.external_moves?.some((m: any) => 
+          m.process === stage.process && m.status !== 'received_full'
+        )
       ).length;
     });
     
