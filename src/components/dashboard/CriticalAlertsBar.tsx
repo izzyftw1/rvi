@@ -95,7 +95,7 @@ export const CriticalAlertsBar = () => {
           description: `${overdueCount} machines need maintenance check`,
           severity: 'critical',
           icon: Wrench,
-          onClick: () => navigate('/maintenance')
+          onClick: () => navigate('/machine-status')
         });
       }
 
@@ -111,7 +111,7 @@ export const CriticalAlertsBar = () => {
           description: `${delayedExternal.length} external jobs past expected return`,
           severity: 'warning',
           icon: Clock,
-          onClick: () => navigate('/logistics')
+          onClick: () => navigate('/partners')
         });
       }
 
