@@ -3658,6 +3658,7 @@ export type Database = {
       sales_orders: {
         Row: {
           advance_payment: Json | null
+          advance_payment_received: boolean | null
           approved_at: string | null
           approved_by: string | null
           created_at: string | null
@@ -3688,6 +3689,7 @@ export type Database = {
         }
         Insert: {
           advance_payment?: Json | null
+          advance_payment_received?: boolean | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
@@ -3718,6 +3720,7 @@ export type Database = {
         }
         Update: {
           advance_payment?: Json | null
+          advance_payment_received?: boolean | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
