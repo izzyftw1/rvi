@@ -14,6 +14,7 @@ import { Home, Download, FileSpreadsheet, FileText, TrendingUp, DollarSign, User
 import { downloadExcel, downloadDashboardPDF } from "@/lib/exportHelpers";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, startOfQuarter, startOfYear, endOfMonth, endOfQuarter, endOfYear } from "date-fns";
+import { DrillDownModal } from "@/components/finance/DrillDownModal";
 
 interface DashboardFilters {
   customerId: string;
@@ -57,6 +58,13 @@ export default function FinanceDashboard() {
   const [cashflowData, setCashflowData] = useState<any[]>([]);
   const [regionData, setRegionData] = useState<any[]>([]);
   const [profitabilityData, setProfitabilityData] = useState<any[]>([]);
+
+  // Drill-down modal state
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [drillDownType, setDrillDownType] = useState<'revenue' | 'customer' | 'item' | 'scrap' | 'region' | 'profitability'>('revenue');
+  const [drillDownTitle, setDrillDownTitle] = useState('');
+  const [drillDownData, setDrillDownData] = useState<any[]>([]);
+  const [drillDownMetadata, setDrillDownMetadata] = useState<any>(null);
 
   useEffect(() => {
     loadFilterOptions();
@@ -508,6 +516,287 @@ export default function FinanceDashboard() {
     }
   };
 
+  // Drill-down handlers
+  const handleRevenueDrillDown = async (period: 'mtd' | 'qtd' | 'ytd') => {
+    try {
+      const { data: invoices } = await supabase
+        .from("invoices")
+        .select(`
+          invoice_no,
+          invoice_date,
+          total_amount,
+          status,
+          customer_master!inner(customer_name)
+        `)
+        .eq("status", "paid")
+        .order("invoice_date", { ascending: false });
+
+      const drillData = invoices?.map(inv => ({
+        date: format(new Date(inv.invoice_date), 'yyyy-MM-dd'),
+        invoice_no: inv.invoice_no,
+        customer: inv.customer_master?.customer_name || 'N/A',
+        amount: inv.total_amount,
+        status: inv.status
+      })) || [];
+
+      setDrillDownType('revenue');
+      setDrillDownTitle(`Revenue Details - ${period.toUpperCase()}`);
+      setDrillDownData(drillData);
+      setDrillDownMetadata(null);
+      setDrillDownOpen(true);
+    } catch (error) {
+      console.error("Error loading revenue drill-down:", error);
+    }
+  };
+
+  const handleCustomerDrillDown = async (customerName: string, customerId: string) => {
+    try {
+      const { data: salesOrders } = await supabase
+        .from("sales_orders")
+        .select(`
+          items,
+          created_at,
+          total_amount
+        `)
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: false });
+
+      const drillData: any[] = [];
+      let totalOrders = 0;
+      let totalRevenue = 0;
+
+      salesOrders?.forEach(order => {
+        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+        const month = format(new Date(order.created_at), 'MMM yyyy');
+        
+        items.forEach((item: any) => {
+          const quantity = Number(item.quantity) || 0;
+          const revenue = Number(item.line_amount) || 0;
+          
+          drillData.push({
+            month,
+            item_code: item.item_code,
+            quantity,
+            revenue,
+            avg_price: quantity > 0 ? revenue / quantity : 0
+          });
+
+          totalRevenue += revenue;
+        });
+        totalOrders++;
+      });
+
+      setDrillDownType('customer');
+      setDrillDownTitle(`${customerName} - Sales History`);
+      setDrillDownData(drillData);
+      setDrillDownMetadata({
+        total_orders: totalOrders,
+        total_revenue: totalRevenue,
+        avg_order_value: totalOrders > 0 ? totalRevenue / totalOrders : 0
+      });
+      setDrillDownOpen(true);
+    } catch (error) {
+      console.error("Error loading customer drill-down:", error);
+    }
+  };
+
+  const handleItemDrillDown = async (itemCode: string) => {
+    try {
+      const { data: salesOrders } = await supabase
+        .from("sales_orders")
+        .select(`
+          items,
+          created_at,
+          customer_master!inner(customer_name)
+        `)
+        .order("created_at", { ascending: false });
+
+      const drillData: any[] = [];
+      let totalQuantity = 0;
+      let totalRevenue = 0;
+
+      salesOrders?.forEach(order => {
+        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+        const month = format(new Date(order.created_at), 'MMM yyyy');
+        
+        items.forEach((item: any) => {
+          if (item.item_code === itemCode) {
+            const quantity = Number(item.quantity) || 0;
+            const revenue = Number(item.line_amount) || 0;
+            
+            drillData.push({
+              month,
+              customer: order.customer_master?.customer_name || 'N/A',
+              quantity,
+              revenue,
+              avg_price: quantity > 0 ? revenue / quantity : 0
+            });
+
+            totalQuantity += quantity;
+            totalRevenue += revenue;
+          }
+        });
+      });
+
+      setDrillDownType('item');
+      setDrillDownTitle(`${itemCode} - Sales History`);
+      setDrillDownData(drillData);
+      setDrillDownMetadata({
+        total_quantity: totalQuantity,
+        total_revenue: totalRevenue,
+        avg_price: totalQuantity > 0 ? totalRevenue / totalQuantity : 0
+      });
+      setDrillDownOpen(true);
+    } catch (error) {
+      console.error("Error loading item drill-down:", error);
+    }
+  };
+
+  const handleScrapDrillDown = async () => {
+    try {
+      // Use existing profitability data as a proxy for scrap analysis
+      const drillData = profitabilityData.map(item => ({
+        date: item.month,
+        wo_id: 'Aggregated',
+        item_code: 'All Items',
+        scrap_qty: Math.round((item.scrapPct / 100) * 1000), // Estimated
+        total_qty: 1000,
+        scrap_percent: item.scrapPct || 0
+      }));
+
+      const totalScrap = drillData.reduce((sum, r) => sum + r.scrap_qty, 0);
+      const avgScrapPercent = drillData.length > 0 
+        ? drillData.reduce((sum, r) => sum + r.scrap_percent, 0) / drillData.length 
+        : 0;
+
+      setDrillDownType('scrap');
+      setDrillDownTitle('Scrap Analysis Details');
+      setDrillDownData(drillData);
+      setDrillDownMetadata({
+        total_scrap: totalScrap,
+        avg_scrap_percent: avgScrapPercent,
+        scrap_cost: totalScrap * 50 // Approximate cost per unit
+      });
+      setDrillDownOpen(true);
+    } catch (error) {
+      console.error("Error loading scrap drill-down:", error);
+    }
+  };
+
+  const handleRegionDrillDown = async (regionName: string) => {
+    try {
+      const { data: salesOrders } = await supabase
+        .from("sales_orders")
+        .select(`
+          total_amount,
+          customer_master!inner(customer_name, city, state)
+        `)
+        .eq("customer_master.city", regionName)
+        .order("created_at", { ascending: false });
+
+      const customerMap = new Map<string, any>();
+
+      salesOrders?.forEach(order => {
+        const customer = order.customer_master?.customer_name || 'N/A';
+        const revenue = Number(order.total_amount) || 0;
+        
+        if (!customerMap.has(customer)) {
+          customerMap.set(customer, {
+            customer,
+            city: order.customer_master?.city || 'N/A',
+            state: order.customer_master?.state || 'N/A',
+            order_count: 0,
+            revenue: 0
+          });
+        }
+        
+        const entry = customerMap.get(customer);
+        entry.order_count++;
+        entry.revenue += revenue;
+      });
+
+      const drillData = Array.from(customerMap.values());
+
+      setDrillDownType('region');
+      setDrillDownTitle(`${regionName} - Regional Breakdown`);
+      setDrillDownData(drillData);
+      setDrillDownMetadata(null);
+      setDrillDownOpen(true);
+    } catch (error) {
+      console.error("Error loading region drill-down:", error);
+    }
+  };
+
+  const handleProfitabilityDrillDown = async () => {
+    try {
+      // Get monthly data for the last 12 months
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        months.push({
+          month: format(date, 'MMM yyyy'),
+          startDate: format(startOfMonth(date), 'yyyy-MM-dd'),
+          endDate: format(endOfMonth(date), 'yyyy-MM-dd')
+        });
+      }
+
+      const drillData = await Promise.all(months.map(async ({ month, startDate, endDate }) => {
+        // Get revenue
+        const { data: invoices } = await supabase
+          .from("invoices")
+          .select("total_amount")
+          .gte("invoice_date", startDate)
+          .lte("invoice_date", endDate);
+
+        const revenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0;
+
+        // Get material costs
+        const { data: materialCosts } = await supabase
+          .from("material_costs")
+          .select("total_cost")
+          .gte("created_at", startDate)
+          .lte("created_at", endDate);
+
+        const materialCost = materialCosts?.reduce((sum, mc) => sum + Number(mc.total_cost), 0) || 0;
+
+        // Get processing costs (labour)
+        const { data: processingCosts } = await supabase
+          .from("processing_costs")
+          .select("cost_amount")
+          .eq("cost_type", "labour")
+          .gte("created_at", startDate)
+          .lte("created_at", endDate);
+
+        const labourCost = processingCosts?.reduce((sum, pc) => sum + Number(pc.cost_amount), 0) || 0;
+
+        // Estimate scrap cost (simplified)
+        const scrapCost = revenue * 0.05; // 5% estimate
+        
+        const netProfit = revenue - materialCost - labourCost - scrapCost;
+        const profitPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+
+        return {
+          month,
+          revenue,
+          material_cost: materialCost,
+          labour_cost: labourCost,
+          scrap_cost: scrapCost,
+          net_profit: netProfit,
+          profit_percent: profitPercent
+        };
+      }));
+
+      setDrillDownType('profitability');
+      setDrillDownTitle('Monthly Profitability Analysis');
+      setDrillDownData(drillData);
+      setDrillDownMetadata(null);
+      setDrillDownOpen(true);
+    } catch (error) {
+      console.error("Error loading profitability drill-down:", error);
+    }
+  };
+
   const loadProfitabilityData = async () => {
     try {
       // Get work orders with costs
@@ -727,34 +1016,34 @@ export default function FinanceDashboard() {
 
         {/* Revenue KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => handleRevenueDrillDown('mtd')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Revenue MTD</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{loading ? "—" : formatINR(revenueStats.mtd)}</div>
-              <p className="text-xs text-muted-foreground">Month to Date</p>
+              <p className="text-xs text-muted-foreground">Month to Date • Click for details</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => handleRevenueDrillDown('qtd')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Revenue QTD</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{loading ? "—" : formatINR(revenueStats.qtd)}</div>
-              <p className="text-xs text-muted-foreground">Quarter to Date</p>
+              <p className="text-xs text-muted-foreground">Quarter to Date • Click for details</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => handleRevenueDrillDown('ytd')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Revenue YTD</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{loading ? "—" : formatINR(revenueStats.ytd)}</div>
-              <p className="text-xs text-muted-foreground">Year to Date</p>
+              <p className="text-xs text-muted-foreground">Year to Date • Click for details</p>
             </CardContent>
           </Card>
         </div>
@@ -779,9 +1068,10 @@ export default function FinanceDashboard() {
 
         {/* Top Performers */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Top 5 Customers by Revenue</CardTitle>
+              <CardDescription>Click on a customer for detailed breakdown</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -793,15 +1083,21 @@ export default function FinanceDashboard() {
                     formatter={(value: number) => formatINR(value)}
                     contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
                   />
-                  <Bar dataKey="revenue" fill="hsl(var(--primary))" />
+                  <Bar 
+                    dataKey="revenue" 
+                    fill="hsl(var(--primary))"
+                    onClick={(data) => handleCustomerDrillDown(data.customer_name, data.customer_id)}
+                    cursor="pointer"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Top 5 Items by Sales Quantity</CardTitle>
+              <CardDescription>Click on an item for detailed breakdown</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -812,7 +1108,12 @@ export default function FinanceDashboard() {
                   <Tooltip 
                     contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
                   />
-                  <Bar dataKey="quantity" fill="hsl(var(--chart-2))" />
+                  <Bar 
+                    dataKey="quantity" 
+                    fill="hsl(var(--chart-2))"
+                    onClick={(data) => handleItemDrillDown(data.item_code)}
+                    cursor="pointer"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -874,9 +1175,10 @@ export default function FinanceDashboard() {
 
         {/* Region & Profitability */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Region-wise Revenue Distribution</CardTitle>
+              <CardDescription>Click on a region for detailed breakdown</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -888,16 +1190,21 @@ export default function FinanceDashboard() {
                     formatter={(value: number) => formatINR(value)}
                     contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
                   />
-                  <Bar dataKey="revenue" fill="hsl(var(--chart-3))" />
+                  <Bar 
+                    dataKey="revenue" 
+                    fill="hsl(var(--chart-3))"
+                    onClick={(data) => handleRegionDrillDown(data.region)}
+                    cursor="pointer"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={handleProfitabilityDrillDown}>
             <CardHeader>
               <CardTitle>Profitability Trend</CardTitle>
-              <CardDescription>Cost percentages over time</CardDescription>
+              <CardDescription>Cost percentages over time • Click for details</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -919,6 +1226,16 @@ export default function FinanceDashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Drill-Down Modal */}
+      <DrillDownModal
+        open={drillDownOpen}
+        onClose={() => setDrillDownOpen(false)}
+        title={drillDownTitle}
+        type={drillDownType}
+        data={drillDownData}
+        metadata={drillDownMetadata}
+      />
     </div>
   );
 }
