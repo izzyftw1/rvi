@@ -174,7 +174,7 @@ const Index = () => {
               <TooltipTrigger asChild>
                 <Card 
                   className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
-                  onClick={() => handleHeaderCardClick('/qc-incoming', 'status=pending')}
+                  onClick={() => handleHeaderCardClick('/qc/incoming')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -196,7 +196,7 @@ const Index = () => {
               <TooltipTrigger asChild>
                 <Card 
                   className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
-                  onClick={() => handleHeaderCardClick('/maintenance', 'status=overdue')}
+                  onClick={() => handleHeaderCardClick('/machine-status')}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -276,14 +276,14 @@ const Index = () => {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/logistics')}>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/partners')}>
             <CardContent className="p-4 text-center">
               <div className="text-3xl font-bold text-purple-600">{summary?.external_wip_pcs || 0}</div>
               <p className="text-sm text-muted-foreground mt-1">External WIP pcs</p>
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/dispatch', 'status=late')}>
+          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/logistics')}>
             <CardContent className="p-4 text-center">
               <div className="text-3xl font-bold text-red-600">{summary?.late_deliveries || 0}</div>
               <p className="text-sm text-muted-foreground mt-1">Late Deliveries</p>
