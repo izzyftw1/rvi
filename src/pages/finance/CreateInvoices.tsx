@@ -7,13 +7,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function CreateInvoices() {
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [advanceReceived, setAdvanceReceived] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadSalesOrders();
@@ -40,6 +43,13 @@ export default function CreateInvoices() {
       const uninvoicedOrders = orders?.filter(order => !invoicedSOIds.has(order.id)) || [];
 
       setSalesOrders(uninvoicedOrders);
+      
+      // Initialize advance received state based on sales_orders.advance_payment_received
+      const advanceMap: Record<string, boolean> = {};
+      uninvoicedOrders.forEach(order => {
+        advanceMap[order.id] = order.advance_payment_received || false;
+      });
+      setAdvanceReceived(advanceMap);
     } catch (error: any) {
       toast.error("Failed to load sales orders");
       console.error(error);
@@ -64,6 +74,19 @@ export default function CreateInvoices() {
     } else {
       setSelected(new Set(salesOrders.map(so => so.id)));
     }
+  };
+
+  const toggleAdvanceReceived = (orderId: string) => {
+    setAdvanceReceived(prev => ({
+      ...prev,
+      [orderId]: !prev[orderId]
+    }));
+  };
+
+  const calculateAdvanceAmount = (order: any) => {
+    const totalAmount = Number(order.total_amount) || 0;
+    const advancePercent = Number(order.advance_payment_percent) || 0;
+    return (totalAmount * advancePercent) / 100;
   };
 
   const createInvoices = async () => {
@@ -104,6 +127,15 @@ export default function CreateInvoices() {
         const gstAmount = (subtotal * gstPercent) / 100;
         const totalAmount = subtotal + gstAmount;
 
+        // Calculate advance payment
+        const advanceAmount = calculateAdvanceAmount(order);
+        const advanceWithGst = advanceAmount * (1 + gstPercent / 100);
+        const isAdvanceReceived = advanceReceived[order.id] || false;
+        
+        // Adjust balance based on advance
+        const paidAmount = isAdvanceReceived ? advanceWithGst : 0;
+        const balanceAmount = totalAmount - paidAmount;
+
         // Create invoice
         const { data: invoice, error: invoiceError } = await supabase
           .from("invoices")
@@ -117,9 +149,9 @@ export default function CreateInvoices() {
             gst_percent: gstPercent,
             gst_amount: gstAmount,
             total_amount: totalAmount,
-            balance_amount: totalAmount,
-            paid_amount: 0,
-            status: 'issued',
+            balance_amount: balanceAmount,
+            paid_amount: paidAmount,
+            status: paidAmount > 0 ? 'part_paid' : 'issued',
             currency: order.currency || 'USD',
             payment_terms_days: paymentTerms,
             created_by: user?.id
@@ -158,10 +190,34 @@ export default function CreateInvoices() {
               console.error("Error creating invoice item:", itemError);
             }
           }
+          
+          // Add advance payment line item if applicable
+          if (isAdvanceReceived && advanceAmount > 0) {
+            await supabase
+              .from("invoice_items")
+              .insert({
+                invoice_id: invoice.id,
+                description: "Advance Payment Received",
+                quantity: 1,
+                rate: -advanceAmount,
+                amount: -advanceAmount,
+                gst_percent: gstPercent,
+                gst_amount: -(advanceAmount * gstPercent / 100),
+                total_line: -advanceWithGst
+              });
+          }
+        }
+
+        // Update sales order to mark advance as received
+        if (isAdvanceReceived && !order.advance_payment_received) {
+          await supabase
+            .from("sales_orders")
+            .update({ advance_payment_received: true })
+            .eq("id", order.id);
         }
       }
 
-      toast.success(`Created ${selected.size} invoice(s)`);
+      toast.success(`Created ${selected.size} invoice(s) successfully`);
       setSelected(new Set());
       loadSalesOrders();
     } catch (error: any) {
@@ -213,34 +269,86 @@ export default function CreateInvoices() {
                     <TableHead>SO ID</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>PO Number</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Total Amount</TableHead>
+                    <TableHead className="text-right">Advance</TableHead>
+                    <TableHead className="text-right">Balance Due</TableHead>
+                    <TableHead>Advance Received</TableHead>
                     <TableHead>Payment Terms</TableHead>
-                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {salesOrders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selected.has(order.id)}
-                          onCheckedChange={() => toggleSelection(order.id)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{order.so_id}</TableCell>
-                      <TableCell>{order.customer_master?.customer_name || order.customer}</TableCell>
-                      <TableCell>{order.po_number}</TableCell>
-                      <TableCell className="text-right">
-                        {order.currency} {Number(order.total_amount || 0).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        {order.customer_master?.payment_terms_days || order.payment_terms_days || 30} days
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="default">{order.status}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {salesOrders.map((order) => {
+                    const totalAmount = Number(order.total_amount) || 0;
+                    const gstPercent = 18;
+                    const totalWithGst = totalAmount * (1 + gstPercent / 100);
+                    const advanceAmount = calculateAdvanceAmount(order);
+                    const advanceWithGst = advanceAmount * (1 + gstPercent / 100);
+                    const hasAdvance = advanceAmount > 0;
+                    const isAdvanceReceived = advanceReceived[order.id] || false;
+                    const balanceDue = isAdvanceReceived ? totalWithGst - advanceWithGst : totalWithGst;
+
+                    return (
+                      <TableRow key={order.id} className={hasAdvance ? "bg-accent/50" : ""}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selected.has(order.id)}
+                            onCheckedChange={() => toggleSelection(order.id)}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">{order.so_id}</TableCell>
+                        <TableCell>{order.customer_master?.customer_name || order.customer}</TableCell>
+                        <TableCell>{order.po_number}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {order.currency} {totalWithGst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {hasAdvance ? (
+                            <div className="flex flex-col items-end">
+                              <span className="text-sm font-medium text-green-600">
+                                {order.currency} {advanceWithGst.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                ({order.advance_payment_percent}%)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">None</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {order.currency} {balanceDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell>
+                          {hasAdvance ? (
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={isAdvanceReceived}
+                                onCheckedChange={() => toggleAdvanceReceived(order.id)}
+                              />
+                              <Label className="text-xs">
+                                {isAdvanceReceived ? (
+                                  <span className="flex items-center gap-1 text-green-600">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Received
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-amber-600">
+                                    <AlertCircle className="h-3 w-3" />
+                                    Pending
+                                  </span>
+                                )}
+                              </Label>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {order.customer_master?.payment_terms_days || order.payment_terms_days || 30} days
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
