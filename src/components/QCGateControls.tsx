@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QCGateStatusBadge } from "./QCGateStatusBadge";
-import { CheckCircle2, XCircle, Ban, FlaskConical, CheckSquare, Lock, AlertTriangle, FileCheck } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, FlaskConical, CheckSquare, Lock, AlertTriangle, FileCheck, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,49 +133,57 @@ export function QCGateControls({ woId, materialQC, firstPieceQC, onUpdate }: QCG
               <CheckSquare className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">First Piece QC</span>
             </div>
-            <QCGateStatusBadge status={firstPieceQC.status} />
+            {/* Show "Blocked" if material QC not complete, otherwise show actual status */}
+            <QCGateStatusBadge status={firstPieceQC.status} isBlocked={firstPieceBlocked && !isGateComplete(firstPieceQC.status)} />
           </div>
         </div>
 
-        {/* SECTION 2: Blocking Reasons (if any) */}
-        {(materialBlocked || (firstPieceBlocked && !isGateComplete(firstPieceQC.status))) && (
+        {/* SECTION 2: Issues requiring attention */}
+        {(materialBlocked || isGateFailed(materialQC.status) || isGateFailed(firstPieceQC.status) || (firstPieceBlocked && !isGateComplete(firstPieceQC.status) && isGateComplete(materialQC.status))) && (
           <>
             <Separator />
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-1">
-                <Lock className="h-3.5 w-3.5" />
-                Blocking Issues
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Attention Required
               </h4>
               
+              {/* PENDING = Ready for action, show with amber */}
               {materialBlocked && (
-                <Alert variant="default" className="border-warning/50 bg-warning/5">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
+                <Alert variant="default" className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                  <Clock className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-sm">
-                    <strong>Material QC Pending:</strong> Raw material must be inspected before any production can start.
-                    <span className="block text-xs text-muted-foreground mt-1">
-                      Unblocks: First Piece QC, Production Logging
-                    </span>
+                    <strong className="text-amber-700 dark:text-amber-400">Material QC Pending:</strong> Ready for inspection. Complete to proceed.
                   </AlertDescription>
                 </Alert>
               )}
               
+              {/* BLOCKED = Cannot act yet, dependency issue */}
+              {firstPieceBlocked && !isGateComplete(firstPieceQC.status) && !isGateComplete(materialQC.status) && (
+                <Alert variant="default" className="border-slate-300 bg-slate-50 dark:bg-slate-900/20 dark:border-slate-700">
+                  <Lock className="h-4 w-4 text-slate-500" />
+                  <AlertDescription className="text-sm text-slate-600 dark:text-slate-400">
+                    <strong>First Piece QC Blocked:</strong> Waiting for Material QC to complete.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {/* PENDING after unblock = Ready for action */}
               {firstPieceBlocked && !isGateComplete(firstPieceQC.status) && isGateComplete(materialQC.status) && (
-                <Alert variant="default" className="border-warning/50 bg-warning/5">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
+                <Alert variant="default" className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                  <Clock className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-sm">
-                    <strong>First Piece QC Pending:</strong> First piece inspection required before bulk production.
-                    <span className="block text-xs text-muted-foreground mt-1">
-                      Unblocks: Bulk Production Logging
-                    </span>
+                    <strong className="text-amber-700 dark:text-amber-400">First Piece QC Pending:</strong> Ready for inspection. Complete before bulk production.
                   </AlertDescription>
                 </Alert>
               )}
 
+              {/* FAILED = Action required to resolve */}
               {isGateFailed(materialQC.status) && (
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4" />
                   <AlertDescription className="text-sm">
-                    <strong>Material QC Failed:</strong> Material has been rejected. Address the issue and re-inspect or waive with justification.
+                    <strong>Material QC Failed:</strong> Material rejected. Re-inspect after correction or waive with authorization.
                   </AlertDescription>
                 </Alert>
               )}
@@ -184,7 +192,7 @@ export function QCGateControls({ woId, materialQC, firstPieceQC, onUpdate }: QCG
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4" />
                   <AlertDescription className="text-sm">
-                    <strong>First Piece QC Failed:</strong> First piece was rejected. Correct the setup and re-inspect.
+                    <strong>First Piece QC Failed:</strong> First piece rejected. Correct setup and re-inspect.
                   </AlertDescription>
                 </Alert>
               )}
@@ -250,9 +258,11 @@ export function QCGateControls({ woId, materialQC, firstPieceQC, onUpdate }: QCG
                         </Button>
                         <Button
                           size="sm"
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleQCUpdate('material', 'waived', materialRemarks)}
                           disabled={loading}
+                          className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950"
+                          title="Skip this inspection with authorization (not an error)"
                         >
                           <Ban className="h-4 w-4 mr-1" />
                           Waive
@@ -273,13 +283,13 @@ export function QCGateControls({ woId, materialQC, firstPieceQC, onUpdate }: QCG
 
               {/* First Piece QC Action */}
               {!isGateComplete(firstPieceQC.status) && (
-                <div className={`p-4 border rounded-lg space-y-3 ${firstPieceBlocked ? 'opacity-60' : 'bg-card'}`}>
+                <div className={`p-4 border rounded-lg space-y-3 ${firstPieceBlocked ? 'opacity-50 bg-slate-50 dark:bg-slate-900/20' : 'bg-card'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <CheckSquare className="h-5 w-5 text-primary" />
-                      <span className="font-medium">First Piece QC Inspection</span>
+                      <CheckSquare className={`h-5 w-5 ${firstPieceBlocked ? 'text-slate-400' : 'text-primary'}`} />
+                      <span className={`font-medium ${firstPieceBlocked ? 'text-slate-500' : ''}`}>First Piece QC Inspection</span>
                       {firstPieceBlocked && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-600">
                           <Lock className="h-3 w-3 mr-1" />
                           Blocked
                         </Badge>
@@ -334,9 +344,11 @@ export function QCGateControls({ woId, materialQC, firstPieceQC, onUpdate }: QCG
                         </Button>
                         <Button
                           size="sm"
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleQCUpdate('first_piece', 'waived', firstPieceRemarks)}
                           disabled={loading}
+                          className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950"
+                          title="Skip this inspection with authorization (not an error)"
                         >
                           <Ban className="h-4 w-4 mr-1" />
                           Waive
