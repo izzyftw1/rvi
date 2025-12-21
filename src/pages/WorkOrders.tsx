@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ExternalLink, ArrowRight, Timer, Building2 } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ExternalLink, ArrowRight, Timer, Building2, Scissors, Hammer, Box, Inbox } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -17,15 +17,28 @@ import { isPast, parseISO, differenceInDays, format as formatDate } from "date-f
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Compact stage configuration
-const STAGES = {
-  goods_in: { label: 'Goods In', color: 'bg-slate-500' },
-  cutting_queue: { label: 'Cutting', color: 'bg-blue-500' },
-  production: { label: 'Production', color: 'bg-indigo-500' },
-  qc: { label: 'QC', color: 'bg-emerald-500' },
-  packing: { label: 'Packing', color: 'bg-violet-500' },
-  dispatch: { label: 'Dispatch', color: 'bg-green-600' },
+// Internal stages
+const INTERNAL_STAGES = {
+  goods_in: { label: 'Goods In', color: 'bg-slate-500', icon: Inbox },
+  cutting_queue: { label: 'Cutting', color: 'bg-blue-500', icon: Scissors },
+  production: { label: 'Production', color: 'bg-indigo-500', icon: Factory },
+  qc: { label: 'QC', color: 'bg-emerald-500', icon: CheckCircle2 },
+  packing: { label: 'Packing', color: 'bg-violet-500', icon: Box },
+  dispatch: { label: 'Dispatch', color: 'bg-green-600', icon: Truck },
 };
+
+// External processes
+const EXTERNAL_STAGES = {
+  forging: { label: 'Forging', color: 'bg-orange-500', process: 'Forging' },
+  heat_treatment: { label: 'Heat Treatment', color: 'bg-red-500', process: 'Heat Treatment' },
+  plating: { label: 'Plating', color: 'bg-cyan-500', process: 'Plating' },
+  job_work: { label: 'Job Work', color: 'bg-purple-500', process: 'Job Work' },
+  buffing: { label: 'Buffing', color: 'bg-amber-500', process: 'Buffing' },
+  blasting: { label: 'Blasting', color: 'bg-gray-500', process: 'Blasting' },
+};
+
+// Legacy stage mapping for display
+const STAGES = { ...INTERNAL_STAGES };
 
 // Memoized KPI Card
 const KPICard = memo(({ 
@@ -249,14 +262,18 @@ const WorkOrders = () => {
   const { toast } = useToast();
   const { hasAnyRole } = useUserRole();
   
-  const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
+const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewFilter, setViewFilter] = useState<'all' | 'blocked' | 'delayed' | 'external'>(() => {
-    const urlFilter = searchParams.get('view');
-    return (urlFilter as any) || 'all';
+  // Level 1: Primary toggle - 'internal' or 'external'
+  const [primaryFilter, setPrimaryFilter] = useState<'internal' | 'external'>(() => {
+    const urlPrimary = searchParams.get('type');
+    return urlPrimary === 'external' ? 'external' : 'internal';
   });
+  // Level 2: Contextual stage filter based on primary selection
   const [stageFilter, setStageFilter] = useState<string>(() => searchParams.get('stage') || 'all');
+  // Issue filter for blocked/delayed
+  const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>('all');
   
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50);
@@ -343,8 +360,7 @@ const WorkOrders = () => {
 
   // Compute KPIs
   const kpis = useMemo(() => {
-    const now = new Date();
-    let blocked = 0, delayed = 0, externalWIP = 0;
+    let blocked = 0, delayed = 0, internalCount = 0, externalCount = 0;
     
     workOrders.forEach(wo => {
       // Delayed: past due date
@@ -357,17 +373,21 @@ const WorkOrders = () => {
       );
       if (hasExternalOverdue) blocked++;
       
-      // External WIP count
-      if (wo.external_wip) {
-        const total = Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number;
-        if (total > 0) externalWIP++;
+      // Count by ownership
+      const externalWipTotal = wo.external_wip 
+        ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
+        : 0;
+      if (externalWipTotal > 0) {
+        externalCount++;
+      } else {
+        internalCount++;
       }
     });
     
-    return { total: workOrders.length, blocked, delayed, externalWIP };
+    return { total: workOrders.length, blocked, delayed, internalCount, externalCount };
   }, [workOrders]);
 
-  // Filtered orders
+  // Filtered orders with two-level filtering
   const filteredOrders = useMemo(() => {
     let filtered = [...workOrders];
 
@@ -383,40 +403,76 @@ const WorkOrders = () => {
       );
     }
 
-    // View filter
-    if (viewFilter === 'delayed') {
-      filtered = filtered.filter(wo => wo.due_date && isPast(parseISO(wo.due_date)));
-    } else if (viewFilter === 'blocked') {
-      filtered = filtered.filter(wo => 
-        wo.external_moves?.some((m: any) => 
-          m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
-        )
-      );
-    } else if (viewFilter === 'external') {
+    // Level 1: Primary filter (Internal vs External)
+    if (primaryFilter === 'external') {
+      // Show only WOs with external WIP
       filtered = filtered.filter(wo => {
         const total = wo.external_wip 
           ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
           : 0;
         return total > 0;
       });
+      
+      // Level 2: External stage filter
+      if (stageFilter !== 'all') {
+        const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
+        if (externalStage) {
+          filtered = filtered.filter(wo => 
+            wo.external_moves?.some((m: any) => 
+              m.process === externalStage.process && m.status !== 'received_full'
+            )
+          );
+        }
+      }
+    } else {
+      // Internal: Show only WOs without external WIP (or all if viewing internal)
+      filtered = filtered.filter(wo => {
+        const total = wo.external_wip 
+          ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
+          : 0;
+        return total === 0;
+      });
+      
+      // Level 2: Internal stage filter
+      if (stageFilter !== 'all') {
+        filtered = filtered.filter(wo => wo.current_stage === stageFilter);
+      }
     }
 
-    // Stage filter
-    if (stageFilter !== 'all') {
-      filtered = filtered.filter(wo => wo.current_stage === stageFilter);
+    // Issue filter (blocked/delayed)
+    if (issueFilter === 'delayed') {
+      filtered = filtered.filter(wo => wo.due_date && isPast(parseISO(wo.due_date)));
+    } else if (issueFilter === 'blocked') {
+      filtered = filtered.filter(wo => 
+        wo.external_moves?.some((m: any) => 
+          m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
+        )
+      );
     }
 
     return filtered;
-  }, [workOrders, searchQuery, viewFilter, stageFilter]);
+  }, [workOrders, searchQuery, primaryFilter, stageFilter, issueFilter]);
 
-  // Stage counts for filter bar
+  // Stage counts for filter bar - contextual based on primary filter
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { all: filteredOrders.length };
-    Object.keys(STAGES).forEach(stage => {
-      counts[stage] = filteredOrders.filter(wo => wo.current_stage === stage).length;
-    });
+    
+    if (primaryFilter === 'internal') {
+      Object.keys(INTERNAL_STAGES).forEach(stage => {
+        counts[stage] = filteredOrders.filter(wo => wo.current_stage === stage).length;
+      });
+    } else {
+      Object.entries(EXTERNAL_STAGES).forEach(([key, config]) => {
+        counts[key] = filteredOrders.filter(wo => 
+          wo.external_moves?.some((m: any) => 
+            m.process === config.process && m.status !== 'received_full'
+          )
+        ).length;
+      });
+    }
+    
     return counts;
-  }, [filteredOrders]);
+  }, [filteredOrders, primaryFilter]);
 
   const handleDeleteWorkOrder = async (woId: string, displayId: string) => {
     if (!confirm(`Delete Work Order ${displayId}?`)) return;
@@ -451,33 +507,83 @@ const WorkOrders = () => {
             label="Active Orders" 
             count={kpis.total} 
             icon={Factory} 
-            onClick={() => { setViewFilter('all'); setStageFilter('all'); }}
+            onClick={() => { setIssueFilter('all'); setStageFilter('all'); }}
           />
           <KPICard 
             label="Blocked / Overdue Ext" 
             count={kpis.blocked} 
             icon={AlertTriangle} 
             variant={kpis.blocked > 0 ? 'danger' : 'default'}
-            onClick={() => setViewFilter('blocked')}
+            onClick={() => setIssueFilter('blocked')}
           />
           <KPICard 
             label="Past Due Date" 
             count={kpis.delayed} 
             icon={Clock} 
             variant={kpis.delayed > 0 ? 'warning' : 'default'}
-            onClick={() => setViewFilter('delayed')}
+            onClick={() => setIssueFilter('delayed')}
           />
           <KPICard 
             label="At External" 
-            count={kpis.externalWIP} 
+            count={kpis.externalCount} 
             icon={ExternalLink} 
-            onClick={() => setViewFilter('external')}
+            onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
           />
         </div>
 
-        {/* Compact Filter Bar */}
+        {/* Two-Level Filter Bar */}
         <Card>
-          <CardContent className="py-3 px-4">
+          <CardContent className="py-3 px-4 space-y-3">
+            {/* Level 1: Primary Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground mr-2">View:</span>
+              <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+                <button
+                  onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                    primaryFilter === 'internal' 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Building2 className="h-4 w-4" />
+                  Internal
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                    {kpis.internalCount}
+                  </Badge>
+                </button>
+                <button
+                  onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                    primaryFilter === 'external' 
+                      ? "bg-accent text-accent-foreground shadow-sm" 
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  External
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                    {kpis.externalCount}
+                  </Badge>
+                </button>
+              </div>
+
+              {/* Issue Filter Badge */}
+              {issueFilter !== 'all' && (
+                <Badge 
+                  variant={issueFilter === 'blocked' ? 'destructive' : 'default'}
+                  className="cursor-pointer ml-2" 
+                  onClick={() => setIssueFilter('all')}
+                >
+                  {issueFilter === 'blocked' ? 'Blocked Only' : 'Delayed Only'} 
+                  <span className="ml-1">×</span>
+                </Badge>
+              )}
+            </div>
+
+            {/* Level 2: Contextual Stage Filters + Search */}
             <div className="flex flex-wrap items-center gap-3">
               {/* Search */}
               <div className="relative flex-1 min-w-[200px] max-w-xs">
@@ -490,7 +596,7 @@ const WorkOrders = () => {
                 />
               </div>
 
-              {/* Stage Pills */}
+              {/* Contextual Stage Pills */}
               <div className="flex items-center gap-1 flex-wrap">
                 <button
                   onClick={() => setStageFilter('all')}
@@ -503,33 +609,38 @@ const WorkOrders = () => {
                 >
                   All ({stageCounts.all})
                 </button>
-                {Object.entries(STAGES).map(([key, config]) => (
-                  <button
-                    key={key}
-                    onClick={() => setStageFilter(key)}
-                    className={cn(
-                      "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                      stageFilter === key 
-                        ? cn("text-white", config.color)
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    )}
-                  >
-                    {config.label} ({stageCounts[key] || 0})
-                  </button>
-                ))}
+                
+                {primaryFilter === 'internal' 
+                  ? Object.entries(INTERNAL_STAGES).map(([key, config]) => (
+                      <button
+                        key={key}
+                        onClick={() => setStageFilter(key)}
+                        className={cn(
+                          "px-3 py-1 text-xs font-medium rounded-full transition-colors",
+                          stageFilter === key 
+                            ? cn("text-white", config.color)
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        )}
+                      >
+                        {config.label} ({stageCounts[key] || 0})
+                      </button>
+                    ))
+                  : Object.entries(EXTERNAL_STAGES).map(([key, config]) => (
+                      <button
+                        key={key}
+                        onClick={() => setStageFilter(key)}
+                        className={cn(
+                          "px-3 py-1 text-xs font-medium rounded-full transition-colors",
+                          stageFilter === key 
+                            ? cn("text-white", config.color)
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        )}
+                      >
+                        {config.label} ({stageCounts[key] || 0})
+                      </button>
+                    ))
+                }
               </div>
-
-              {/* Active View Filter Indicator */}
-              {viewFilter !== 'all' && (
-                <Badge 
-                  variant="secondary" 
-                  className="cursor-pointer" 
-                  onClick={() => setViewFilter('all')}
-                >
-                  {viewFilter === 'blocked' ? 'Blocked' : viewFilter === 'delayed' ? 'Delayed' : 'External'} 
-                  <span className="ml-1">×</span>
-                </Badge>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -562,19 +673,22 @@ const WorkOrders = () => {
             <CardContent className="py-0">
               <EmptyState
                 icon="workOrders"
-                title={viewFilter !== 'all' 
-                  ? `No ${viewFilter} work orders`
+                title={issueFilter !== 'all' 
+                  ? `No ${issueFilter} work orders`
                   : stageFilter !== 'all' 
-                    ? `No orders in ${STAGES[stageFilter as keyof typeof STAGES]?.label || stageFilter}`
-                    : "No active work orders"
+                    ? `No orders in this stage`
+                    : `No ${primaryFilter} work orders`
                 }
-                description="All clear! Create a new work order to get started."
-                action={viewFilter === 'all' && stageFilter === 'all' ? {
+                description={primaryFilter === 'external' 
+                  ? "No work orders currently at external partners."
+                  : "All clear! Create a new work order to get started."
+                }
+                action={issueFilter === 'all' && stageFilter === 'all' ? {
                   label: "Create Work Order",
                   onClick: () => navigate("/work-orders/new"),
                 } : {
                   label: "Clear Filters",
-                  onClick: () => { setViewFilter('all'); setStageFilter('all'); setSearchQuery(''); },
+                  onClick: () => { setIssueFilter('all'); setStageFilter('all'); setSearchQuery(''); },
                   variant: "outline",
                 }}
               />
