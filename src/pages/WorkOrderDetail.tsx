@@ -42,6 +42,7 @@ import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
 import { WorkOrderNCRList } from "@/components/ncr/WorkOrderNCRList";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -613,358 +614,385 @@ const WorkOrderDetail = () => {
     return <div className="flex items-center justify-center min-h-screen">Work Order not found</div>;
   }
 
+  // Determine blockers vs warnings
+  const blockers = [];
+  const warnings = [];
+  
+  if (productionNotReleased) {
+    blockers.push({ type: 'release', label: 'Production Not Released', description: 'Work order must be released before production can start' });
+  }
+  if (wo.qc_material_status === 'failed') {
+    blockers.push({ type: 'qc', label: 'Material QC Failed', description: 'Raw material quality check failed - cannot proceed' });
+  }
+  if (wo.qc_first_piece_status === 'failed') {
+    blockers.push({ type: 'qc', label: 'First Piece QC Failed', description: 'First piece inspection failed - cannot proceed' });
+  }
+  
+  // Pending states are warnings, not blockers
+  if (wo.qc_material_status === 'pending') {
+    warnings.push({ type: 'qc', label: 'Material QC Pending', description: 'Awaiting raw material inspection' });
+  }
+  if (wo.qc_first_piece_status === 'pending') {
+    warnings.push({ type: 'qc', label: 'First Piece QC Pending', description: 'Awaiting first piece inspection' });
+  }
+  
+  const hasBlockers = blockers.length > 0;
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader />
       
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold">{wo.wo_number || wo.display_id || wo.wo_id}</h1>
-              <StatusBadge status={wo.status} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {wo.customer} • {wo.item_code} • Qty: {wo.quantity}
-              {salesOrder && (
-                <>
-                  {" • "}
-                  <button 
-                    onClick={() => navigate(`/sales`)}
-                    className="text-blue-600 hover:underline"
-                  >
-                    PO: {salesOrder.po_number}
-                  </button>
-                </>
-              )}
-            </p>
-            {wo.actual_cycle_time_hours && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Cycle Time: {wo.actual_cycle_time_hours.toFixed(2)} hours
+      <div className="max-w-6xl mx-auto p-4 space-y-8">
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 1: ORDER HEADER - Identity & Key Actions
+        ═══════════════════════════════════════════════════════════════════ */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-bold">{wo.wo_number || wo.display_id || wo.wo_id}</h1>
+                <StatusBadge status={wo.status} />
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {wo.customer} • {wo.item_code} • Qty: {wo.quantity}
+                {salesOrder && (
+                  <>
+                    {" • "}
+                    <button 
+                      onClick={() => navigate(`/sales`)}
+                      className="text-primary hover:underline"
+                    >
+                      PO: {salesOrder.po_number}
+                    </button>
+                  </>
+                )}
               </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {canManageExternal && (
-              <Button 
-                onClick={() => setShowExternalDialog(true)} 
-                variant="secondary"
-                size="sm"
-                disabled={productionNotReleased}
-                title={productionNotReleased ? 'Work order must be released for production first' : ''}
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Send to External
-              </Button>
-            )}
-            <Button 
-              onClick={() => setShowAssignmentDialog(true)} 
-              variant="default"
-              disabled={qcGatesBlocked || productionNotReleased}
-              title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Work order must be released for production first' : ''}
-            >
-              <Cpu className="h-4 w-4 mr-2" />
-              Assign Machines
-            </Button>
-            {hourlyQcRecords.length > 0 && (
-              <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
-                <FileText className="h-4 w-4 mr-2" />
-                Final QC Report
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowStageDialog(true)}
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Stage: {wo.current_stage?.replace('_', ' ').toUpperCase() || 'N/A'}
-            </Button>
-          </div>
-        </div>
-
-        {/* Interactive Stage Flow Breadcrumb */}
-        <WorkOrderStageFlow 
-          currentStage={wo.current_stage} 
-          stageHistory={stageHistory}
-          onStageClick={(stage) => {
-            // Navigate to relevant tab when stage is clicked
-            if (stage.includes('qc')) {
-              setActiveTab('qc');
-            } else if (stage.includes('production') || stage.includes('cnc')) {
-              setActiveTab('production');
-            }
-          }}
-        />
-
-        {/* Production Blocked Alert */}
-        {qcGatesBlocked && (
-          <div className="bg-destructive/10 border-l-4 border-destructive p-4 rounded-lg">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-destructive">Production Blocked</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {wo.qc_material_status === 'pending' && 'Raw Material QC pending approval. '}
-                  {wo.qc_material_status === 'failed' && 'Raw Material QC failed. '}
-                  {wo.qc_first_piece_status === 'pending' && 'First Piece QC pending approval. '}
-                  {wo.qc_first_piece_status === 'failed' && 'First Piece QC failed. '}
-                </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {canManageExternal && (
                 <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  className="mt-2"
-                  onClick={() => setActiveTab('qc')}
+                  onClick={() => setShowExternalDialog(true)} 
+                  variant="secondary"
+                  size="sm"
+                  disabled={productionNotReleased}
+                  title={productionNotReleased ? 'Work order must be released for production first' : ''}
                 >
-                  Review QC Records
+                  <Send className="h-4 w-4 mr-2" />
+                  Send to External
                 </Button>
-              </div>
+              )}
+              <Button 
+                onClick={() => setShowAssignmentDialog(true)} 
+                variant="default"
+                disabled={qcGatesBlocked || productionNotReleased}
+                title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Work order must be released for production first' : ''}
+              >
+                <Cpu className="h-4 w-4 mr-2" />
+                Assign Machines
+              </Button>
+              {hourlyQcRecords.length > 0 && (
+                <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Final QC Report
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowStageDialog(true)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Stage: {wo.current_stage?.replace('_', ' ').toUpperCase() || 'N/A'}
+              </Button>
             </div>
           </div>
-        )}
 
-        {/* Production Release Section */}
-        <ProductionReleaseSection
-          workOrder={wo}
-          releasedByName={releasedByName}
-          onReleased={loadWorkOrderData}
-        />
+          {/* Stage Flow Breadcrumb - Visual only */}
+          <WorkOrderStageFlow 
+            currentStage={wo.current_stage} 
+            stageHistory={stageHistory}
+            onStageClick={(stage) => {
+              if (stage.includes('qc')) setActiveTab('qc');
+              else if (stage.includes('production') || stage.includes('cnc')) setActiveTab('production');
+            }}
+          />
+        </section>
 
-        {/* Operation Route Status */}
-        <OperationRouteStatus workOrderId={wo.id} />
-
-        {/* NCRs linked to this Work Order */}
-        <WorkOrderNCRList workOrderId={wo.id} />
-
-        {/* Machine Assignments */}
-        {machineAssignments.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Machine Assignments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {machineAssignments.map((assignment: any) => (
-                  <div key={assignment.id} className="flex items-center justify-between p-3 border rounded">
-                    <div className="flex-1">
-                      <p className="font-medium">
-                        {assignment.machine?.machine_id} - {assignment.machine?.name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(assignment.scheduled_start).toLocaleString()} → {new Date(assignment.scheduled_end).toLocaleString()}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Qty: {assignment.quantity_allocated} pcs
-                      </p>
-                      {assignment.override_cycle_time_seconds && (
-                        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded">
-                          <p className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
-                            ⚠️ Cycle Time Overridden: {assignment.original_cycle_time_seconds}s → {assignment.override_cycle_time_seconds}s
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Applied: {new Date(assignment.override_applied_at).toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <Badge variant={assignment.status === 'running' ? 'default' : 'secondary'}>
-                      {assignment.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Quantity</p>
-                <p className="text-lg font-bold">{wo.quantity} pcs</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Cycle Time</p>
-                {wo.cycle_time_seconds ? (
-                  <div className="flex items-center gap-2">
-                    <p className="text-lg font-bold">{wo.cycle_time_seconds}s/pc</p>
-                    {machineAssignments.some(a => a.override_cycle_time_seconds) ? (
-                      <Badge variant="destructive">Overridden</Badge>
-                    ) : (
-                      <Badge variant="outline">Default</Badge>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-destructive font-semibold">Not defined</p>
-                )}
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Due Date</p>
-                <p className="text-lg font-bold">
-                  {new Date(wo.due_date).toLocaleDateString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Material Location</p>
-                <Badge variant={wo.material_location === 'Factory' ? 'default' : 'outline'} className="text-sm">
-                  {wo.material_location || 'Factory'}
-                </Badge>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Customer PO / Sales Order</p>
-                {salesOrder ? (
-                  <button 
-                    onClick={() => navigate('/sales')}
-                    className="text-lg font-bold text-blue-600 hover:underline"
-                  >
-                    {salesOrder.po_number}
-                  </button>
-                ) : (
-                  <p className="text-lg font-bold">—</p>
-                )}
-              </div>
-              {isFinanceRole() && (wo.gross_weight_per_pc || wo.net_weight_per_pc) && (
-                <>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Gross Weight</p>
-                    <p className="text-lg font-bold">{wo.gross_weight_per_pc}g/pc</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Net Weight</p>
-                    <p className="text-lg font-bold">{wo.net_weight_per_pc}g/pc</p>
-                  </div>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Material QC and First Piece QC Approval Components - Legacy Support */}
-        {wo.material_qc_status === 'pending' && (
-          <MaterialQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
-        )}
-        
-        {wo.first_piece_ready_for_qc && wo.first_piece_qc_status === 'pending' && (
-          <FirstPieceQCApproval workOrder={wo} onApproved={loadWorkOrderData} />
-        )}
-
-        {/* Enhanced Production Progress with Real-time Updates */}
-        {woProgress && (
-          <div className="space-y-4">
-            <WOProgressCard
-              woId={id!}
-              targetQuantity={woProgress.target_quantity}
-              completedQuantity={woProgress.total_completed}
-              scrapQuantity={woProgress.total_scrap}
-              progressPercentage={woProgress.progress_percentage}
-              remainingQuantity={woProgress.remaining_quantity}
-            />
-            
-            {/* External WIP Distribution */}
-            {wo.external_out_total > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">External Processing Distribution</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Total Sent:</span>
-                      <span className="font-semibold">{wo.external_out_total} pcs</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Total Returned:</span>
-                      <span className="font-semibold">{wo.external_in_total} pcs</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Currently Out:</span>
-                      <span className="font-semibold text-orange-600">
-                        {wo.external_out_total - wo.external_in_total} pcs
-                      </span>
-                    </div>
-                    
-                    {wo.external_wip && Object.keys(wo.external_wip).length > 0 && (
-                      <div className="mt-4 pt-3 border-t">
-                        <p className="text-xs text-muted-foreground mb-2">By Process:</p>
-                        <div className="space-y-2">
-                          {Object.entries(wo.external_wip).map(([process, qty]: [string, any]) => (
-                            <div key={process} className="flex justify-between items-center text-sm">
-                              <Badge variant="outline" className="capitalize">
-                                {process.replace('_', ' ')}
-                              </Badge>
-                              <span className="font-medium">{qty} pcs</span>
-                            </div>
-                          ))}
+        {/* ═══════════════════════════════════════════════════════════════════
+            BLOCKERS SECTION - Dominating visual treatment for critical issues
+        ═══════════════════════════════════════════════════════════════════ */}
+        {hasBlockers && (
+          <section className="space-y-3">
+            <div className="rounded-lg border-2 border-destructive bg-destructive/5 p-5">
+              <div className="flex items-start gap-4">
+                <div className="rounded-full bg-destructive p-2">
+                  <AlertTriangle className="h-6 w-6 text-destructive-foreground" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-destructive mb-2">Production Blocked</h2>
+                  <div className="space-y-2">
+                    {blockers.map((blocker, idx) => (
+                      <div key={idx} className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-destructive mt-2 shrink-0" />
+                        <div>
+                          <span className="font-semibold text-destructive">{blocker.label}:</span>
+                          <span className="text-muted-foreground ml-1">{blocker.description}</span>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    className="mt-4"
+                    onClick={() => setActiveTab('qc')}
+                  >
+                    Resolve Issues
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Warnings - Less prominent than blockers */}
+        {!hasBlockers && warnings.length > 0 && (
+          <section>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="flex items-start gap-3">
+                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                    {warnings.map(w => w.label).join(' • ')}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Production can proceed but QC approvals are pending
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 2: ORDER INFO - Static details grouped together
+        ═══════════════════════════════════════════════════════════════════ */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Order Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Core Details */}
+            <Card>
+              <CardContent className="pt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Quantity</p>
+                    <p className="text-lg font-bold">{wo.quantity} pcs</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Due Date</p>
+                    <p className="text-lg font-bold">{new Date(wo.due_date).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Cycle Time</p>
+                    {wo.cycle_time_seconds ? (
+                      <p className="text-lg font-bold">{wo.cycle_time_seconds}s/pc</p>
+                    ) : (
+                      <p className="text-sm text-destructive">Not defined</p>
                     )}
                   </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Material Location</p>
+                    <Badge variant={wo.material_location === 'Factory' ? 'default' : 'outline'}>
+                      {wo.material_location || 'Factory'}
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Production Release - Consolidated here */}
+            <ProductionReleaseSection
+              workOrder={wo}
+              releasedByName={releasedByName}
+              onReleased={loadWorkOrderData}
+            />
+          </div>
+        </section>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 3: PRODUCTION FLOW - Progress & Machines
+        ═══════════════════════════════════════════════════════════════════ */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Production Flow</h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Progress Card */}
+            {woProgress && (
+              <WOProgressCard
+                woId={id!}
+                targetQuantity={woProgress.target_quantity}
+                completedQuantity={woProgress.total_completed}
+                scrapQuantity={woProgress.total_scrap}
+                progressPercentage={woProgress.progress_percentage}
+                remainingQuantity={woProgress.remaining_quantity}
+              />
+            )}
+
+            {/* Machine Assignments - Compact view */}
+            {machineAssignments.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Machine Assignments</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {machineAssignments.slice(0, 3).map((assignment: any) => (
+                    <div key={assignment.id} className="flex items-center justify-between p-2 border rounded text-sm">
+                      <div>
+                        <p className="font-medium">{assignment.machine?.machine_id}</p>
+                        <p className="text-xs text-muted-foreground">{assignment.quantity_allocated} pcs</p>
+                      </div>
+                      <Badge variant={assignment.status === 'running' ? 'default' : 'secondary'} className="text-xs">
+                        {assignment.status}
+                      </Badge>
+                    </div>
+                  ))}
+                  {machineAssignments.length > 3 && (
+                    <p className="text-xs text-muted-foreground text-center">+{machineAssignments.length - 3} more</p>
+                  )}
                 </CardContent>
               </Card>
             )}
           </div>
+
+          {/* Operation Route Status */}
+          <OperationRouteStatus workOrderId={wo.id} />
+
+          {/* OEE Widget - Only if running */}
+          {woOEE && (
+            <OEEWidget 
+              metrics={woOEE}
+              title="Work Order OEE (Running Machines)"
+            />
+          )}
+        </section>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 4: QC STATUS - Consolidated quality view
+        ═══════════════════════════════════════════════════════════════════ */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">QC Status</h2>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: 'Material QC', status: wo.qc_raw_material_status || wo.qc_material_status || 'pending' },
+              { label: 'First Piece', status: wo.qc_first_piece_status || 'pending' },
+              { label: 'Final QC', status: wo.qc_final_status || 'pending' },
+            ].map((gate, idx) => {
+              const isPassed = gate.status === 'passed' || gate.status === 'waived';
+              const isFailed = gate.status === 'failed';
+              const isPending = gate.status === 'pending';
+              return (
+                <Card 
+                  key={idx} 
+                  className={cn(
+                    "cursor-pointer transition-all hover:shadow-md",
+                    isFailed && "border-destructive/50 bg-destructive/5",
+                    isPassed && "border-emerald-500/30 bg-emerald-500/5",
+                    isPending && "opacity-60"
+                  )}
+                  onClick={() => setActiveTab('qc')}
+                >
+                  <CardContent className="p-4 text-center">
+                    <div className={cn(
+                      "w-8 h-8 rounded-full mx-auto mb-2 flex items-center justify-center",
+                      isFailed && "bg-destructive text-destructive-foreground",
+                      isPassed && "bg-emerald-600 text-white",
+                      isPending && "bg-muted text-muted-foreground"
+                    )}>
+                      {isPassed ? <CheckCircle2 className="h-4 w-4" /> : 
+                       isFailed ? <AlertTriangle className="h-4 w-4" /> : 
+                       <Clock className="h-4 w-4" />}
+                    </div>
+                    <p className="text-sm font-medium">{gate.label}</p>
+                    <p className={cn(
+                      "text-xs capitalize mt-1",
+                      isFailed && "text-destructive",
+                      isPassed && "text-emerald-600 dark:text-emerald-400",
+                      isPending && "text-muted-foreground"
+                    )}>
+                      {gate.status}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 5: EXTERNAL PROCESSING - If applicable
+        ═══════════════════════════════════════════════════════════════════ */}
+        {(wo.external_out_total > 0 || externalMoves.length > 0) && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">External Processing</h2>
+            <Card>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-bold">{wo.external_out_total || 0}</p>
+                    <p className="text-xs text-muted-foreground">Sent Out</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{wo.external_in_total || 0}</p>
+                    <p className="text-xs text-muted-foreground">Returned</p>
+                  </div>
+                  <div>
+                    <p className={cn(
+                      "text-2xl font-bold",
+                      (wo.external_out_total - wo.external_in_total) > 0 && "text-amber-600 dark:text-amber-400"
+                    )}>
+                      {(wo.external_out_total || 0) - (wo.external_in_total || 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Currently Out</p>
+                  </div>
+                </div>
+                {externalMoves.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="w-full mt-4"
+                    onClick={() => setActiveTab('external')}
+                  >
+                    View Details →
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </section>
         )}
 
-        {/* Timeline Visualization */}
-        {stageHistory.length > 0 && (
-          <WOTimelineVisualization stageHistory={stageHistory} />
-        )}
+        {/* NCRs - Only show if there are any */}
+        <WorkOrderNCRList workOrderId={wo.id} />
 
-        {/* OEE Widget for running WO */}
-        {woOEE && machineAssignments.some(a => a.status === 'running') && (
-          <OEEWidget 
-            metrics={woOEE}
-            title="Work Order OEE (Running Machines)"
-          />
-        )}
-
-        {/* Production Log Form */}
-        {qcGatesBlocked || productionNotReleased ? (
-          <Card className="border-destructive">
-            <CardHeader>
-              <CardTitle className="text-destructive flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Production Logging Disabled
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                {productionNotReleased 
-                  ? 'Production logging is blocked until the work order is released for production.'
-                  : 'Production logging is blocked until all QC gates pass or are waived. Please complete the required QC approvals in the QC Records tab.'
-                }
-              </p>
-              <div className="space-y-2">
-                {productionNotReleased && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-warning"></div>
-                    <span>Production Release - Not Released</span>
-                  </div>
-                )}
-                {(wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed') && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-destructive"></div>
-                    <span>Raw Material QC - {wo.qc_material_status === 'pending' ? 'Pending' : 'Failed'}</span>
-                  </div>
-                )}
-                {(wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed') && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-destructive"></div>
-                    <span>First Piece QC - {wo.qc_first_piece_status === 'pending' ? 'Pending' : 'Failed'}</span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <ProductionLogForm workOrder={wo} />
-        )}
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 6: PRODUCTION LOGGING & AUDIT
+        ═══════════════════════════════════════════════════════════════════ */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Production Logging</h2>
+          {qcGatesBlocked || productionNotReleased ? (
+            <Card className="border-muted">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">
+                  {productionNotReleased 
+                    ? 'Production logging is blocked until the work order is released.'
+                    : 'Production logging is blocked until QC gates pass or are waived.'
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <ProductionLogForm workOrder={wo} />
+          )}
+        </section>
 
         {/* Audit Trail Button */}
         <div className="flex justify-end">
