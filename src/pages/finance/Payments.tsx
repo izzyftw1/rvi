@@ -1,4 +1,4 @@
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, AlertCircle } from "lucide-react";
@@ -7,8 +7,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 export default function Payments() {
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Payments" subtitle="Record customer payments" />
-      
       <div className="p-6 space-y-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

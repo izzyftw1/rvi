@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -157,7 +157,6 @@ export default function ProductionProgress() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex justify-between items-center">
           <div>

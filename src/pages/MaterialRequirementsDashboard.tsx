@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -262,7 +262,6 @@ export default function MaterialRequirementsDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Material Requirements" />
         <div className="p-6">
           <div className="text-center">Loading requirements...</div>
         </div>
@@ -272,8 +271,6 @@ export default function MaterialRequirementsDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Material Requirements Planning" />
-      
       <div className="p-6 space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

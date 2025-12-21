@@ -1,4 +1,4 @@
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -112,7 +112,6 @@ export default function InvoiceDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Invoice Details" />
         <div className="p-6 text-center text-muted-foreground">Loading...</div>
       </div>
     );
@@ -121,7 +120,6 @@ export default function InvoiceDetail() {
   if (!invoice) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Invoice Not Found" />
         <div className="p-6 text-center">
           <p className="text-muted-foreground mb-4">Invoice not found</p>
           <Button asChild>
@@ -134,8 +132,6 @@ export default function InvoiceDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title={invoice.invoice_no} subtitle="Invoice Details" />
-      
       <div className="p-6 space-y-6">
         {/* Breadcrumb */}
         <div className="flex items-center justify-between">

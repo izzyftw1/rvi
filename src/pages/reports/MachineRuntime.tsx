@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { toast } from "sonner";
 import { Download, ChevronDown, ChevronUp, FileText, Filter } from "lucide-react";
 import { format } from "date-fns";
@@ -374,8 +374,6 @@ export default function MachineRuntime() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <div className="container mx-auto p-6 space-y-6">
         <Breadcrumb>
           <BreadcrumbList>

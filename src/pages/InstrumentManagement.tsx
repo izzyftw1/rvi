@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { toast } from "sonner";
 import { Plus, Ruler, AlertTriangle, CheckCircle2, Calendar, Edit } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
@@ -146,11 +146,6 @@ const InstrumentManagement = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader 
-        title="Measurement Instruments" 
-        subtitle="Manage calibration and instrument status" 
-      />
-      
       <div className="max-w-7xl mx-auto p-4 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

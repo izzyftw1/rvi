@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileSpreadsheet, ShoppingCart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { RPOModal } from "@/components/RPOModal";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Home } from "lucide-react";
@@ -443,8 +443,6 @@ export default function MaterialRequirements() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Raw Material Requirements Dashboard" subtitle="Material planning and procurement tracking" />
-      
       <div className="p-6 pb-0">
         <Breadcrumb>
           <BreadcrumbList>

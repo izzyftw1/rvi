@@ -1,4 +1,4 @@
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,8 +67,6 @@ export default function Invoices() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Invoices" subtitle="Manage customer invoices" />
-      
       <div className="p-6 space-y-6">
         {/* Breadcrumb */}
         <div className="flex items-center justify-between">

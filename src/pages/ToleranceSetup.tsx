@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import React from "react";
 
 const OPERATIONS = ['A', 'B', 'C', 'D'] as const;
@@ -228,8 +228,6 @@ const ToleranceSetup = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Tolerance Setup" subtitle="Define dimensional tolerances per part and operation" />
-      
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         <Card>
           <CardHeader>
