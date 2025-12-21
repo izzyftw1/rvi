@@ -83,9 +83,10 @@ interface WorkOrder {
 
 interface ProductionLogFormProps {
   workOrder?: any;
+  disabled?: boolean;
 }
 
-export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFormProps = {}) {
+export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }: ProductionLogFormProps = {}) {
   const [loading, setLoading] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<string>("");
@@ -249,6 +250,18 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
       setLoading(false);
     }
   };
+
+  if (disabled) {
+    return (
+      <Card className="border-muted">
+        <CardContent className="p-4">
+          <p className="text-sm text-muted-foreground">
+            Production logging is blocked. The work order must be released and QC gates must pass or be waived before logging production.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
