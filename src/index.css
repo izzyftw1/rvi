@@ -10,122 +10,139 @@ All colors MUST be HSL.
   :root {
     /* Industrial Manufacturing Theme */
     --background: 210 20% 98%;
-    --foreground: 215 25% 15%;
+    --foreground: 215 25% 17%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card-foreground: 215 25% 17%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover-foreground: 215 25% 17%;
 
     /* Industrial Blue Primary */
     --primary: 210 90% 42%;
     --primary-foreground: 0 0% 100%;
     
-    /* Status Colors */
-    --success: 142 76% 36%;
+    /* Status Colors - refined for better visibility */
+    --success: 145 65% 38%;
     --success-foreground: 0 0% 100%;
     
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 40 90% 50%;
+    --warning-foreground: 40 90% 12%;
     
-    --danger: 0 84% 60%;
+    --danger: 0 72% 55%;
     --danger-foreground: 0 0% 100%;
 
-    --secondary: 210 30% 92%;
-    --secondary-foreground: 215 25% 15%;
+    --secondary: 210 25% 93%;
+    --secondary-foreground: 215 25% 25%;
 
-    --muted: 210 30% 94%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 50%;
 
-    --accent: 38 92% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 210 90% 96%;
+    --accent-foreground: 210 90% 35%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 20% 88%;
-    --input: 215 20% 88%;
+    --border: 215 15% 90%;
+    --input: 215 15% 90%;
     --ring: 210 90% 42%;
 
-    --radius: 0.75rem;
+    --radius: 0.625rem;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(210 90% 42%) 0%, hsl(210 90% 52%) 100%);
-    --gradient-status: linear-gradient(90deg, hsl(142 76% 36%) 0%, hsl(38 92% 50%) 50%, hsl(0 84% 60%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(210 90% 42%) 0%, hsl(210 85% 50%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(210 20% 98%) 0%, hsl(210 20% 96%) 100%);
+    --gradient-status: linear-gradient(90deg, hsl(145 65% 38%) 0%, hsl(40 90% 50%) 50%, hsl(0 72% 55%) 100%);
     
-    /* Shadows */
-    --shadow-card: 0 2px 8px -2px hsl(215 25% 15% / 0.1);
-    --shadow-elevated: 0 8px 24px -8px hsl(215 25% 15% / 0.15);
+    /* Shadows - softer and more refined */
+    --shadow-xs: 0 1px 2px 0 hsl(215 25% 17% / 0.04);
+    --shadow-sm: 0 1px 3px 0 hsl(215 25% 17% / 0.06), 0 1px 2px -1px hsl(215 25% 17% / 0.06);
+    --shadow-card: 0 2px 6px -1px hsl(215 25% 17% / 0.06), 0 1px 4px -2px hsl(215 25% 17% / 0.05);
+    --shadow-elevated: 0 6px 16px -4px hsl(215 25% 17% / 0.1), 0 2px 6px -2px hsl(215 25% 17% / 0.06);
+    --shadow-focus: 0 0 0 3px hsl(210 90% 42% / 0.15);
     
     /* Transitions */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
     
-    /* Stage Colors */
-    --stage-goods-in: 210 20% 85%;
-    --stage-cutting: 210 90% 52%;
-    --stage-forging: 38 92% 50%;
+    /* Spacing helpers */
+    --section-gap: 1.5rem;
+    --content-gap: 1rem;
+    
+    /* Stage Colors - refined */
+    --stage-goods-in: 210 18% 88%;
+    --stage-cutting: 210 85% 50%;
+    --stage-forging: 40 90% 50%;
     --stage-production: 210 90% 42%;
-    --stage-qc: 142 76% 36%;
-    --stage-packing: 210 70% 40%;
-    --stage-dispatch: 142 76% 40%;
+    --stage-qc: 145 65% 38%;
+    --stage-packing: 210 65% 42%;
+    --stage-dispatch: 145 60% 42%;
 
-    --sidebar-background: 215 25% 15%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 210 90% 42%;
+    --sidebar-background: 215 28% 14%;
+    --sidebar-foreground: 210 18% 92%;
+    --sidebar-primary: 210 90% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 215 25% 20%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 215 25% 20%;
-    --sidebar-ring: 210 90% 42%;
+    --sidebar-accent-foreground: 210 18% 92%;
+    --sidebar-border: 215 22% 22%;
+    --sidebar-ring: 210 90% 50%;
   }
 
   .dark {
-    --background: 215 30% 10%;
-    --foreground: 210 20% 95%;
+    --background: 215 28% 10%;
+    --foreground: 210 18% 95%;
 
-    --card: 215 25% 13%;
-    --card-foreground: 210 20% 95%;
+    --card: 215 25% 12%;
+    --card-foreground: 210 18% 95%;
 
-    --popover: 215 25% 13%;
-    --popover-foreground: 210 20% 95%;
+    --popover: 215 25% 12%;
+    --popover-foreground: 210 18% 95%;
 
-    --primary: 210 90% 52%;
+    --primary: 210 85% 55%;
     --primary-foreground: 0 0% 100%;
     
-    --success: 142 76% 40%;
+    --success: 145 60% 42%;
     --success-foreground: 0 0% 100%;
     
-    --warning: 38 92% 55%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 40 85% 55%;
+    --warning-foreground: 40 90% 10%;
     
-    --danger: 0 84% 65%;
+    --danger: 0 70% 60%;
     --danger-foreground: 0 0% 100%;
 
-    --secondary: 215 25% 18%;
-    --secondary-foreground: 210 20% 95%;
+    --secondary: 215 22% 18%;
+    --secondary-foreground: 210 18% 92%;
 
-    --muted: 215 25% 18%;
-    --muted-foreground: 215 16% 65%;
+    --muted: 215 22% 16%;
+    --muted-foreground: 215 14% 62%;
 
-    --accent: 38 92% 55%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 210 50% 20%;
+    --accent-foreground: 210 85% 70%;
 
-    --destructive: 0 84% 65%;
+    --destructive: 0 70% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 25% 20%;
-    --input: 215 25% 20%;
-    --ring: 210 90% 52%;
+    --border: 215 20% 20%;
+    --input: 215 20% 20%;
+    --ring: 210 85% 55%;
+    
+    /* Dark shadows */
+    --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.15);
+    --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.2), 0 1px 2px -1px hsl(0 0% 0% / 0.15);
+    --shadow-card: 0 2px 6px -1px hsl(0 0% 0% / 0.2), 0 1px 4px -2px hsl(0 0% 0% / 0.15);
+    --shadow-elevated: 0 6px 16px -4px hsl(0 0% 0% / 0.3), 0 2px 6px -2px hsl(0 0% 0% / 0.2);
+    --shadow-focus: 0 0 0 3px hsl(210 85% 55% / 0.25);
     
     --sidebar-background: 215 30% 8%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 210 90% 52%;
+    --sidebar-foreground: 210 18% 92%;
+    --sidebar-primary: 210 85% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 215 25% 15%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 215 25% 15%;
-    --sidebar-ring: 210 90% 52%;
+    --sidebar-accent-foreground: 210 18% 92%;
+    --sidebar-border: 215 22% 16%;
+    --sidebar-ring: 210 85% 55%;
   }
 }
 
@@ -135,7 +152,12 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+  }
+  
+  /* Refined focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
@@ -147,5 +169,26 @@ All colors MUST be HSL.
   .scrollbar-hide {
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
+  }
+}
+
+@layer components {
+  /* Icon alignment helper */
+  .icon-text {
+    @apply inline-flex items-center gap-2;
+  }
+  
+  .icon-text > svg {
+    @apply shrink-0;
+  }
+  
+  /* Section separator - softer alternative to borders */
+  .section-divide {
+    @apply border-t border-border/60;
+  }
+  
+  /* Subtle hover for interactive elements */
+  .hover-lift {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md;
   }
 }

@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -39,12 +38,12 @@ export const FormSection = ({
   className,
   withSeparator = false 
 }: FormSectionProps) => (
-  <div className={cn("space-y-4", className)}>
-    {withSeparator && <Separator className="my-2" />}
-    <div className="space-y-1">
-      <h4 className="text-sm font-medium text-foreground">{title}</h4>
+  <div className={cn("space-y-3", className)}>
+    {withSeparator && <div className="border-t border-border/50 my-1" />}
+    <div className="space-y-0.5">
+      <h4 className="text-sm font-medium text-foreground/90">{title}</h4>
       {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
       )}
     </div>
     <div className="space-y-3">
@@ -71,7 +70,7 @@ export const FormRow = ({ children, cols = 2, className }: FormRowProps) => {
   };
 
   return (
-    <div className={cn("grid gap-4", colsClass[cols], className)}>
+    <div className={cn("grid gap-3", colsClass[cols], className)}>
       {children}
     </div>
   );
@@ -120,7 +119,7 @@ export const FormActions = ({ children, className, align = "end" }: FormActionsP
 
   return (
     <div className={cn(
-      "flex gap-3 pt-6 border-t border-border mt-6",
+      "flex gap-2.5 pt-5 border-t border-border/50 mt-5",
       alignClass[align],
       className
     )}>
@@ -164,7 +163,7 @@ interface FormContainerProps {
 export const FormContainer = ({ children, className, onSubmit }: FormContainerProps) => (
   <form 
     onSubmit={onSubmit} 
-    className={cn("space-y-6", className)}
+    className={cn("space-y-5", className)}
   >
     {children}
   </form>

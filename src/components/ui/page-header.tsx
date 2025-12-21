@@ -1,6 +1,5 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 
 interface PageHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   title: string;
@@ -12,15 +11,15 @@ interface PageHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
 const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
   ({ className, title, description, icon, actions, ...props }, ref) => {
     return (
-      <div ref={ref} className={cn("space-y-1", className)} {...props}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div ref={ref} className={cn("pb-1", className)} {...props}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              {icon && <span className="text-primary">{icon}</span>}
+            <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2.5">
+              {icon && <span className="text-primary shrink-0">{icon}</span>}
               {title}
             </h1>
             {description && (
-              <p className="text-sm text-muted-foreground">{description}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
             )}
           </div>
           {actions && (
@@ -55,7 +54,7 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
       <div
         ref={ref}
         className={cn(
-          "mx-auto w-full px-4 py-6 sm:px-6 lg:px-8",
+          "mx-auto w-full px-4 py-5 sm:px-6 lg:px-8",
           maxWidthClasses[maxWidth],
           className
         )}
@@ -80,13 +79,13 @@ const PageSection = React.forwardRef<HTMLElement, PageSectionProps>(
     return (
       <section ref={ref} className={cn("space-y-4", className)} {...props}>
         {(title || actions) && (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-0.5">
               {title && (
-                <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+                <h2 className="text-sm font-semibold text-foreground/90 tracking-tight">{title}</h2>
               )}
               {description && (
-                <p className="text-sm text-muted-foreground">{description}</p>
+                <p className="text-xs text-muted-foreground">{description}</p>
               )}
             </div>
             {actions && (
@@ -94,7 +93,7 @@ const PageSection = React.forwardRef<HTMLElement, PageSectionProps>(
             )}
           </div>
         )}
-        {(title || description) && <Separator />}
+        {(title || description) && <div className="border-t border-border/50" />}
         {children}
       </section>
     );
@@ -112,7 +111,7 @@ const FormActions = React.forwardRef<HTMLDivElement, FormActionsProps>(
       <div
         ref={ref}
         className={cn(
-          "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3 pt-4 border-t mt-6",
+          "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2.5 pt-4 border-t border-border/50 mt-5",
           className
         )}
         {...props}

@@ -97,16 +97,16 @@ export const EmptyState = ({
       hint: "text-xs",
     },
     md: {
-      container: "py-12",
-      icon: "h-12 w-12",
-      title: "text-base font-semibold",
+      container: "py-10",
+      icon: "h-10 w-10",
+      title: "text-sm font-medium",
       description: "text-sm",
       hint: "text-xs",
     },
     lg: {
-      container: "py-16",
-      icon: "h-16 w-16",
-      title: "text-lg font-semibold",
+      container: "py-14",
+      icon: "h-12 w-12",
+      title: "text-base font-semibold",
       description: "text-sm",
       hint: "text-xs",
     },
@@ -120,20 +120,20 @@ export const EmptyState = ({
       config.container,
       className
     )}>
-      <div className="rounded-full bg-muted/50 p-4 mb-4">
-        <Icon className={cn(config.icon, "text-muted-foreground/60")} />
+      <div className="rounded-full bg-muted/60 p-3.5 mb-3">
+        <Icon className={cn(config.icon, "text-muted-foreground/50")} />
       </div>
       
-      <h3 className={cn(config.title, "text-foreground mb-1")}>
+      <h3 className={cn(config.title, "text-foreground/90 mb-1")}>
         {title}
       </h3>
       
-      <p className={cn(config.description, "text-muted-foreground max-w-md mb-3")}>
+      <p className={cn(config.description, "text-muted-foreground max-w-sm leading-relaxed")}>
         {description}
       </p>
 
       {hint && (
-        <p className={cn(config.hint, "text-muted-foreground/70 max-w-sm mb-4 italic")}>
+        <p className={cn(config.hint, "text-muted-foreground/60 max-w-xs mt-2 italic")}>
           {hint}
         </p>
       )}
@@ -143,7 +143,7 @@ export const EmptyState = ({
           variant={action.variant || "default"}
           size={size === "sm" ? "sm" : "default"}
           onClick={action.onClick}
-          className="mt-2"
+          className="mt-4"
         >
           {action.label}
         </Button>
@@ -174,13 +174,13 @@ export const TableEmptyState = ({
 
   return (
     <tr>
-      <td colSpan={colSpan} className="py-12">
+      <td colSpan={colSpan} className="py-10">
         <div className="flex flex-col items-center justify-center text-center">
-          <Icon className="h-10 w-10 text-muted-foreground/40 mb-3" />
+          <Icon className="h-8 w-8 text-muted-foreground/40 mb-2.5" />
           {title && (
-            <p className="text-sm font-medium text-foreground mb-1">{title}</p>
+            <p className="text-sm font-medium text-foreground/90 mb-0.5">{title}</p>
           )}
-          <p className="text-sm text-muted-foreground max-w-md">
+          <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
             {description}
           </p>
         </div>
@@ -208,11 +208,11 @@ export const CardEmptyState = ({
     : icon;
 
   return (
-    <div className="flex flex-col items-center justify-center py-6 text-center">
-      <Icon className="h-8 w-8 text-muted-foreground/40 mb-2" />
+    <div className="flex flex-col items-center justify-center py-5 text-center">
+      <Icon className="h-7 w-7 text-muted-foreground/40 mb-2" />
       <p className="text-sm text-muted-foreground">{message}</p>
       {hint && (
-        <p className="text-xs text-muted-foreground/70 mt-1">{hint}</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">{hint}</p>
       )}
     </div>
   );
