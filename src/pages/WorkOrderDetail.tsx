@@ -689,8 +689,6 @@ const WorkOrderDetail = () => {
                   onClick={() => setShowExternalDialog(true)} 
                   variant="secondary"
                   size="sm"
-                  disabled={productionNotReleased}
-                  title={productionNotReleased ? 'Work order must be released for production first' : ''}
                 >
                   <Send className="h-4 w-4 mr-2" />
                   Send to External
