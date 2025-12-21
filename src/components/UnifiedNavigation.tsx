@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   FileText,
   Truck,
@@ -43,6 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { GlobalSearch } from "./GlobalSearch";
 import { supabase } from "@/integrations/supabase/client";
 import { useSiteContext } from "@/hooks/useSiteContext";
+import { cn } from "@/lib/utils";
 import rvLogo from "@/assets/rv-logo.jpg";
 
 interface NavItem {
@@ -64,6 +65,7 @@ interface UnifiedNavigationProps {
 
 export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [profile, setProfile] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
@@ -192,6 +194,31 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
 
   const visibleGroups = getVisibleGroups();
 
+  // Check if a group contains the current active route
+  const isGroupActive = (group: NavGroup) => {
+    const currentPath = location.pathname;
+    return group.items.some(item => {
+      // Exact match or starts with the path (for nested routes)
+      if (item.path === currentPath) return true;
+      if (item.path !== '/' && currentPath.startsWith(item.path)) return true;
+      return false;
+    });
+  };
+
+  // Check if a specific nav item is active
+  const isItemActive = (path: string) => {
+    const currentPath = location.pathname;
+    if (path === currentPath) return true;
+    if (path !== '/' && currentPath.startsWith(path)) return true;
+    return false;
+  };
+
+  // Check if admin section is active
+  const isAdminActive = () => {
+    const adminPaths = ['/admin', '/factory-calendar', '/instruments'];
+    return adminPaths.some(p => location.pathname.startsWith(p));
+  };
+
   const handleNavigate = (path: string) => {
     navigate(path);
     setMobileMenuOpen(false);
@@ -269,13 +296,19 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                             {group.title}
                           </div>
                           <div className="space-y-1">
-                            {group.items.map((item) => {
+                        {group.items.map((item) => {
                               const ItemIcon = item.icon;
+                              const isActive = isItemActive(item.path);
                               return (
                                 <button
                                   key={item.path}
                                   onClick={() => handleNavigate(item.path)}
-                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
+                                  className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors text-left",
+                                    isActive 
+                                      ? "bg-primary text-primary-foreground font-medium"
+                                      : "hover:bg-muted"
+                                  )}
                                 >
                                   <ItemIcon className="h-4 w-4" />
                                   {item.label}
@@ -380,17 +413,23 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
           <nav className="hidden lg:flex items-center gap-1 overflow-x-auto scrollbar-hide">
             {visibleGroups.map((group) => {
               const GroupIcon = group.icon;
+              const groupActive = isGroupActive(group);
               return (
                 <DropdownMenu key={group.title}>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="ghost"
-                      className="gap-1.5 h-9 px-2.5 hover:bg-muted flex-shrink-0 text-xs"
+                      variant={groupActive ? "default" : "ghost"}
+                      className={cn(
+                        "gap-1.5 h-9 px-2.5 flex-shrink-0 text-xs transition-all",
+                        groupActive 
+                          ? "bg-primary text-primary-foreground shadow-sm" 
+                          : "hover:bg-muted"
+                      )}
                       onMouseEnter={() => setHoveredMenu(group.title)}
                     >
                       <GroupIcon className="h-3.5 w-3.5" />
                       <span className="hidden xl:inline">{group.title}</span>
-                      <ChevronDown className="h-3 w-3 opacity-50" />
+                      <ChevronDown className={cn("h-3 w-3", groupActive ? "opacity-80" : "opacity-50")} />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent 
@@ -400,13 +439,17 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                   >
                     {group.items.map((item) => {
                       const ItemIcon = item.icon;
+                      const itemActive = isItemActive(item.path);
                       return (
                         <DropdownMenuItem
                           key={item.path}
                           onClick={() => handleNavigate(item.path)}
-                          className="gap-3 cursor-pointer"
+                          className={cn(
+                            "gap-3 cursor-pointer",
+                            itemActive && "bg-primary/10 text-primary font-medium"
+                          )}
                         >
-                          <ItemIcon className="h-4 w-4" />
+                          <ItemIcon className={cn("h-4 w-4", itemActive && "text-primary")} />
                           {item.label}
                         </DropdownMenuItem>
                       );
@@ -421,37 +464,51 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="ghost"
-                    className="gap-1.5 h-9 px-2.5 hover:bg-muted flex-shrink-0 text-xs"
+                    variant={isAdminActive() ? "default" : "ghost"}
+                    className={cn(
+                      "gap-1.5 h-9 px-2.5 flex-shrink-0 text-xs transition-all",
+                      isAdminActive() 
+                        ? "bg-primary text-primary-foreground shadow-sm" 
+                        : "hover:bg-muted"
+                    )}
                   >
                     <Shield className="h-3.5 w-3.5" />
                     <span className="hidden xl:inline">Admin</span>
-                    <ChevronDown className="h-3 w-3 opacity-50" />
+                    <ChevronDown className={cn("h-3 w-3", isAdminActive() ? "opacity-80" : "opacity-50")} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56 bg-popover shadow-lg border z-[100]">
-                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
-                    <Users className="h-4 w-4" />
-                    Users
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
-                    <UserCog className="h-4 w-4" />
-                    Roles & Permissions
+                  <DropdownMenuItem 
+                    onClick={() => handleNavigate("/admin")} 
+                    className={cn(
+                      "gap-3 cursor-pointer",
+                      location.pathname === '/admin' && "bg-primary/10 text-primary font-medium"
+                    )}
+                  >
+                    <Users className={cn("h-4 w-4", location.pathname === '/admin' && "text-primary")} />
+                    Admin Panel
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs text-muted-foreground">Factory Tools</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => handleNavigate("/maintenance")} className="gap-3">
-                    <Wrench className="h-4 w-4" />
-                    Maintenance
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleNavigate("/factory-calendar")} className="gap-3">
-                    <Calendar className="h-4 w-4" />
+                  <DropdownMenuItem 
+                    onClick={() => handleNavigate("/factory-calendar")} 
+                    className={cn(
+                      "gap-3 cursor-pointer",
+                      location.pathname === '/factory-calendar' && "bg-primary/10 text-primary font-medium"
+                    )}
+                  >
+                    <Calendar className={cn("h-4 w-4", location.pathname === '/factory-calendar' && "text-primary")} />
                     Factory Calendar
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleNavigate("/admin")} className="gap-3">
-                    <Settings className="h-4 w-4" />
-                    Settings
+                  <DropdownMenuItem 
+                    onClick={() => handleNavigate("/instruments")} 
+                    className={cn(
+                      "gap-3 cursor-pointer",
+                      location.pathname === '/instruments' && "bg-primary/10 text-primary font-medium"
+                    )}
+                  >
+                    <Wrench className={cn("h-4 w-4", location.pathname === '/instruments' && "text-primary")} />
+                    Instruments
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
