@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   FileText,
@@ -25,6 +25,7 @@ import {
   Factory,
   Wrench,
   Calendar,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -70,6 +71,10 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
   const { currentSite, setCurrentSite, availableSites, loading: sitesLoading } = useSiteContext();
+  
+  // Responsive navigation - track visible items
+  const navContainerRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState<number>(10); // Start showing all
 
   const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
 
@@ -193,6 +198,40 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
   };
 
   const visibleGroups = getVisibleGroups();
+  
+  // Calculate how many items can fit in the nav container
+  const calculateVisibleItems = useCallback(() => {
+    if (!navContainerRef.current) return;
+    
+    const containerWidth = navContainerRef.current.offsetWidth;
+    // Approximate width per nav item (button with icon + text + chevron + gap)
+    // On XL screens: ~140px per item, on smaller: ~80px (icon only)
+    const isXL = window.innerWidth >= 1280;
+    const itemWidth = isXL ? 140 : 85;
+    const moreButtonWidth = 85; // Width for "More" button
+    const adminButtonWidth = isXL ? 100 : 85; // Width for admin button
+    
+    const availableWidth = containerWidth - (isAdmin ? adminButtonWidth : 0) - moreButtonWidth - 20;
+    const count = Math.max(1, Math.floor(availableWidth / itemWidth));
+    
+    setVisibleCount(count);
+  }, [isAdmin]);
+  
+  useEffect(() => {
+    calculateVisibleItems();
+    
+    const handleResize = () => {
+      calculateVisibleItems();
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [calculateVisibleItems, visibleGroups.length]);
+
+  // Split navigation into visible and overflow
+  const primaryGroups = visibleGroups.slice(0, visibleCount);
+  const overflowGroups = visibleGroups.slice(visibleCount);
+  const hasOverflow = overflowGroups.length > 0;
 
   // Check if a group contains the current active route
   const isGroupActive = (group: NavGroup) => {
@@ -203,6 +242,11 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
       if (item.path !== '/' && currentPath.startsWith(item.path)) return true;
       return false;
     });
+  };
+  
+  // Check if overflow contains active route
+  const isOverflowActive = () => {
+    return overflowGroups.some(group => isGroupActive(group));
   };
 
   // Check if a specific nav item is active
@@ -409,9 +453,10 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
             </div>
           </div>
 
-          {/* Center: Desktop Navigation Menus - Compact */}
-          <nav className="hidden lg:flex items-center gap-1 overflow-x-auto scrollbar-hide">
-            {visibleGroups.map((group) => {
+          {/* Center: Desktop Navigation Menus - Responsive with overflow */}
+          <nav ref={navContainerRef} className="hidden lg:flex items-center gap-1 flex-1 min-w-0">
+            {/* Primary visible groups */}
+            {primaryGroups.map((group) => {
               const GroupIcon = group.icon;
               const groupActive = isGroupActive(group);
               return (
@@ -458,6 +503,61 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                 </DropdownMenu>
               );
             })}
+
+            {/* "More" dropdown for overflow groups */}
+            {hasOverflow && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isOverflowActive() ? "default" : "ghost"}
+                    className={cn(
+                      "gap-1.5 h-9 px-2.5 flex-shrink-0 text-xs transition-all",
+                      isOverflowActive() 
+                        ? "bg-primary text-primary-foreground shadow-sm" 
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                    <span className="hidden xl:inline">More</span>
+                    <ChevronDown className={cn("h-3 w-3", isOverflowActive() ? "opacity-80" : "opacity-50")} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent 
+                  align="start" 
+                  className="w-64 bg-popover shadow-lg border z-[100] max-h-[70vh] overflow-y-auto"
+                >
+                  {overflowGroups.map((group, groupIndex) => {
+                    const GroupIcon = group.icon;
+                    return (
+                      <div key={group.title}>
+                        {groupIndex > 0 && <DropdownMenuSeparator />}
+                        <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <GroupIcon className="h-3.5 w-3.5" />
+                          {group.title}
+                        </DropdownMenuLabel>
+                        {group.items.map((item) => {
+                          const ItemIcon = item.icon;
+                          const itemActive = isItemActive(item.path);
+                          return (
+                            <DropdownMenuItem
+                              key={item.path}
+                              onClick={() => handleNavigate(item.path)}
+                              className={cn(
+                                "gap-3 cursor-pointer pl-6",
+                                itemActive && "bg-primary/10 text-primary font-medium"
+                              )}
+                            >
+                              <ItemIcon className={cn("h-4 w-4", itemActive && "text-primary")} />
+                              {item.label}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* Admin Menu */}
             {isAdmin && (
