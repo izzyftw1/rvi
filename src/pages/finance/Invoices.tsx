@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -143,23 +144,27 @@ export default function Invoices() {
             {loading ? (
               <div className="text-center py-8 text-muted-foreground">Loading invoices...</div>
             ) : filteredInvoices.length === 0 ? (
-              <div className="text-center py-12 space-y-4">
-                <FileText className="h-16 w-16 mx-auto text-muted-foreground" />
-                <div>
-                  <h3 className="font-semibold text-lg">No invoices found</h3>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {searchQuery || statusFilter !== "all" 
-                      ? "Try adjusting your filters" 
-                      : "Create your first invoice from an approved Sales Order"}
-                  </p>
-                </div>
-                {!searchQuery && statusFilter === "all" && (
-                  <Button disabled>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Invoice
-                  </Button>
-                )}
-              </div>
+              <EmptyState
+                icon="invoices"
+                title={searchQuery || statusFilter !== "all"
+                  ? "No Invoices Match Your Filters"
+                  : "No Invoices Yet"
+                }
+                description={searchQuery || statusFilter !== "all"
+                  ? "Try adjusting your search or filter criteria."
+                  : "Invoices are generated from approved Sales Orders. Once a shipment is dispatched, you can create an invoice for it."
+                }
+                hint="Navigate to Sales Orders to find orders ready for invoicing."
+                action={!searchQuery && statusFilter === "all" ? {
+                  label: "View Sales Orders",
+                  onClick: () => window.location.href = "/sales",
+                  variant: "outline",
+                } : {
+                  label: "Clear Filters",
+                  onClick: () => { setSearchQuery(""); setStatusFilter("all"); },
+                  variant: "outline",
+                }}
+              />
             ) : (
               <div className="rounded-md border">
                 <Table>

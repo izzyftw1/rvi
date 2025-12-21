@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, Search, Eye, BarChart3, ExternalLink } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -271,9 +272,23 @@ export default function CustomerMaster() {
             {loading ? (
               <p className="text-center py-8 text-muted-foreground">Loading...</p>
             ) : filteredCustomers.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground">
-                {searchTerm ? "No customers found" : "No customers yet. Add your first customer."}
-              </p>
+              <EmptyState
+                icon="customers"
+                title={searchTerm ? "No Customers Match Your Search" : "No Customers Yet"}
+                description={searchTerm 
+                  ? `No customers match "${searchTerm}". Try a different search term.`
+                  : "Customers are added when creating Sales Orders or manually. Add your first customer to start creating orders."
+                }
+                action={!searchTerm ? {
+                  label: "Add Customer",
+                  onClick: handleAdd,
+                } : {
+                  label: "Clear Search",
+                  onClick: () => setSearchTerm(""),
+                  variant: "outline",
+                }}
+                size="md"
+              />
             ) : (
               <TooltipProvider>
                 <div className="border rounded-lg overflow-hidden">

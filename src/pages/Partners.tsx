@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Plus, Edit, Building2, Phone, Mail, MapPin, Clock, Package } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableEmptyState } from "@/components/ui/empty-state";
 
 const PROCESS_OPTIONS = ["Plating", "Job Work", "Buffing", "Blasting", "Forging", "Heat Treatment"];
 
@@ -412,11 +413,15 @@ const Partners = () => {
             </TableHeader>
             <TableBody>
               {filteredPartners.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    No partners found. {canEdit && "Click 'Add Partner' to create one."}
-                  </TableCell>
-                </TableRow>
+                <TableEmptyState
+                  colSpan={canEdit ? 7 : 6}
+                  title="No External Partners"
+                  description={searchQuery 
+                    ? `No partners match "${searchQuery}". Try a different search term.`
+                    : "External partners are vendors for processes like plating, forging, or job work. Add partners to send work orders for external processing."
+                  }
+                  icon="partners"
+                />
               ) : (
                 filteredPartners.map((partner) => (
                   <TableRow key={partner.id}>

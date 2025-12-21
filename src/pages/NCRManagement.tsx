@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, AlertTriangle, CheckCircle, Clock, FileWarning } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { NCRFormDialog } from '@/components/ncr/NCRFormDialog';
@@ -214,8 +215,20 @@ export default function NCRManagement() {
                   </TableRow>
                 ) : filteredNCRs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      No NCRs found
+                    <TableCell colSpan={8} className="py-0">
+                      <EmptyState
+                        icon="alerts"
+                        title={searchTerm || statusFilter !== 'all' || typeFilter !== 'all'
+                          ? "No NCRs Match Your Filters"
+                          : "No Non-Conformance Reports"
+                        }
+                        description={searchTerm || statusFilter !== 'all' || typeFilter !== 'all'
+                          ? "Try adjusting your search or filter criteria to find what you are looking for."
+                          : "NCRs are created when quality issues are identified during production or inspection. Click 'New NCR' to log an issue."
+                        }
+                        hint="NCRs help track and resolve quality problems systematically."
+                        size="md"
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (

@@ -13,6 +13,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Settings2, Search, Download, Factory, CheckCircle2, PackageCheck, Truck, AlertTriangle, Filter, Clock, TrendingUp, Inbox, Scissors, Hammer, Box, FileDown, Calendar } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -939,14 +940,34 @@ const WorkOrders = () => {
         {/* Empty State */}
         {!loading && !error && filteredOrders.length === 0 && (
           <Card className="animate-fade-in">
-            <CardContent className="py-12 text-center">
-              <Factory className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">No Work Orders Found</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {stageFilter !== 'all' 
-                  ? `No work orders in ${stageFilter.replace('_', ' ')} stage`
-                  : 'Create a new work order to get started'}
-              </p>
+            <CardContent className="py-0">
+              <EmptyState
+                icon="workOrders"
+                title={stageFilter !== 'all' 
+                  ? `No Work Orders in ${stageFilter.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} Stage`
+                  : searchQuery 
+                    ? "No Work Orders Match Your Search"
+                    : "No Work Orders Yet"
+                }
+                description={stageFilter !== 'all'
+                  ? `Work orders move to this stage when they reach ${stageFilter.replace('_', ' ')} in the production flow. Check other stages or create a new order.`
+                  : searchQuery
+                    ? `No work orders match "${searchQuery}". Try a different search term or check your filters.`
+                    : "Work orders are created from Sales Orders or manually. Once created, they appear here and flow through production stages."
+                }
+                hint={stageFilter !== 'all' 
+                  ? "Click 'All' in the stage filter to see all work orders."
+                  : undefined
+                }
+                action={!searchQuery && stageFilter === 'all' ? {
+                  label: "Create Work Order",
+                  onClick: () => navigate("/work-orders/new"),
+                } : searchQuery ? {
+                  label: "Clear Search",
+                  onClick: () => setSearchQuery(""),
+                  variant: "outline",
+                } : undefined}
+              />
             </CardContent>
           </Card>
         )}
