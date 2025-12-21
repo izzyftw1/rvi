@@ -265,49 +265,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Production Log Entry</CardTitle>
-        <CardDescription>
-          {propWorkOrder 
-            ? `Recording for WO: ${propWorkOrder.display_id || propWorkOrder.wo_id} - ${propWorkOrder.item_code}`
-            : "Record production progress and scrap quantities"
-          }
-        </CardDescription>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Log Production</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Show WO info banner if work order is provided */}
-          {propWorkOrder && (
-            <div className="p-4 bg-muted rounded-lg border">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">WO ID</p>
-                  <p className="font-medium">{propWorkOrder.display_id || propWorkOrder.wo_id}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Item Code</p>
-                  <p className="font-medium">{propWorkOrder.item_code}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Drawing/Rev</p>
-                  <p className="font-medium">{propWorkOrder.revision || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Cycle Time</p>
-                  <p className="font-medium">{propWorkOrder.cycle_time_seconds ? `${propWorkOrder.cycle_time_seconds}s` : 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Target Qty</p>
-                  <p className="font-medium">{propWorkOrder.quantity} pcs</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Assigned Machines</p>
-                  <p className="font-medium">{machines.length} machine{machines.length !== 1 ? 's' : ''}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Machine Selection */}
             <div className="space-y-2">
