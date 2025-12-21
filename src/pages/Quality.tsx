@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckCircle2, XCircle, AlertTriangle, FileText, Package, Clock, TrendingUp, FlaskConical, Eye, ArrowRight, Info } from "lucide-react";
@@ -178,13 +179,15 @@ const Quality = () => {
     return (
       <div className="min-h-screen bg-background">
         <NavigationHeader />
-        <div className="max-w-7xl mx-auto p-4 space-y-6">
-          <Skeleton className="h-10 w-64" />
-          <div className="grid grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+        <PageContainer maxWidth="2xl">
+          <div className="space-y-6">
+            <Skeleton className="h-10 w-64" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+            </div>
+            <Skeleton className="h-96" />
           </div>
-          <Skeleton className="h-96" />
-        </div>
+        </PageContainer>
       </div>
     );
   }
@@ -193,25 +196,23 @@ const Quality = () => {
     <div className="min-h-screen bg-background">
       <NavigationHeader />
       
-      <div className="max-w-7xl mx-auto p-4 space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold">Quality Control Overview</h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-            <TrendingUp className="h-3.5 w-3.5" />
-            Read-only summary of quality metrics across all work orders
-          </p>
-        </div>
+      <PageContainer maxWidth="2xl">
+        <div className="space-y-6">
+          <PageHeader
+            title="Quality Control Overview"
+            description="Read-only summary of quality metrics across all work orders"
+            icon={<TrendingUp className="h-6 w-6" />}
+          />
 
-        {/* Info Alert */}
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertTitle>QC Actions are Work Order Based</AlertTitle>
-          <AlertDescription>
-            To perform QC inspections, navigate to the specific Work Order and use the QC actions available there. 
-            This dashboard provides an overview of quality status across all orders.
-          </AlertDescription>
-        </Alert>
+          {/* Info Alert */}
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>QC Actions are Work Order Based</AlertTitle>
+            <AlertDescription>
+              To perform QC inspections, navigate to the specific Work Order and use the QC actions available there. 
+              This dashboard provides an overview of quality status across all orders.
+            </AlertDescription>
+          </Alert>
 
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -397,7 +398,8 @@ const Quality = () => {
             )}
           </CardContent>
         </Card>
-      </div>
+        </div>
+      </PageContainer>
     </div>
   );
 };

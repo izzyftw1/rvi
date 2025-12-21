@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Truck, Download, ClipboardCheck, FileText, MapPin } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { ShipmentTimeline } from "@/components/ShipmentTimeline";
 import { ShipmentDetailsDialog } from "@/components/ShipmentDetailsDialog";
 
@@ -300,138 +301,145 @@ export default function Dispatch() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Goods Dispatch" subtitle="Create shipments and dispatch pallets" />
+      <NavigationHeader />
       
-      <div className="p-6">
+      <PageContainer maxWidth="2xl">
+        <div className="space-y-6">
+          <PageHeader
+            title="Goods Dispatch"
+            description="Create shipments and dispatch pallets"
+            icon={<Truck className="h-6 w-6" />}
+          />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Create Shipment</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Scan or enter Pallet ID"
-                value={palletId}
-                onChange={(e) => setPalletId(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleFindPallet()}
-              />
-              <Button onClick={handleFindPallet}>Find</Button>
-            </div>
-
-            {palletData && (
-              <div className="space-y-4 border-t pt-4">
-                <h3 className="font-semibold">Pallet: {palletData.pallet_id}</h3>
-              <div className="space-y-2">
-                {palletData?.pallet_cartons && palletData.pallet_cartons.length > 0 ? (
-                  palletData.pallet_cartons.map((pc: any) => (
-                    <div key={pc?.cartons?.carton_id ?? Math.random()} className="text-sm border-l-4 border-primary pl-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p><strong>Carton:</strong> {pc?.cartons?.carton_id ?? "N/A"}</p>
-                          <p><strong>WO:</strong> {pc?.cartons?.work_orders?.wo_id ?? "N/A"}</p>
-                          <p><strong>Heat Nos:</strong> {pc?.cartons?.heat_nos?.join(", ") ?? "N/A"}</p>
-                          <p className={pc?.cartons?.work_orders?.dispatch_allowed ? "text-green-600" : "text-red-600"}>
-                            {pc?.cartons?.work_orders?.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/dispatch-qc-report/${pc?.cartons?.work_orders?.id ?? ''}`)}
-                          disabled={!pc?.cartons?.work_orders?.id}
-                        >
-                          <ClipboardCheck className="h-4 w-4 mr-1" />
-                          QC Report
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No cartons in this pallet</p>
-                )}
-              </div>
-
-                <QRCodeDisplay 
-                  value={palletData.pallet_id}
-                  title="Pallet QR Code"
-                  entityInfo={`${palletData.pallet_cartons?.length || 0} cartons`}
-                  size={150}
-                />
-
-                <Button 
-                  onClick={handleCreateShipment} 
-                  disabled={loading}
-                  className="w-full"
-                >
-                  <Truck className="mr-2 h-4 w-4" />
-                  Create Shipment & Generate Docs
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Recent Shipments</h2>
-          {shipments.length === 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
-              <CardContent className="py-12 text-center space-y-2">
-                <p className="text-lg font-medium">No Shipments Yet</p>
-                <p className="text-sm text-muted-foreground">
-                  Shipments will appear here when pallets are dispatched
-                </p>
+              <CardHeader>
+                <CardTitle>Create Shipment</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Scan or enter Pallet ID"
+                    value={palletId}
+                    onChange={(e) => setPalletId(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleFindPallet()}
+                  />
+                  <Button onClick={handleFindPallet}>Find</Button>
+                </div>
+
+                {palletData && (
+                  <div className="space-y-4 border-t pt-4">
+                    <h3 className="font-semibold">Pallet: {palletData.pallet_id}</h3>
+                  <div className="space-y-2">
+                    {palletData?.pallet_cartons && palletData.pallet_cartons.length > 0 ? (
+                      palletData.pallet_cartons.map((pc: any) => (
+                        <div key={pc?.cartons?.carton_id ?? Math.random()} className="text-sm border-l-4 border-primary pl-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p><strong>Carton:</strong> {pc?.cartons?.carton_id ?? "N/A"}</p>
+                              <p><strong>WO:</strong> {pc?.cartons?.work_orders?.wo_id ?? "N/A"}</p>
+                              <p><strong>Heat Nos:</strong> {pc?.cartons?.heat_nos?.join(", ") ?? "N/A"}</p>
+                              <p className={pc?.cartons?.work_orders?.dispatch_allowed ? "text-green-600" : "text-red-600"}>
+                                {pc?.cartons?.work_orders?.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/dispatch-qc-report/${pc?.cartons?.work_orders?.id ?? ''}`)}
+                              disabled={!pc?.cartons?.work_orders?.id}
+                            >
+                              <ClipboardCheck className="h-4 w-4 mr-1" />
+                              QC Report
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">No cartons in this pallet</p>
+                    )}
+                  </div>
+
+                    <QRCodeDisplay 
+                      value={palletData.pallet_id}
+                      title="Pallet QR Code"
+                      entityInfo={`${palletData.pallet_cartons?.length || 0} cartons`}
+                      size={150}
+                    />
+
+                    <Button 
+                      onClick={handleCreateShipment} 
+                      disabled={loading}
+                      className="w-full"
+                    >
+                      <Truck className="mr-2 h-4 w-4" />
+                      Create Shipment & Generate Docs
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ) : (
-            shipments.map((shipment) => (
-              <Card key={shipment?.id ?? Math.random()}>
-                <CardContent className="pt-6">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <p className="font-semibold">{shipment?.ship_id ?? "N/A"}</p>
-                      <p className="text-sm text-muted-foreground">{shipment?.customer ?? "N/A"}</p>
-                      <p className="text-xs">
-                        {shipment?.ship_date ? new Date(shipment.ship_date).toLocaleDateString() : "—"}
-                      </p>
-                      <p className="text-xs">
-                        Pallets: {shipment?.shipment_pallets?.map((sp: any) => sp?.pallets?.pallet_id ?? "N/A").join(", ") || "N/A"}
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <QRCodeDisplay 
-                        value={shipment?.ship_id ?? "N/A"}
-                        title="Shipment"
-                        size={100}
-                      />
-                      <div className="flex flex-col gap-1">
-                        <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
-                          <Download className="h-4 w-4 mr-2" />
-                          Docs
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => {
-                            const woId = shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id;
-                            if (woId) navigate(`/dispatch-qc-report/${woId}`);
-                          }}
-                          disabled={!shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id}
-                        >
-                          <ClipboardCheck className="h-4 w-4 mr-2" />
-                          QC Report
-                        </Button>
+
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold">Recent Shipments</h2>
+              {shipments.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center space-y-2">
+                    <p className="text-lg font-medium">No Shipments Yet</p>
+                    <p className="text-sm text-muted-foreground">
+                      Shipments will appear here when pallets are dispatched
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                shipments.map((shipment) => (
+                  <Card key={shipment?.id ?? Math.random()}>
+                    <CardContent className="pt-6">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <p className="font-semibold">{shipment?.ship_id ?? "N/A"}</p>
+                          <p className="text-sm text-muted-foreground">{shipment?.customer ?? "N/A"}</p>
+                          <p className="text-xs">
+                            {shipment?.ship_date ? new Date(shipment.ship_date).toLocaleDateString() : "—"}
+                          </p>
+                          <p className="text-xs">
+                            Pallets: {shipment?.shipment_pallets?.map((sp: any) => sp?.pallets?.pallet_id ?? "N/A").join(", ") || "N/A"}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <QRCodeDisplay 
+                            value={shipment?.ship_id ?? "N/A"}
+                            title="Shipment"
+                            size={100}
+                          />
+                          <div className="flex flex-col gap-1">
+                            <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Docs
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => {
+                                const woId = shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id;
+                                if (woId) navigate(`/dispatch-qc-report/${woId}`);
+                              }}
+                              disabled={!shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id}
+                            >
+                              <ClipboardCheck className="h-4 w-4 mr-2" />
+                              QC Report
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-      </div>
+      </PageContainer>
     </div>
   );
 }
