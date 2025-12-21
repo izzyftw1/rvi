@@ -619,14 +619,31 @@ const WorkOrderDetail = () => {
   const warnings = [];
   
   if (productionNotReleased) {
-    blockers.push({ type: 'release', label: 'Production Not Released', description: 'Work order must be released before production can start' });
+    blockers.push({ type: 'release', targetId: 'production-release-section', label: 'Production Not Released', description: 'Work order must be released before production can start' });
   }
   if (wo.qc_material_status === 'failed') {
-    blockers.push({ type: 'qc', label: 'Material QC Failed', description: 'Raw material quality check failed - cannot proceed' });
+    blockers.push({ type: 'qc', targetId: 'qc-status-section', label: 'Material QC Failed', description: 'Raw material quality check failed - cannot proceed' });
   }
   if (wo.qc_first_piece_status === 'failed') {
-    blockers.push({ type: 'qc', label: 'First Piece QC Failed', description: 'First piece inspection failed - cannot proceed' });
+    blockers.push({ type: 'qc', targetId: 'qc-status-section', label: 'First Piece QC Failed', description: 'First piece inspection failed - cannot proceed' });
   }
+
+  // Handle scroll to blocking section with highlight
+  const scrollToBlocker = (blocker: { type: string; targetId: string; label: string }) => {
+    const targetElement = document.getElementById(blocker.targetId);
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add highlight animation
+      targetElement.classList.add('ring-2', 'ring-destructive', 'ring-offset-2', 'animate-pulse');
+      setTimeout(() => {
+        targetElement.classList.remove('ring-2', 'ring-destructive', 'ring-offset-2', 'animate-pulse');
+      }, 2000);
+    }
+    // If QC type, also switch to QC tab
+    if (blocker.type === 'qc') {
+      setActiveTab('qc');
+    }
+  };
   
   // Pending states are warnings, not blockers
   if (wo.qc_material_status === 'pending') {
@@ -734,7 +751,7 @@ const WorkOrderDetail = () => {
                     variant="destructive" 
                     size="sm" 
                     className="mt-4"
-                    onClick={() => setActiveTab('qc')}
+                    onClick={() => blockers[0] && scrollToBlocker(blockers[0])}
                   >
                     Resolve Issues
                   </Button>
@@ -800,11 +817,13 @@ const WorkOrderDetail = () => {
             </Card>
 
             {/* Production Release - Consolidated here */}
-            <ProductionReleaseSection
-              workOrder={wo}
-              releasedByName={releasedByName}
-              onReleased={loadWorkOrderData}
-            />
+            <div id="production-release-section" className="transition-all duration-300 rounded-lg">
+              <ProductionReleaseSection
+                workOrder={wo}
+                releasedByName={releasedByName}
+                onReleased={loadWorkOrderData}
+              />
+            </div>
           </div>
         </section>
 
@@ -868,7 +887,7 @@ const WorkOrderDetail = () => {
         {/* ═══════════════════════════════════════════════════════════════════
             SECTION 4: QC STATUS - Consolidated quality view
         ═══════════════════════════════════════════════════════════════════ */}
-        <section className="space-y-3">
+        <section id="qc-status-section" className="space-y-3 transition-all duration-300 rounded-lg">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">QC Status</h2>
           <div className="grid grid-cols-3 gap-4">
             {[
