@@ -274,6 +274,9 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   const [stageFilter, setStageFilter] = useState<string>(() => searchParams.get('stage') || 'all');
   // Issue filter for blocked/delayed
   const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>('all');
+  // Show inactive (zero-count) stages toggle - for admins
+  const [showInactiveStages, setShowInactiveStages] = useState(false);
+  const isAdmin = hasAnyRole(['admin', 'super_admin']);
   
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50);
@@ -609,35 +612,54 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
                 )}
                 
                 {primaryFilter === 'internal' 
-                  ? Object.entries(INTERNAL_STAGES).map(([key, config]) => (
-                      <button
-                        key={key}
-                        onClick={() => setStageFilter(key)}
-                        className={cn(
-                          "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                          stageFilter === key 
-                            ? cn("text-white", config.color)
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                        )}
-                      >
-                        {config.label} ({stageCounts[key] || 0})
-                      </button>
-                    ))
-                  : Object.entries(EXTERNAL_STAGES).map(([key, config]) => (
-                      <button
-                        key={key}
-                        onClick={() => setStageFilter(key)}
-                        className={cn(
-                          "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                          stageFilter === key 
-                            ? cn("text-white", config.color)
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                        )}
-                      >
-                        {config.label} ({stageCounts[key] || 0})
-                      </button>
-                    ))
+                  ? Object.entries(INTERNAL_STAGES)
+                      .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
+                      .map(([key, config]) => (
+                        <button
+                          key={key}
+                          onClick={() => setStageFilter(key)}
+                          className={cn(
+                            "px-3 py-1 text-xs font-medium rounded-full transition-colors",
+                            stageFilter === key 
+                              ? cn("text-white", config.color)
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          )}
+                        >
+                          {config.label} ({stageCounts[key] || 0})
+                        </button>
+                      ))
+                  : Object.entries(EXTERNAL_STAGES)
+                      .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
+                      .map(([key, config]) => (
+                        <button
+                          key={key}
+                          onClick={() => setStageFilter(key)}
+                          className={cn(
+                            "px-3 py-1 text-xs font-medium rounded-full transition-colors",
+                            stageFilter === key 
+                              ? cn("text-white", config.color)
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          )}
+                        >
+                          {config.label} ({stageCounts[key] || 0})
+                        </button>
+                      ))
                 }
+
+                {/* Show inactive stages toggle - admin only */}
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowInactiveStages(!showInactiveStages)}
+                    className={cn(
+                      "px-2 py-1 text-xs rounded transition-colors ml-1",
+                      showInactiveStages 
+                        ? "text-primary underline underline-offset-2" 
+                        : "text-muted-foreground/60 hover:text-muted-foreground"
+                    )}
+                  >
+                    {showInactiveStages ? 'Hide empty' : '+ Show all'}
+                  </button>
+                )}
               </div>
             </div>
           </CardContent>
