@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send } from "lucide-react";
-import { WorkOrderStageFlow } from "@/components/WorkOrderStageFlow";
+
 import { EnhancedProductionTab } from "@/components/EnhancedProductionTab";
 import { EnhancedStageHistory } from "@/components/EnhancedStageHistory";
 import { EnhancedQCRecords } from "@/components/EnhancedQCRecords";
@@ -707,15 +707,6 @@ const WorkOrderDetail = () => {
             </div>
           </div>
 
-          {/* Stage Flow Breadcrumb - Visual only */}
-          <WorkOrderStageFlow 
-            currentStage={wo.current_stage} 
-            stageHistory={stageHistory}
-            onStageClick={(stage) => {
-              if (stage.includes('qc')) setActiveTab('qc');
-              else if (stage.includes('production') || stage.includes('cnc')) setActiveTab('production');
-            }}
-          />
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════
