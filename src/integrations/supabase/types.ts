@@ -509,10 +509,12 @@ export type Database = {
           direction: Database["public"]["Enums"]["execution_direction"]
           id: string
           operation_type: Database["public"]["Enums"]["operation_type"]
+          out_of_sequence: boolean | null
           process_name: string | null
           quantity: number
           related_challan_id: string | null
           related_partner_id: string | null
+          route_step_id: string | null
           unit: string
           work_order_id: string
         }
@@ -522,10 +524,12 @@ export type Database = {
           direction: Database["public"]["Enums"]["execution_direction"]
           id?: string
           operation_type: Database["public"]["Enums"]["operation_type"]
+          out_of_sequence?: boolean | null
           process_name?: string | null
           quantity: number
           related_challan_id?: string | null
           related_partner_id?: string | null
+          route_step_id?: string | null
           unit?: string
           work_order_id: string
         }
@@ -535,10 +539,12 @@ export type Database = {
           direction?: Database["public"]["Enums"]["execution_direction"]
           id?: string
           operation_type?: Database["public"]["Enums"]["operation_type"]
+          out_of_sequence?: boolean | null
           process_name?: string | null
           quantity?: number
           related_challan_id?: string | null
           related_partner_id?: string | null
+          route_step_id?: string | null
           unit?: string
           work_order_id?: string
         }
@@ -562,6 +568,13 @@ export type Database = {
             columns: ["related_partner_id"]
             isOneToOne: false
             referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_route_step_id_fkey"
+            columns: ["route_step_id"]
+            isOneToOne: false
+            referencedRelation: "operation_routes"
             referencedColumns: ["id"]
           },
           {
@@ -2089,6 +2102,57 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      operation_routes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_external: boolean
+          is_mandatory: boolean
+          operation_type: Database["public"]["Enums"]["operation_type"]
+          process_name: string | null
+          sequence_number: number
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_external?: boolean
+          is_mandatory?: boolean
+          operation_type: Database["public"]["Enums"]["operation_type"]
+          process_name?: string | null
+          sequence_number: number
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_external?: boolean
+          is_mandatory?: boolean
+          operation_type?: Database["public"]["Enums"]["operation_type"]
+          process_name?: string | null
+          sequence_number?: number
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_routes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operation_routes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       operator_daily_metrics: {
         Row: {
