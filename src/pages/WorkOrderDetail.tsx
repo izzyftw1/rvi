@@ -781,6 +781,22 @@ const WorkOrderDetail = () => {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
+            PRODUCTION PROGRESS - Primary operational snapshot
+        ═══════════════════════════════════════════════════════════════════ */}
+        {woProgress && (
+          <section className="space-y-3">
+            <WOProgressCard
+              woId={id!}
+              targetQuantity={woProgress.target_quantity}
+              completedQuantity={woProgress.total_completed}
+              scrapQuantity={woProgress.total_scrap}
+              progressPercentage={woProgress.progress_percentage}
+              remainingQuantity={woProgress.remaining_quantity}
+            />
+          </section>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
             SECTION 2: ORDER INFO - Static details grouped together
         ═══════════════════════════════════════════════════════════════════ */}
         <section className="space-y-3">
@@ -836,24 +852,12 @@ const WorkOrderDetail = () => {
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            SECTION 3: PRODUCTION FLOW - Progress & Machines
+            SECTION 3: PRODUCTION FLOW - Machines & Operations
         ═══════════════════════════════════════════════════════════════════ */}
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Production Flow</h2>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Progress Card */}
-            {woProgress && (
-              <WOProgressCard
-                woId={id!}
-                targetQuantity={woProgress.target_quantity}
-                completedQuantity={woProgress.total_completed}
-                scrapQuantity={woProgress.total_scrap}
-                progressPercentage={woProgress.progress_percentage}
-                remainingQuantity={woProgress.remaining_quantity}
-              />
-            )}
-
             {/* Machine Assignments - Compact view */}
             {machineAssignments.length > 0 && (
               <Card>
