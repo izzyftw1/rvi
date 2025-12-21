@@ -848,6 +848,7 @@ export type Database = {
           created_at: string
           dimensions: Json
           id: string
+          instrument_id: string | null
           machine_id: string
           operation: Database["public"]["Enums"]["operation_letter"]
           operator_id: string | null
@@ -869,6 +870,7 @@ export type Database = {
           created_at?: string
           dimensions?: Json
           id?: string
+          instrument_id?: string | null
           machine_id: string
           operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
@@ -890,6 +892,7 @@ export type Database = {
           created_at?: string
           dimensions?: Json
           id?: string
+          instrument_id?: string | null
           machine_id?: string
           operation?: Database["public"]["Enums"]["operation_letter"]
           operator_id?: string | null
@@ -907,6 +910,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "hourly_qc_checks_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_instruments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "hourly_qc_checks_machine_id_fkey"
             columns: ["machine_id"]
@@ -1946,6 +1956,51 @@ export type Database = {
         }
         Relationships: []
       }
+      measurement_instruments: {
+        Row: {
+          calibration_interval_days: number
+          created_at: string
+          created_by: string | null
+          id: string
+          instrument_name: string
+          instrument_type: string
+          last_calibration_date: string
+          location: string | null
+          next_calibration_due_date: string
+          serial_number: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          calibration_interval_days?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          instrument_name: string
+          instrument_type: string
+          last_calibration_date: string
+          location?: string | null
+          next_calibration_due_date: string
+          serial_number: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          calibration_interval_days?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          instrument_name?: string
+          instrument_type?: string
+          last_calibration_date?: string
+          location?: string | null
+          next_calibration_due_date?: string
+          serial_number?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ncrs: {
         Row: {
           closed_at: string | null
@@ -2946,6 +3001,7 @@ export type Database = {
           created_by: string | null
           dimension_name: string
           id: string
+          instrument_id: string | null
           is_within_tolerance: boolean | null
           lower_limit: number
           measured_value: number
@@ -2960,6 +3016,7 @@ export type Database = {
           created_by?: string | null
           dimension_name: string
           id?: string
+          instrument_id?: string | null
           is_within_tolerance?: boolean | null
           lower_limit: number
           measured_value: number
@@ -2974,6 +3031,7 @@ export type Database = {
           created_by?: string | null
           dimension_name?: string
           id?: string
+          instrument_id?: string | null
           is_within_tolerance?: boolean | null
           lower_limit?: number
           measured_value?: number
@@ -2984,6 +3042,13 @@ export type Database = {
           upper_limit?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_measurements_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_instruments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qc_measurements_qc_record_id_fkey"
             columns: ["qc_record_id"]
@@ -3001,6 +3066,7 @@ export type Database = {
           digital_signature: Json | null
           file_upload_url: string | null
           id: string
+          instrument_id: string | null
           measurements: Json | null
           oes_xrf_file: string | null
           ppap_refs: string[] | null
@@ -3021,6 +3087,7 @@ export type Database = {
           digital_signature?: Json | null
           file_upload_url?: string | null
           id?: string
+          instrument_id?: string | null
           measurements?: Json | null
           oes_xrf_file?: string | null
           ppap_refs?: string[] | null
@@ -3041,6 +3108,7 @@ export type Database = {
           digital_signature?: Json | null
           file_upload_url?: string | null
           id?: string
+          instrument_id?: string | null
           measurements?: Json | null
           oes_xrf_file?: string | null
           ppap_refs?: string[] | null
@@ -3055,6 +3123,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_records_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_instruments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qc_records_step_id_fkey"
             columns: ["step_id"]

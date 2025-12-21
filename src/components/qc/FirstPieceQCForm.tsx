@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, XCircle, Zap } from "lucide-react";
+import { InstrumentSelector } from "./InstrumentSelector";
 
 interface DimensionTolerance {
   dimension_name: string;
@@ -46,6 +47,8 @@ export const FirstPieceQCForm = ({
   const [operation, setOperation] = useState<'A' | 'B' | 'C' | 'D'>('A');
   const [loading, setLoading] = useState(false);
   const [loadingTolerances, setLoadingTolerances] = useState(true);
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string | null>(null);
+  const [instrumentValid, setInstrumentValid] = useState(false);
 
   useEffect(() => {
     loadTolerances();
@@ -191,6 +194,17 @@ export const FirstPieceQCForm = ({
     try {
       setLoading(true);
 
+      // Check instrument is selected and valid
+      if (!selectedInstrumentId) {
+        toast.error('Please select a measurement instrument');
+        return;
+      }
+
+      if (!instrumentValid) {
+        toast.error('Cannot save QC record: Selected instrument has overdue calibration');
+        return;
+      }
+
       // Validate that all dimensions have at least one measurement
       const hasMeasurements = Object.values(measurements).every(m => 
         m.samples.some(s => s !== null)
@@ -323,6 +337,16 @@ export const FirstPieceQCForm = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Instrument Selection */}
+        <InstrumentSelector
+          value={selectedInstrumentId}
+          onChange={(id, isValid) => {
+            setSelectedInstrumentId(id);
+            setInstrumentValid(isValid);
+          }}
+          required
+        />
+
         {/* Operation Selector */}
         <div className="flex items-center gap-4">
           <Label className="font-semibold">Operation:</Label>
@@ -425,7 +449,7 @@ export const FirstPieceQCForm = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Button
             onClick={handleAutoPass}
-            disabled={loading || allPass !== true}
+            disabled={loading || allPass !== true || !selectedInstrumentId || !instrumentValid}
             variant="default"
             className="bg-success hover:bg-success/90"
           >
@@ -434,7 +458,7 @@ export const FirstPieceQCForm = ({
           </Button>
           <Button
             onClick={handleAutoFail}
-            disabled={loading || allPass !== false}
+            disabled={loading || allPass !== false || !selectedInstrumentId || !instrumentValid}
             variant="destructive"
           >
             <Zap className="h-4 w-4 mr-2" />
@@ -442,7 +466,7 @@ export const FirstPieceQCForm = ({
           </Button>
           <Button
             onClick={() => handleSubmit('manual_pass')}
-            disabled={loading}
+            disabled={loading || !selectedInstrumentId || !instrumentValid}
             variant="outline"
             className="border-success text-success hover:bg-success/10"
           >
@@ -451,7 +475,7 @@ export const FirstPieceQCForm = ({
           </Button>
           <Button
             onClick={() => handleSubmit('manual_fail')}
-            disabled={loading}
+            disabled={loading || !selectedInstrumentId || !instrumentValid}
             variant="outline"
             className="border-destructive text-destructive hover:bg-destructive/10"
           >

@@ -65,6 +65,7 @@ import Cutting from "./pages/Cutting";
 import Forging from "./pages/Forging";
 import NCRManagement from "./pages/NCRManagement";
 import NCRDetail from "./pages/NCRDetail";
+import InstrumentManagement from "./pages/InstrumentManagement";
 
 
 const App = () => (
@@ -137,6 +138,7 @@ const App = () => (
           <Route path="/external-processing/:processName" element={<ExternalProcessingDetail />} />
           <Route path="/ncr" element={<NCRManagement />} />
           <Route path="/ncr/:id" element={<NCRDetail />} />
+          <Route path="/instruments" element={<InstrumentManagement />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Route>

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { InstrumentSelector } from "@/components/qc/InstrumentSelector";
 
 interface DimensionTolerance {
   dimension_name: string;
@@ -48,6 +49,8 @@ export const QCInspectionForm = ({
   const [generalRemarks, setGeneralRemarks] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingTolerances, setLoadingTolerances] = useState(true);
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string | null>(null);
+  const [instrumentValid, setInstrumentValid] = useState(false);
 
   useEffect(() => {
     loadTolerances();
@@ -177,6 +180,17 @@ export const QCInspectionForm = ({
     try {
       setLoading(true);
 
+      // Check instrument is selected and valid
+      if (!selectedInstrumentId) {
+        toast.error('Please select a measurement instrument');
+        return;
+      }
+
+      if (!instrumentValid) {
+        toast.error('Cannot save QC record: Selected instrument has overdue calibration');
+        return;
+      }
+
       // Validate that all dimensions have at least one measurement
       const hasMeasurements = Object.values(measurements).every(m => 
         m.samples.some(s => s !== null)
@@ -205,7 +219,8 @@ export const QCInspectionForm = ({
             lower_limit: m.lower_limit,
             upper_limit: m.upper_limit,
             unit: m.unit,
-            remarks: m.remarks
+            remarks: m.remarks,
+            instrument_id: selectedInstrumentId
           };
         }).filter(Boolean)
       );
@@ -227,7 +242,8 @@ export const QCInspectionForm = ({
           result,
           approved_at: new Date().toISOString(),
           approved_by: (await supabase.auth.getUser()).data.user?.id,
-          remarks: generalRemarks
+          remarks: generalRemarks,
+          instrument_id: selectedInstrumentId
         })
         .eq('id', qcRecordId);
 
@@ -303,6 +319,16 @@ export const QCInspectionForm = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Instrument Selection */}
+        <InstrumentSelector
+          value={selectedInstrumentId}
+          onChange={(id, isValid) => {
+            setSelectedInstrumentId(id);
+            setInstrumentValid(isValid);
+          }}
+          required
+        />
+
         {tolerances.map((tol) => {
           const m = measurements[tol.dimension_name];
           if (!m) return null;
@@ -388,7 +414,7 @@ export const QCInspectionForm = ({
         <div className="flex gap-3">
           <Button
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !selectedInstrumentId || !instrumentValid}
             className="flex-1"
             variant={allPass === false ? "destructive" : "default"}
           >
