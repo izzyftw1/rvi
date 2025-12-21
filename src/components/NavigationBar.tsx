@@ -149,9 +149,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       items: [
         { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck },
         { label: "Incoming QC", path: "/qc/incoming", icon: ClipboardCheck },
-        { label: "First Piece QC", path: "/hourly-qc", icon: ClipboardCheck },
-        { label: "In-Process / Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
-        { label: "Final Inspection", path: "/quality", icon: ClipboardCheck },
+        { label: "Hourly QC (Active Machines)", path: "/hourly-qc", icon: ClipboardCheck },
       ]
     },
     {
