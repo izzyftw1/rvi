@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
-import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
+import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
+import { QCSummaryStats, QCInfoAlert, QCActionRequired, QCHistory } from "@/components/qc/QCPageLayout";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle2, XCircle, Clock, Package, AlertCircle, ArrowRight, Info } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CheckCircle2, Package, Clock, ArrowRight, Inbox } from "lucide-react";
 
 interface WorkOrderQCStatus {
   id: string;
@@ -41,43 +42,26 @@ export default function QCIncoming() {
   const loadWorkOrdersQCStatus = async () => {
     setLoading(true);
     try {
-      // Fetch all work orders with material and QC status
       const { data: wos, error: woError } = await supabase
         .from("work_orders")
         .select(`
-          id,
-          wo_id,
-          display_id,
-          customer,
-          item_code,
-          sales_order,
-          qc_material_status,
-          qc_material_passed,
-          qc_first_piece_status,
-          material_size_mm,
-          bom
+          id, wo_id, display_id, customer, item_code, sales_order,
+          qc_material_status, qc_material_passed, qc_first_piece_status,
+          material_size_mm, bom
         `)
         .order("created_at", { ascending: false });
 
       if (woError) throw woError;
+      if (!wos) { setWorkOrders([]); return; }
 
-      if (!wos) {
-        setWorkOrders([]);
-        return;
-      }
-
-      // For each work order, check material status
       const enrichedWOs = await Promise.all(
         wos.map(async (wo) => {
-          // Check if material has been issued to this WO
           const { data: issues } = await supabase
             .from("wo_material_issues")
             .select("id, lot_id")
             .eq("wo_id", wo.id);
 
           const material_issued = (issues?.length || 0) > 0;
-
-          // Get material lot details for issued material
           let pending_material_lots = 0;
           let total_material_lots = 0;
           let material_alloy = "";
@@ -95,16 +79,13 @@ export default function QCIncoming() {
               material_alloy = lots[0]?.alloy || "";
             }
           } else {
-            // Check if material exists in stock that matches the WO requirements
             const bom = wo.bom as any;
             const requiredAlloy = bom?.material_alloy || bom?.alloy;
             if (requiredAlloy && typeof requiredAlloy === 'string') {
               try {
-                const lotsQuery = supabase
+                const { data: availableLots } = await supabase
                   .from("material_lots")
                   .select("qc_status, alloy");
-                
-                const { data: availableLots } = await lotsQuery;
                 
                 const matchingLots = availableLots?.filter(
                   lot => lot.alloy === requiredAlloy
@@ -149,33 +130,29 @@ export default function QCIncoming() {
     }
   };
 
-  const pendingQC = workOrders.filter(
-    wo => wo.qc_material_status === "pending" && wo.material_arrived
-  );
+  const pendingQC = workOrders.filter(wo => wo.qc_material_status === "pending" && wo.material_arrived);
   const passedQC = workOrders.filter(wo => wo.qc_material_status === "passed");
-  const failedQC = workOrders.filter(
-    wo => wo.qc_material_status === "failed" || wo.qc_material_status === "hold"
-  );
+  const failedQC = workOrders.filter(wo => wo.qc_material_status === "failed" || wo.qc_material_status === "hold");
   const awaitingMaterial = workOrders.filter(wo => !wo.material_arrived);
 
-  const renderTable = (data: WorkOrderQCStatus[]) => (
+  const renderTable = (data: WorkOrderQCStatus[], showAction = true) => (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>WO ID</TableHead>
           <TableHead>Customer</TableHead>
           <TableHead>Item Code</TableHead>
-          <TableHead>Sales Order</TableHead>
-          <TableHead>Material Status</TableHead>
+          <TableHead>Material</TableHead>
           <TableHead>Material QC</TableHead>
-          <TableHead>First Piece QC</TableHead>
-          <TableHead></TableHead>
+          <TableHead>First Piece</TableHead>
+          {showAction && <TableHead></TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
         {data.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+              <Inbox className="h-8 w-8 mx-auto mb-2 opacity-50" />
               No work orders in this category
             </TableCell>
           </TableRow>
@@ -189,40 +166,30 @@ export default function QCIncoming() {
               <TableCell className="font-medium">{wo.display_id}</TableCell>
               <TableCell>{wo.customer}</TableCell>
               <TableCell>{wo.item_code}</TableCell>
-              <TableCell>{wo.sales_order}</TableCell>
               <TableCell>
-                <div className="flex items-center gap-2">
-                  {wo.material_arrived ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-success" />
-                      <span className="text-sm">
-                        {wo.material_alloy || "Material"} ({wo.total_material_lots} lots)
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="w-4 h-4 text-warning" />
-                      <span className="text-sm text-muted-foreground">Awaiting Material</span>
-                    </>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <QCGateStatusBadge status={wo.qc_material_status as any} />
-                {wo.pending_material_lots > 0 && (
-                  <Badge variant="outline" className="ml-2">
-                    {wo.pending_material_lots} pending
-                  </Badge>
+                {wo.material_arrived ? (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{wo.material_alloy || "Material"}</span>
+                    <Badge variant="outline" className="text-xs ml-1">{wo.total_material_lots} lots</Badge>
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Awaiting</span>
                 )}
               </TableCell>
               <TableCell>
-                <QCGateStatusBadge status={wo.qc_first_piece_status as any} />
+                <QCStatusIndicator status={wo.qc_material_status as any} size="sm" />
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-1 text-primary text-sm">
-                  Go to WO <ArrowRight className="h-4 w-4" />
-                </div>
+                <QCStatusIndicator status={wo.qc_first_piece_status as any} size="sm" />
               </TableCell>
+              {showAction && (
+                <TableCell>
+                  <div className="flex items-center gap-1 text-primary text-sm">
+                    View <ArrowRight className="h-3.5 w-3.5" />
+                  </div>
+                </TableCell>
+              )}
             </TableRow>
           ))
         )}
@@ -233,149 +200,86 @@ export default function QCIncoming() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader 
-          title="Incoming Material QC Dashboard" 
-          subtitle="Comprehensive view of all work orders and their material QC status" 
-        />
-        <div className="p-6">
+        <NavigationHeader />
+        <PageContainer>
           <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Clock className="w-8 h-8 animate-spin mx-auto mb-2 text-primary" />
-              <p className="text-muted-foreground">Loading work orders...</p>
-            </div>
+            <Clock className="w-6 h-6 animate-spin text-primary" />
           </div>
-        </div>
+        </PageContainer>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader 
-        title="Incoming Material QC Overview" 
-        subtitle="Read-only summary of material QC status across work orders" 
-      />
+      <NavigationHeader />
       
-      <div className="p-6 space-y-6">
-        {/* Info Alert */}
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertTitle>Material QC Actions are Work Order Based</AlertTitle>
-          <AlertDescription>
-            To approve or reject incoming material, navigate to the specific Work Order and use the Material QC section.
-            Click any row to go directly to that work order.
-          </AlertDescription>
-        </Alert>
+      <PageContainer>
+        <div className="space-y-6">
+          {/* Header */}
+          <PageHeader
+            title="Incoming Material QC"
+            description="Material quality control status across work orders"
+            icon={<Package className="h-6 w-6" />}
+          />
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Package className="w-5 h-5 text-primary" />
-                <span className="text-2xl font-bold">{workOrders.length}</span>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Info */}
+          <QCInfoAlert
+            title="Material QC Actions are Work Order Based"
+            description="Click any row to navigate to the work order and perform QC actions."
+          />
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending QC</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-warning" />
-                <span className="text-2xl font-bold">{pendingQC.length}</span>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Summary Stats */}
+          <QCSummaryStats
+            stats={[
+              { label: 'Total Orders', value: workOrders.length, type: 'total' },
+              { label: 'Pending QC', value: pendingQC.length, type: 'pending' },
+              { label: 'Passed', value: passedQC.length, type: 'passed' },
+              { label: 'Failed/Hold', value: failedQC.length, type: 'failed' },
+              { label: 'Awaiting Material', value: awaitingMaterial.length, type: 'neutral' },
+            ]}
+          />
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Passed</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-success" />
-                <span className="text-2xl font-bold">{passedQC.length}</span>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Action Required - Pending items */}
+          {pendingQC.length > 0 && (
+            <QCActionRequired
+              title="Material QC Required"
+              description="Work orders with material awaiting quality inspection"
+              count={pendingQC.length}
+            >
+              {renderTable(pendingQC)}
+            </QCActionRequired>
+          )}
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Failed/Hold</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <XCircle className="w-5 h-5 text-destructive" />
-                <span className="text-2xl font-bold">{failedQC.length}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Awaiting Material</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Package className="w-5 h-5 text-muted-foreground" />
-                <span className="text-2xl font-bold">{awaitingMaterial.length}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Work Orders by QC Status</CardTitle>
-          </CardHeader>
-          <CardContent>
+          {/* History - Tabbed view of all records */}
+          <QCHistory
+            title="All Work Orders"
+            description="Complete material QC status by category"
+          >
             <Tabs defaultValue="all" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="all">
-                  All Orders ({workOrders.length})
-                </TabsTrigger>
-                <TabsTrigger value="pending">
-                  Pending QC ({pendingQC.length})
-                </TabsTrigger>
-                <TabsTrigger value="awaiting">
-                  Awaiting Material ({awaitingMaterial.length})
-                </TabsTrigger>
-                <TabsTrigger value="passed">
-                  Passed ({passedQC.length})
-                </TabsTrigger>
-                <TabsTrigger value="failed">
-                  Failed/Hold ({failedQC.length})
-                </TabsTrigger>
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="all">All ({workOrders.length})</TabsTrigger>
+                <TabsTrigger value="awaiting">Awaiting ({awaitingMaterial.length})</TabsTrigger>
+                <TabsTrigger value="passed">Passed ({passedQC.length})</TabsTrigger>
+                <TabsTrigger value="failed">Failed ({failedQC.length})</TabsTrigger>
               </TabsList>
 
               <TabsContent value="all" className="mt-4">
                 {renderTable(workOrders)}
               </TabsContent>
-
-              <TabsContent value="pending" className="mt-4">
-                {renderTable(pendingQC)}
-              </TabsContent>
-
               <TabsContent value="awaiting" className="mt-4">
                 {renderTable(awaitingMaterial)}
               </TabsContent>
-
               <TabsContent value="passed" className="mt-4">
                 {renderTable(passedQC)}
               </TabsContent>
-
               <TabsContent value="failed" className="mt-4">
                 {renderTable(failedQC)}
               </TabsContent>
             </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+          </QCHistory>
+        </div>
+      </PageContainer>
     </div>
   );
 }
