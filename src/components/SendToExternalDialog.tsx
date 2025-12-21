@@ -12,6 +12,7 @@ import { Loader2, Plus, ExternalLink, AlertCircle } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
+import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 
 interface ExternalPartner {
   id: string;
@@ -346,6 +347,18 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
       // Reload quantity tracking
       await loadQuantityTracking();
+      
+      // Create execution record for external process OUT
+      await createExecutionRecord({
+        workOrderId: workOrder.id,
+        operationType: 'EXTERNAL_PROCESS',
+        processName: process,
+        quantity: qty,
+        unit: 'pcs',
+        direction: 'OUT',
+        relatedPartnerId: partnerId,
+        relatedChallanId: moveData?.id,
+      });
       
       toast({
         title: "Material Sent",

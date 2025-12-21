@@ -14,6 +14,7 @@ import { NavigationHeader } from "@/components/NavigationHeader";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 
 interface RPO {
   id: string;
@@ -392,6 +393,18 @@ export default function MaterialInwards() {
         .eq("id", selectedRPO.id);
 
       toast({ title: "Success", description: `Material receipt recorded. RPO status: ${newStatus}` });
+
+      // Create execution record for raw material IN
+      if (selectedRPO.wo_id) {
+        await createExecutionRecord({
+          workOrderId: selectedRPO.wo_id,
+          operationType: 'RAW_MATERIAL',
+          processName: 'Goods In',
+          quantity: qtyReceived,
+          unit: 'kg',
+          direction: 'IN',
+        });
+      }
 
       // Reset form
       setSelectedRPO(null);

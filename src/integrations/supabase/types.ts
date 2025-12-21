@@ -502,6 +502,84 @@ export type Database = {
           },
         ]
       }
+      execution_records: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          direction: Database["public"]["Enums"]["execution_direction"]
+          id: string
+          operation_type: Database["public"]["Enums"]["operation_type"]
+          process_name: string | null
+          quantity: number
+          related_challan_id: string | null
+          related_partner_id: string | null
+          unit: string
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          direction: Database["public"]["Enums"]["execution_direction"]
+          id?: string
+          operation_type: Database["public"]["Enums"]["operation_type"]
+          process_name?: string | null
+          quantity: number
+          related_challan_id?: string | null
+          related_partner_id?: string | null
+          unit?: string
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          direction?: Database["public"]["Enums"]["execution_direction"]
+          id?: string
+          operation_type?: Database["public"]["Enums"]["operation_type"]
+          process_name?: string | null
+          quantity?: number
+          related_challan_id?: string | null
+          related_partner_id?: string | null
+          unit?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "execution_records_related_challan_id_fkey"
+            columns: ["related_challan_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_moves"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_related_partner_id_fkey"
+            columns: ["related_partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_related_partner_id_fkey"
+            columns: ["related_partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_partners: {
         Row: {
           address: string | null
@@ -5254,6 +5332,7 @@ export type Database = {
         | "maintenance"
         | "design"
         | "packing"
+      execution_direction: "IN" | "OUT" | "COMPLETE"
       first_piece_qc_status: "not_required" | "pending" | "approved" | "failed"
       followup_channel: "phone" | "email" | "whatsapp" | "in_person"
       gst_type: "domestic" | "export" | "not_applicable"
@@ -5277,6 +5356,13 @@ export type Database = {
         | "H"
         | "I"
         | "J"
+      operation_type:
+        | "RAW_MATERIAL"
+        | "CNC"
+        | "QC"
+        | "EXTERNAL_PROCESS"
+        | "PACKING"
+        | "DISPATCH"
       operator_type: "RVI" | "CONTRACTOR"
       payment_method:
         | "bank_transfer"
@@ -5526,6 +5612,7 @@ export const Constants = {
         "design",
         "packing",
       ],
+      execution_direction: ["IN", "OUT", "COMPLETE"],
       first_piece_qc_status: ["not_required", "pending", "approved", "failed"],
       followup_channel: ["phone", "email", "whatsapp", "in_person"],
       gst_type: ["domestic", "export", "not_applicable"],
@@ -5540,6 +5627,14 @@ export const Constants = {
       material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_status: ["received", "issued", "in_use", "consumed"],
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+      operation_type: [
+        "RAW_MATERIAL",
+        "CNC",
+        "QC",
+        "EXTERNAL_PROCESS",
+        "PACKING",
+        "DISPATCH",
+      ],
       operator_type: ["RVI", "CONTRACTOR"],
       payment_method: [
         "bank_transfer",

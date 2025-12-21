@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 
 const productionLogSchema = z.object({
   wo_id: z.string().uuid("Please select a work order"),
@@ -221,6 +222,18 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
           end_time: endTime.toISOString(),
           downtime_reason: data.actions_taken || `Maintenance: ${data.remarks || 'Unspecified'}`,
           logged_by: user?.id,
+        });
+      }
+
+      // Create execution record for CNC completion
+      if (data.quantity_completed > 0 && propWorkOrder?.id) {
+        await createExecutionRecord({
+          workOrderId: propWorkOrder.id,
+          operationType: 'CNC',
+          processName: data.operation_code || undefined,
+          quantity: data.quantity_completed,
+          unit: 'pcs',
+          direction: 'COMPLETE',
         });
       }
 
