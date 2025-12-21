@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Badge } from "@/components/ui/badge";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle2, XCircle, Clock, Package, AlertCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Package, AlertCircle, ArrowRight, Info } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface WorkOrderQCStatus {
   id: string;
@@ -168,7 +169,7 @@ export default function QCIncoming() {
           <TableHead>Material Status</TableHead>
           <TableHead>Material QC</TableHead>
           <TableHead>First Piece QC</TableHead>
-          <TableHead>Action</TableHead>
+          <TableHead></TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -183,7 +184,7 @@ export default function QCIncoming() {
             <TableRow 
               key={wo.id}
               className="cursor-pointer hover:bg-muted/50"
-              onClick={() => navigate(`/work-orders/${wo.id}`)}
+              onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
             >
               <TableCell className="font-medium">{wo.display_id}</TableCell>
               <TableCell>{wo.customer}</TableCell>
@@ -218,12 +219,9 @@ export default function QCIncoming() {
                 <QCGateStatusBadge status={wo.qc_first_piece_status as any} />
               </TableCell>
               <TableCell>
-                <Badge 
-                  variant="outline" 
-                  className="cursor-pointer hover:bg-primary hover:text-primary-foreground"
-                >
-                  View Details
-                </Badge>
+                <div className="flex items-center gap-1 text-primary text-sm">
+                  Go to WO <ArrowRight className="h-4 w-4" />
+                </div>
               </TableCell>
             </TableRow>
           ))
@@ -254,11 +252,21 @@ export default function QCIncoming() {
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader 
-        title="Incoming Material QC Dashboard" 
-        subtitle="Comprehensive view of all work orders and their material QC status" 
+        title="Incoming Material QC Overview" 
+        subtitle="Read-only summary of material QC status across work orders" 
       />
       
       <div className="p-6 space-y-6">
+        {/* Info Alert */}
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>Material QC Actions are Work Order Based</AlertTitle>
+          <AlertDescription>
+            To approve or reject incoming material, navigate to the specific Work Order and use the Material QC section.
+            Click any row to go directly to that work order.
+          </AlertDescription>
+        </Alert>
+
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">

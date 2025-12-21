@@ -1,126 +1,129 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { CheckCircle2, XCircle, AlertTriangle, FileText, Package, Clock, TrendingUp, FlaskConical, Eye, Settings, Loader2 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CheckCircle2, XCircle, AlertTriangle, FileText, Package, Clock, TrendingUp, FlaskConical, Eye, ArrowRight, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const QC_STATUS_CONFIG = {
-  pending: { label: 'Awaiting', icon: Clock, color: 'hsl(38 92% 50%)', variant: 'outline' as const },
-  in_progress: { label: 'In Progress', icon: Settings, color: 'hsl(210 90% 42%)', variant: 'default' as const },
-  passed: { label: 'Passed', icon: CheckCircle2, color: 'hsl(142 76% 36%)', variant: 'default' as const },
-  failed: { label: 'Failed', icon: XCircle, color: 'hsl(0 84% 60%)', variant: 'destructive' as const },
-  blocked: { label: 'Blocked', icon: AlertTriangle, color: 'hsl(0 84% 60%)', variant: 'destructive' as const },
-};
-
-// Memoized QC Action Card
-const QCActionCard = memo(({ item, onNavigate }: { item: any; onNavigate: (id: string) => void }) => {
-  const isOverdue = item.expected_date && new Date(item.expected_date) < new Date();
-  
-  return (
-    <Card
-      className="cursor-pointer hover:shadow-lg transition-all duration-300 group animate-fade-in"
-      onClick={() => onNavigate(item.wo_id)}
-    >
-      <CardContent className="p-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <HoverCard>
-              <HoverCardTrigger>
-                <p className="text-sm font-semibold hover:text-primary transition-colors">
-                  {item.wo_display_id || item.wo_id}
-                </p>
-              </HoverCardTrigger>
-              <HoverCardContent className="w-80">
-                <div className="space-y-2">
-                  <h4 className="font-semibold">QC Action Required</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-muted-foreground">Type:</div>
-                    <div className="font-medium">{item.qc_type}</div>
-                    <div className="text-muted-foreground">Customer:</div>
-                    <div className="font-medium">{item.customer}</div>
-                    <div className="text-muted-foreground">Item:</div>
-                    <div className="font-medium">{item.item_code}</div>
-                  </div>
-                </div>
-              </HoverCardContent>
-            </HoverCard>
-            <Badge
-              variant={isOverdue ? 'destructive' : 'secondary'}
-              className="gap-1"
-            >
-              {isOverdue && <AlertTriangle className="h-3 w-3" />}
-              {item.qc_type}
-            </Badge>
-          </div>
-          
-          <p className="text-xs text-muted-foreground">
-            {item.customer} • {item.item_code}
-          </p>
-          
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            <span>Waiting since {new Date(item.created_at).toLocaleDateString()}</span>
-          </div>
-          
-          {item.remarks && (
-            <p className="text-xs text-muted-foreground italic truncate">
-              {item.remarks}
-            </p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-});
-
-QCActionCard.displayName = "QCActionCard";
+interface WorkOrderQCSummary {
+  id: string;
+  wo_id: string;
+  display_id: string;
+  customer: string;
+  item_code: string;
+  status: string;
+  qc_material_status: string | null;
+  qc_first_piece_status: string | null;
+  pending_qc_count: number;
+  passed_qc_count: number;
+  failed_qc_count: number;
+  last_qc_date: string | null;
+  qc_type_needed: string | null;
+}
 
 const Quality = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [qcRecords, setQcRecords] = useState<any[]>([]);
-  const [pendingActions, setPendingActions] = useState<any[]>([]);
-  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [workOrderSummaries, setWorkOrderSummaries] = useState<WorkOrderQCSummary[]>([]);
+  const [qcStats, setQcStats] = useState({
+    total: 0,
+    passed: 0,
+    failed: 0,
+    pending: 0,
+    passRate: 0
+  });
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       
-      const [qcResult, pendingResult] = await Promise.all([
-        supabase
-          .from("qc_records")
-          .select(`
-            *,
-            work_orders(id, wo_id, display_id, customer, item_code, quantity)
-          `)
-          .order("created_at", { ascending: false })
-          .limit(100),
-        
-        supabase
-          .from("qc_records")
-          .select(`
-            *,
-            work_orders(id, wo_id, display_id, customer, item_code, quantity)
-          `)
-          .eq("result", "pending")
-          .order("created_at", { ascending: true })
-      ]);
+      // Get active work orders with QC status
+      const { data: workOrders, error: woError } = await supabase
+        .from("work_orders")
+        .select(`
+          id,
+          wo_id,
+          display_id,
+          customer,
+          item_code,
+          status,
+          qc_material_status,
+          qc_first_piece_status
+        `)
+        .in('status', ['pending', 'in_progress', 'qc', 'packing'])
+        .order("created_at", { ascending: false })
+        .limit(100);
 
-      if (qcResult.error) throw qcResult.error;
-      if (pendingResult.error) throw pendingResult.error;
+      if (woError) throw woError;
 
-      setQcRecords(qcResult.data || []);
-      setPendingActions(pendingResult.data || []);
+      // Get QC records for stats
+      const { data: qcRecords, error: qcError } = await supabase
+        .from("qc_records")
+        .select("id, result, wo_id, created_at, qc_type")
+        .order("created_at", { ascending: false });
+
+      if (qcError) throw qcError;
+
+      // Calculate overall stats
+      const total = qcRecords?.length || 0;
+      const passed = qcRecords?.filter(r => r.result === 'pass').length || 0;
+      const failed = qcRecords?.filter(r => r.result === 'fail').length || 0;
+      const pending = qcRecords?.filter(r => r.result === 'pending').length || 0;
+      const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+
+      setQcStats({ total, passed, failed, pending, passRate });
+
+      // Group QC records by work order
+      const qcByWo = new Map<string, { pending: number; passed: number; failed: number; lastDate: string | null; neededType: string | null }>();
+      qcRecords?.forEach(qc => {
+        const existing = qcByWo.get(qc.wo_id) || { pending: 0, passed: 0, failed: 0, lastDate: null, neededType: null };
+        if (qc.result === 'pending') {
+          existing.pending++;
+          existing.neededType = qc.qc_type;
+        }
+        if (qc.result === 'pass') existing.passed++;
+        if (qc.result === 'fail') existing.failed++;
+        if (!existing.lastDate || new Date(qc.created_at) > new Date(existing.lastDate)) {
+          existing.lastDate = qc.created_at;
+        }
+        qcByWo.set(qc.wo_id, existing);
+      });
+
+      // Enrich work orders with QC summary
+      const summaries: WorkOrderQCSummary[] = (workOrders || []).map(wo => {
+        const qcInfo = qcByWo.get(wo.id);
+        return {
+          id: wo.id,
+          wo_id: wo.wo_id,
+          display_id: wo.display_id || wo.wo_id,
+          customer: wo.customer,
+          item_code: wo.item_code,
+          status: wo.status,
+          qc_material_status: wo.qc_material_status,
+          qc_first_piece_status: wo.qc_first_piece_status,
+          pending_qc_count: qcInfo?.pending || 0,
+          passed_qc_count: qcInfo?.passed || 0,
+          failed_qc_count: qcInfo?.failed || 0,
+          last_qc_date: qcInfo?.lastDate || null,
+          qc_type_needed: qcInfo?.neededType || null
+        };
+      });
+
+      // Sort: pending actions first, then by last QC date
+      summaries.sort((a, b) => {
+        if (a.pending_qc_count > 0 && b.pending_qc_count === 0) return -1;
+        if (a.pending_qc_count === 0 && b.pending_qc_count > 0) return 1;
+        return 0;
+      });
+
+      setWorkOrderSummaries(summaries);
     } catch (error: any) {
       console.error("Error loading QC data:", error);
       toast({
@@ -136,58 +139,55 @@ const Quality = () => {
   useEffect(() => {
     loadData();
 
-    let timeout: NodeJS.Timeout;
     const channel = supabase
       .channel("qc-dashboard-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "hourly_qc_checks" }, () => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, loadData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, loadData)
       .subscribe();
 
     return () => {
-      clearTimeout(timeout);
       supabase.removeChannel(channel);
     };
   }, [loadData]);
 
-  useEffect(() => {
-    if (lastUpdate > 0) {
-      loadData();
+  const workOrdersNeedingAction = useMemo(() => 
+    workOrderSummaries.filter(wo => 
+      wo.pending_qc_count > 0 || 
+      wo.qc_material_status === 'pending' || 
+      wo.qc_first_piece_status === 'pending'
+    ), [workOrderSummaries]
+  );
+
+  const getQCStatusBadge = (status: string | null) => {
+    if (!status) return <Badge variant="secondary">Not Started</Badge>;
+    switch (status) {
+      case 'passed':
+      case 'pass':
+        return <Badge className="bg-success text-success-foreground">Passed</Badge>;
+      case 'failed':
+      case 'fail':
+        return <Badge variant="destructive">Failed</Badge>;
+      case 'pending':
+        return <Badge variant="outline" className="text-warning border-warning">Pending</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
     }
-  }, [lastUpdate, loadData]);
+  };
 
-  // Memoized filtered records
-  const filteredRecords = useMemo(() => {
-    if (statusFilter === 'all') return qcRecords;
-    return qcRecords.filter(r => r.result === statusFilter);
-  }, [qcRecords, statusFilter]);
-
-  // Memoized stats
-  const stats = useMemo(() => {
-    const total = qcRecords.length;
-    const passed = qcRecords.filter(r => r.result === 'pass').length;
-    const failed = qcRecords.filter(r => r.result === 'fail').length;
-    const pending = qcRecords.filter(r => r.result === 'pending').length;
-    const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
-    
-    return { total, passed, failed, pending, passRate };
-  }, [qcRecords]);
-
-  // Memoized status counts
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: qcRecords.length };
-    
-    Object.keys(QC_STATUS_CONFIG).forEach(status => {
-      counts[status] = qcRecords.filter(r => r.result === status).length;
-    });
-    
-    return counts;
-  }, [qcRecords]);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <NavigationHeader />
+        <div className="max-w-7xl mx-auto p-4 space-y-6">
+          <Skeleton className="h-10 w-64" />
+          <div className="grid grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+          </div>
+          <Skeleton className="h-96" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -195,30 +195,32 @@ const Quality = () => {
       
       <div className="max-w-7xl mx-auto p-4 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-success to-accent bg-clip-text text-transparent">
-              Quality Control Dashboard
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Real-time inspection tracking and quality metrics
-            </p>
-          </div>
-          <Button onClick={() => navigate("/hourly-qc")} variant="default">
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Start Hourly QC
-          </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Quality Control Overview</h1>
+          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+            <TrendingUp className="h-3.5 w-3.5" />
+            Read-only summary of quality metrics across all work orders
+          </p>
         </div>
 
-        {/* Summary Ribbon */}
+        {/* Info Alert */}
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>QC Actions are Work Order Based</AlertTitle>
+          <AlertDescription>
+            To perform QC inspections, navigate to the specific Work Order and use the QC actions available there. 
+            This dashboard provides an overview of quality status across all orders.
+          </AlertDescription>
+        </Alert>
+
+        {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="bg-gradient-to-br from-muted/30 to-muted/10">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total Inspections</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-2xl font-bold">{qcStats.total}</p>
                 </div>
                 <FileText className="h-8 w-8 text-muted-foreground/60" />
               </div>
@@ -230,7 +232,7 @@ const Quality = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Pass Rate</p>
-                  <p className="text-2xl font-bold text-success">{stats.passRate}%</p>
+                  <p className="text-2xl font-bold text-success">{qcStats.passRate}%</p>
                 </div>
                 <CheckCircle2 className="h-8 w-8 text-success/60" />
               </div>
@@ -242,7 +244,7 @@ const Quality = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Failed</p>
-                  <p className="text-2xl font-bold text-destructive">{stats.failed}</p>
+                  <p className="text-2xl font-bold text-destructive">{qcStats.failed}</p>
                 </div>
                 <XCircle className="h-8 w-8 text-destructive/60" />
               </div>
@@ -253,8 +255,8 @@ const Quality = () => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Pending</p>
-                  <p className="text-2xl font-bold text-warning">{stats.pending}</p>
+                  <p className="text-sm text-muted-foreground">Pending Action</p>
+                  <p className="text-2xl font-bold text-warning">{qcStats.pending}</p>
                 </div>
                 <Clock className="h-8 w-8 text-warning/60" />
               </div>
@@ -262,272 +264,139 @@ const Quality = () => {
           </Card>
         </div>
 
-        {/* Status Filter Chips - Sticky */}
-        <div className="sticky top-16 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 -mx-4 px-4 py-4 border-b">
-          <Card className="shadow-lg">
-            <CardContent className="pt-6 pb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <FlaskConical className="h-4 w-4 text-success" />
-                <p className="text-sm font-semibold text-foreground">Filter by Status</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  variant={statusFilter === 'all' ? 'default' : 'outline'}
-                  className="cursor-pointer hover:bg-primary/80 transition-colors px-3 py-2"
-                  onClick={() => setStatusFilter('all')}
-                >
-                  All Inspections ({statusCounts.all || 0})
-                </Badge>
-                {Object.entries(QC_STATUS_CONFIG).map(([status, config]) => {
-                  const Icon = config.icon;
-                  return (
-                    <Badge
-                      key={status}
-                      variant={statusFilter === status ? config.variant : 'outline'}
-                      className={cn(
-                        "cursor-pointer transition-all duration-300 hover:scale-105 px-3 py-2 gap-1.5",
-                        statusFilter === status && "shadow-md"
-                      )}
-                      style={statusFilter === status ? { backgroundColor: config.color, color: 'white' } : {}}
-                      onClick={() => setStatusFilter(status)}
+        {/* Work Orders Needing QC Action */}
+        {workOrdersNeedingAction.length > 0 && (
+          <Card className="border-warning/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-warning" />
+                Work Orders Requiring QC Action
+              </CardTitle>
+              <CardDescription>
+                Click on a work order to navigate and perform the required QC inspection
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Work Order</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Item Code</TableHead>
+                    <TableHead>Material QC</TableHead>
+                    <TableHead>First Piece QC</TableHead>
+                    <TableHead>Pending Checks</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {workOrdersNeedingAction.map((wo) => (
+                    <TableRow 
+                      key={wo.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
                     >
-                      <Icon className="h-3.5 w-3.5" />
-                      <span className="font-medium">{config.label}</span>
-                      <span className={cn(
-                        "ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold",
-                        statusFilter === status ? "bg-background/20" : "bg-muted"
-                      )}>
-                        {statusCounts[status] || 0}
-                      </span>
-                    </Badge>
-                  );
-                })}
-              </div>
+                      <TableCell className="font-medium">{wo.display_id}</TableCell>
+                      <TableCell>{wo.customer}</TableCell>
+                      <TableCell>{wo.item_code}</TableCell>
+                      <TableCell>{getQCStatusBadge(wo.qc_material_status)}</TableCell>
+                      <TableCell>{getQCStatusBadge(wo.qc_first_piece_status)}</TableCell>
+                      <TableCell>
+                        {wo.pending_qc_count > 0 && (
+                          <Badge variant="outline" className="text-warning border-warning">
+                            {wo.pending_qc_count} pending
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-primary text-sm">
+                          Go to WO <ArrowRight className="h-4 w-4" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        </div>
+        )}
 
-        {/* Main Content */}
-        <Tabs defaultValue="pending" className="w-full">
-          <TabsList className="grid w-full md:w-auto grid-cols-3">
-            <TabsTrigger value="pending" className="gap-2">
-              <Clock className="h-4 w-4" />
-              Pending Actions
-              {pendingActions.length > 0 && (
-                <Badge variant="destructive" className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
-                  {pendingActions.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="hourly" className="gap-2">
-              <Eye className="h-4 w-4" />
-              Hourly QC Checks
-            </TabsTrigger>
-            <TabsTrigger value="final" className="gap-2">
-              <Package className="h-4 w-4" />
-              Final Inspection
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="pending" className="mt-6">
-            {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3].map((i) => (
-                  <Card key={i}>
-                    <CardContent className="p-4 space-y-2">
-                      <Skeleton className="h-5 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-4 w-full" />
-                    </CardContent>
-                  </Card>
-                ))}
+        {/* All Work Orders QC Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              All Active Work Orders - QC Summary
+            </CardTitle>
+            <CardDescription>
+              Overview of quality control status for all active work orders
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {workOrderSummaries.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <FlaskConical className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No active work orders found</p>
               </div>
-            ) : pendingActions.length === 0 ? (
-              <Card className="animate-fade-in">
-                <CardContent className="py-12 text-center">
-                  <CheckCircle2 className="h-12 w-12 mx-auto text-success mb-4" />
-                  <p className="text-lg font-medium">All caught up!</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    No pending QC actions at this time
-                  </p>
-                </CardContent>
-              </Card>
             ) : (
-              <div className="space-y-4">
-                {/* Materials Awaiting Lab Report */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <FlaskConical className="h-5 w-5 text-warning" />
-                      Materials Awaiting Lab Report (Pre-Production)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {pendingActions
-                        .filter(a => a.qc_type === 'first_piece')
-                        .map((item) => (
-                          <QCActionCard
-                            key={item.id}
-                            item={{ ...item, wo_display_id: item.work_orders?.display_id, customer: item.work_orders?.customer, item_code: item.work_orders?.item_code }}
-                            onNavigate={(id) => navigate(`/work-orders/${item.work_orders?.id}`)}
-                          />
-                        ))}
-                      {pendingActions.filter(a => a.qc_type === 'first_piece').length === 0 && (
-                        <p className="text-sm text-muted-foreground col-span-full text-center py-4">
-                          No materials pending lab reports
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* First Piece Approvals */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <CheckCircle2 className="h-5 w-5 text-primary" />
-                      First Piece Approvals Pending (Production Start)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {pendingActions
-                        .filter(a => a.qc_type === 'in_process')
-                        .map((item) => (
-                          <QCActionCard
-                            key={item.id}
-                            item={{ ...item, wo_display_id: item.work_orders?.display_id, customer: item.work_orders?.customer, item_code: item.work_orders?.item_code }}
-                            onNavigate={(id) => navigate(`/work-orders/${item.work_orders?.id}`)}
-                          />
-                        ))}
-                      {pendingActions.filter(a => a.qc_type === 'in_process').length === 0 && (
-                        <p className="text-sm text-muted-foreground col-span-full text-center py-4">
-                          No first piece approvals pending
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Final Inspections */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Package className="h-5 w-5 text-success" />
-                      Final Inspection Pending (Before Packing/Dispatch)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {pendingActions
-                        .filter(a => a.qc_type === 'final')
-                        .map((item) => (
-                          <QCActionCard
-                            key={item.id}
-                            item={{ ...item, wo_display_id: item.work_orders?.display_id, customer: item.work_orders?.customer, item_code: item.work_orders?.item_code }}
-                            onNavigate={(id) => navigate(`/work-orders/${item.work_orders?.id}`)}
-                          />
-                        ))}
-                      {pendingActions.filter(a => a.qc_type === 'final').length === 0 && (
-                        <p className="text-sm text-muted-foreground col-span-full text-center py-4">
-                          No final inspections pending
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Work Order</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Item Code</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Material QC</TableHead>
+                    <TableHead>First Piece</TableHead>
+                    <TableHead className="text-center">Passed</TableHead>
+                    <TableHead className="text-center">Failed</TableHead>
+                    <TableHead>Last QC</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {workOrderSummaries.map((wo) => (
+                    <TableRow 
+                      key={wo.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
+                    >
+                      <TableCell className="font-medium">{wo.display_id}</TableCell>
+                      <TableCell>{wo.customer}</TableCell>
+                      <TableCell>{wo.item_code}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="capitalize">{wo.status}</Badge>
+                      </TableCell>
+                      <TableCell>{getQCStatusBadge(wo.qc_material_status)}</TableCell>
+                      <TableCell>{getQCStatusBadge(wo.qc_first_piece_status)}</TableCell>
+                      <TableCell className="text-center">
+                        {wo.passed_qc_count > 0 && (
+                          <span className="text-success font-medium">{wo.passed_qc_count}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {wo.failed_qc_count > 0 && (
+                          <span className="text-destructive font-medium">{wo.failed_qc_count}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {wo.last_qc_date 
+                          ? new Date(wo.last_qc_date).toLocaleDateString()
+                          : '-'
+                        }
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-primary text-sm">
+                          <Eye className="h-4 w-4" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
-          </TabsContent>
-
-          <TabsContent value="hourly" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Eye className="h-5 w-5" />
-                  Hourly QC Checks
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-12 text-muted-foreground">
-                  <Eye className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-sm">Hourly QC check interface coming soon</p>
-                  <p className="text-xs mt-2">
-                    Real-time inputs with operation selector (A/B/C/D), measured dimensions, and tolerances
-                  </p>
-                  <Button variant="outline" className="mt-4" onClick={() => navigate("/hourly-qc")}>
-                    Go to Hourly QC
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="final" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  Final Inspection Records
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-2">
-                    {[1, 2, 3].map((i) => (
-                      <Skeleton key={i} className="h-16 w-full" />
-                    ))}
-                  </div>
-                ) : filteredRecords.filter(r => r.qc_type === 'final').length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-sm">No final inspection records found</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {filteredRecords
-                      .filter(r => r.qc_type === 'final')
-                      .map((record) => {
-                        const StatusIcon = QC_STATUS_CONFIG[record.result as keyof typeof QC_STATUS_CONFIG]?.icon || FileText;
-                        const statusConfig = QC_STATUS_CONFIG[record.result as keyof typeof QC_STATUS_CONFIG];
-                        
-                        return (
-                          <Card
-                            key={record.id}
-                            className="cursor-pointer hover:shadow-md transition-shadow"
-                            onClick={() => record.work_orders && navigate(`/work-orders/${record.work_orders.id}`)}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <StatusIcon className="h-4 w-4" style={{ color: statusConfig?.color }} />
-                                    <span className="font-semibold text-sm">
-                                      {record.qc_id}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {record.work_orders?.display_id || record.work_orders?.wo_id}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">
-                                    {record.work_orders?.customer} • {record.work_orders?.item_code}
-                                  </p>
-                                </div>
-                                <Badge variant={statusConfig?.variant} style={record.result === 'passed' || record.result === 'failed' ? { backgroundColor: statusConfig?.color, color: 'white' } : {}}>
-                                  {statusConfig?.label || record.result}
-                                </Badge>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
