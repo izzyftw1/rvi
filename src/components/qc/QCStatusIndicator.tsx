@@ -1,8 +1,36 @@
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Clock, Ban, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Ban, AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type QCStatus = 'passed' | 'pass' | 'pending' | 'failed' | 'fail' | 'waived' | 'hold' | 'not_started' | null;
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * QC STATUS TERMINOLOGY GUIDE (System-Wide Standard)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * PASSED / PASS   → Inspection completed successfully. Green. ✓
+ * FAILED / FAIL   → Inspection completed with rejection. Red. ✗
+ * PENDING         → Awaiting inspection, CAN be acted upon now. Amber/Yellow.
+ * BLOCKED         → Cannot proceed until prerequisite is complete. Gray with lock.
+ * WAIVED          → Intentionally skipped with authorization. Muted blue/purple.
+ * HOLD            → Temporarily paused, requires attention. Orange.
+ * NOT_STARTED     → No action taken yet, neutral state. Gray.
+ * 
+ * KEY DISTINCTIONS:
+ * - PENDING = Ready for action (amber, attention-grabbing)
+ * - BLOCKED = Cannot act, dependency issue (gray + lock icon, less urgent)
+ * - WAIVED = Intentional skip (muted, clearly authorized, not an error)
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+export type QCStatus = 
+  | 'passed' | 'pass' 
+  | 'failed' | 'fail' 
+  | 'pending' 
+  | 'blocked' 
+  | 'waived' 
+  | 'hold' 
+  | 'not_started' 
+  | null;
 
 interface QCStatusIndicatorProps {
   status: QCStatus;
@@ -13,10 +41,11 @@ interface QCStatusIndicatorProps {
 
 // Unified status configuration for consistent visual language across all QC pages
 const STATUS_CONFIG = {
+  // ─── SUCCESS STATES ───
   passed: {
     icon: CheckCircle2,
     label: 'Passed',
-    badgeClass: 'bg-emerald-600 text-white hover:bg-emerald-600',
+    badgeClass: 'bg-emerald-600 text-white hover:bg-emerald-600 border-emerald-600',
     iconClass: 'text-emerald-600',
     bgClass: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderClass: 'border-emerald-200 dark:border-emerald-800',
@@ -24,23 +53,17 @@ const STATUS_CONFIG = {
   pass: {
     icon: CheckCircle2,
     label: 'Passed',
-    badgeClass: 'bg-emerald-600 text-white hover:bg-emerald-600',
+    badgeClass: 'bg-emerald-600 text-white hover:bg-emerald-600 border-emerald-600',
     iconClass: 'text-emerald-600',
     bgClass: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderClass: 'border-emerald-200 dark:border-emerald-800',
   },
-  pending: {
-    icon: Clock,
-    label: 'Pending',
-    badgeClass: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
-    iconClass: 'text-amber-600 dark:text-amber-400',
-    bgClass: 'bg-amber-50 dark:bg-amber-950/30',
-    borderClass: 'border-amber-200 dark:border-amber-800',
-  },
+
+  // ─── FAILURE STATES ───
   failed: {
     icon: XCircle,
     label: 'Failed',
-    badgeClass: 'bg-destructive text-destructive-foreground hover:bg-destructive',
+    badgeClass: 'bg-destructive text-destructive-foreground hover:bg-destructive border-destructive',
     iconClass: 'text-destructive',
     bgClass: 'bg-destructive/10',
     borderClass: 'border-destructive/30',
@@ -48,40 +71,78 @@ const STATUS_CONFIG = {
   fail: {
     icon: XCircle,
     label: 'Failed',
-    badgeClass: 'bg-destructive text-destructive-foreground hover:bg-destructive',
+    badgeClass: 'bg-destructive text-destructive-foreground hover:bg-destructive border-destructive',
     iconClass: 'text-destructive',
     bgClass: 'bg-destructive/10',
     borderClass: 'border-destructive/30',
   },
+
+  // ─── ATTENTION STATES ───
+  pending: {
+    icon: Clock,
+    label: 'Pending',
+    badgeClass: 'bg-amber-500 text-white hover:bg-amber-500 border-amber-500',
+    iconClass: 'text-amber-600 dark:text-amber-400',
+    bgClass: 'bg-amber-50 dark:bg-amber-950/30',
+    borderClass: 'border-amber-200 dark:border-amber-800',
+  },
   hold: {
     icon: AlertTriangle,
     label: 'On Hold',
-    badgeClass: 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300',
+    badgeClass: 'bg-orange-500 text-white hover:bg-orange-500 border-orange-500',
     iconClass: 'text-orange-600 dark:text-orange-400',
     bgClass: 'bg-orange-50 dark:bg-orange-950/30',
     borderClass: 'border-orange-200 dark:border-orange-800',
   },
+
+  // ─── BLOCKED STATE (distinct from pending) ───
+  blocked: {
+    icon: Lock,
+    label: 'Blocked',
+    badgeClass: 'bg-slate-400 text-white hover:bg-slate-400 border-slate-400 dark:bg-slate-600',
+    iconClass: 'text-slate-500 dark:text-slate-400',
+    bgClass: 'bg-slate-100 dark:bg-slate-900/30',
+    borderClass: 'border-slate-200 dark:border-slate-700',
+  },
+
+  // ─── INTENTIONAL SKIP (not an error) ───
   waived: {
     icon: Ban,
     label: 'Waived',
-    badgeClass: 'bg-muted text-muted-foreground',
-    iconClass: 'text-muted-foreground',
-    bgClass: 'bg-muted/50',
-    borderClass: 'border-muted',
+    badgeClass: 'bg-violet-100 text-violet-700 hover:bg-violet-100 border-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-700',
+    iconClass: 'text-violet-600 dark:text-violet-400',
+    bgClass: 'bg-violet-50 dark:bg-violet-950/30',
+    borderClass: 'border-violet-200 dark:border-violet-800',
   },
+
+  // ─── NEUTRAL / NOT STARTED ───
   not_started: {
     icon: Clock,
     label: 'Not Started',
-    badgeClass: 'bg-muted/50 text-muted-foreground',
-    iconClass: 'text-muted-foreground/50',
+    badgeClass: 'bg-muted text-muted-foreground hover:bg-muted border-border',
+    iconClass: 'text-muted-foreground',
     bgClass: 'bg-muted/30',
-    borderClass: 'border-muted/50',
+    borderClass: 'border-muted',
   },
 };
 
 export const getQCStatusConfig = (status: QCStatus) => {
   if (!status) return STATUS_CONFIG.not_started;
   return STATUS_CONFIG[status] || STATUS_CONFIG.not_started;
+};
+
+/**
+ * Get the appropriate status for a QC gate based on its completion and blocking state
+ */
+export const resolveQCGateStatus = (
+  status: QCStatus, 
+  isBlocked: boolean
+): QCStatus => {
+  // If blocked and not yet completed, show as blocked instead of pending
+  if (isBlocked && (status === 'pending' || status === 'not_started' || !status)) {
+    return 'blocked';
+  }
+  return status;
 };
 
 export const QCStatusIndicator = ({ 
