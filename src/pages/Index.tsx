@@ -155,155 +155,246 @@ const Index = () => {
   }
 
   const getStageBadgeColor = (activeJobs: number) => {
-    if (activeJobs === 0) return 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200';
-    if (activeJobs <= 5) return 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200';
-    if (activeJobs <= 10) return 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 border-yellow-200';
-    return 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border-red-200';
+    if (activeJobs === 0) return 'bg-muted/50 text-muted-foreground border-transparent';
+    if (activeJobs <= 5) return 'bg-primary/10 text-primary border-primary/20';
+    if (activeJobs <= 10) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+    return 'bg-destructive/10 text-destructive border-destructive/20';
+  };
+
+  // Helper to determine if a metric is "inactive" (zero or no concern)
+  const isInactive = (value: number | undefined) => !value || value === 0;
+  
+  // Helper to get metric styling based on value
+  const getMetricStyle = (value: number | undefined, isCritical = false) => {
+    if (isInactive(value)) {
+      return {
+        textColor: 'text-muted-foreground',
+        iconColor: 'text-muted-foreground/50',
+        cardClass: 'opacity-60'
+      };
+    }
+    if (isCritical && value && value > 0) {
+      return {
+        textColor: 'text-destructive',
+        iconColor: 'text-destructive',
+        cardClass: 'border-destructive/30 bg-destructive/5'
+      };
+    }
+    return {
+      textColor: 'text-foreground',
+      iconColor: 'text-muted-foreground',
+      cardClass: ''
+    };
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="container mx-auto px-4 py-6 space-y-8">
         {/* Critical Alerts Bar */}
         <CriticalAlertsBar />
 
-        {/* Header Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card 
-                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
-                  onClick={() => handleHeaderCardClick('/qc/incoming')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Material Waiting QC</p>
-                        <p className="text-2xl font-bold">{summary?.material_waiting_qc || 0}</p>
-                      </div>
-                      <Package className="h-8 w-8 text-muted-foreground" />
-                    </div>
+        {/* SECTION 1: Risk / Alerts - Actionable items needing attention */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Risk & Alerts</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <TooltipProvider>
+              {(() => {
+                const style = getMetricStyle(summary?.material_waiting_qc);
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Card 
+                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
+                        onClick={() => handleHeaderCardClick('/qc/incoming')}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Material Waiting QC</p>
+                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.material_waiting_qc || 0}</p>
+                            </div>
+                            <Package className={cn("h-6 w-6", style.iconColor)} />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Material lots pending QC approval</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })()}
+
+              {(() => {
+                const style = getMetricStyle(summary?.maintenance_overdue, true);
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Card 
+                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
+                        onClick={() => handleHeaderCardClick('/machine-status')}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Maintenance Overdue</p>
+                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.maintenance_overdue || 0}</p>
+                            </div>
+                            <Wrench className={cn("h-6 w-6", style.iconColor)} />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Active maintenance tasks not yet completed</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })()}
+
+              {(() => {
+                const style = getMetricStyle(summary?.work_orders_delayed, true);
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Card 
+                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
+                        onClick={() => handleHeaderCardClick('/work-orders', 'status=delayed')}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Work Orders Delayed</p>
+                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.work_orders_delayed || 0}</p>
+                            </div>
+                            <AlertTriangle className={cn("h-6 w-6", style.iconColor)} />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Work orders past their due date</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })()}
+
+              {(() => {
+                const style = getMetricStyle(summary?.qc_pending_approval);
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Card 
+                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
+                        onClick={() => handleHeaderCardClick('/quality', 'status=pending')}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-muted-foreground">QC Pending Approval</p>
+                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.qc_pending_approval || 0}</p>
+                            </div>
+                            <ClipboardCheck className={cn("h-6 w-6", style.iconColor)} />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>QC checks awaiting approval</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })()}
+            </TooltipProvider>
+          </div>
+        </section>
+
+        {/* SECTION 2: Status - Current operational state */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Current Status</h2>
+          <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+            {(() => {
+              const style = getMetricStyle(summary?.orders_in_pipeline);
+              return (
+                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/work-orders', 'status=pending')}>
+                  <CardContent className="p-4 text-center">
+                    <div className={cn("text-3xl font-bold", style.textColor)}>{summary?.orders_in_pipeline || 0}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Orders in Pipeline</p>
                   </CardContent>
                 </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Material lots pending QC approval</p>
-              </TooltipContent>
-            </Tooltip>
+              );
+            })()}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card 
-                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
-                  onClick={() => handleHeaderCardClick('/machine-status')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Maintenance Overdue</p>
-                        <p className="text-2xl font-bold">{summary?.maintenance_overdue || 0}</p>
-                      </div>
-                      <Wrench className="h-8 w-8 text-muted-foreground" />
-                    </div>
+            {(() => {
+              const value = summary?.orders_in_production;
+              const style = getMetricStyle(value);
+              return (
+                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/production-progress')}>
+                  <CardContent className="p-4 text-center">
+                    <div className={cn("text-3xl font-bold", value && value > 0 ? "text-primary" : style.textColor)}>{value || 0}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Orders in Production</p>
                   </CardContent>
                 </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Active maintenance tasks not yet completed</p>
-              </TooltipContent>
-            </Tooltip>
+              );
+            })()}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card 
-                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
-                  onClick={() => handleHeaderCardClick('/work-orders', 'status=delayed')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Work Orders Delayed</p>
-                        <p className="text-2xl font-bold">{summary?.work_orders_delayed || 0}</p>
-                      </div>
-                      <Clock className="h-8 w-8 text-muted-foreground" />
-                    </div>
+            {(() => {
+              const style = getMetricStyle(summary?.external_wip_pcs);
+              return (
+                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/partners')}>
+                  <CardContent className="p-4 text-center">
+                    <div className={cn("text-3xl font-bold", style.textColor)}>{summary?.external_wip_pcs || 0}</div>
+                    <p className="text-xs text-muted-foreground mt-1">External WIP pcs</p>
                   </CardContent>
                 </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Work orders past their due date</p>
-              </TooltipContent>
-            </Tooltip>
+              );
+            })()}
+          </div>
+        </section>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Card 
-                  className="cursor-pointer hover:shadow-md transition-all hover:scale-105"
-                  onClick={() => handleHeaderCardClick('/quality', 'status=pending')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">QC Pending Approval</p>
-                        <p className="text-2xl font-bold">{summary?.qc_pending_approval || 0}</p>
-                      </div>
-                      <ClipboardCheck className="h-8 w-8 text-muted-foreground" />
-                    </div>
+        {/* SECTION 3: Throughput - Delivery performance */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Throughput & Delivery</h2>
+          <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
+            {(() => {
+              const style = getMetricStyle(summary?.late_deliveries, true);
+              return (
+                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/logistics')}>
+                  <CardContent className="p-4 text-center">
+                    <div className={cn("text-3xl font-bold", style.textColor)}>{summary?.late_deliveries || 0}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Late Deliveries</p>
                   </CardContent>
                 </Card>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>QC checks awaiting approval</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+              );
+            })()}
 
-        {/* Mid Summary - Status Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/work-orders', 'status=pending')}>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold text-green-600">{summary?.orders_in_pipeline || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">Orders in Pipeline</p>
-            </CardContent>
-          </Card>
+            {(() => {
+              const value = summary?.due_today;
+              const style = getMetricStyle(value);
+              return (
+                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/work-orders', 'due=today')}>
+                  <CardContent className="p-4 text-center">
+                    <div className={cn("text-3xl font-bold", value && value > 0 ? "text-amber-600 dark:text-amber-400" : style.textColor)}>{value || 0}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Due Today</p>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/production-progress')}>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold text-blue-600">{summary?.orders_in_production || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">Orders in Production</p>
-            </CardContent>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/partners')}>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold text-purple-600">{summary?.external_wip_pcs || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">External WIP pcs</p>
-            </CardContent>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/logistics')}>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold text-red-600">{summary?.late_deliveries || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">Late Deliveries</p>
-            </CardContent>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/work-orders', 'due=today')}>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold text-orange-600">{summary?.due_today || 0}</div>
-              <p className="text-sm text-muted-foreground mt-1">Due Today</p>
-            </CardContent>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/reports')}>
-            <CardContent className="p-4 text-center">
-              <div className="text-3xl font-bold text-teal-600">{summary?.on_time_rate_7d || 100}%</div>
-              <p className="text-sm text-muted-foreground mt-1">On-Time Rate 7d</p>
-            </CardContent>
-          </Card>
-        </div>
+            {(() => {
+              const rate = summary?.on_time_rate_7d || 100;
+              const isGood = rate >= 90;
+              return (
+                <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/reports')}>
+                  <CardContent className="p-4 text-center">
+                    <div className={cn("text-3xl font-bold", isGood ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{rate}%</div>
+                    <p className="text-xs text-muted-foreground mt-1">On-Time Rate 7d</p>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+          </div>
+        </section>
 
         {/* Tabbed View */}
         <Tabs defaultValue="internal" className="w-full">
