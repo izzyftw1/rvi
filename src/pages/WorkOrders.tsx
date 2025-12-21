@@ -84,7 +84,7 @@ const KPICard = memo(({
 ));
 KPICard.displayName = "KPICard";
 
-// Compact Work Order Row
+// Work Order Card - Stage-dominant design
 const WorkOrderRow = memo(({ 
   wo, 
   onDelete, 
@@ -94,6 +94,7 @@ const WorkOrderRow = memo(({
   canManageExternal
 }: any) => {
   const stageConfig = STAGES[wo.current_stage as keyof typeof STAGES] || STAGES.goods_in;
+  const StageIcon = stageConfig.icon;
   
   const isOverdue = wo.due_date && isPast(parseISO(wo.due_date)) && wo.status !== 'completed';
   const daysUntilDue = wo.due_date ? differenceInDays(parseISO(wo.due_date), new Date()) : null;
@@ -106,50 +107,49 @@ const WorkOrderRow = memo(({
     m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
   );
 
-  const ownershipType = externalWipTotal > 0 ? 'external' : 'internal';
-
   return (
     <div 
       className={cn(
-        "group flex items-center gap-4 px-4 py-3 bg-card border rounded-lg cursor-pointer transition-all hover:shadow-md",
-        isOverdue && "border-l-4 border-l-destructive",
-        hasExternalOverdue && !isOverdue && "border-l-4 border-l-amber-500"
+        "group flex items-stretch bg-card border rounded-lg cursor-pointer transition-all hover:shadow-md overflow-hidden",
+        isOverdue && "ring-2 ring-destructive/50",
+        hasExternalOverdue && !isOverdue && "ring-2 ring-amber-500/50"
       )}
       onClick={() => onNavigate(wo.id)}
     >
-      {/* Stage Indicator */}
-      <div className="flex-shrink-0">
-        <Badge className={cn("text-white text-xs font-medium", stageConfig.color)}>
+      {/* STAGE - Dominant Visual Element */}
+      <div className={cn(
+        "flex flex-col items-center justify-center px-4 py-3 min-w-[90px] text-white",
+        stageConfig.color
+      )}>
+        <StageIcon className="h-6 w-6 mb-1" />
+        <span className="text-xs font-bold uppercase tracking-wide text-center leading-tight">
           {stageConfig.label}
-        </Badge>
+        </span>
       </div>
 
-      {/* Main Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground truncate">
+      {/* Content Area */}
+      <div className="flex-1 flex items-center gap-4 px-4 py-3">
+        {/* Primary: PO / Customer */}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-foreground truncate">
             {wo.customer_po || wo.wo_id?.slice(0, 8)}
-          </span>
-          <span className="text-muted-foreground">•</span>
-          <span className="text-sm text-muted-foreground truncate">{wo.customer}</span>
+          </p>
+          <p className="text-sm text-muted-foreground truncate">{wo.customer}</p>
         </div>
-        <p className="text-xs text-muted-foreground truncate">{wo.item_code}</p>
-      </div>
 
-      {/* Quantity */}
-      <div className="hidden sm:block text-right min-w-[60px]">
-        <p className="text-sm font-medium">{wo.quantity?.toLocaleString()}</p>
-        <p className="text-xs text-muted-foreground">pcs</p>
-      </div>
+        {/* Secondary: Item & Qty */}
+        <div className="hidden sm:block text-right min-w-[100px]">
+          <p className="text-xs text-muted-foreground truncate">{wo.item_code}</p>
+          <p className="text-sm font-medium">{wo.quantity?.toLocaleString()} pcs</p>
+        </div>
 
-      {/* Ownership Indicator */}
-      <div className="flex-shrink-0 min-w-[90px]">
-        {ownershipType === 'external' ? (
+        {/* External WIP indicator */}
+        {externalWipTotal > 0 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger>
                 <Badge variant="outline" className={cn(
-                  "gap-1 text-xs",
+                  "gap-1 text-xs whitespace-nowrap",
                   hasExternalOverdue ? "border-amber-500 text-amber-600 bg-amber-500/10" : "border-accent text-accent"
                 )}>
                   <ExternalLink className="h-3 w-3" />
@@ -164,89 +164,89 @@ const WorkOrderRow = memo(({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        ) : (
-          <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
-            <Building2 className="h-3 w-3" />
-            Internal
-          </Badge>
         )}
-      </div>
 
-      {/* Due Date */}
-      <div className="hidden md:flex flex-shrink-0 min-w-[80px] items-center gap-1">
-        {wo.due_date ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <span className={cn(
-                  "text-xs flex items-center gap-1",
-                  isOverdue ? "text-destructive font-semibold" : 
-                  daysUntilDue !== null && daysUntilDue <= 3 ? "text-amber-600" : "text-muted-foreground"
-                )}>
-                  <Clock className="h-3 w-3" />
-                  {formatDate(parseISO(wo.due_date), 'MMM dd')}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {isOverdue ? 'Overdue!' : daysUntilDue !== null ? `${daysUntilDue} days remaining` : 'Due date'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className="text-xs text-muted-foreground">No due date</span>
-        )}
-      </div>
+        {/* Due Date */}
+        <div className="hidden md:block min-w-[70px] text-right">
+          {wo.due_date ? (
+            <span className={cn(
+              "text-xs flex items-center justify-end gap-1",
+              isOverdue ? "text-destructive font-semibold" : 
+              daysUntilDue !== null && daysUntilDue <= 3 ? "text-amber-600 font-medium" : "text-muted-foreground"
+            )}>
+              <Clock className="h-3 w-3" />
+              {formatDate(parseISO(wo.due_date), 'MMM dd')}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground/50">—</span>
+          )}
+        </div>
 
-      {/* Status Flags */}
-      <div className="flex items-center gap-1">
-        {isOverdue && (
-          <Badge variant="destructive" className="text-xs px-1.5">
-            <AlertTriangle className="h-3 w-3" />
-          </Badge>
-        )}
-        {hasExternalOverdue && !isOverdue && (
-          <Badge variant="outline" className="text-xs px-1.5 border-amber-500 text-amber-600">
-            <Timer className="h-3 w-3" />
-          </Badge>
-        )}
-      </div>
+        {/* Alert Flags */}
+        <div className="flex items-center gap-1">
+          {isOverdue && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge variant="destructive" className="px-1.5 py-0.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>Overdue</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {hasExternalOverdue && !isOverdue && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge variant="outline" className="px-1.5 py-0.5 border-amber-500 text-amber-600">
+                    <Timer className="h-3.5 w-3.5" />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>External processing overdue</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
 
-      {/* Quick Actions */}
-      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNavigate(wo.id); }}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              View Details
-            </DropdownMenuItem>
-            {canManageExternal && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSendToExternal(wo); }}>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send External
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onReceiveFromExternal(wo); }}>
-                  <Package className="h-4 w-4 mr-2" />
-                  Receive External
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              className="text-destructive"
-              onClick={(e) => { e.stopPropagation(); onDelete(wo.id, wo.display_id || wo.wo_id); }}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Quick Actions */}
+        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNavigate(wo.id); }}>
+                <ArrowRight className="h-4 w-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+              {canManageExternal && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSendToExternal(wo); }}>
+                    <Send className="h-4 w-4 mr-2" />
+                    Send External
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onReceiveFromExternal(wo); }}>
+                    <Package className="h-4 w-4 mr-2" />
+                    Receive External
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                className="text-destructive"
+                onClick={(e) => { e.stopPropagation(); onDelete(wo.id, wo.display_id || wo.wo_id); }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   );
