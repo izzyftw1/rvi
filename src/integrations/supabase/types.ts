@@ -4620,6 +4620,10 @@ export type Database = {
           production_allowed: boolean | null
           production_end: string | null
           production_locked: boolean | null
+          production_release_date: string | null
+          production_release_notes: string | null
+          production_release_status: Database["public"]["Enums"]["production_release_status"]
+          production_released_by: string | null
           production_start: string | null
           qc_final_approved_at: string | null
           qc_final_approved_by: string | null
@@ -4681,6 +4685,10 @@ export type Database = {
           production_allowed?: boolean | null
           production_end?: string | null
           production_locked?: boolean | null
+          production_release_date?: string | null
+          production_release_notes?: string | null
+          production_release_status?: Database["public"]["Enums"]["production_release_status"]
+          production_released_by?: string | null
           production_start?: string | null
           qc_final_approved_at?: string | null
           qc_final_approved_by?: string | null
@@ -4742,6 +4750,10 @@ export type Database = {
           production_allowed?: boolean | null
           production_end?: string | null
           production_locked?: boolean | null
+          production_release_date?: string | null
+          production_release_notes?: string | null
+          production_release_status?: Database["public"]["Enums"]["production_release_status"]
+          production_released_by?: string | null
           production_start?: string | null
           qc_final_approved_at?: string | null
           qc_final_approved_by?: string | null
@@ -5273,6 +5285,7 @@ export type Database = {
         | "upi"
         | "card"
         | "other"
+      production_release_status: "NOT_RELEASED" | "RELEASED"
       qc_result: "pass" | "fail" | "rework" | "pending"
       qc_type: "first_piece" | "in_process" | "final" | "incoming"
       reconciliation_reason:
@@ -5536,6 +5549,7 @@ export const Constants = {
         "card",
         "other",
       ],
+      production_release_status: ["NOT_RELEASED", "RELEASED"],
       qc_result: ["pass", "fail", "rework", "pending"],
       qc_type: ["first_piece", "in_process", "final", "incoming"],
       reconciliation_reason: [

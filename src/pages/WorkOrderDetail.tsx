@@ -34,6 +34,7 @@ import { MaterialQCApproval } from "@/components/MaterialQCApproval";
 import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
 import { MaterialMovementTimeline } from "@/components/MaterialMovementTimeline";
 import { useUserRole } from "@/hooks/useUserRole";
+import { ProductionReleaseSection } from "@/components/ProductionReleaseSection";
 import { OEEWidget } from "@/components/OEEWidget";
 import { QCStageCard } from "@/components/qc/QCStageCard";
 import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
@@ -74,6 +75,8 @@ const WorkOrderDetail = () => {
   const [externalMoves, setExternalMoves] = useState<any[]>([]);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [qcApprovers, setQcApprovers] = useState<Record<string, string>>({});
+  const [releasedByName, setReleasedByName] = useState<string>('');
+  const [productionNotReleased, setProductionNotReleased] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(() => {
     return localStorage.getItem('wo-detail-active-tab') || 'production';
   });
@@ -110,6 +113,9 @@ const WorkOrderDetail = () => {
       const materialBlocked = wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed';
       const firstPieceBlocked = wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed';
       setQcGatesBlocked(materialBlocked || firstPieceBlocked);
+      
+      // Production release gate
+      setProductionNotReleased(wo.production_release_status !== 'RELEASED');
     }
   }, [wo]);
 
@@ -313,12 +319,13 @@ const WorkOrderDetail = () => {
       
       setExternalMoves(movesData || []);
 
-      // Load QC approver names
+      // Load QC approver names and production release user
       if (woData) {
         const approverIds = [
           woData.qc_raw_material_approved_by,
           woData.qc_first_piece_approved_by,
-          woData.qc_final_approved_by
+          woData.qc_final_approved_by,
+          woData.production_released_by
         ].filter(Boolean);
 
         if (approverIds.length > 0) {
@@ -332,6 +339,11 @@ const WorkOrderDetail = () => {
             approversMap[p.id] = p.full_name;
           });
           setQcApprovers(approversMap);
+          
+          // Set released by name
+          if (woData.production_released_by && approversMap[woData.production_released_by]) {
+            setReleasedByName(approversMap[woData.production_released_by]);
+          }
         }
       }
     } catch (error) {
@@ -636,6 +648,8 @@ const WorkOrderDetail = () => {
                 onClick={() => setShowExternalDialog(true)} 
                 variant="secondary"
                 size="sm"
+                disabled={productionNotReleased}
+                title={productionNotReleased ? 'Work order must be released for production first' : ''}
               >
                 <Send className="h-4 w-4 mr-2" />
                 Send to External
@@ -644,8 +658,8 @@ const WorkOrderDetail = () => {
             <Button 
               onClick={() => setShowAssignmentDialog(true)} 
               variant="default"
-              disabled={qcGatesBlocked}
-              title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : ''}
+              disabled={qcGatesBlocked || productionNotReleased}
+              title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Work order must be released for production first' : ''}
             >
               <Cpu className="h-4 w-4 mr-2" />
               Assign Machines
@@ -706,6 +720,13 @@ const WorkOrderDetail = () => {
             </div>
           </div>
         )}
+
+        {/* Production Release Section */}
+        <ProductionReleaseSection
+          workOrder={wo}
+          releasedByName={releasedByName}
+          onReleased={loadWorkOrderData}
+        />
 
         {/* Machine Assignments */}
         {machineAssignments.length > 0 && (
@@ -895,7 +916,7 @@ const WorkOrderDetail = () => {
         )}
 
         {/* Production Log Form */}
-        {qcGatesBlocked ? (
+        {qcGatesBlocked || productionNotReleased ? (
           <Card className="border-destructive">
             <CardHeader>
               <CardTitle className="text-destructive flex items-center gap-2">
@@ -905,9 +926,18 @@ const WorkOrderDetail = () => {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Production logging is blocked until all QC gates pass or are waived. Please complete the required QC approvals in the QC Records tab.
+                {productionNotReleased 
+                  ? 'Production logging is blocked until the work order is released for production.'
+                  : 'Production logging is blocked until all QC gates pass or are waived. Please complete the required QC approvals in the QC Records tab.'
+                }
               </p>
               <div className="space-y-2">
+                {productionNotReleased && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="w-2 h-2 rounded-full bg-warning"></div>
+                    <span>Production Release - Not Released</span>
+                  </div>
+                )}
                 {(wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed') && (
                   <div className="flex items-center gap-2 text-sm">
                     <div className="w-2 h-2 rounded-full bg-destructive"></div>
