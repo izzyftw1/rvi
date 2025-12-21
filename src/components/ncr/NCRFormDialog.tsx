@@ -8,6 +8,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from '@/components/ui/form-layout';
+import { Database } from '@/integrations/supabase/types';
+
+type NCRType = Database['public']['Enums']['ncr_type'];
+type NCRDisposition = Database['public']['Enums']['ncr_disposition'];
 
 interface NCRFormDialogProps {
   open: boolean;
@@ -32,13 +36,15 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   
   const [formData, setFormData] = useState({
-    ncr_type: 'INTERNAL' as 'INTERNAL' | 'CUSTOMER' | 'SUPPLIER',
+    ncr_type: 'INTERNAL' as NCRType,
     source_reference: prefillData?.sourceReference || '',
     work_order_id: prefillData?.workOrderId || '',
     quantity_affected: '',
     unit: 'pcs',
     issue_description: prefillData?.issueDescription || '',
-    responsible_person: '',
+    root_cause: '',
+    corrective_action: '',
+    disposition: '' as NCRDisposition | '',
     due_date: '',
   });
 
@@ -69,8 +75,8 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.quantity_affected || !formData.issue_description) {
-      toast.error('Please fill in required fields');
+    if (!formData.quantity_affected || !formData.issue_description || !formData.ncr_type) {
+      toast.error('Please fill in required fields: NCR Type, Quantity, and Issue Description');
       return;
     }
 
@@ -88,6 +94,9 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
         quantity_affected: parseFloat(formData.quantity_affected),
         unit: formData.unit,
         issue_description: formData.issue_description,
+        root_cause: formData.root_cause || null,
+        corrective_action: formData.corrective_action || null,
+        disposition: formData.disposition || null,
         due_date: formData.due_date || null,
         created_by: user?.user?.id,
         status: 'OPEN',
@@ -110,18 +119,27 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
     setFormData({
       ncr_type: 'INTERNAL',
       source_reference: '',
-      work_order_id: '',
+      work_order_id: prefillData?.workOrderId || '',
       quantity_affected: '',
       unit: 'pcs',
       issue_description: '',
-      responsible_person: '',
+      root_cause: '',
+      corrective_action: '',
+      disposition: '',
       due_date: '',
     });
   };
 
+  const dispositionOptions: { value: NCRDisposition; label: string }[] = [
+    { value: 'REWORK', label: 'Rework' },
+    { value: 'SCRAP', label: 'Scrap' },
+    { value: 'USE_AS_IS', label: 'Use As Is' },
+    { value: 'RETURN_TO_SUPPLIER', label: 'Return to Supplier' },
+  ];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Non-Conformance Report</DialogTitle>
           <DialogDescription>
@@ -132,15 +150,15 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
         <FormContainer onSubmit={handleSubmit}>
           {/* Classification Section */}
           <FormSection title="Classification" description="Categorize the non-conformance">
-            <FormRow>
+            <FormRow cols={2}>
               <FormField>
                 <Label>NCR Type<RequiredIndicator /></Label>
                 <Select 
                   value={formData.ncr_type} 
-                  onValueChange={(v) => setFormData(prev => ({ ...prev, ncr_type: v as any }))}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, ncr_type: v as NCRType }))}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="INTERNAL">Internal</SelectItem>
@@ -151,6 +169,25 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
               </FormField>
 
               <FormField>
+                <Label>Disposition (Severity)</Label>
+                <Select 
+                  value={formData.disposition} 
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, disposition: v as NCRDisposition }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select disposition" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dispositionOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </FormRow>
+
+            <FormRow cols={2}>
+              <FormField>
                 <Label>Source Reference</Label>
                 <Input
                   value={formData.source_reference}
@@ -158,32 +195,32 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
                   placeholder="e.g., Customer PO, Lot ID"
                 />
               </FormField>
-            </FormRow>
 
-            <FormField>
-              <Label>Work Order</Label>
-              <Select 
-                value={formData.work_order_id} 
-                onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select work order (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {workOrders.map(wo => (
-                    <SelectItem key={wo.id} value={wo.id}>
-                      {wo.display_id || wo.wo_number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
+              <FormField>
+                <Label>Work Order</Label>
+                <Select 
+                  value={formData.work_order_id} 
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
+                  disabled={!!prefillData?.workOrderId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select work order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workOrders.map(wo => (
+                      <SelectItem key={wo.id} value={wo.id}>
+                        {wo.display_id || wo.wo_number}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </FormRow>
           </FormSection>
 
           {/* Issue Details Section */}
           <FormSection title="Issue Details" description="Describe the non-conformance" withSeparator>
-            <FormRow>
+            <FormRow cols={2}>
               <FormField>
                 <Label>Quantity Affected<RequiredIndicator /></Label>
                 <Input
@@ -218,8 +255,31 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
               <Textarea
                 value={formData.issue_description}
                 onChange={(e) => setFormData(prev => ({ ...prev, issue_description: e.target.value }))}
-                placeholder="Describe the non-conformance issue..."
+                placeholder="Describe the non-conformance issue in detail..."
                 rows={3}
+              />
+            </FormField>
+          </FormSection>
+
+          {/* Root Cause & Corrective Action */}
+          <FormSection title="Analysis & Action" description="Document root cause and corrective action" withSeparator>
+            <FormField>
+              <Label>Root Cause</Label>
+              <Textarea
+                value={formData.root_cause}
+                onChange={(e) => setFormData(prev => ({ ...prev, root_cause: e.target.value }))}
+                placeholder="Identify the root cause of this non-conformance..."
+                rows={2}
+              />
+            </FormField>
+
+            <FormField>
+              <Label>Corrective Action</Label>
+              <Textarea
+                value={formData.corrective_action}
+                onChange={(e) => setFormData(prev => ({ ...prev, corrective_action: e.target.value }))}
+                placeholder="Describe the corrective action to be taken..."
+                rows={2}
               />
             </FormField>
           </FormSection>
