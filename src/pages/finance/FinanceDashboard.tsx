@@ -1,4 +1,4 @@
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -899,8 +899,6 @@ export default function FinanceDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Finance Analytics Hub" subtitle="Real-time Revenue & Performance Insights" />
-      
       <div className="p-6 space-y-6">
         {/* Breadcrumb & Actions */}
         <div className="flex items-center justify-between">

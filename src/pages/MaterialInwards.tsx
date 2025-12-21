@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Package, Upload, Search } from "lucide-react";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -433,8 +433,6 @@ export default function MaterialInwards() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Material Inwards - Goods In" subtitle="Receive raw materials and link to RPOs" />
-      
       <div className="p-6">
         <form onSubmit={handleSubmit}>
           <Card>

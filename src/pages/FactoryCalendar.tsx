@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavigationHeader } from '@/components/NavigationHeader';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -370,18 +370,16 @@ export default function FactoryCalendar() {
 
   if (loading) {
     return (
-      <>
-        <NavigationHeader title="Factory Calendar" subtitle="Configure working days and shifts" />
+      <div className="min-h-screen bg-background">
         <div className="container mx-auto p-6">
           <p className="text-muted-foreground">Loading calendar settings...</p>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <NavigationHeader title="Factory Calendar" subtitle="Configure working days, shifts, and exceptions" />
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6 space-y-6">
         <Tabs defaultValue="monthly" className="space-y-6">
           <TabsList>
@@ -674,6 +672,6 @@ export default function FactoryCalendar() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

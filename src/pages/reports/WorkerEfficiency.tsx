@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { toast } from "sonner";
 import { Download, FileText, Filter, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -339,8 +339,6 @@ export default function WorkerEfficiency() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <div className="container mx-auto p-6 space-y-6">
         <Breadcrumb>
           <BreadcrumbList>

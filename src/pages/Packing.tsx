@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Box, Package, Printer, Eye, History, Trash2 } from "lucide-react";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
 import { cartonSchema, palletSchema } from "@/lib/validationSchemas";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
@@ -298,8 +298,6 @@ const Packing = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <PageContainer maxWidth="xl">
         <div className="space-y-6">
           <PageHeader

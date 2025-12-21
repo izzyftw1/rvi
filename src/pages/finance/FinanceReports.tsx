@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { NavigationHeader } from '@/components/NavigationHeader';
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -562,7 +562,6 @@ export default function FinanceReports() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Finance Reports" subtitle="Comprehensive financial reporting" />
         <div className="container mx-auto p-6">Loading reports...</div>
       </div>
     );
@@ -570,8 +569,6 @@ export default function FinanceReports() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Finance Reports" subtitle="Comprehensive financial reporting with cross-linking" />
-
       <main className="container mx-auto p-6 space-y-6">
         {/* Global Filters */}
         <Card>

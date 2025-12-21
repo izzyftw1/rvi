@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -144,7 +144,6 @@ const Quality = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader />
         <PageContainer maxWidth="2xl">
           <div className="space-y-6">
             <Skeleton className="h-10 w-64" />
@@ -160,8 +159,6 @@ const Quality = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <PageContainer maxWidth="2xl">
         <div className="space-y-6">
           {/* Header */}

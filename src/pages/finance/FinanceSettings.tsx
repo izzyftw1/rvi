@@ -1,4 +1,4 @@
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
@@ -10,8 +10,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 export default function FinanceSettings() {
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Finance Settings" subtitle="Tax profiles, numbering, and currencies" />
-      
       <div className="p-6 space-y-6">
         <Alert>
           <AlertCircle className="h-4 w-4" />

@@ -9,7 +9,7 @@ import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download } from "lucide-re
 import { generateProformaFromSalesOrder } from "@/lib/proformaGenerator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AddCustomerDialog } from "@/components/sales/AddCustomerDialog";
@@ -573,8 +573,6 @@ export default function Sales() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Sales Orders" subtitle="Create and manage sales orders with financial tracking" />
-      
       <div className="p-6 space-y-6">
         {/* Create Form */}
         <Card>

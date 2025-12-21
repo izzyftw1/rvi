@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
@@ -200,7 +200,6 @@ export default function QCIncoming() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader />
         <PageContainer>
           <div className="flex items-center justify-center h-64">
             <Clock className="w-6 h-6 animate-spin text-primary" />
@@ -212,8 +211,6 @@ export default function QCIncoming() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <PageContainer>
         <div className="space-y-6">
           {/* Header */}
