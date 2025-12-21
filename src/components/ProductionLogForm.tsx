@@ -162,6 +162,12 @@ export function ProductionLogForm({ workOrder: propWorkOrder }: ProductionLogFor
   };
 
   const onSubmit = async (data: ProductionLogFormData) => {
+    // Check production release status first
+    if (propWorkOrder && propWorkOrder.production_release_status !== 'RELEASED') {
+      toast.error("Cannot log production until work order is released for production. Please release the work order first.");
+      return;
+    }
+    
     // Check both QC gates before allowing production logging
     if (propWorkOrder && (!propWorkOrder.qc_material_passed || !propWorkOrder.qc_first_piece_passed)) {
       toast.error("Cannot log production until QC gates are cleared. Material Chemical Test and First-Piece QC must both pass.");

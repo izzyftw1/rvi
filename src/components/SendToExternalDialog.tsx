@@ -213,6 +213,16 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   };
 
   const handleSubmit = async () => {
+    // Check production release status
+    if (workOrder?.production_release_status !== 'RELEASED') {
+      toast({
+        title: "Production Not Released",
+        description: "Cannot send to external processing until work order is released for production",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!canCreate) {
       toast({
         title: "Permission denied",
@@ -378,6 +388,19 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Production Release Warning */}
+          {workOrder?.production_release_status !== 'RELEASED' && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Production Not Released</strong>
+                <p className="text-sm mt-1">
+                  Cannot send to external processing until work order is released for production.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Quantity Summary Alert */}
           <Alert className={remainingQty === 0 ? "border-destructive" : "border-primary"}>
             <AlertCircle className="h-4 w-4" />
@@ -596,10 +619,14 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={loading || !canCreate || remainingQty === 0 || loadingQty}
+            disabled={loading || !canCreate || remainingQty === 0 || loadingQty || workOrder?.production_release_status !== 'RELEASED'}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {remainingQty === 0 ? "No Quantity Available" : "Create Challan"}
+            {workOrder?.production_release_status !== 'RELEASED' 
+              ? "Production Not Released" 
+              : remainingQty === 0 
+                ? "No Quantity Available" 
+                : "Create Challan"}
           </Button>
         </DialogFooter>
       </DialogContent>
