@@ -143,14 +143,15 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       ]
     },
     {
-      title: "QC & Dispatch",
+      title: "Quality",
       icon: ClipboardCheck,
-      allowedRoles: ['admin', 'production', 'quality', 'packing'],
+      allowedRoles: ['admin', 'production', 'quality'],
       items: [
-        { label: "QC Incoming", path: "/qc/incoming", icon: ClipboardCheck },
-        { label: "QC Batch", path: "/quality", icon: ClipboardCheck },
-        { label: "Packing", path: "/packing", icon: Package },
-        { label: "Dispatch", path: "/dispatch", icon: Truck },
+        { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck },
+        { label: "Incoming QC", path: "/qc/incoming", icon: ClipboardCheck },
+        { label: "First Piece QC", path: "/hourly-qc", icon: ClipboardCheck },
+        { label: "In-Process / Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
+        { label: "Final Inspection", path: "/quality", icon: ClipboardCheck },
       ]
     },
     {
@@ -166,10 +167,12 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
     {
       title: "Logistics",
       icon: PackageCheck,
-      allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores'],
+      allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores', 'packing'],
       items: [
         { label: "Goods Inwards", path: "/materials/inwards", icon: Box },
         { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck },
+        { label: "Packing", path: "/packing", icon: Package },
+        { label: "Dispatch", path: "/dispatch", icon: Truck },
         { label: "RPO vs Inventory", path: "/reports/rpo-inventory", icon: FileSpreadsheet },
       ]
     },
