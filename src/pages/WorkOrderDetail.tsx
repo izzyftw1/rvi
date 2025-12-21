@@ -798,12 +798,20 @@ const WorkOrderDetail = () => {
                     <p className="text-xs text-muted-foreground">Due Date</p>
                     <p className="text-lg font-bold">{new Date(wo.due_date).toLocaleDateString()}</p>
                   </div>
-                  <div>
+                  <div className="col-span-2 border-t pt-4 mt-2">
                     <p className="text-xs text-muted-foreground">Cycle Time</p>
                     {wo.cycle_time_seconds ? (
-                      <p className="text-lg font-bold">{wo.cycle_time_seconds}s/pc</p>
+                      <div className="flex items-center gap-4">
+                        <p className="text-lg font-bold text-primary">{wo.cycle_time_seconds}s/pc</p>
+                        <span className="text-xs text-muted-foreground">
+                          ≈ {Math.round(3600 / wo.cycle_time_seconds)} pcs/hr
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          | Est. {Math.round((wo.quantity * wo.cycle_time_seconds) / 3600)} hrs total
+                        </span>
+                      </div>
                     ) : (
-                      <p className="text-sm text-destructive">Not defined</p>
+                      <p className="text-sm text-amber-600 dark:text-amber-400">Not defined - update in Sales Order</p>
                     )}
                   </div>
                   <div>

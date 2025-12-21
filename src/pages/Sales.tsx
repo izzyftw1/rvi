@@ -27,6 +27,7 @@ interface LineItem {
   line_amount?: number;
   drawing_number?: string;
   due_date: string;
+  cycle_time_seconds?: number;
 }
 
 const ALLOYS = [
@@ -81,7 +82,8 @@ export default function Sales() {
     price_per_pc: undefined,
     line_amount: 0,
     drawing_number: "",
-    due_date: ""
+    due_date: "",
+    cycle_time_seconds: undefined
   }]);
 
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -192,7 +194,8 @@ export default function Sales() {
       gross_weight_per_pc_g: item?.gross_weight_grams || historicalItem?.gross_weight_per_pc_grams || updated[index].gross_weight_per_pc_g,
       net_weight_per_pc_g: item?.net_weight_grams || historicalItem?.net_weight_per_pc_grams || updated[index].net_weight_per_pc_g,
       drawing_number: historicalItem?.drawing_number || formData.drawing_number || updated[index].drawing_number,
-      price_per_pc: historicalItem?.price_per_pc || updated[index].price_per_pc
+      price_per_pc: historicalItem?.price_per_pc || updated[index].price_per_pc,
+      cycle_time_seconds: item?.cycle_time_seconds || historicalItem?.cycle_time_seconds || updated[index].cycle_time_seconds
     };
     
     // Auto-calculate line amount if we have quantity and price
@@ -239,7 +242,8 @@ export default function Sales() {
       price_per_pc: undefined,
       line_amount: 0,
       drawing_number: formData.drawing_number,
-      due_date: ""
+      due_date: "",
+      cycle_time_seconds: undefined
     }]);
   };
 
@@ -365,7 +369,7 @@ export default function Sales() {
         material_size_mm: item.material_size,
         net_weight_per_pc_grams: item.net_weight_per_pc_g || null,
         gross_weight_per_pc_grams: item.gross_weight_per_pc_g || null,
-        cycle_time_seconds: null,
+        cycle_time_seconds: item.cycle_time_seconds || null,
         due_date: item.due_date || null
       }));
 
@@ -399,7 +403,8 @@ export default function Sales() {
         quantity: 0,
         alloy: "",
         material_size: "",
-        due_date: ""
+        due_date: "",
+        cycle_time_seconds: undefined
       }]);
       
       await loadData();
@@ -747,6 +752,7 @@ export default function Sales() {
                         <TableHead className="min-w-[150px]">Material Size</TableHead>
                         <TableHead className="min-w-[100px]">Net Wt (g/pc)</TableHead>
                         <TableHead className="min-w-[100px]">Gross Wt (g/pc)</TableHead>
+                        <TableHead className="min-w-[90px]">Cycle Time (s)</TableHead>
                         <TableHead className="min-w-[120px]">Drawing #</TableHead>
                         <TableHead className="min-w-[120px]">Price/pc ({formData.currency})</TableHead>
                         <TableHead className="min-w-[120px]">Line Amt</TableHead>
@@ -819,6 +825,15 @@ export default function Sales() {
                           </TableCell>
                           <TableCell>
                             <Input type="number" step="0.01" value={item.gross_weight_per_pc_g || ""} onChange={(e) => updateLineItemField(idx, 'gross_weight_per_pc_g', parseFloat(e.target.value))} />
+                          </TableCell>
+                          <TableCell>
+                            <Input 
+                              type="number" 
+                              step="0.1" 
+                              value={item.cycle_time_seconds || ""} 
+                              onChange={(e) => updateLineItemField(idx, 'cycle_time_seconds', parseFloat(e.target.value) || undefined)} 
+                              placeholder="sec/pc"
+                            />
                           </TableCell>
                           <TableCell>
                             <Input value={item.drawing_number || ""} onChange={(e) => updateLineItemField(idx, 'drawing_number', e.target.value)} placeholder={formData.drawing_number} />
@@ -968,6 +983,7 @@ export default function Sales() {
                     <TableHead>Item Code</TableHead>
                     <TableHead>Qty</TableHead>
                     <TableHead>Alloy</TableHead>
+                    <TableHead>Cycle Time</TableHead>
                     <TableHead>Price/pc</TableHead>
                     <TableHead>Amount</TableHead>
                   </TableRow>
@@ -979,6 +995,7 @@ export default function Sales() {
                       <TableCell>{item.item_code}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>{item.alloy}</TableCell>
+                      <TableCell>{item.cycle_time_seconds ? `${item.cycle_time_seconds}s` : '-'}</TableCell>
                       <TableCell>{item.price_per_pc?.toFixed(4)}</TableCell>
                       <TableCell className="font-medium">{item.line_amount?.toFixed(2)}</TableCell>
                     </TableRow>
