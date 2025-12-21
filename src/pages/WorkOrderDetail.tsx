@@ -998,20 +998,7 @@ const WorkOrderDetail = () => {
         ═══════════════════════════════════════════════════════════════════ */}
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Production Logging</h2>
-          {qcGatesBlocked || productionNotReleased ? (
-            <Card className="border-muted">
-              <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">
-                  {productionNotReleased 
-                    ? 'Production logging is blocked until the work order is released.'
-                    : 'Production logging is blocked until QC gates pass or are waived.'
-                  }
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <ProductionLogForm workOrder={wo} />
-          )}
+          <ProductionLogForm workOrder={wo} disabled={qcGatesBlocked || productionNotReleased} />
         </section>
 
         {/* Audit Trail Button */}

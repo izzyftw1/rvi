@@ -2,7 +2,6 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { 
@@ -15,17 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { 
   CheckCircle2, 
-  XCircle, 
-  Clock, 
-  Ban, 
   Unlock, 
   Lock,
   AlertTriangle 
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
-
-type QCStatus = 'passed' | 'pending' | 'failed' | 'waived';
 
 interface ProductionReleaseSectionProps {
   workOrder: {
@@ -43,47 +37,6 @@ interface ProductionReleaseSectionProps {
   onReleased: () => void;
 }
 
-const getQCStatusConfig = (status: string | undefined) => {
-  const normalizedStatus = (status || 'pending').toLowerCase();
-  
-  switch (normalizedStatus) {
-    case 'passed':
-    case 'pass':
-      return {
-        icon: CheckCircle2,
-        variant: 'default' as const,
-        label: 'Passed',
-        className: 'bg-success text-success-foreground',
-        color: 'text-success',
-      };
-    case 'failed':
-    case 'fail':
-      return {
-        icon: XCircle,
-        variant: 'destructive' as const,
-        label: 'Failed',
-        className: '',
-        color: 'text-destructive',
-      };
-    case 'waived':
-      return {
-        icon: Ban,
-        variant: 'secondary' as const,
-        label: 'Waived',
-        className: 'bg-muted',
-        color: 'text-muted-foreground',
-      };
-    default:
-      return {
-        icon: Clock,
-        variant: 'outline' as const,
-        label: 'Pending',
-        className: 'border-warning text-warning',
-        color: 'text-warning',
-      };
-  }
-};
-
 export const ProductionReleaseSection = ({ 
   workOrder, 
   releasedByName,
@@ -96,10 +49,6 @@ export const ProductionReleaseSection = ({
 
   const canRelease = hasAnyRole(['admin', 'production']);
   const isReleased = workOrder.production_release_status === 'RELEASED';
-
-  // Determine QC statuses
-  const materialQCStatus = getQCStatusConfig(workOrder.qc_material_status);
-  const firstPieceQCStatus = getQCStatusConfig(workOrder.qc_first_piece_status);
 
   // Check if release is allowed
   const materialQCPassed = ['passed', 'pass', 'waived'].includes(
@@ -153,27 +102,6 @@ export const ProductionReleaseSection = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* QC Status Summary */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-xs">Raw Material QC</Label>
-              <div className="flex items-center gap-2">
-                <materialQCStatus.icon className={`h-4 w-4 ${materialQCStatus.color}`} />
-                <Badge variant={materialQCStatus.variant} className={materialQCStatus.className}>
-                  {materialQCStatus.label}
-                </Badge>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-muted-foreground text-xs">First Setup QC</Label>
-              <div className="flex items-center gap-2">
-                <firstPieceQCStatus.icon className={`h-4 w-4 ${firstPieceQCStatus.color}`} />
-                <Badge variant={firstPieceQCStatus.variant} className={firstPieceQCStatus.className}>
-                  {firstPieceQCStatus.label}
-                </Badge>
-              </div>
-            </div>
-          </div>
 
           {/* Release Status */}
           {isReleased ? (
@@ -261,17 +189,6 @@ export const ProductionReleaseSection = ({
               />
             </div>
 
-            <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
-              <p className="font-medium">QC Status Summary:</p>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <materialQCStatus.icon className={`h-4 w-4 ${materialQCStatus.color}`} />
-                Raw Material QC: {materialQCStatus.label}
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <firstPieceQCStatus.icon className={`h-4 w-4 ${firstPieceQCStatus.color}`} />
-                First Setup QC: {firstPieceQCStatus.label}
-              </div>
-            </div>
           </div>
 
           <DialogFooter>
