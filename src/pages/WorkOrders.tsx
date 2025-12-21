@@ -597,18 +597,16 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
               </div>
 
               {/* Contextual Stage Pills */}
-              <div className="flex items-center gap-1 flex-wrap">
-                <button
-                  onClick={() => setStageFilter('all')}
-                  className={cn(
-                    "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                    stageFilter === 'all' 
-                      ? "bg-primary text-primary-foreground" 
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
-                >
-                  All ({stageCounts.all})
-                </button>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Demoted "All" as reset link - only show when a stage is selected */}
+                {stageFilter !== 'all' && (
+                  <button
+                    onClick={() => setStageFilter('all')}
+                    className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors mr-1"
+                  >
+                    ← All ({stageCounts.all})
+                  </button>
+                )}
                 
                 {primaryFilter === 'internal' 
                   ? Object.entries(INTERNAL_STAGES).map(([key, config]) => (
