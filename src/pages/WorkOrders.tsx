@@ -84,7 +84,7 @@ const KPICard = memo(({
 ));
 KPICard.displayName = "KPICard";
 
-// Work Order Card - Stage-dominant design
+// Work Order Card - Stage-dominant design with clear status signals
 const WorkOrderRow = memo(({ 
   wo, 
   onDelete, 
@@ -98,6 +98,7 @@ const WorkOrderRow = memo(({
   
   const isOverdue = wo.due_date && isPast(parseISO(wo.due_date)) && wo.status !== 'completed';
   const daysUntilDue = wo.due_date ? differenceInDays(parseISO(wo.due_date), new Date()) : null;
+  const daysOverdue = isOverdue && wo.due_date ? Math.abs(differenceInDays(new Date(), parseISO(wo.due_date))) : 0;
   
   const externalWipTotal = wo.external_wip 
     ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
@@ -107,33 +108,76 @@ const WorkOrderRow = memo(({
     m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
   );
 
+  // Determine card status for styling
+  const isBlocked = hasExternalOverdue;
+  const hasIssue = isOverdue || isBlocked;
+
   return (
     <div 
       className={cn(
-        "group flex items-stretch bg-card border rounded-lg cursor-pointer transition-all hover:shadow-md overflow-hidden",
-        isOverdue && "ring-2 ring-destructive/50",
-        hasExternalOverdue && !isOverdue && "ring-2 ring-amber-500/50"
+        "group flex items-stretch rounded-lg cursor-pointer transition-all hover:shadow-lg overflow-hidden border",
+        // Background tint for issues
+        isOverdue && "bg-destructive/5 border-destructive/40",
+        isBlocked && !isOverdue && "bg-amber-500/5 border-amber-500/40",
+        !hasIssue && "bg-card border-border hover:border-border/80"
       )}
       onClick={() => onNavigate(wo.id)}
     >
+      {/* Status Strip - Left edge indicator */}
+      {hasIssue && (
+        <div className={cn(
+          "w-1.5 flex-shrink-0",
+          isOverdue ? "bg-destructive" : "bg-amber-500"
+        )} />
+      )}
+
       {/* STAGE - Dominant Visual Element */}
       <div className={cn(
-        "flex flex-col items-center justify-center px-4 py-3 min-w-[90px] text-white",
+        "flex flex-col items-center justify-center px-4 py-3 min-w-[90px] text-white relative",
         stageConfig.color
       )}>
         <StageIcon className="h-6 w-6 mb-1" />
         <span className="text-xs font-bold uppercase tracking-wide text-center leading-tight">
           {stageConfig.label}
         </span>
+        
+        {/* Issue overlay icon on stage */}
+        {hasIssue && (
+          <div className={cn(
+            "absolute -top-1 -right-1 rounded-full p-0.5",
+            isOverdue ? "bg-destructive" : "bg-amber-500"
+          )}>
+            {isOverdue ? (
+              <AlertTriangle className="h-3 w-3 text-white" />
+            ) : (
+              <Timer className="h-3 w-3 text-white" />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content Area */}
       <div className="flex-1 flex items-center gap-4 px-4 py-3">
-        {/* Primary: PO / Customer */}
+        {/* Primary: PO / Customer + Status Badge */}
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-foreground truncate">
-            {wo.customer_po || wo.wo_id?.slice(0, 8)}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-foreground truncate">
+              {wo.customer_po || wo.wo_id?.slice(0, 8)}
+            </p>
+            {/* Inline status badges */}
+            {isOverdue && (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 gap-1 whitespace-nowrap">
+                <AlertTriangle className="h-3 w-3" />
+                {daysOverdue}d overdue
+              </Badge>
+            )}
+            {isBlocked && !isOverdue && (
+              <Badge className="text-[10px] px-1.5 py-0 h-5 gap-1 whitespace-nowrap bg-amber-500 hover:bg-amber-500/90">
+                <Timer className="h-3 w-3" />
+                Ext. delayed
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground truncate">{wo.customer}</p>
         </div>
 
@@ -182,33 +226,6 @@ const WorkOrderRow = memo(({
           )}
         </div>
 
-        {/* Alert Flags */}
-        <div className="flex items-center gap-1">
-          {isOverdue && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Badge variant="destructive" className="px-1.5 py-0.5">
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>Overdue</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {hasExternalOverdue && !isOverdue && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Badge variant="outline" className="px-1.5 py-0.5 border-amber-500 text-amber-600">
-                    <Timer className="h-3.5 w-3.5" />
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>External processing overdue</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
 
         {/* Quick Actions */}
         <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
