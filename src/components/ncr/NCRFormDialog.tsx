@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from '@/components/ui/form-layout';
 
 interface NCRFormDialogProps {
   open: boolean;
@@ -75,9 +76,7 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
 
     setLoading(true);
     try {
-      // Generate NCR number
       const { data: ncrNumber } = await supabase.rpc('generate_ncr_number');
-      
       const { data: user } = await supabase.auth.getUser();
       
       const { error } = await supabase.from('ncrs').insert({
@@ -125,115 +124,127 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Create Non-Conformance Report</DialogTitle>
+          <DialogDescription>
+            Log a quality issue for tracking and resolution
+          </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>NCR Type *</Label>
+        <FormContainer onSubmit={handleSubmit}>
+          {/* Classification Section */}
+          <FormSection title="Classification" description="Categorize the non-conformance">
+            <FormRow>
+              <FormField>
+                <Label>NCR Type<RequiredIndicator /></Label>
+                <Select 
+                  value={formData.ncr_type} 
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, ncr_type: v as any }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INTERNAL">Internal</SelectItem>
+                    <SelectItem value="CUSTOMER">Customer</SelectItem>
+                    <SelectItem value="SUPPLIER">Supplier</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField>
+                <Label>Source Reference</Label>
+                <Input
+                  value={formData.source_reference}
+                  onChange={(e) => setFormData(prev => ({ ...prev, source_reference: e.target.value }))}
+                  placeholder="e.g., Customer PO, Lot ID"
+                />
+              </FormField>
+            </FormRow>
+
+            <FormField>
+              <Label>Work Order</Label>
               <Select 
-                value={formData.ncr_type} 
-                onValueChange={(v) => setFormData(prev => ({ ...prev, ncr_type: v as any }))}
+                value={formData.work_order_id} 
+                onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select work order (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="INTERNAL">Internal</SelectItem>
-                  <SelectItem value="CUSTOMER">Customer</SelectItem>
-                  <SelectItem value="SUPPLIER">Supplier</SelectItem>
+                  <SelectItem value="">None</SelectItem>
+                  {workOrders.map(wo => (
+                    <SelectItem key={wo.id} value={wo.id}>
+                      {wo.display_id || wo.wo_number}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
+          </FormSection>
 
-            <div className="space-y-2">
-              <Label>Source Reference</Label>
-              <Input
-                value={formData.source_reference}
-                onChange={(e) => setFormData(prev => ({ ...prev, source_reference: e.target.value }))}
-                placeholder="e.g., Customer PO, Lot ID"
+          {/* Issue Details Section */}
+          <FormSection title="Issue Details" description="Describe the non-conformance" withSeparator>
+            <FormRow>
+              <FormField>
+                <Label>Quantity Affected<RequiredIndicator /></Label>
+                <Input
+                  type="number"
+                  value={formData.quantity_affected}
+                  onChange={(e) => setFormData(prev => ({ ...prev, quantity_affected: e.target.value }))}
+                  placeholder="0"
+                  min="0"
+                  step="0.01"
+                />
+              </FormField>
+
+              <FormField>
+                <Label>Unit<RequiredIndicator /></Label>
+                <Select 
+                  value={formData.unit} 
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, unit: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pcs">Pieces</SelectItem>
+                    <SelectItem value="kg">Kilograms</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </FormRow>
+
+            <FormField>
+              <Label>Issue Description<RequiredIndicator /></Label>
+              <Textarea
+                value={formData.issue_description}
+                onChange={(e) => setFormData(prev => ({ ...prev, issue_description: e.target.value }))}
+                placeholder="Describe the non-conformance issue..."
+                rows={3}
               />
-            </div>
-          </div>
+            </FormField>
+          </FormSection>
 
-          <div className="space-y-2">
-            <Label>Work Order</Label>
-            <Select 
-              value={formData.work_order_id} 
-              onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select work order (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">None</SelectItem>
-                {workOrders.map(wo => (
-                  <SelectItem key={wo.id} value={wo.id}>
-                    {wo.display_id || wo.wo_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Quantity Affected *</Label>
+          {/* Timeline Section */}
+          <FormSection title="Timeline" withSeparator>
+            <FormField>
+              <Label>Due Date</Label>
               <Input
-                type="number"
-                value={formData.quantity_affected}
-                onChange={(e) => setFormData(prev => ({ ...prev, quantity_affected: e.target.value }))}
-                placeholder="0"
-                min="0"
-                step="0.01"
+                type="date"
+                value={formData.due_date}
+                onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
               />
-            </div>
+            </FormField>
+          </FormSection>
 
-            <div className="space-y-2">
-              <Label>Unit *</Label>
-              <Select 
-                value={formData.unit} 
-                onValueChange={(v) => setFormData(prev => ({ ...prev, unit: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pcs">Pieces</SelectItem>
-                  <SelectItem value="kg">Kilograms</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Issue Description *</Label>
-            <Textarea
-              value={formData.issue_description}
-              onChange={(e) => setFormData(prev => ({ ...prev, issue_description: e.target.value }))}
-              placeholder="Describe the non-conformance issue..."
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Due Date</Label>
-            <Input
-              type="date"
-              value={formData.due_date}
-              onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4">
+          <FormActions>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
               {loading ? 'Creating...' : 'Create NCR'}
             </Button>
-          </div>
-        </form>
+          </FormActions>
+        </FormContainer>
       </DialogContent>
     </Dialog>
   );
