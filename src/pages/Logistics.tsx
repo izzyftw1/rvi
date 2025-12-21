@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Package, Truck, MapPin, FileText, Home, Calendar } from "lucide-react";
 import { Link } from "react-router-dom";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export default function Logistics() {
   // Mock shipment data
@@ -125,18 +126,18 @@ export default function Logistics() {
 
           {shipments.length === 0 ? (
             <Card>
-              <CardContent className="text-center py-12 space-y-4">
-                <Package className="h-16 w-16 mx-auto text-muted-foreground" />
-                <div>
-                  <h3 className="font-semibold text-lg">No shipments found</h3>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Create a shipment from the Dispatch page or Sales Order
-                  </p>
-                </div>
-                <Button disabled>
-                  <Package className="h-4 w-4 mr-2" />
-                  Create Shipment
-                </Button>
+              <CardContent className="py-0">
+                <EmptyState
+                  icon="partners"
+                  title="No Active Shipments"
+                  description="Shipments are created when work orders are dispatched to customers. Complete a work order through packing and dispatch to create a shipment."
+                  hint="Navigate to Dispatch to ship completed work orders."
+                  action={{
+                    label: "Go to Dispatch",
+                    onClick: () => window.location.href = "/dispatch",
+                    variant: "outline",
+                  }}
+                />
               </CardContent>
             </Card>
           ) : (

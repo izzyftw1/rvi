@@ -10,6 +10,7 @@ import { TrendingUp, Eye, ArrowRight, Inbox, FlaskConical } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
 import { QCSummaryStats, QCInfoAlert, QCActionRequired, QCHistory } from "@/components/qc/QCPageLayout";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface WorkOrderQCSummary {
   id: string;
@@ -242,10 +243,13 @@ const Quality = () => {
             description="Overview of quality control status"
           >
             {workOrderSummaries.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FlaskConical className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                <p>No active work orders found</p>
-              </div>
+              <EmptyState
+                icon="quality"
+                title="No Active Work Orders"
+                description="Work orders requiring quality inspection will appear here. Create a work order and complete Material QC or First Piece QC to see them in this list."
+                hint="QC records are created during production when inspections are performed."
+                size="md"
+              />
             ) : (
               <Table>
                 <TableHeader>

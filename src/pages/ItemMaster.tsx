@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, Search } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
@@ -173,9 +174,24 @@ export default function ItemMaster() {
             {loading ? (
               <p className="text-center py-8 text-muted-foreground">Loading...</p>
             ) : filteredItems.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground">
-                {searchTerm ? "No items found" : "No items yet. Add your first item."}
-              </p>
+              <EmptyState
+                icon="items"
+                title={searchTerm ? "No Items Match Your Search" : "No Items in Catalog"}
+                description={searchTerm 
+                  ? `No items match "${searchTerm}". Try a different search term.`
+                  : "Items define the products you manufacture. Add items to use them in Sales Orders and Work Orders."
+                }
+                hint="Items include material specifications, weights, and cycle times for production planning."
+                action={!searchTerm ? {
+                  label: "Add Item",
+                  onClick: handleAdd,
+                } : {
+                  label: "Clear Search",
+                  onClick: () => setSearchTerm(""),
+                  variant: "outline",
+                }}
+                size="md"
+              />
             ) : (
               <div className="border rounded-lg overflow-hidden">
                 <Table>
