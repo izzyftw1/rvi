@@ -3,8 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Download, FileText, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { Download, FileText, Loader2, CheckCircle2, ExternalLink, AlertTriangle, Shield, Lock } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -16,6 +18,26 @@ interface FinalDispatchReportGeneratorProps {
   quantity: number;
 }
 
+interface ConsolidatedReportData {
+  workOrder: any;
+  hourlyQC: any[];
+  qcRecords: any[];
+  ncrs: any[];
+  tolerances: Record<string, any>;
+  operatorName: string;
+  sampleInspection: {
+    sampleSize: number;
+    results: any[];
+  };
+  complianceSummary: {
+    totalDimensions: number;
+    inTolerance: number;
+    outOfTolerance: number;
+    complianceRate: number;
+  };
+  deviationsAndWaivers: any[];
+}
+
 export const FinalDispatchReportGenerator = ({
   woId,
   woNumber,
@@ -25,8 +47,9 @@ export const FinalDispatchReportGenerator = ({
 }: FinalDispatchReportGeneratorProps) => {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [reportData, setReportData] = useState<any>(null);
+  const [reportData, setReportData] = useState<ConsolidatedReportData | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [existingReport, setExistingReport] = useState<any>(null);
   const [generatedReport, setGeneratedReport] = useState<{
     fileUrl: string;
     filePath: string;
@@ -35,26 +58,26 @@ export const FinalDispatchReportGenerator = ({
 
   useEffect(() => {
     loadReportData();
+    checkExistingReport();
   }, [woId]);
+
+  const checkExistingReport = async () => {
+    const { data } = await supabase
+      .from('qc_final_reports')
+      .select('*, generated_by_profile:generated_by(full_name)')
+      .eq('work_order_id', woId)
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (data) {
+      setExistingReport(data);
+    }
+  };
 
   const loadReportData = async () => {
     try {
       setLoading(true);
-
-      // Load hourly QC data grouped by operation
-      const { data: hourlyData } = await supabase
-        .from('hourly_qc_checks')
-        .select('*')
-        .eq('wo_id', woId);
-
-      // Load QC records
-      const { data: qcRecords } = await supabase
-        .from('qc_records')
-        .select(`
-          *,
-          approver:approved_by(full_name)
-        `)
-        .eq('wo_id', woId);
 
       // Load work order details
       const { data: woData } = await supabase
@@ -63,18 +86,133 @@ export const FinalDispatchReportGenerator = ({
         .eq('id', woId)
         .single();
 
-      // Load first operator name
-      const { data: operatorData } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', hourlyData?.[0]?.operator_id)
-        .single();
+      // Load hourly QC data
+      const { data: hourlyData } = await supabase
+        .from('hourly_qc_checks')
+        .select('*')
+        .eq('wo_id', woId)
+        .order('check_datetime', { ascending: true });
+
+      // Load QC records (material, first piece, final)
+      const { data: qcRecords } = await supabase
+        .from('qc_records')
+        .select(`
+          *,
+          approver:approved_by(full_name)
+        `)
+        .eq('wo_id', woId);
+
+      // Load NCRs for this work order
+      const { data: ncrs } = await supabase
+        .from('ncrs')
+        .select('*')
+        .eq('work_order_id', woId);
+
+      // Load tolerances for this item
+      const { data: toleranceData } = await supabase
+        .from('dimension_tolerances')
+        .select('*')
+        .eq('item_code', itemCode);
+
+      // Build tolerance map by operation
+      const toleranceMap: Record<string, any> = {};
+      (toleranceData || []).forEach((tol: any) => {
+        toleranceMap[tol.operation] = tol.dimensions || {};
+      });
+
+      // Get first operator name
+      const operatorId = hourlyData?.[0]?.operator_id;
+      let operatorName = 'N/A';
+      if (operatorId) {
+        const { data: operatorData } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', operatorId)
+          .single();
+        operatorName = operatorData?.full_name || 'N/A';
+      }
+
+      // Calculate sample inspection from last 10 hourly checks
+      const sampleChecks = (hourlyData || []).slice(-10);
+      const sampleResults = sampleChecks.map((check: any) => ({
+        datetime: check.check_datetime,
+        operation: check.operation,
+        status: check.status,
+        dimensions: check.dimensions,
+        outOfTolerance: check.out_of_tolerance_dimensions || []
+      }));
+
+      // Calculate compliance summary
+      let totalDimensions = 0;
+      let inTolerance = 0;
+      let outOfTolerance = 0;
+
+      (hourlyData || []).forEach((check: any) => {
+        const dims = check.dimensions || {};
+        const operation = check.operation;
+        const opTolerances = toleranceMap[operation] || {};
+        
+        Object.entries(dims).forEach(([dimKey, value]: [string, any]) => {
+          if (typeof value === 'number') {
+            totalDimensions++;
+            const tol = opTolerances[dimKey];
+            if (tol && tol.min !== undefined && tol.max !== undefined) {
+              if (value >= tol.min && value <= tol.max) {
+                inTolerance++;
+              } else {
+                outOfTolerance++;
+              }
+            } else {
+              inTolerance++; // No tolerance defined, assume OK
+            }
+          }
+        });
+      });
+
+      // Collect deviations and waivers
+      const deviationsAndWaivers: any[] = [];
+      
+      // Add NCRs as deviations
+      (ncrs || []).forEach((ncr: any) => {
+        deviationsAndWaivers.push({
+          type: 'NCR',
+          reference: ncr.ncr_number,
+          description: ncr.issue_description,
+          disposition: ncr.disposition,
+          status: ncr.status,
+          quantity: ncr.quantity_affected
+        });
+      });
+
+      // Add QC waivers
+      (qcRecords || []).filter((r: any) => r.waive_reason).forEach((record: any) => {
+        deviationsAndWaivers.push({
+          type: 'Waiver',
+          reference: record.qc_id,
+          description: record.waive_reason,
+          qcType: record.qc_type,
+          status: 'approved'
+        });
+      });
 
       setReportData({
-        hourly: hourlyData || [],
-        qcRecords: qcRecords || [],
         workOrder: woData,
-        operatorName: operatorData?.full_name || 'N/A'
+        hourlyQC: hourlyData || [],
+        qcRecords: qcRecords || [],
+        ncrs: ncrs || [],
+        tolerances: toleranceMap,
+        operatorName,
+        sampleInspection: {
+          sampleSize: sampleResults.length,
+          results: sampleResults
+        },
+        complianceSummary: {
+          totalDimensions,
+          inTolerance,
+          outOfTolerance,
+          complianceRate: totalDimensions > 0 ? (inTolerance / totalDimensions) * 100 : 100
+        },
+        deviationsAndWaivers
       });
     } catch (error: any) {
       console.error('Error loading report data:', error);
@@ -84,7 +222,7 @@ export const FinalDispatchReportGenerator = ({
     }
   };
 
-  const generatePDF = async () => {
+  const generateConsolidatedReport = async () => {
     if (!reportData) return;
 
     try {
@@ -93,27 +231,32 @@ export const FinalDispatchReportGenerator = ({
       const doc = new jsPDF();
       let yPos = 20;
 
-      // Branded Header
+      // Branded Header with "FINAL INSPECTION RECORD" stamp
       doc.setFontSize(22);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(28, 63, 148); // Company blue
+      doc.setTextColor(28, 63, 148);
       doc.text('R.V. Industries', 105, yPos, { align: 'center' });
-      yPos += 6;
+      yPos += 8;
       
-      doc.setFontSize(14);
+      doc.setFontSize(16);
       doc.setTextColor(0, 0, 0);
-      doc.text('Final QC Dispatch Report', 105, yPos, { align: 'center' });
-      yPos += 12;
+      doc.text('CONSOLIDATED FINAL INSPECTION RECORD', 105, yPos, { align: 'center' });
+      yPos += 6;
 
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      
+      // Immutable record notice
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text('This is an immutable inspection record. Generated once and linked to dispatch.', 105, yPos, { align: 'center' });
+      yPos += 10;
+
       // Report Metadata Box
       doc.setDrawColor(200, 200, 200);
       doc.setFillColor(245, 247, 250);
-      doc.rect(15, yPos, 180, 40, 'FD');
+      doc.rect(15, yPos, 180, 35, 'FD');
       yPos += 8;
 
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'bold');
       doc.text('Work Order:', 20, yPos);
       doc.setFont('helvetica', 'normal');
@@ -139,20 +282,76 @@ export const FinalDispatchReportGenerator = ({
       doc.setFont('helvetica', 'bold');
       doc.text('Report Date:', 20, yPos);
       doc.setFont('helvetica', 'normal');
-      doc.text(new Date().toLocaleDateString(), 55, yPos);
+      doc.text(new Date().toLocaleString(), 55, yPos);
       
       doc.setFont('helvetica', 'bold');
-      doc.text('Operator:', 110, yPos);
+      doc.text('Primary Operator:', 110, yPos);
       doc.setFont('helvetica', 'normal');
-      doc.text(reportData.operatorName, 140, yPos);
+      doc.text(reportData.operatorName, 155, yPos);
       
-      yPos += 15;
+      yPos += 18;
 
-      // Group hourly data by operation
+      // SECTION 1: Sample-Based Final Inspection
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(28, 63, 148);
+      doc.text('1. SAMPLE-BASED FINAL INSPECTION', 20, yPos);
+      yPos += 8;
+      doc.setTextColor(0, 0, 0);
+
+      const sampleData = reportData.sampleInspection.results.map((r, idx) => [
+        (idx + 1).toString(),
+        new Date(r.datetime).toLocaleString(),
+        r.operation,
+        r.status.toUpperCase(),
+        r.outOfTolerance.length > 0 ? r.outOfTolerance.join(', ') : 'None'
+      ]);
+
+      if (sampleData.length > 0) {
+        autoTable(doc, {
+          startY: yPos,
+          head: [['#', 'Date/Time', 'Op', 'Status', 'Out of Tolerance Dims']],
+          body: sampleData,
+          theme: 'grid',
+          headStyles: { fillColor: [28, 63, 148], fontSize: 9 },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            3: { 
+              cellWidth: 20,
+              fontStyle: 'bold'
+            }
+          },
+          didParseCell: (data: any) => {
+            if (data.section === 'body' && data.column.index === 3) {
+              data.cell.styles.textColor = data.cell.raw === 'PASS' ? [34, 139, 34] : [220, 38, 38];
+            }
+          }
+        });
+        yPos = (doc as any).lastAutoTable.finalY + 10;
+      } else {
+        doc.setFontSize(10);
+        doc.text('No sample inspections recorded.', 25, yPos);
+        yPos += 10;
+      }
+
+      // SECTION 2: Aggregated In-Process QC Summary
+      if (yPos > 200) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(28, 63, 148);
+      doc.text('2. AGGREGATED IN-PROCESS QC SUMMARY', 20, yPos);
+      yPos += 8;
+      doc.setTextColor(0, 0, 0);
+
+      // Group by operation
       const operationGroups = ['A', 'B', 'C', 'D'];
       
       operationGroups.forEach((op) => {
-        const opData = reportData.hourly.filter((h: any) => h.operation === op);
+        const opData = reportData.hourlyQC.filter((h: any) => h.operation === op);
         if (opData.length === 0) return;
 
         if (yPos > 240) {
@@ -160,133 +359,262 @@ export const FinalDispatchReportGenerator = ({
           yPos = 20;
         }
 
-        doc.setFontSize(13);
+        doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(28, 63, 148);
-        doc.text(`Operation ${op}`, 20, yPos);
-        yPos += 8;
-        doc.setTextColor(0, 0, 0);
+        doc.text(`Operation ${op} (${opData.length} checks)`, 25, yPos);
+        yPos += 6;
 
         // Calculate dimension stats
-        const dimensionStats: Record<string, { values: number[]; min: number; max: number; samples: number }> = {};
+        const dimensionStats: Record<string, { values: number[]; min: number; max: number }> = {};
+        const opTolerances = reportData.tolerances[op] || {};
 
         opData.forEach((check: any) => {
           if (check.dimensions) {
             Object.entries(check.dimensions).forEach(([dim, value]: [string, any]) => {
               if (typeof value === 'number') {
                 if (!dimensionStats[dim]) {
-                  dimensionStats[dim] = { values: [], min: value, max: value, samples: 0 };
+                  dimensionStats[dim] = { values: [], min: value, max: value };
                 }
                 dimensionStats[dim].values.push(value);
                 dimensionStats[dim].min = Math.min(dimensionStats[dim].min, value);
                 dimensionStats[dim].max = Math.max(dimensionStats[dim].max, value);
-                dimensionStats[dim].samples += 1;
               }
             });
           }
         });
 
-        // Dimensional Data Table
+        // Dimensional Data Table with tolerance status
         if (Object.keys(dimensionStats).length > 0) {
           const dimData = Object.entries(dimensionStats).map(([dim, stats]) => {
             const avg = stats.values.reduce((a, b) => a + b, 0) / stats.values.length;
+            const tol = opTolerances[dim];
+            let tolStatus = 'N/A';
+            if (tol && tol.min !== undefined && tol.max !== undefined) {
+              const allInTol = stats.values.every(v => v >= tol.min && v <= tol.max);
+              tolStatus = allInTol ? 'PASS' : 'FAIL';
+            }
             return [
               dim,
-              stats.min.toFixed(2),
-              stats.max.toFixed(2),
-              avg.toFixed(2),
-              stats.samples.toString()
+              tol ? `${tol.min} - ${tol.max}` : 'N/A',
+              stats.min.toFixed(3),
+              stats.max.toFixed(3),
+              avg.toFixed(3),
+              stats.values.length.toString(),
+              tolStatus
             ];
           });
 
           autoTable(doc, {
             startY: yPos,
-            head: [['Dimension', 'Min', 'Max', 'Average', 'Samples']],
+            head: [['Dim', 'Tolerance', 'Min', 'Max', 'Avg', 'N', 'Status']],
             body: dimData,
             theme: 'grid',
-            headStyles: { fillColor: [28, 63, 148], fontSize: 9 },
-            styles: { fontSize: 8, cellPadding: 2 }
+            headStyles: { fillColor: [67, 160, 71], fontSize: 8 },
+            styles: { fontSize: 7, cellPadding: 1.5 },
+            didParseCell: (data: any) => {
+              if (data.section === 'body' && data.column.index === 6) {
+                data.cell.styles.fontStyle = 'bold';
+                data.cell.styles.textColor = data.cell.raw === 'PASS' ? [34, 139, 34] : 
+                  data.cell.raw === 'FAIL' ? [220, 38, 38] : [100, 100, 100];
+              }
+            }
           });
 
           yPos = (doc as any).lastAutoTable.finalY + 5;
         }
 
-        // Binary QC Table (Visual, Thread, Plating)
+        // Binary checks summary
         const binaryChecks = {
-          'Visual': { ok: 0, notOk: 0 },
-          'Thread': { ok: 0, notOk: 0 },
-          'Plating': { ok: 0, notOk: 0 },
-          'Plating Thickness': { ok: 0, notOk: 0 }
+          'Visual': { ok: 0, total: 0 },
+          'Thread': { ok: 0, total: 0 },
+          'Plating': { ok: 0, total: 0 }
         };
 
         opData.forEach((check: any) => {
           if (check.visual_applicable) {
-            check.visual_status === 'pass' ? binaryChecks['Visual'].ok++ : binaryChecks['Visual'].notOk++;
+            binaryChecks['Visual'].total++;
+            if (check.visual_status === 'pass') binaryChecks['Visual'].ok++;
           }
           if (check.thread_applicable) {
-            check.thread_status === 'pass' ? binaryChecks['Thread'].ok++ : binaryChecks['Thread'].notOk++;
+            binaryChecks['Thread'].total++;
+            if (check.thread_status === 'pass') binaryChecks['Thread'].ok++;
           }
           if (check.plating_applicable) {
-            check.plating_status === 'pass' ? binaryChecks['Plating'].ok++ : binaryChecks['Plating'].notOk++;
-          }
-          if (check.plating_thickness_applicable) {
-            check.plating_thickness_status === 'pass' ? binaryChecks['Plating Thickness'].ok++ : binaryChecks['Plating Thickness'].notOk++;
+            binaryChecks['Plating'].total++;
+            if (check.plating_status === 'pass') binaryChecks['Plating'].ok++;
           }
         });
 
-        const binaryData = Object.entries(binaryChecks)
-          .filter(([_, counts]) => counts.ok + counts.notOk > 0)
-          .map(([check, counts]) => {
-            const total = counts.ok + counts.notOk;
-            const okPercent = total > 0 ? ((counts.ok / total) * 100).toFixed(1) : '0';
-            return [check, `${okPercent}%`, counts.ok.toString(), counts.notOk.toString()];
-          });
-
-        if (binaryData.length > 0) {
-          autoTable(doc, {
-            startY: yPos,
-            head: [['Check Type', '% OK', 'OK Count', 'Not OK Count']],
-            body: binaryData,
-            theme: 'striped',
-            headStyles: { fillColor: [67, 160, 71], fontSize: 9 },
-            styles: { fontSize: 8, cellPadding: 2 }
-          });
-
-          yPos = (doc as any).lastAutoTable.finalY + 10;
+        const activeBinaryChecks = Object.entries(binaryChecks).filter(([_, v]) => v.total > 0);
+        if (activeBinaryChecks.length > 0) {
+          const binaryText = activeBinaryChecks.map(([name, counts]) => 
+            `${name}: ${counts.ok}/${counts.total}`
+          ).join(' | ');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.text(`Binary Checks: ${binaryText}`, 25, yPos);
+          yPos += 8;
         }
       });
 
-      // Footer - QC Sign-off
+      // SECTION 3: Tolerance Compliance Summary
+      if (yPos > 230) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(28, 63, 148);
+      doc.text('3. TOLERANCE COMPLIANCE STATUS', 20, yPos);
+      yPos += 10;
+      doc.setTextColor(0, 0, 0);
+
+      const complianceColor = reportData.complianceSummary.complianceRate >= 95 ? [34, 139, 34] :
+        reportData.complianceSummary.complianceRate >= 80 ? [255, 165, 0] : [220, 38, 38];
+
+      doc.setFillColor(complianceColor[0], complianceColor[1], complianceColor[2]);
+      doc.roundedRect(25, yPos, 60, 25, 3, 3, 'F');
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text(`${reportData.complianceSummary.complianceRate.toFixed(1)}%`, 55, yPos + 16, { align: 'center' });
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Total Measurements: ${reportData.complianceSummary.totalDimensions}`, 95, yPos + 8);
+      doc.text(`In Tolerance: ${reportData.complianceSummary.inTolerance}`, 95, yPos + 15);
+      doc.text(`Out of Tolerance: ${reportData.complianceSummary.outOfTolerance}`, 95, yPos + 22);
+      
+      yPos += 35;
+
+      // SECTION 4: Deviations and Waivers
+      if (yPos > 230) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(28, 63, 148);
+      doc.text('4. DEVIATIONS AND WAIVERS', 20, yPos);
+      yPos += 8;
+      doc.setTextColor(0, 0, 0);
+
+      if (reportData.deviationsAndWaivers.length > 0) {
+        const devData = reportData.deviationsAndWaivers.map(d => [
+          d.type,
+          d.reference || '-',
+          (d.description || '').substring(0, 50),
+          d.disposition || d.status || '-',
+          d.quantity ? `${d.quantity} pcs` : '-'
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Type', 'Reference', 'Description', 'Disposition/Status', 'Qty']],
+          body: devData,
+          theme: 'grid',
+          headStyles: { fillColor: [255, 165, 0], fontSize: 9 },
+          styles: { fontSize: 8, cellPadding: 2 }
+        });
+
+        yPos = (doc as any).lastAutoTable.finalY + 10;
+      } else {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'italic');
+        doc.text('No deviations or waivers recorded for this work order.', 25, yPos);
+        yPos += 10;
+      }
+
+      // QC Gate Status Summary
       if (yPos > 220) {
         doc.addPage();
         yPos = 20;
       }
 
-      const finalQC = reportData.qcRecords.find((r: any) => r.qc_type === 'final');
-      const qcSupervisor = finalQC?.approver?.full_name || 'QC Supervisor';
-
-      doc.setFontSize(11);
+      doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
-      doc.text('QC Supervisor Sign-Off', 20, yPos);
+      doc.setTextColor(28, 63, 148);
+      doc.text('5. QC GATE STATUS', 20, yPos);
+      yPos += 8;
+      doc.setTextColor(0, 0, 0);
+
+      const materialQC = reportData.qcRecords.find((r: any) => r.qc_type === 'material');
+      const firstPieceQC = reportData.qcRecords.find((r: any) => r.qc_type === 'first_piece');
+      const finalQC = reportData.qcRecords.find((r: any) => r.qc_type === 'final');
+
+      const gateData = [
+        ['Material QC', materialQC ? materialQC.result?.toUpperCase() : 'NOT DONE', materialQC?.approver?.full_name || '-'],
+        ['First Piece QC', firstPieceQC ? firstPieceQC.result?.toUpperCase() : 'NOT DONE', firstPieceQC?.approver?.full_name || '-'],
+        ['Final QC', finalQC ? finalQC.result?.toUpperCase() : 'NOT DONE', finalQC?.approver?.full_name || '-']
+      ];
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['QC Gate', 'Status', 'Approved By']],
+        body: gateData,
+        theme: 'grid',
+        headStyles: { fillColor: [100, 100, 100], fontSize: 9 },
+        styles: { fontSize: 9, cellPadding: 3 },
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === 1) {
+            data.cell.styles.fontStyle = 'bold';
+            if (data.cell.raw === 'PASS') {
+              data.cell.styles.textColor = [34, 139, 34];
+            } else if (data.cell.raw === 'FAIL') {
+              data.cell.styles.textColor = [220, 38, 38];
+            } else {
+              data.cell.styles.textColor = [150, 150, 150];
+            }
+          }
+        }
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 15;
+
+      // Final Sign-off Section
+      if (yPos > 220) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setDrawColor(28, 63, 148);
+      doc.setLineWidth(0.5);
+      doc.line(20, yPos, 190, yPos);
+      yPos += 10;
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('FINAL DISPATCH AUTHORIZATION', 105, yPos, { align: 'center' });
       yPos += 15;
 
-      doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.text('Name:', 20, yPos);
-      doc.line(40, yPos, 100, yPos);
-      doc.text(qcSupervisor, 42, yPos);
+      doc.setFont('helvetica', 'normal');
       
-      doc.text('Signature:', 110, yPos);
-      doc.line(135, yPos, 190, yPos);
+      // Two signature boxes
+      doc.rect(20, yPos, 80, 30);
+      doc.text('QC Supervisor', 25, yPos + 8);
+      doc.text('Name: _______________________', 25, yPos + 18);
+      doc.text('Date: _______________________', 25, yPos + 25);
       
-      yPos += 10;
-      doc.text('Date:', 20, yPos);
-      doc.line(40, yPos, 100, yPos);
-      doc.text(new Date().toLocaleDateString(), 42, yPos);
+      doc.rect(110, yPos, 80, 30);
+      doc.text('Production Manager', 115, yPos + 8);
+      doc.text('Name: _______________________', 115, yPos + 18);
+      doc.text('Date: _______________________', 115, yPos + 25);
+
+      yPos += 40;
+
+      // Immutability footer
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text('This document is an immutable final inspection record. Any changes require a new inspection cycle.', 105, yPos, { align: 'center' });
+      doc.text(`Report ID: FIR-${woNumber}-${Date.now()}`, 105, yPos + 5, { align: 'center' });
 
       // Generate PDF blob
       const pdfBlob = doc.output('blob');
-      const fileName = `Dispatch_QC_Report_${woNumber}_${customer.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `Final_Inspection_Record_${woNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
       const filePath = `${woId}/${fileName}`;
 
       // Upload to Supabase Storage
@@ -294,10 +622,12 @@ export const FinalDispatchReportGenerator = ({
         .from('qc-reports')
         .upload(filePath, pdfBlob, {
           contentType: 'application/pdf',
-          upsert: true
+          upsert: false // Prevent overwriting - enforce immutability
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError && !uploadError.message.includes('already exists')) {
+        throw uploadError;
+      }
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
@@ -312,7 +642,7 @@ export const FinalDispatchReportGenerator = ({
         .select('*', { count: 'exact', head: true })
         .eq('work_order_id', woId);
 
-      // Save record to database
+      // Save immutable record to database with full report data snapshot
       const { data: reportRecord, error: dbError } = await supabase
         .from('qc_final_reports')
         .insert({
@@ -321,10 +651,26 @@ export const FinalDispatchReportGenerator = ({
           file_url: publicUrl,
           file_path: filePath,
           version_number: (count || 0) + 1,
-          remarks: 'Final Dispatch QC Report',
+          remarks: 'Consolidated Final Inspection Record',
           report_data: {
-            operations: operationGroups.filter(op => reportData.hourly.some((h: any) => h.operation === op)),
-            total_checks: reportData.hourly.length
+            // Snapshot of all data for immutability
+            generated_at: new Date().toISOString(),
+            work_order: {
+              wo_number: woNumber,
+              customer,
+              item_code: itemCode,
+              quantity
+            },
+            sample_inspection: reportData.sampleInspection,
+            compliance_summary: reportData.complianceSummary,
+            deviations_and_waivers: reportData.deviationsAndWaivers,
+            qc_gates: {
+              material: materialQC?.result,
+              first_piece: firstPieceQC?.result,
+              final: finalQC?.result
+            },
+            hourly_checks_count: reportData.hourlyQC.length,
+            operations_covered: [...new Set(reportData.hourlyQC.map((h: any) => h.operation))]
           }
         })
         .select()
@@ -337,82 +683,121 @@ export const FinalDispatchReportGenerator = ({
         filePath: filePath,
         reportId: reportRecord.id
       });
+      setExistingReport(reportRecord);
       setShowSuccessModal(true);
-      toast.success('Final Dispatch Report generated successfully');
+      toast.success('Final Inspection Record generated and locked');
 
     } catch (error: any) {
       console.error('Error generating report:', error);
-      toast.error('Failed to generate dispatch report: ' + error.message);
+      toast.error('Failed to generate inspection record: ' + error.message);
     } finally {
       setGenerating(false);
     }
   };
 
-  const downloadPDF = () => {
-    if (generatedReport) {
-      window.open(generatedReport.fileUrl, '_blank');
+  const viewExistingReport = () => {
+    if (existingReport?.file_url) {
+      window.open(existingReport.file_url, '_blank');
     }
   };
 
-  const viewPDF = () => {
-    if (generatedReport) {
-      window.open(generatedReport.fileUrl, '_blank');
+  const downloadReport = () => {
+    const url = generatedReport?.fileUrl || existingReport?.file_url;
+    if (url) {
+      window.open(url, '_blank');
     }
   };
 
-  // Check if hourly QC data exists
-  const hasHourlyData = reportData?.hourly && reportData.hourly.length > 0;
+  const hasHourlyData = reportData?.hourlyQC && reportData.hourlyQC.length > 0;
+  const canGenerate = hasHourlyData && !existingReport;
 
   return (
     <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Final Dispatch QC Report
+            <Shield className="h-5 w-5" />
+            Consolidated Final Inspection Record
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Generate comprehensive dispatch report with dimensional data, binary QC checks, and sign-off.
-            </p>
+            {existingReport ? (
+              <Alert>
+                <Lock className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <strong>Final Inspection Record exists</strong>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Generated on {new Date(existingReport.generated_at).toLocaleString()} 
+                        (Version {existingReport.version_number})
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={viewExistingReport}>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View Record
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Generate a consolidated, immutable inspection record including sample inspection, 
+                aggregated hourly QC, tolerance compliance, and any deviations/waivers.
+              </p>
+            )}
 
-            {reportData && (
-              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg text-sm">
+            {reportData && !existingReport && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg text-sm">
                 <div>
                   <span className="text-muted-foreground">Hourly Checks:</span>
-                  <span className="ml-2 font-semibold">{reportData.hourly.length}</span>
+                  <span className="ml-2 font-semibold">{reportData.hourlyQC.length}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Operator:</span>
-                  <span className="ml-2 font-semibold">{reportData.operatorName}</span>
+                  <span className="text-muted-foreground">Sample Size:</span>
+                  <span className="ml-2 font-semibold">{reportData.sampleInspection.sampleSize} pcs</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Compliance:</span>
+                  <Badge variant={reportData.complianceSummary.complianceRate >= 95 ? 'default' : 'destructive'}>
+                    {reportData.complianceSummary.complianceRate.toFixed(1)}%
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Deviations:</span>
+                  <span className="ml-2 font-semibold">{reportData.deviationsAndWaivers.length}</span>
                 </div>
               </div>
             )}
 
-            <Button
-              onClick={generatePDF}
-              disabled={loading || generating || !reportData || !hasHourlyData}
-              className="w-full"
-            >
-              {loading || generating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {generating ? 'Generating Report...' : 'Loading...'}
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Generate Final Dispatch Report (PDF)
-                </>
-              )}
-            </Button>
+            {!existingReport && (
+              <Button
+                onClick={generateConsolidatedReport}
+                disabled={loading || generating || !canGenerate}
+                className="w-full"
+              >
+                {loading || generating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {generating ? 'Generating Record...' : 'Loading...'}
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Generate Final Inspection Record
+                  </>
+                )}
+              </Button>
+            )}
 
-            {!hasHourlyData && reportData && (
-              <p className="text-xs text-amber-600">
-                At least one hourly QC check is required before generating the dispatch report.
-              </p>
+            {!hasHourlyData && reportData && !existingReport && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  At least one hourly QC check is required before generating the final inspection record.
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         </CardContent>
@@ -423,18 +808,34 @@ export const FinalDispatchReportGenerator = ({
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success" />
-              Dispatch Report Generated
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Final Inspection Record Generated
             </DialogTitle>
             <DialogDescription>
-              Your Final Dispatch QC Report has been compiled and saved.
+              Your consolidated inspection record has been created and locked.
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            <Alert>
+              <Lock className="h-4 w-4" />
+              <AlertDescription>
+                This record is now immutable and linked to the work order for dispatch.
+              </AlertDescription>
+            </Alert>
+            
             <div className="p-4 bg-muted/50 rounded-lg space-y-2">
               <p className="text-sm">
-                <span className="font-semibold">Report:</span> Dispatch_QC_Report_{woNumber}
+                <span className="font-semibold">Work Order:</span> {woNumber}
+              </p>
+              <p className="text-sm">
+                <span className="font-semibold">Customer:</span> {customer}
+              </p>
+              <p className="text-sm">
+                <span className="font-semibold">Compliance Rate:</span>{' '}
+                <Badge variant={reportData?.complianceSummary.complianceRate && reportData.complianceSummary.complianceRate >= 95 ? 'default' : 'destructive'}>
+                  {reportData?.complianceSummary.complianceRate.toFixed(1)}%
+                </Badge>
               </p>
               <p className="text-sm">
                 <span className="font-semibold">Generated:</span> {new Date().toLocaleString()}
@@ -443,13 +844,12 @@ export const FinalDispatchReportGenerator = ({
           </div>
 
           <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={viewPDF}>
-              <ExternalLink className="h-4 w-4 mr-2" />
-              View PDF
+            <Button variant="outline" onClick={() => setShowSuccessModal(false)}>
+              Close
             </Button>
-            <Button onClick={downloadPDF}>
+            <Button onClick={downloadReport}>
               <Download className="h-4 w-4 mr-2" />
-              Download PDF
+              Download Record
             </Button>
           </DialogFooter>
         </DialogContent>
