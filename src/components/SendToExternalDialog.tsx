@@ -67,13 +67,17 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Processes that can be done before production release (pre-production processes)
+  const preProductionProcesses = ["Forging", "Heat Treatment", "Cutting"];
+  
   const processOptions = [
-    { value: "Plating", label: "Plating", prefix: "PL" },
-    { value: "Job Work", label: "Job Work", prefix: "JW" },
-    { value: "Buffing", label: "Buffing", prefix: "BF" },
-    { value: "Blasting", label: "Blasting", prefix: "BL" },
-    { value: "Forging", label: "Forging", prefix: "FG" },
-    { value: "Heat Treatment", label: "Heat Treatment", prefix: "HT" },
+    { value: "Forging", label: "Forging", prefix: "FG", preProduction: true },
+    { value: "Heat Treatment", label: "Heat Treatment", prefix: "HT", preProduction: true },
+    { value: "Cutting", label: "Cutting", prefix: "CT", preProduction: true },
+    { value: "Plating", label: "Plating", prefix: "PL", preProduction: false },
+    { value: "Job Work", label: "Job Work", prefix: "JW", preProduction: false },
+    { value: "Buffing", label: "Buffing", prefix: "BF", preProduction: false },
+    { value: "Blasting", label: "Blasting", prefix: "BL", preProduction: false },
   ];
 
   useEffect(() => {
@@ -215,11 +219,15 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   };
 
   const handleSubmit = async () => {
-    // Check production release status
-    if (workOrder?.production_release_status !== 'RELEASED') {
+    // Check if selected process requires production release
+    const selectedProcess = processOptions.find(p => p.value === process);
+    const isPreProductionProcess = selectedProcess?.preProduction || false;
+    
+    // Only block if NOT a pre-production process AND production is not released
+    if (!isPreProductionProcess && workOrder?.production_release_status !== 'RELEASED') {
       toast({
         title: "Production Not Released",
-        description: "Cannot send to external processing until work order is released for production",
+        description: `${process} requires the work order to be released for production first. Pre-production processes (Forging, Heat Treatment, Cutting) can be sent without release.`,
         variant: "destructive",
       });
       return;
@@ -403,11 +411,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
         <div className="space-y-6">
           {/* Alerts Section */}
+          {/* Info about pre-production processes */}
           {workOrder?.production_release_status !== 'RELEASED' && (
-            <Alert variant="destructive">
+            <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Production Not Released</strong> — Cannot send to external processing until work order is released.
+                <strong>Production not yet released.</strong> Pre-production processes (Forging, Heat Treatment, Cutting) can still be sent to external partners.
               </AlertDescription>
             </Alert>
           )}
