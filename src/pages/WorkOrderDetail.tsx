@@ -38,6 +38,8 @@ import { ProductionReleaseSection } from "@/components/ProductionReleaseSection"
 import { OEEWidget } from "@/components/OEEWidget";
 import { QCStageCard } from "@/components/qc/QCStageCard";
 import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
+import { OperationRouteManager } from "@/components/OperationRouteManager";
+import { OperationRouteStatus } from "@/components/OperationRouteStatus";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
 const WorkOrderDetail = () => {
@@ -728,6 +730,9 @@ const WorkOrderDetail = () => {
           onReleased={loadWorkOrderData}
         />
 
+        {/* Operation Route Status */}
+        <OperationRouteStatus workOrderId={wo.id} />
+
         {/* Machine Assignments */}
         {machineAssignments.length > 0 && (
           <Card>
@@ -971,8 +976,9 @@ const WorkOrderDetail = () => {
 
         {/* Tabs with Lazy Loading */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="production">🏭 Production</TabsTrigger>
+              <TabsTrigger value="routing">🛤️ Routing</TabsTrigger>
               <TabsTrigger value="stage-history">🔁 Stage History</TabsTrigger>
               <TabsTrigger value="qc">⚙️ QC Records</TabsTrigger>
               <TabsTrigger value="genealogy">🧾 Version Log</TabsTrigger>
@@ -983,6 +989,15 @@ const WorkOrderDetail = () => {
           <TabsContent value="production" className="space-y-4">
             {activeTab === 'production' && (
               <EnhancedProductionTab woId={id || ""} workOrder={wo} />
+            )}
+          </TabsContent>
+
+          <TabsContent value="routing" className="space-y-4">
+            {activeTab === 'routing' && (
+              <div className="space-y-4">
+                <OperationRouteManager workOrderId={id || ""} />
+                <OperationRouteStatus workOrderId={id || ""} />
+              </div>
             )}
           </TabsContent>
 
