@@ -63,6 +63,8 @@ import MachineRuntime from "./pages/reports/MachineRuntime";
 import WorkerEfficiency from "./pages/reports/WorkerEfficiency";
 import Cutting from "./pages/Cutting";
 import Forging from "./pages/Forging";
+import NCRManagement from "./pages/NCRManagement";
+import NCRDetail from "./pages/NCRDetail";
 
 
 const App = () => (
@@ -133,6 +135,8 @@ const App = () => (
           <Route path="/partners" element={<Partners />} />
           <Route path="/partner-performance" element={<PartnerPerformance />} />
           <Route path="/external-processing/:processName" element={<ExternalProcessingDetail />} />
+          <Route path="/ncr" element={<NCRManagement />} />
+          <Route path="/ncr/:id" element={<NCRDetail />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Route>

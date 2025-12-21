@@ -40,6 +40,7 @@ import { QCStageCard } from "@/components/qc/QCStageCard";
 import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
 import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
+import { WorkOrderNCRList } from "@/components/ncr/WorkOrderNCRList";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
 const WorkOrderDetail = () => {
@@ -732,6 +733,9 @@ const WorkOrderDetail = () => {
 
         {/* Operation Route Status */}
         <OperationRouteStatus workOrderId={wo.id} />
+
+        {/* NCRs linked to this Work Order */}
+        <WorkOrderNCRList workOrderId={wo.id} />
 
         {/* Machine Assignments */}
         {machineAssignments.length > 0 && (
