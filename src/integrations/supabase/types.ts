@@ -1946,6 +1946,109 @@ export type Database = {
         }
         Relationships: []
       }
+      ncrs: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          corrective_action: string | null
+          created_at: string
+          created_by: string | null
+          disposition: Database["public"]["Enums"]["ncr_disposition"] | null
+          due_date: string | null
+          effectiveness_check: string | null
+          effectiveness_verified: boolean | null
+          id: string
+          issue_description: string
+          ncr_number: string
+          ncr_type: Database["public"]["Enums"]["ncr_type"]
+          operation_type: Database["public"]["Enums"]["operation_type"] | null
+          preventive_action: string | null
+          qc_record_id: string | null
+          quantity_affected: number
+          responsible_person: string | null
+          root_cause: string | null
+          source_reference: string | null
+          status: Database["public"]["Enums"]["ncr_status"]
+          unit: string
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          corrective_action?: string | null
+          created_at?: string
+          created_by?: string | null
+          disposition?: Database["public"]["Enums"]["ncr_disposition"] | null
+          due_date?: string | null
+          effectiveness_check?: string | null
+          effectiveness_verified?: boolean | null
+          id?: string
+          issue_description: string
+          ncr_number: string
+          ncr_type: Database["public"]["Enums"]["ncr_type"]
+          operation_type?: Database["public"]["Enums"]["operation_type"] | null
+          preventive_action?: string | null
+          qc_record_id?: string | null
+          quantity_affected: number
+          responsible_person?: string | null
+          root_cause?: string | null
+          source_reference?: string | null
+          status?: Database["public"]["Enums"]["ncr_status"]
+          unit?: string
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          corrective_action?: string | null
+          created_at?: string
+          created_by?: string | null
+          disposition?: Database["public"]["Enums"]["ncr_disposition"] | null
+          due_date?: string | null
+          effectiveness_check?: string | null
+          effectiveness_verified?: boolean | null
+          id?: string
+          issue_description?: string
+          ncr_number?: string
+          ncr_type?: Database["public"]["Enums"]["ncr_type"]
+          operation_type?: Database["public"]["Enums"]["operation_type"] | null
+          preventive_action?: string | null
+          qc_record_id?: string | null
+          quantity_affected?: number
+          responsible_person?: string | null
+          root_cause?: string | null
+          source_reference?: string | null
+          status?: Database["public"]["Enums"]["ncr_status"]
+          unit?: string
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ncrs_qc_record_id_fkey"
+            columns: ["qc_record_id"]
+            isOneToOne: false
+            referencedRelation: "qc_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ncrs_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ncrs_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       non_consumable_usage: {
         Row: {
           created_at: string
@@ -5301,6 +5404,7 @@ export type Database = {
         Returns: boolean
       }
       generate_grn_number: { Args: never; Returns: string }
+      generate_ncr_number: { Args: never; Returns: string }
       generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
       get_material_links: {
@@ -5409,6 +5513,13 @@ export type Database = {
         | "void"
       material_qc_status: "not_required" | "pending" | "passed" | "failed"
       material_status: "received" | "issued" | "in_use" | "consumed"
+      ncr_disposition: "REWORK" | "SCRAP" | "USE_AS_IS" | "RETURN_TO_SUPPLIER"
+      ncr_status:
+        | "OPEN"
+        | "ACTION_IN_PROGRESS"
+        | "EFFECTIVENESS_PENDING"
+        | "CLOSED"
+      ncr_type: "INTERNAL" | "CUSTOMER" | "SUPPLIER"
       operation_letter:
         | "A"
         | "B"
@@ -5690,6 +5801,14 @@ export const Constants = {
       ],
       material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_status: ["received", "issued", "in_use", "consumed"],
+      ncr_disposition: ["REWORK", "SCRAP", "USE_AS_IS", "RETURN_TO_SUPPLIER"],
+      ncr_status: [
+        "OPEN",
+        "ACTION_IN_PROGRESS",
+        "EFFECTIVENESS_PENDING",
+        "CLOSED",
+      ],
+      ncr_type: ["INTERNAL", "CUSTOMER", "SUPPLIER"],
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       operation_type: [
         "RAW_MATERIAL",
