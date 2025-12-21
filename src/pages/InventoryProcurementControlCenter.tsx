@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Package, ShoppingCart, TrendingUp, TrendingDown, DollarSign, Download, Calendar } from "lucide-react";
@@ -234,7 +234,6 @@ export default function InventoryProcurementControlCenter() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Inventory & Procurement Control Center" />
         <div className="p-6">
           <div className="text-center">Loading inventory data...</div>
         </div>
@@ -244,8 +243,6 @@ export default function InventoryProcurementControlCenter() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Inventory & Procurement Control Center" />
-      
       <div className="p-6 space-y-6">
         {/* Alerts Banner */}
         {alerts.length > 0 && (

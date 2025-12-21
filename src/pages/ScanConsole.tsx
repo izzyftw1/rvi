@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Camera, Package, FileText, Box, Truck } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 
 export default function ScanConsole() {
   const navigate = useNavigate();
@@ -392,8 +392,6 @@ export default function ScanConsole() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Scan Console" subtitle="Scan QR codes to track and manage entities" />
-      
       <div className="p-4 pb-20">
 
       {/* Scan Input */}

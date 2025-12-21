@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -235,7 +235,6 @@ export default function CustomerDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Customer Detail" subtitle="Loading..." />
         <div className="p-6">
           <p className="text-muted-foreground">Loading customer data...</p>
         </div>
@@ -246,7 +245,6 @@ export default function CustomerDetail() {
   if (!customer) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Customer Detail" subtitle="Not Found" />
         <div className="p-6">
           <Card>
             <CardContent className="py-8 text-center">
@@ -263,11 +261,6 @@ export default function CustomerDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader 
-        title={customer.customer_name} 
-        subtitle={`${customer.party_code || 'No Party Code'} • ${customer.city || ''}, ${customer.country || ''}`}
-      />
-      
       <div className="p-6 space-y-6">
         {/* Quick Actions */}
         <div className="flex gap-3">

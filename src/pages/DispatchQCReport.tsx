@@ -8,7 +8,7 @@ import { Download, FileText } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 
 const DispatchQCReport = () => {
   const { woId } = useParams();
@@ -337,7 +337,6 @@ const DispatchQCReport = () => {
   if (!workOrder || !qcData) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader />
         <div className="max-w-6xl mx-auto p-4">
           <div className="text-center py-12">No data available</div>
         </div>
@@ -347,8 +346,6 @@ const DispatchQCReport = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         <div className="flex items-center justify-between">
           <div>
