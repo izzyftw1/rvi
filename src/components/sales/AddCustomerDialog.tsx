@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from "@/components/ui/form-layout";
 
 const COUNTRIES = [
   "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain",
@@ -63,13 +64,14 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
     return `${prefix}${randomNum}`;
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!formData.customer_name.trim()) {
       toast({ variant: "destructive", description: "Customer name is required" });
       return;
     }
 
-    // Validate that either city or country is filled
     if (!formData.city?.trim() && !formData.country?.trim()) {
       toast({ variant: "destructive", description: "Either city or country must be filled" });
       return;
@@ -108,7 +110,6 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
       onCustomerAdded(data);
       onOpenChange(false);
       
-      // Reset form
       setFormData({
         customer_name: "",
         party_code: "",
@@ -136,14 +137,19 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Customer</DialogTitle>
+          <DialogDescription>
+            Create a new customer record in the system
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-6 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-2">
-              <Label>Customer Name *</Label>
+
+        <FormContainer onSubmit={handleSave}>
+          {/* Basic Information */}
+          <FormSection title="Basic Information">
+            <FormField>
+              <Label>Customer Name<RequiredIndicator /></Label>
               <Input
                 value={formData.customer_name}
                 onChange={(e) => {
@@ -156,89 +162,106 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                 }}
                 placeholder="Enter customer name"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Party Code</Label>
-              <Input
-                value={formData.party_code}
-                onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
-                placeholder="Auto-generated or enter custom code"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Account Owner</Label>
-              <Select value={formData.account_owner} onValueChange={(value) => setFormData({...formData, account_owner: value})}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account owner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>GST Type</Label>
-              <Select value={formData.gst_type} onValueChange={(value) => setFormData({ ...formData, gst_type: value as any })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="not_applicable">Not Applicable</SelectItem>
-                  <SelectItem value="domestic">Domestic</SelectItem>
-                  <SelectItem value="export">Export</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>GST Number</Label>
-              <Input
-                value={formData.gst_number}
-                onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
-                placeholder="GST number (if applicable)"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm">Location (City or Country required)</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-2">
-                <Label>Address Line 1</Label>
+            </FormField>
+            
+            <FormRow>
+              <FormField>
+                <Label>Party Code</Label>
                 <Input
-                  value={formData.address_line_1}
-                  onChange={(e) => setFormData({ ...formData, address_line_1: e.target.value })}
-                  placeholder="Street address, building number"
+                  value={formData.party_code}
+                  onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
+                  placeholder="Auto-generated"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+              <FormField>
+                <Label>Account Owner</Label>
+                <Select value={formData.account_owner} onValueChange={(value) => setFormData({...formData, account_owner: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          {/* Tax Information */}
+          <FormSection title="Tax Information" withSeparator>
+            <FormRow>
+              <FormField>
+                <Label>GST Type</Label>
+                <Select value={formData.gst_type} onValueChange={(value) => setFormData({ ...formData, gst_type: value as any })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_applicable">Not Applicable</SelectItem>
+                    <SelectItem value="domestic">Domestic</SelectItem>
+                    <SelectItem value="export">Export</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField>
+                <Label>GST Number</Label>
+                <Input
+                  value={formData.gst_number}
+                  onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
+                  placeholder="If applicable"
+                />
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          {/* Address */}
+          <FormSection 
+            title="Address" 
+            description="City or country is required"
+            withSeparator
+          >
+            <FormField>
+              <Label>Address Line 1</Label>
+              <Input
+                value={formData.address_line_1}
+                onChange={(e) => setFormData({ ...formData, address_line_1: e.target.value })}
+                placeholder="Street address, building number"
+              />
+            </FormField>
+            
+            <FormRow>
+              <FormField>
                 <Label>City</Label>
                 <Input
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                   placeholder="City"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+              <FormField>
                 <Label>Pincode</Label>
                 <Input
                   value={formData.pincode}
                   onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
                   placeholder="ZIP/Postal code"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+            </FormRow>
+            
+            <FormRow>
+              <FormField>
                 <Label>State/Province</Label>
                 <Input
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                   placeholder="State"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+              <FormField>
                 <Label>Country</Label>
                 <Select value={formData.country} onValueChange={(value) => setFormData({...formData, country: value})}>
                   <SelectTrigger>
@@ -252,14 +275,14 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          </div>
+              </FormField>
+            </FormRow>
+          </FormSection>
 
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm">Payment Terms</h4>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
+          {/* Payment Terms */}
+          <FormSection title="Payment Terms" withSeparator>
+            <FormRow cols={3}>
+              <FormField>
                 <Label>Payment Terms (Days)</Label>
                 <Input
                   type="number"
@@ -267,8 +290,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                   onChange={(e) => setFormData({ ...formData, payment_terms_days: e.target.value })}
                   placeholder="30"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+              <FormField>
                 <Label>Credit Limit</Label>
                 <Input
                   type="number"
@@ -276,8 +299,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                   onChange={(e) => setFormData({ ...formData, credit_limit_amount: e.target.value })}
                   placeholder="0.00"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+              <FormField>
                 <Label>Currency</Label>
                 <Select value={formData.credit_limit_currency} onValueChange={(value) => setFormData({...formData, credit_limit_currency: value})}>
                   <SelectTrigger>
@@ -290,22 +313,27 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                     <SelectItem value="GBP">GBP</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          </div>
+              </FormField>
+            </FormRow>
+          </FormSection>
 
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm">Primary Contact (Optional)</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-2">
-                <Label>Contact Name</Label>
-                <Input
-                  value={formData.primary_contact_name}
-                  onChange={(e) => setFormData({ ...formData, primary_contact_name: e.target.value })}
-                  placeholder="Contact person name"
-                />
-              </div>
-              <div className="space-y-2">
+          {/* Primary Contact */}
+          <FormSection 
+            title="Primary Contact" 
+            description="Optional contact information"
+            withSeparator
+          >
+            <FormField>
+              <Label>Contact Name</Label>
+              <Input
+                value={formData.primary_contact_name}
+                onChange={(e) => setFormData({ ...formData, primary_contact_name: e.target.value })}
+                placeholder="Contact person name"
+              />
+            </FormField>
+            
+            <FormRow>
+              <FormField>
                 <Label>Email</Label>
                 <Input
                   type="email"
@@ -313,27 +341,27 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
                   onChange={(e) => setFormData({ ...formData, primary_contact_email: e.target.value })}
                   placeholder="email@example.com"
                 />
-              </div>
-              <div className="space-y-2">
+              </FormField>
+              <FormField>
                 <Label>Phone</Label>
                 <Input
                   value={formData.primary_contact_phone}
                   onChange={(e) => setFormData({ ...formData, primary_contact_phone: e.target.value })}
                   placeholder="+1234567890"
                 />
-              </div>
-            </div>
-          </div>
+              </FormField>
+            </FormRow>
+          </FormSection>
 
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <FormActions>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={loading}>
-              Add Customer
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Adding...' : 'Add Customer'}
             </Button>
-          </div>
-        </div>
+          </FormActions>
+        </FormContainer>
       </DialogContent>
     </Dialog>
   );

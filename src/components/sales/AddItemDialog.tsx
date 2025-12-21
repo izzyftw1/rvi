@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from "@/components/ui/form-layout";
 
 const ALLOYS = [
   { group: "Brass Alloys", items: ["C36000", "C37700", "C38500", "C46400", "C23000", "C27200", "C26000", "C27450", "DZR Brass (CW602N)", "CW614N", "CW617N", "CZ122"] },
@@ -32,7 +33,9 @@ export function AddItemDialog({ open, onOpenChange, onItemAdded }: AddItemDialog
     cycle_time_seconds: ""
   });
 
-  const handleSave = async () => {
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!formData.item_code.trim()) {
       toast({ variant: "destructive", description: "Item code is required" });
       return;
@@ -62,7 +65,6 @@ export function AddItemDialog({ open, onOpenChange, onItemAdded }: AddItemDialog
       onItemAdded(data);
       onOpenChange(false);
       
-      // Reset form
       setFormData({
         item_code: "",
         alloy: "",
@@ -80,92 +82,108 @@ export function AddItemDialog({ open, onOpenChange, onItemAdded }: AddItemDialog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add New Item</DialogTitle>
+          <DialogDescription>
+            Create a new item in the master catalog
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Item Code *</Label>
-              <Input
-                value={formData.item_code}
-                onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
-                placeholder="Enter item code"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Alloy</Label>
-              <Select value={formData.alloy} onValueChange={(v) => setFormData({ ...formData, alloy: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select alloy" />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-50">
-                  {ALLOYS.map(group => (
-                    <div key={group.group}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                        {group.group}
+
+        <FormContainer onSubmit={handleSave}>
+          {/* Identification */}
+          <FormSection title="Identification">
+            <FormRow>
+              <FormField>
+                <Label>Item Code<RequiredIndicator /></Label>
+                <Input
+                  value={formData.item_code}
+                  onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
+                  placeholder="Enter item code"
+                />
+              </FormField>
+              <FormField>
+                <Label>Alloy</Label>
+                <Select value={formData.alloy} onValueChange={(v) => setFormData({ ...formData, alloy: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select alloy" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    {ALLOYS.map(group => (
+                      <div key={group.group}>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          {group.group}
+                        </div>
+                        {group.items.map(alloy => (
+                          <SelectItem key={alloy} value={alloy}>
+                            {alloy}
+                          </SelectItem>
+                        ))}
                       </div>
-                      {group.items.map(alloy => (
-                        <SelectItem key={alloy} value={alloy}>
-                          {alloy}
-                        </SelectItem>
-                      ))}
-                    </div>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Material Size/Type</Label>
-            <Input
-              value={formData.material_size_mm}
-              onChange={(e) => setFormData({ ...formData, material_size_mm: e.target.value })}
-              placeholder="e.g., Round 12mm, Hex 25mm"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Gross Weight (g)</Label>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          {/* Material Specifications */}
+          <FormSection title="Material Specifications" withSeparator>
+            <FormField>
+              <Label>Material Size/Type</Label>
               <Input
-                type="number"
-                step="0.01"
-                value={formData.gross_weight_grams}
-                onChange={(e) => setFormData({ ...formData, gross_weight_grams: e.target.value })}
-                placeholder="Grams"
+                value={formData.material_size_mm}
+                onChange={(e) => setFormData({ ...formData, material_size_mm: e.target.value })}
+                placeholder="e.g., Round 12mm, Hex 25mm"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Net Weight (g)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.net_weight_grams}
-                onChange={(e) => setFormData({ ...formData, net_weight_grams: e.target.value })}
-                placeholder="Grams"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Cycle Time (sec)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.cycle_time_seconds}
-                onChange={(e) => setFormData({ ...formData, cycle_time_seconds: e.target.value })}
-                placeholder="Seconds"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            </FormField>
+          </FormSection>
+
+          {/* Production Parameters */}
+          <FormSection title="Production Parameters" withSeparator>
+            <FormRow cols={3}>
+              <FormField>
+                <Label>Gross Weight (g)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.gross_weight_grams}
+                  onChange={(e) => setFormData({ ...formData, gross_weight_grams: e.target.value })}
+                  placeholder="Grams"
+                />
+              </FormField>
+              <FormField>
+                <Label>Net Weight (g)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.net_weight_grams}
+                  onChange={(e) => setFormData({ ...formData, net_weight_grams: e.target.value })}
+                  placeholder="Grams"
+                />
+              </FormField>
+              <FormField>
+                <Label>Cycle Time (sec)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.cycle_time_seconds}
+                  onChange={(e) => setFormData({ ...formData, cycle_time_seconds: e.target.value })}
+                  placeholder="Seconds"
+                />
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          <FormActions>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={loading}>
-              Add Item
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Adding...' : 'Add Item'}
             </Button>
-          </div>
-        </div>
+          </FormActions>
+        </FormContainer>
       </DialogContent>
     </Dialog>
   );

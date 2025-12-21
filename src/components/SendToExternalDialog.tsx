@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays } from "date-fns";
-import { Loader2, Plus, ExternalLink, AlertCircle } from "lucide-react";
+import { Loader2, Plus, AlertCircle } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
+import { FormSection, FormRow, FormField, FormActions, FormHint, RequiredIndicator } from "@/components/ui/form-layout";
 
 interface ExternalPartner {
   id: string;
@@ -400,21 +401,17 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Production Release Warning */}
+        <div className="space-y-6">
+          {/* Alerts Section */}
           {workOrder?.production_release_status !== 'RELEASED' && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Production Not Released</strong>
-                <p className="text-sm mt-1">
-                  Cannot send to external processing until work order is released for production.
-                </p>
+                <strong>Production Not Released</strong> — Cannot send to external processing until work order is released.
               </AlertDescription>
             </Alert>
           )}
 
-          {/* Quantity Summary Alert */}
           <Alert className={remainingQty === 0 ? "border-destructive" : "border-primary"}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -424,24 +421,17 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                   Loading quantity info...
                 </span>
               ) : (
-                <div className="space-y-1 text-sm">
-                  <p><strong>Total Order:</strong> {workOrder?.quantity || 0} pcs</p>
-                  <p><strong>Sent to External:</strong> {totalSentQty} pcs</p>
-                  <p><strong>Received Back:</strong> {totalReceivedQty} pcs</p>
-                  <p className="font-semibold text-primary">
-                    <strong>Available to Send:</strong> {remainingQty} pcs
-                  </p>
-                  {remainingQty === 0 && (
-                    <p className="text-destructive font-semibold mt-2">
-                      All pieces already sent to external partners. Wait for receipts before sending more.
-                    </p>
-                  )}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <span>Total Order:</span><span className="font-medium">{workOrder?.quantity || 0} pcs</span>
+                  <span>Sent to External:</span><span className="font-medium">{totalSentQty} pcs</span>
+                  <span>Received Back:</span><span className="font-medium">{totalReceivedQty} pcs</span>
+                  <span className="text-primary font-medium">Available to Send:</span>
+                  <span className="text-primary font-bold">{remainingQty} pcs</span>
                 </div>
               )}
             </AlertDescription>
           </Alert>
 
-          {/* Partners Error Alert */}
           {partnersError && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -454,194 +444,184 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
             </Alert>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="process">
-              Process <span className="text-destructive">*</span>
-            </Label>
-            <Select 
-              value={process} 
-              onValueChange={(value) => {
-                setProcess(value);
-                setErrors(prev => ({ ...prev, process: "" }));
-              }}
-            >
-              <SelectTrigger id="process" className={errors.process ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select process" />
-              </SelectTrigger>
-              <SelectContent>
-                {processOptions.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.process && (
-              <p className="text-sm text-destructive">{errors.process}</p>
-            )}
-          </div>
+          {/* Process & Partner Section */}
+          <FormSection title="Process & Partner">
+            <FormRow>
+              <FormField>
+                <Label>Process<RequiredIndicator /></Label>
+                <Select 
+                  value={process} 
+                  onValueChange={(value) => {
+                    setProcess(value);
+                    setErrors(prev => ({ ...prev, process: "" }));
+                  }}
+                >
+                  <SelectTrigger className={errors.process ? "border-destructive" : ""}>
+                    <SelectValue placeholder="Select process" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {processOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.process && <FormHint variant="error">{errors.process}</FormHint>}
+              </FormField>
 
-          <div className="space-y-2">
-            <Label htmlFor="partner">
-              Partner <span className="text-destructive">*</span>
-            </Label>
-            <Select 
-              value={partnerId} 
-              onValueChange={handlePartnerChange}
-              disabled={!process || filteredPartners.length === 0}
-            >
-              <SelectTrigger id="partner" className={errors.partnerId ? "border-destructive" : ""}>
-                <SelectValue placeholder={
-                  !process 
-                    ? "Select process first" 
-                    : filteredPartners.length === 0 
-                      ? "No partners found for this process" 
-                      : "Select partner"
-                } />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredPartners.length === 0 ? (
-                  <SelectItem value="__no_partners" disabled>
-                    {process ? `No partners available for ${process}` : "Select a process first"}
-                  </SelectItem>
-                ) : (
-                  filteredPartners.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-            {errors.partnerId && (
-              <p className="text-sm text-destructive">{errors.partnerId}</p>
+              <FormField>
+                <Label>Partner<RequiredIndicator /></Label>
+                <Select 
+                  value={partnerId} 
+                  onValueChange={handlePartnerChange}
+                  disabled={!process || filteredPartners.length === 0}
+                >
+                  <SelectTrigger className={errors.partnerId ? "border-destructive" : ""}>
+                    <SelectValue placeholder={
+                      !process 
+                        ? "Select process first" 
+                        : filteredPartners.length === 0 
+                          ? "No partners found" 
+                          : "Select partner"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredPartners.length === 0 ? (
+                      <SelectItem value="__no_partners" disabled>
+                        {process ? `No partners for ${process}` : "Select process first"}
+                      </SelectItem>
+                    ) : (
+                      filteredPartners.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {errors.partnerId && <FormHint variant="error">{errors.partnerId}</FormHint>}
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => window.open("/partners", "_blank")}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add New Partner
+                </Button>
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          {/* Quantity & Timeline Section */}
+          <FormSection title="Quantity & Timeline" withSeparator>
+            <FormRow>
+              <FormField>
+                <Label>
+                  Quantity to Send<RequiredIndicator />
+                  <span className="text-muted-foreground text-xs ml-2">(Max: {getMaxQty()})</span>
+                </Label>
+                <Input
+                  type="number"
+                  value={qtySent}
+                  onChange={(e) => {
+                    setQtySent(e.target.value);
+                    setErrors(prev => ({ ...prev, qtySent: "" }));
+                  }}
+                  placeholder="Enter quantity"
+                  max={getMaxQty()}
+                  min={1}
+                  className={errors.qtySent ? "border-destructive" : ""}
+                />
+                {errors.qtySent && <FormHint variant="error">{errors.qtySent}</FormHint>}
+              </FormField>
+
+              <FormField>
+                <Label>Expected Return<RequiredIndicator /></Label>
+                <Input
+                  type="date"
+                  value={expectedReturnDate}
+                  onChange={(e) => {
+                    setExpectedReturnDate(e.target.value);
+                    setErrors(prev => ({ ...prev, expectedReturnDate: "" }));
+                  }}
+                  min={format(new Date(), "yyyy-MM-dd")}
+                  className={errors.expectedReturnDate ? "border-destructive" : ""}
+                />
+                {errors.expectedReturnDate && <FormHint variant="error">{errors.expectedReturnDate}</FormHint>}
+              </FormField>
+            </FormRow>
+
+            {process === 'Job Work' && (
+              <FormField>
+                <Label>Operation</Label>
+                <Select value={operationTag} onValueChange={setOperationTag}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select if applicable" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">None</SelectItem>
+                    <SelectItem value="Op-A">Operation A</SelectItem>
+                    <SelectItem value="Op-B">Operation B</SelectItem>
+                    <SelectItem value="Op-C">Operation C</SelectItem>
+                    <SelectItem value="Op-D">Operation D</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
             )}
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs"
-              onClick={() => window.open("/partners", "_blank")}
+          </FormSection>
+
+          {/* Notes Section */}
+          <FormSection title="Notes" withSeparator>
+            <FormField>
+              <Label>Remarks</Label>
+              <Textarea
+                value={remarks}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value.length <= 500) {
+                    setRemarks(value);
+                    setErrors(prev => ({ ...prev, remarks: "" }));
+                  }
+                }}
+                placeholder="Optional notes for this challan..."
+                rows={2}
+                maxLength={500}
+                className={errors.remarks ? "border-destructive" : ""}
+              />
+              <div className="flex justify-between items-center">
+                {errors.remarks && <FormHint variant="error">{errors.remarks}</FormHint>}
+                <span className="text-xs text-muted-foreground ml-auto">{remarks.length}/500</span>
+              </div>
+            </FormField>
+          </FormSection>
+
+          <FormActions>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                onOpenChange(false);
+                resetForm();
+              }} 
+              disabled={loading}
             >
-              <Plus className="h-3 w-3 mr-1" />
-              Add New Partner
+              Cancel
             </Button>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="quantity">
-              Quantity to Send <span className="text-destructive">*</span>
-              <span className="text-muted-foreground text-xs ml-2">
-                (Max: {getMaxQty()} pcs)
-              </span>
-            </Label>
-            <Input
-              id="quantity"
-              type="number"
-              value={qtySent}
-              onChange={(e) => {
-                setQtySent(e.target.value);
-                setErrors(prev => ({ ...prev, qtySent: "" }));
-              }}
-              placeholder="Enter quantity"
-              max={getMaxQty()}
-              min={1}
-              className={errors.qtySent ? "border-destructive" : ""}
-            />
-            {errors.qtySent && (
-              <p className="text-sm text-destructive">{errors.qtySent}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="return-date">
-              Expected Return Date <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="return-date"
-              type="date"
-              value={expectedReturnDate}
-              onChange={(e) => {
-                setExpectedReturnDate(e.target.value);
-                setErrors(prev => ({ ...prev, expectedReturnDate: "" }));
-              }}
-              min={format(new Date(), "yyyy-MM-dd")}
-              className={errors.expectedReturnDate ? "border-destructive" : ""}
-            />
-            {errors.expectedReturnDate && (
-              <p className="text-sm text-destructive">{errors.expectedReturnDate}</p>
-            )}
-          </div>
-
-          {process === 'Job Work' && (
-            <div className="space-y-2">
-              <Label htmlFor="operation">Operation (Optional)</Label>
-              <Select value={operationTag} onValueChange={setOperationTag}>
-                <SelectTrigger id="operation">
-                  <SelectValue placeholder="Select operation if applicable" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">None</SelectItem>
-                  <SelectItem value="Op-A">Operation A</SelectItem>
-                  <SelectItem value="Op-B">Operation B</SelectItem>
-                  <SelectItem value="Op-C">Operation C</SelectItem>
-                  <SelectItem value="Op-D">Operation D</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="remarks">Remarks (Optional)</Label>
-            <Textarea
-              id="remarks"
-              value={remarks}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value.length <= 500) {
-                  setRemarks(value);
-                  setErrors(prev => ({ ...prev, remarks: "" }));
-                }
-              }}
-              placeholder="Optional notes"
-              rows={3}
-              maxLength={500}
-              className={errors.remarks ? "border-destructive" : ""}
-            />
-            <div className="flex justify-between items-center">
-              {errors.remarks && (
-                <p className="text-sm text-destructive">{errors.remarks}</p>
-              )}
-              <p className="text-xs text-muted-foreground ml-auto">
-                {remarks.length}/500 characters
-              </p>
-            </div>
-          </div>
+            <Button 
+              onClick={handleSubmit} 
+              disabled={loading || !canCreate || remainingQty === 0 || loadingQty || workOrder?.production_release_status !== 'RELEASED'}
+            >
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {workOrder?.production_release_status !== 'RELEASED' 
+                ? "Not Released" 
+                : remainingQty === 0 
+                  ? "No Qty Available" 
+                  : "Create Challan"}
+            </Button>
+          </FormActions>
         </div>
-
-        <DialogFooter>
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              onOpenChange(false);
-              resetForm();
-            }} 
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={loading || !canCreate || remainingQty === 0 || loadingQty || workOrder?.production_release_status !== 'RELEASED'}
-          >
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {workOrder?.production_release_status !== 'RELEASED' 
-              ? "Production Not Released" 
-              : remainingQty === 0 
-                ? "No Quantity Available" 
-                : "Create Challan"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
