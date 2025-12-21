@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { NavigationHeader } from '@/components/NavigationHeader';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -206,7 +206,6 @@ export default function NCRDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader />
         <div className="container mx-auto px-4 py-6">
           <p>Loading...</p>
         </div>
@@ -217,7 +216,6 @@ export default function NCRDetail() {
   if (!ncr) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader />
         <div className="container mx-auto px-4 py-6">
           <p>NCR not found</p>
         </div>
@@ -232,8 +230,6 @@ export default function NCRDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <div className="container mx-auto px-4 py-6 space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => navigate('/ncr')}>

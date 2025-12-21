@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -52,8 +52,6 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <PageContainer maxWidth="2xl">
         <div className="space-y-6">
           <PageHeader

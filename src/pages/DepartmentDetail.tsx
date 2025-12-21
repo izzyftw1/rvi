@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -173,7 +173,6 @@ export default function DepartmentDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader />
         <div className="flex items-center justify-center min-h-[50vh]">
           <Factory className="h-12 w-12 animate-spin text-primary" />
         </div>
@@ -183,8 +182,6 @@ export default function DepartmentDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title={`${departmentName} Department`} subtitle="Live Department Status" />
-      
       <main className="container mx-auto px-4 py-6">
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">

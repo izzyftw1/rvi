@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -153,11 +153,6 @@ export default function RPOInventoryReport() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader 
-        title="RPO vs Inventory vs WO Report" 
-        subtitle="Material requirement analysis by size and alloy" 
-      />
-      
       <div className="p-6 pb-0">
         <Breadcrumb>
           <BreadcrumbList>

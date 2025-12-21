@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -142,11 +142,6 @@ export default function CustomerReports() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader 
-        title="Customer Reports" 
-        subtitle="Sales analysis by customer, location, and product"
-      />
-      
       <div className="p-6 space-y-6">
         {/* Filters */}
         <Card>

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Search } from "lucide-react";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 
 export default function Genealogy() {
   const navigate = useNavigate();
@@ -124,8 +124,6 @@ export default function Genealogy() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Genealogy & Traceability" subtitle="Track materials and products throughout the production chain" />
-      
       <div className="p-6">
 
       <Card className="mb-6">

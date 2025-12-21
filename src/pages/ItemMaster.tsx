@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, Search } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -143,8 +143,6 @@ export default function ItemMaster() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Item Master" subtitle="Manage item database" />
-      
       <div className="container mx-auto p-6">
         <Card>
           <CardHeader>

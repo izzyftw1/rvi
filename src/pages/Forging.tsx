@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -191,7 +191,6 @@ export default function Forging() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <NavigationHeader title="Forging Department" />
         <div className="container mx-auto p-6">
           <div className="text-center">Loading...</div>
         </div>
@@ -201,7 +200,6 @@ export default function Forging() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Forging Department" />
       <div className="container mx-auto p-6">
         <Card>
           <CardHeader>

@@ -1,4 +1,4 @@
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,8 +49,6 @@ export default function Logistics() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader title="Logistics" subtitle="Shipment tracking and delivery management" />
-      
       <div className="p-6 space-y-6">
         {/* Breadcrumb */}
         <div className="flex items-center justify-between">

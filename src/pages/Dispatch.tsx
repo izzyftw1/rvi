@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Truck, Download, ClipboardCheck, FileText, MapPin } from "lucide-react";
 import { QRCodeDisplay } from "@/components/QRCodeDisplay";
-import { NavigationHeader } from "@/components/NavigationHeader";
+
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { ShipmentTimeline } from "@/components/ShipmentTimeline";
 import { ShipmentDetailsDialog } from "@/components/ShipmentDetailsDialog";
@@ -301,8 +301,6 @@ export default function Dispatch() {
 
   return (
     <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
       <PageContainer maxWidth="2xl">
         <div className="space-y-6">
           <PageHeader
