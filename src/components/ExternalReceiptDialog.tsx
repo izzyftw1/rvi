@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { z } from "zod";
+import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 
 // Validation schema for external receipt
 const receiptSchema = z.object({
@@ -207,6 +208,18 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       const nextStageName = updateData.current_stage ? 
         updateData.current_stage.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 
         '';
+
+      // Create execution record for external process IN
+      await createExecutionRecord({
+        workOrderId: move.work_order_id,
+        operationType: 'EXTERNAL_PROCESS',
+        processName: move.process,
+        quantity: qty,
+        unit: 'pcs',
+        direction: 'IN',
+        relatedPartnerId: move.partner_id,
+        relatedChallanId: move.id,
+      });
 
       toast({
         title: "Material Received",
