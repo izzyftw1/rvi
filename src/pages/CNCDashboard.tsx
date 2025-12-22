@@ -566,16 +566,8 @@ const CNCDashboard = () => {
                       </div>
                     )}
 
-                    {/* Maintenance Warning */}
-                    {machine.readiness === 'maintenance_due' && (
-                      <div className="text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                        <Wrench className="h-3 w-3" />
-                        Last service: {machine.daysSinceLastMaintenance}d ago
-                      </div>
-                    )}
-
-                    {/* Assign Work Button */}
-                    {isEligibleForAssignment && (
+                    {/* Primary Action Section - Single clear action per state */}
+                    {machine.readiness === 'ready' && (
                       <Button 
                         className="w-full gap-2" 
                         size="sm"
@@ -586,12 +578,55 @@ const CNCDashboard = () => {
                       </Button>
                     )}
 
-                    {/* Idle machines that aren't ready */}
-                    {machine.readiness !== 'ready' && machine.readiness !== 'running' && (
-                      <div className="pt-1">
+                    {machine.readiness === 'maintenance_due' && (
+                      <div className="space-y-2">
+                        <Button 
+                          className="w-full gap-2" 
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            // TODO: Implement clear maintenance flow
+                            toast.info("Maintenance clearance workflow coming soon");
+                          }}
+                        >
+                          <Wrench className="h-4 w-4" />
+                          Clear Maintenance
+                        </Button>
                         <p className="text-[10px] text-muted-foreground text-center">
-                          Resolve {config.label.toLowerCase()} to enable assignment
+                          Last serviced {machine.daysSinceLastMaintenance}d ago
                         </p>
+                      </div>
+                    )}
+
+                    {machine.readiness === 'setup_required' && (
+                      <div className="space-y-2">
+                        <Button 
+                          className="w-full gap-2" 
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            toast.info("Setup completion workflow coming soon");
+                          }}
+                        >
+                          <Settings className="h-4 w-4" />
+                          Complete Setup
+                        </Button>
+                      </div>
+                    )}
+
+                    {machine.readiness === 'down' && (
+                      <div className="space-y-2">
+                        <Button 
+                          className="w-full gap-2" 
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            toast.info("Machine recovery workflow coming soon");
+                          }}
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                          Report Issue
+                        </Button>
                       </div>
                     )}
                   </CardContent>
