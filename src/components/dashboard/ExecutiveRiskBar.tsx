@@ -275,10 +275,16 @@ export const ExecutiveRiskBar = () => {
                       )}>
                         {item.value}
                       </span>
+                      {hasRisk && (
+                        <span className="text-[9px] opacity-70 border-l border-current/20 pl-1.5 ml-0.5">
+                          {item.owner}
+                        </span>
+                      )}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
                     <p>{item.tooltip}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Owner: {item.owner}</p>
                   </TooltipContent>
                 </Tooltip>
               );

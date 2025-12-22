@@ -11,7 +11,8 @@ import {
   ExternalLink as ExternalLinkIcon,
   Clock,
   TrendingUp,
-  ArrowRight
+  ArrowRight,
+  User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +33,7 @@ interface BlockedOrder {
   display_id: string;
   due_date: string;
   blockReason: 'production' | 'quality' | 'external';
+  owner: string;
 }
 
 export const DeliveryRiskPanel = () => {
@@ -100,7 +102,8 @@ export const DeliveryRiskPanel = () => {
               id: order.id,
               display_id: order.display_id || 'N/A',
               due_date: dueDate,
-              blockReason: 'external'
+              blockReason: 'external',
+              owner: 'Logistics'
             });
           }
           // Quality blocks
@@ -110,7 +113,8 @@ export const DeliveryRiskPanel = () => {
               id: order.id,
               display_id: order.display_id || 'N/A',
               due_date: dueDate,
-              blockReason: 'quality'
+              blockReason: 'quality',
+              owner: 'Quality'
             });
           }
           // Production blocks (early stages)
@@ -120,7 +124,8 @@ export const DeliveryRiskPanel = () => {
               id: order.id,
               display_id: order.display_id || 'N/A',
               due_date: dueDate,
-              blockReason: 'production'
+              blockReason: 'production',
+              owner: 'Production'
             });
           }
         });
@@ -392,6 +397,10 @@ export const DeliveryRiskPanel = () => {
                           <Badge variant="outline" className="text-[9px] capitalize">
                             {order.blockReason}
                           </Badge>
+                          <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            {order.owner}
+                          </span>
                           <span className="text-[10px] text-muted-foreground">
                             {format(parseISO(order.due_date), 'dd MMM')}
                           </span>
