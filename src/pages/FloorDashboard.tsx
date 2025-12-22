@@ -231,24 +231,17 @@ const FloorDashboard = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Floor Dashboard</h1>
-            <p className="text-sm text-muted-foreground flex items-center gap-1">
-              <Activity className="h-3.5 w-3.5" />
+            <p className="text-sm text-muted-foreground">
               Load balancing & execution readiness
             </p>
           </div>
 
-          {/* Quick Balance Summary */}
+          {/* Quick Balance Summary - only show if issues exist */}
           <div className="flex flex-wrap gap-2">
             {balanceMetrics.overloadedCount > 0 && (
               <Badge variant="destructive" className="gap-1">
                 <AlertTriangle className="h-3 w-3" />
                 {balanceMetrics.overloadedCount} Overloaded
-              </Badge>
-            )}
-            {balanceMetrics.idleStageCount > 0 && (
-              <Badge variant="secondary" className="gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                <Pause className="h-3 w-3" />
-                {balanceMetrics.idleStageCount} Idle
               </Badge>
             )}
             {balanceMetrics.totalBlocked > 0 && (
@@ -328,15 +321,17 @@ const FloorDashboard = () => {
                     <Card 
                       key={stage} 
                       className={cn(
-                        "transition-all border-2",
-                        isIdle ? "border-dashed border-muted-foreground/30" : loadBgColors[loadLevel]
+                        "transition-all border",
+                        isIdle 
+                          ? "border-muted bg-muted/20" 
+                          : loadBgColors[loadLevel]
                       )}
                     >
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Icon className="h-5 w-5" style={{ color: config.color }} />
-                            <CardTitle className="text-base">{config.label}</CardTitle>
+                            <Icon className={cn("h-5 w-5", isIdle && "opacity-50")} style={{ color: isIdle ? undefined : config.color }} />
+                            <CardTitle className={cn("text-base", isIdle && "text-muted-foreground")}>{config.label}</CardTitle>
                           </div>
                           {!isIdle && (
                             <Badge 
@@ -346,17 +341,16 @@ const FloorDashboard = () => {
                               {loadLabels[loadLevel]}
                             </Badge>
                           )}
+                          {isIdle && (
+                            <span className="text-xs text-muted-foreground">0 WOs</span>
+                          )}
                         </div>
                       </CardHeader>
                       
                       <CardContent className="space-y-4">
                         {isIdle ? (
-                          <div className="text-center py-6">
-                            <Pause className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-                            <p className="text-sm font-medium text-muted-foreground">Stage Idle</p>
-                            <p className="text-xs text-muted-foreground/70">
-                              Capacity: {config.dailyCapacity} WOs/day
-                            </p>
+                          <div className="py-2 text-xs text-muted-foreground">
+                            No work orders in this stage
                           </div>
                         ) : (
                           <>
