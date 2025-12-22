@@ -281,40 +281,86 @@ export const DeliveryRiskPanel = () => {
                   </div>
                   
                   <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { label: 'Production', value: risk.blockedByProduction, color: 'blue', icon: Factory },
-                      { label: 'Quality', value: risk.blockedByQuality, color: 'amber', icon: ShieldAlert },
-                      { label: 'External', value: risk.blockedByExternal, color: 'purple', icon: ExternalLinkIcon }
-                    ].map(item => (
-                      <Tooltip key={item.label}>
-                        <TooltipTrigger asChild>
-                          <div 
-                            className={cn(
-                              "rounded p-2 text-center cursor-pointer transition-all hover:scale-105",
-                              item.value > 0 
-                                ? `bg-${item.color}-500/10` 
-                                : "bg-muted/30 opacity-50"
-                            )}
-                            onClick={() => navigate(`/work-orders?blocked=${item.label.toLowerCase()}`)}
-                          >
-                            <item.icon className={cn(
-                              "h-3 w-3 mx-auto mb-1",
-                              item.value > 0 ? `text-${item.color}-600` : "text-muted-foreground"
-                            )} />
-                            <div className={cn(
-                              "text-lg font-bold",
-                              item.value > 0 ? `text-${item.color}-600` : "text-muted-foreground"
-                            )}>
-                              {item.value}
-                            </div>
-                            <p className="text-[9px] text-muted-foreground">{item.label}</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div 
+                          className={cn(
+                            "rounded p-2 text-center cursor-pointer transition-all hover:scale-105",
+                            risk.blockedByProduction > 0 
+                              ? "bg-blue-500/10" 
+                              : "bg-muted/30 opacity-50"
+                          )}
+                          onClick={() => navigate('/work-orders?blocked=production')}
+                        >
+                          <Factory className={cn(
+                            "h-3 w-3 mx-auto mb-1",
+                            risk.blockedByProduction > 0 ? "text-blue-600" : "text-muted-foreground"
+                          )} />
+                          <div className={cn(
+                            "text-lg font-bold",
+                            risk.blockedByProduction > 0 ? "text-blue-600" : "text-muted-foreground"
+                          )}>
+                            {risk.blockedByProduction}
                           </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {item.value} orders blocked by {item.label.toLowerCase()}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
+                          <p className="text-[9px] text-muted-foreground">Production</p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>{risk.blockedByProduction} orders blocked by production</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div 
+                          className={cn(
+                            "rounded p-2 text-center cursor-pointer transition-all hover:scale-105",
+                            risk.blockedByQuality > 0 
+                              ? "bg-amber-500/10" 
+                              : "bg-muted/30 opacity-50"
+                          )}
+                          onClick={() => navigate('/work-orders?blocked=quality')}
+                        >
+                          <ShieldAlert className={cn(
+                            "h-3 w-3 mx-auto mb-1",
+                            risk.blockedByQuality > 0 ? "text-amber-600" : "text-muted-foreground"
+                          )} />
+                          <div className={cn(
+                            "text-lg font-bold",
+                            risk.blockedByQuality > 0 ? "text-amber-600" : "text-muted-foreground"
+                          )}>
+                            {risk.blockedByQuality}
+                          </div>
+                          <p className="text-[9px] text-muted-foreground">Quality</p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>{risk.blockedByQuality} orders blocked by quality</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div 
+                          className={cn(
+                            "rounded p-2 text-center cursor-pointer transition-all hover:scale-105",
+                            risk.blockedByExternal > 0 
+                              ? "bg-purple-500/10" 
+                              : "bg-muted/30 opacity-50"
+                          )}
+                          onClick={() => navigate('/work-orders?blocked=external')}
+                        >
+                          <ExternalLinkIcon className={cn(
+                            "h-3 w-3 mx-auto mb-1",
+                            risk.blockedByExternal > 0 ? "text-purple-600" : "text-muted-foreground"
+                          )} />
+                          <div className={cn(
+                            "text-lg font-bold",
+                            risk.blockedByExternal > 0 ? "text-purple-600" : "text-muted-foreground"
+                          )}>
+                            {risk.blockedByExternal}
+                          </div>
+                          <p className="text-[9px] text-muted-foreground">External</p>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>{risk.blockedByExternal} orders blocked by external processing</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
               )}
