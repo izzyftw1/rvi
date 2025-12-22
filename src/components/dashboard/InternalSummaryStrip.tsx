@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, BarChart3, Factory, Clock } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { formatCount, formatPercent, isEmpty } from "@/lib/displayUtils";
 
 interface InternalSummaryStripProps {
   ordersInPipeline: number;
@@ -31,14 +32,14 @@ export const InternalSummaryStrip = ({
             {/* Mini stats preview when collapsed */}
             {!isOpen && (
               <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                <span>{ordersInPipeline} pipeline</span>
+                <span>{formatCount(ordersInPipeline)} pipeline</span>
                 <span className="text-muted-foreground/50">•</span>
-                <span>{ordersInProduction} in prod</span>
+                <span>{formatCount(ordersInProduction)} in prod</span>
                 <span className="text-muted-foreground/50">•</span>
                 <span className={cn(
-                  isGoodRate ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600"
+                  !isEmpty(onTimeRate) && (isGoodRate ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600")
                 )}>
-                  {onTimeRate}% OT
+                  {formatPercent(onTimeRate)} OT
                 </span>
               </div>
             )}
@@ -61,7 +62,7 @@ export const InternalSummaryStrip = ({
               <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
             <div>
-              <div className="text-lg font-semibold text-muted-foreground">{ordersInPipeline}</div>
+              <div className="text-lg font-semibold text-muted-foreground">{formatCount(ordersInPipeline)}</div>
               <p className="text-[10px] text-muted-foreground/70">Orders in Pipeline</p>
             </div>
           </div>
@@ -74,7 +75,7 @@ export const InternalSummaryStrip = ({
               <Factory className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
             <div>
-              <div className="text-lg font-semibold text-muted-foreground">{ordersInProduction}</div>
+              <div className="text-lg font-semibold text-muted-foreground">{formatCount(ordersInProduction)}</div>
               <p className="text-[10px] text-muted-foreground/70">In Production</p>
             </div>
           </div>
@@ -89,9 +90,9 @@ export const InternalSummaryStrip = ({
             <div>
               <div className={cn(
                 "text-lg font-semibold",
-                isGoodRate ? "text-emerald-600/70 dark:text-emerald-400/70" : "text-amber-600/70"
+                !isEmpty(onTimeRate) && (isGoodRate ? "text-emerald-600/70 dark:text-emerald-400/70" : "text-amber-600/70")
               )}>
-                {onTimeRate}%
+                {formatPercent(onTimeRate)}
               </div>
               <p className="text-[10px] text-muted-foreground/70">On-Time Rate (7d)</p>
             </div>
