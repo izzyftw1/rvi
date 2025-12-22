@@ -204,6 +204,7 @@ export default function ProductionProgress() {
       .channel("production_control_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadWorkOrders())
       .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadWorkOrders())
       .subscribe();
 
     const interval = setInterval(loadWorkOrders, 60000);

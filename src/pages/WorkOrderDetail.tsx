@@ -93,7 +93,7 @@ const WorkOrderDetail = () => {
 
     // Setup real-time subscriptions
     const channel = supabase
-      .channel('work_order_details')
+      .channel(`work_order_details_${id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cutting_records', filter: `work_order_id=eq.${id}` }, () => {
         loadWorkOrderData();
       })
@@ -101,6 +101,10 @@ const WorkOrderDetail = () => {
         loadWorkOrderData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves', filter: `work_order_id=eq.${id}` }, () => {
+        loadWorkOrderData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs', filter: `wo_id=eq.${id}` }, () => {
+        // Reload progress when production logs change
         loadWorkOrderData();
       })
       .subscribe();

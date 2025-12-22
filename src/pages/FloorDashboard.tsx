@@ -141,6 +141,10 @@ const FloorDashboard = () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
       .subscribe();
 
     return () => {
