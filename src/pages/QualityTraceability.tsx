@@ -798,27 +798,27 @@ export default function QualityTraceability() {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <AlertTriangle className="h-4 w-4 text-amber-500" />
-                                <span className="font-medium">{ncr.ncr_id}</span>
+                                <span className="font-medium">{ncr.ncr_number}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Badge variant={
-                                  ncr.status === "closed" ? "default" :
-                                  ncr.status === "open" ? "destructive" : "secondary"
+                                  ncr.status === "CLOSED" ? "default" :
+                                  ncr.status === "OPEN" ? "destructive" : "secondary"
                                 }>
                                   {ncr.status}
                                 </Badge>
-                                <Badge variant="outline">{ncr.severity}</Badge>
+                                <Badge variant="outline">{ncr.ncr_type}</Badge>
                               </div>
                             </div>
-                            <p className="text-sm">{ncr.description}</p>
+                            <p className="text-sm">{ncr.issue_description}</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
                               <div>
                                 <span className="text-muted-foreground">Raised From:</span>{" "}
                                 <span className="font-medium capitalize">{ncr.raised_from?.replace("_", " ") || "-"}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Defect Type:</span>{" "}
-                                <span className="font-medium">{ncr.defect_type}</span>
+                                <span className="text-muted-foreground">Disposition:</span>{" "}
+                                <span className="font-medium">{ncr.disposition || "-"}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">Quantity:</span>{" "}

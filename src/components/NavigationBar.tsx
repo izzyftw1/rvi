@@ -149,6 +149,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       allowedRoles: ['admin', 'production', 'ops_manager'],
       items: [
         { label: "Work Orders", path: "/work-orders", icon: Search },
+        { label: "Production Progress", path: "/production-progress", icon: Activity },
         { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
         { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Activity },
         { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
