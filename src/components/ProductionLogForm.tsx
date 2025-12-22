@@ -54,6 +54,51 @@ const DOWNTIME_REASONS = [
 
 type DowntimeReason = typeof DOWNTIME_REASONS[number];
 
+// Rejection types
+const REJECTION_TYPES = [
+  { key: 'rejection_dent', label: 'Dent' },
+  { key: 'rejection_scratch', label: 'Scratch Mark' },
+  { key: 'rejection_forging_mark', label: 'Forging Mark' },
+  { key: 'rejection_lining', label: 'Lining' },
+  { key: 'rejection_dimension', label: 'Dimension' },
+  { key: 'rejection_tool_mark', label: 'Tool Mark' },
+  { key: 'rejection_setting', label: 'Setting' },
+  { key: 'rejection_previous_setup_fault', label: 'Previous Setup Fault' },
+  { key: 'rejection_face_not_ok', label: 'Face Not OK' },
+  { key: 'rejection_material_not_ok', label: 'Material Not OK' },
+  { key: 'rejection_previous_setup_wo_operation', label: 'Previous Setup Fault Without Operation' },
+] as const;
+
+type RejectionKey = typeof REJECTION_TYPES[number]['key'];
+
+interface RejectionValues {
+  rejection_dent: number;
+  rejection_scratch: number;
+  rejection_forging_mark: number;
+  rejection_lining: number;
+  rejection_dimension: number;
+  rejection_tool_mark: number;
+  rejection_setting: number;
+  rejection_previous_setup_fault: number;
+  rejection_face_not_ok: number;
+  rejection_material_not_ok: number;
+  rejection_previous_setup_wo_operation: number;
+}
+
+const defaultRejectionValues: RejectionValues = {
+  rejection_dent: 0,
+  rejection_scratch: 0,
+  rejection_forging_mark: 0,
+  rejection_lining: 0,
+  rejection_dimension: 0,
+  rejection_tool_mark: 0,
+  rejection_setting: 0,
+  rejection_previous_setup_fault: 0,
+  rejection_face_not_ok: 0,
+  rejection_material_not_ok: 0,
+  rejection_previous_setup_wo_operation: 0,
+};
+
 interface DowntimeEntry {
   reason: DowntimeReason;
   minutes: number;
@@ -211,6 +256,9 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const [selectedDowntimeReason, setSelectedDowntimeReason] = useState<DowntimeReason | "">("");
   const [downtimeMinutesInput, setDowntimeMinutesInput] = useState("");
   
+  // Rejection quantities state
+  const [rejectionValues, setRejectionValues] = useState<RejectionValues>({ ...defaultRejectionValues });
+  
   // Override states
   const [overrideCycleTime, setOverrideCycleTime] = useState(false);
   const [cycleTimeOverrideValue, setCycleTimeOverrideValue] = useState("");
@@ -349,6 +397,25 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     return Math.round((actualRuntimeMinutes / grossRuntimeMinutes) * 100);
   }, [actualRuntimeMinutes, grossRuntimeMinutes]);
 
+  // Total rejection quantity (sum of all rejection fields)
+  const totalRejectionQty = useMemo(() => {
+    return Object.values(rejectionValues).reduce((sum, val) => sum + (val || 0), 0);
+  }, [rejectionValues]);
+
+  // OK Pcs (actual production - total rejections)
+  const okPcs = useMemo(() => {
+    return Math.max(0, actualQty - totalRejectionQty);
+  }, [actualQty, totalRejectionQty]);
+
+  // Handle rejection value change
+  const handleRejectionChange = (key: RejectionKey, value: string) => {
+    const numValue = parseInt(value, 10) || 0;
+    setRejectionValues(prev => ({
+      ...prev,
+      [key]: Math.max(0, numValue)
+    }));
+  };
+
   // Filter people by role
   const supervisors = useMemo(() => 
     people.filter(p => p.role === 'supervisor' && p.is_active), [people]);
@@ -473,6 +540,19 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         operator_id: user?.id,
         log_timestamp: new Date().toISOString(),
         cycle_time_override: overrideCycleTime ? effectiveCycleTime : null,
+        // Rejection quantities
+        rejection_dent: rejectionValues.rejection_dent || 0,
+        rejection_scratch: rejectionValues.rejection_scratch || 0,
+        rejection_forging_mark: rejectionValues.rejection_forging_mark || 0,
+        rejection_lining: rejectionValues.rejection_lining || 0,
+        rejection_dimension: rejectionValues.rejection_dimension || 0,
+        rejection_tool_mark: rejectionValues.rejection_tool_mark || 0,
+        rejection_setting: rejectionValues.rejection_setting || 0,
+        rejection_previous_setup_fault: rejectionValues.rejection_previous_setup_fault || 0,
+        rejection_face_not_ok: rejectionValues.rejection_face_not_ok || 0,
+        rejection_material_not_ok: rejectionValues.rejection_material_not_ok || 0,
+        total_rejection_quantity: totalRejectionQty,
+        ok_quantity: okPcs,
       });
 
       if (logError) throw logError;
@@ -493,6 +573,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       setDowntimeEntries([]);
       setSelectedDowntimeReason("");
       setDowntimeMinutesInput("");
+      setRejectionValues({ ...defaultRejectionValues });
       setOverrideCycleTime(false);
       setCycleTimeOverrideValue("");
       setOverrideMachine(false);
@@ -854,6 +935,38 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 )}
               </div>
 
+              {/* Rejection Quantities Section */}
+              <div className="space-y-3 md:col-span-3">
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive" className="text-xs">Rejections</Badge>
+                  <Label>Rejection Breakdown</Label>
+                  {totalRejectionQty > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      Total: {formatCount(totalRejectionQty)} pcs
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                  {REJECTION_TYPES.map(({ key, label }) => (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">{label}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={rejectionValues[key] || ''}
+                        onChange={(e) => handleRejectionChange(key, e.target.value)}
+                        placeholder="0"
+                        className="h-9"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enter rejection quantities for each type. Total Rejection and OK Pcs are calculated automatically.
+                </p>
+              </div>
+
               {/* Remarks */}
               <div className="space-y-2 md:col-span-3">
                 <Label>Remarks</Label>
@@ -884,6 +997,8 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
               <CalculatedField label="Target Qty" value={formatCount(targetQuantity)} formula="(runtime × 60) / cycle" />
               <CalculatedField label="Efficiency" value={`${formatPercent(efficiency)}%`} formula="(actual / target) × 100" />
               <CalculatedField label="Variance" value={formatCount(actualQty - targetQuantity)} formula="actual − target" />
+              <CalculatedField label="Total Rejection" value={formatCount(totalRejectionQty)} formula="sum of all rejections" />
+              <CalculatedField label="OK Pcs" value={formatCount(okPcs)} formula="actual − rejections" />
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3" />
