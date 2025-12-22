@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { startOfWeek, format, differenceInDays, parseISO } from "date-fns";
+import { formatCount, formatDisplayValue, isEmpty } from "@/lib/displayUtils";
 
 interface QualitySignal {
   label: string;
@@ -291,7 +292,9 @@ export const QualityLossSignals = () => {
           </span>
         </div>
         <div className={cn("text-2xl font-bold", signal.color)}>
-          {signal.value}
+          {typeof signal.value === 'number' 
+            ? formatDisplayValue(signal.value, { showZero: false }) 
+            : signal.value}
         </div>
         
         {/* Age indicator */}
@@ -303,10 +306,10 @@ export const QualityLossSignals = () => {
         )}
         
         {/* Impacted pieces */}
-        {signal.impactedPcs !== undefined && signal.impactedPcs > 0 && (
+        {signal.impactedPcs !== undefined && !isEmpty(signal.impactedPcs) && (
           <div className="flex items-center gap-1 mt-0.5">
             <Package className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">{signal.impactedPcs.toLocaleString()} pcs affected</span>
+            <span className="text-[10px] text-muted-foreground">{formatCount(signal.impactedPcs)} pcs affected</span>
           </div>
         )}
         
@@ -356,7 +359,7 @@ export const QualityLossSignals = () => {
                 onClick={() => navigate('/qc-incoming?filter=hold')}
               >
                 <ShieldAlert className="h-3 w-3" />
-                {goodsInQcHold.totalPcs.toLocaleString()} kg blocked by QC
+                {formatDisplayValue(goodsInQcHold.totalPcs, { suffix: ' kg', showZero: false })} blocked by QC
               </Badge>
             )}
             <button

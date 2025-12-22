@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, ShieldAlert, Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { formatCount, formatPercent, isEmpty } from "@/lib/displayUtils";
 
 interface ExternalSummaryStripProps {
   totalActiveMoves: number;
@@ -28,7 +29,7 @@ export const ExternalSummaryStrip = ({
         className="text-center cursor-pointer hover:opacity-80 transition-opacity"
         onClick={() => navigate('/partners')}
       >
-        <div className="text-3xl font-bold text-foreground">{totalActiveMoves}</div>
+        <div className="text-3xl font-bold text-foreground">{formatCount(totalActiveMoves)}</div>
         <p className="text-xs text-muted-foreground">Active Moves</p>
       </div>
       <div 
@@ -44,7 +45,7 @@ export const ExternalSummaryStrip = ({
             "text-3xl font-bold",
             hasSLABreach ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
           )}>
-            {overdueCount}
+            {formatCount(overdueCount, true)}
           </div>
         </div>
         <p className={cn(
@@ -72,7 +73,7 @@ export const ExternalSummaryStrip = ({
             "text-3xl font-bold",
             overduePcs > 0 ? "text-amber-600 dark:text-amber-400" : "text-primary"
           )}>
-            {overduePcs > 0 ? overduePcs.toLocaleString() : totalWipPcs.toLocaleString()}
+            {overduePcs > 0 ? formatCount(overduePcs) : formatCount(totalWipPcs)}
           </div>
         </div>
         <p className={cn(

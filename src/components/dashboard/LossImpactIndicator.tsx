@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { AlertTriangle, Clock, Trash2, RefreshCw, TrendingDown, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { formatCount, formatDisplayValue, isEmpty } from "@/lib/displayUtils";
 
 interface LossData {
   scrapPcs: number;
@@ -248,7 +249,7 @@ export const LossImpactIndicator = () => {
                       <div className="flex items-center gap-2 mb-1">
                         <Icon className={cn("h-4 w-4", styles.icon)} />
                         <span className={cn("text-2xl font-bold", styles.text)}>
-                          {item.value.toLocaleString()}
+                          {formatDisplayValue(item.value, { showZero: false })}
                         </span>
                         <span className="text-xs text-muted-foreground">{item.unit}</span>
                       </div>

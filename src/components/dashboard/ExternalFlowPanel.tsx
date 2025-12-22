@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatCount, formatWeight, formatDisplayValue, isEmpty } from "@/lib/displayUtils";
 
 interface ProcessData {
   pcs: number;
@@ -206,15 +207,15 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
         <div className="flex items-center justify-between px-2 flex-wrap gap-2">
           <div className="flex items-center gap-4 text-sm flex-wrap">
             <span className="text-muted-foreground">
-              Active: <span className="font-semibold text-foreground">{totalActive}</span> moves
+              Active: <span className="font-semibold text-foreground">{formatCount(totalActive)}</span> moves
             </span>
             <span className="text-muted-foreground">
-              WIP: <span className="font-semibold text-foreground">{totalPcs.toLocaleString()}</span> pcs
+              WIP: <span className="font-semibold text-foreground">{formatCount(totalPcs)}</span> pcs
             </span>
-            {totalOverdue > 0 && (
+            {!isEmpty(totalOverdue) && (
               <Badge variant="destructive" className="gap-1 animate-pulse">
                 <AlertTriangle className="h-3 w-3" />
-                {totalOverdue} Overdue
+                {formatCount(totalOverdue)} Overdue
               </Badge>
             )}
           </div>
@@ -324,7 +325,7 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                             "text-xl font-bold",
                             hasActivity ? "text-foreground" : "text-muted-foreground"
                           )}>
-                            {processData.activeMoves}
+                            {formatCount(processData.activeMoves)}
                           </div>
                           <p className="text-[10px] text-muted-foreground">moves</p>
                         </div>
@@ -333,16 +334,16 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                             "text-xl font-bold",
                             hasActivity ? "text-foreground" : "text-muted-foreground"
                           )}>
-                            {processData.pcs.toLocaleString()}
+                            {formatCount(processData.pcs)}
                           </div>
                           <p className="text-[10px] text-muted-foreground">pcs</p>
                         </div>
                       </div>
 
-                      {processData.kg > 0 && (
+                      {!isEmpty(processData.kg) && (
                         <div className="mt-2 pt-2 border-t border-border/50 text-center">
                           <span className="text-xs text-muted-foreground">
-                            {(processData.kg ?? 0).toFixed(1)} kg
+                            {formatWeight(processData.kg)}
                           </span>
                         </div>
                       )}
@@ -352,9 +353,9 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                 <TooltipContent>
                   <div className="text-xs space-y-1">
                     <p className="font-semibold">{label}</p>
-                    <p>{processData.activeMoves} active moves</p>
-                    <p>{(processData.pcs ?? 0).toLocaleString()} pcs • {(processData.kg ?? 0).toFixed(1)} kg</p>
-                    {hasOverdue && <p className="text-destructive">{processData.overdue} overdue returns</p>}
+                    <p>{formatCount(processData.activeMoves)} active moves</p>
+                    <p>{formatCount(processData.pcs)} pcs • {formatWeight(processData.kg)}</p>
+                    {hasOverdue && <p className="text-destructive">{formatCount(processData.overdue)} overdue returns</p>}
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -446,7 +447,7 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                                 "text-sm font-bold",
                                 partner.overdueMoves > 0 ? "text-amber-600" : "text-foreground"
                               )}>
-                                {partner.totalPcs.toLocaleString()}
+                                {formatCount(partner.totalPcs)}
                               </p>
                               <p className={cn(
                                 "text-[10px]",
