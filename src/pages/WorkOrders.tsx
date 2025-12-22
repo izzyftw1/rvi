@@ -46,12 +46,29 @@ const BLOCK_REASONS = {
 };
 
 // Helper to determine block reason for a work order
+// Uses qc_material_status and qc_first_piece_status as authoritative sources
 const getBlockReason = (wo: any): string | null => {
   const hasExternalOverdue = wo.external_moves?.some((m: any) => 
     m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
   );
   if (hasExternalOverdue) return 'ext_overdue';
-  if (wo.qc_gate_status === 'pending' || wo.qc_gate_status === 'failed') return 'qc_pending';
+  
+  // Check QC gates using authoritative status fields
+  const materialStatus = wo.qc_material_status;
+  const firstPieceStatus = wo.qc_first_piece_status;
+  const materialFailed = materialStatus === 'failed';
+  const firstPieceFailed = firstPieceStatus === 'failed';
+  const materialPending = !materialStatus || materialStatus === 'pending';
+  const firstPiecePending = !firstPieceStatus || firstPieceStatus === 'pending';
+  
+  // If any QC gate is failed, it's a blocker
+  if (materialFailed || firstPieceFailed) return 'qc_pending';
+  // If material is pending, first piece is blocked
+  if (materialPending) return 'qc_pending';
+  // If material is passed but first piece is pending
+  const materialComplete = materialStatus === 'passed' || materialStatus === 'waived';
+  if (materialComplete && firstPiecePending) return 'qc_pending';
+  
   if (wo.has_open_ncr) return 'ncr_open';
   if (wo.planning_status === 'pending' || wo.status === 'draft') return 'not_released';
   if (wo.material_status === 'pending' || wo.material_received === false) return 'material_pending';
