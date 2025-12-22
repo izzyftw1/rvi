@@ -3,25 +3,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { 
   AlertTriangle, 
   CheckCircle2, 
   Clock, 
-  Package, 
   Truck, 
   FlaskConical,
-  PlayCircle,
   ArrowRight,
-  Activity
+  Zap,
+  AlertCircle,
+  Target,
+  Timer,
+  ExternalLink
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow, differenceInHours, parseISO } from "date-fns";
+import { formatDistanceToNow, differenceInHours, parseISO, format } from "date-fns";
 
 interface WorkOrder {
   id: string;
-  wo_id: string;
   display_id: string;
   customer: string;
   customer_po: string;
@@ -30,124 +32,200 @@ interface WorkOrder {
   status: string;
   due_date: string;
   created_at: string;
+  current_stage: string;
   qc_material_passed: boolean;
   qc_first_piece_passed: boolean;
   external_status?: string;
   progress_percentage?: number;
+  blocking_reason?: string;
+  aging_hours?: number;
+  priority_score?: number;
 }
 
-type BlockerType = 'material_qc' | 'first_piece_qc' | 'external' | 'ready_not_started';
-type BlockerTypeOrNull = BlockerType | null;
+type ExceptionType = 'critical' | 'urgent' | 'action_needed';
 
-interface BlockerBucket {
-  id: BlockerType;
-  label: string;
-  description: string;
-  icon: React.ElementType;
-  colorClass: string;
-  bgClass: string;
-  borderClass: string;
+interface Exception {
+  id: string;
+  wo: WorkOrder;
+  type: ExceptionType;
+  reason: string;
+  action: string;
+  aging_hours: number;
 }
 
-const BLOCKER_BUCKETS: BlockerBucket[] = [
-  {
-    id: 'material_qc',
-    label: 'Material QC',
-    description: 'Awaiting material quality approval',
-    icon: FlaskConical,
-    colorClass: 'text-red-600 dark:text-red-400',
-    bgClass: 'bg-red-50 dark:bg-red-950/30',
-    borderClass: 'border-red-200 dark:border-red-900'
-  },
-  {
-    id: 'first_piece_qc',
-    label: 'First Piece QC',
-    description: 'Material passed, awaiting first piece',
-    icon: CheckCircle2,
-    colorClass: 'text-orange-600 dark:text-orange-400',
-    bgClass: 'bg-orange-50 dark:bg-orange-950/30',
-    borderClass: 'border-orange-200 dark:border-orange-900'
-  },
-  {
-    id: 'external',
-    label: 'External Processing',
-    description: 'Waiting on external partner',
-    icon: Truck,
-    colorClass: 'text-purple-600 dark:text-purple-400',
-    bgClass: 'bg-purple-50 dark:bg-purple-950/30',
-    borderClass: 'border-purple-200 dark:border-purple-900'
-  },
-  {
-    id: 'ready_not_started',
-    label: 'Ready, Not Started',
-    description: 'All gates passed, no production logged',
-    icon: PlayCircle,
-    colorClass: 'text-blue-600 dark:text-blue-400',
-    bgClass: 'bg-blue-50 dark:bg-blue-950/30',
-    borderClass: 'border-blue-200 dark:border-blue-900'
-  }
-];
-
-function getBlockerType(wo: WorkOrder): BlockerType {
-  if (!wo.qc_material_passed) return 'material_qc';
-  if (!wo.qc_first_piece_passed) return 'first_piece_qc';
-  if (wo.external_status === 'pending' || wo.external_status === 'in_progress') return 'external';
-  if ((wo.progress_percentage ?? 0) === 0 && wo.qc_material_passed && wo.qc_first_piece_passed) return 'ready_not_started';
-  return null;
-}
-
-function getAgingHours(wo: WorkOrder): number {
+function getAgingHours(dateStr: string): number {
   try {
-    return differenceInHours(new Date(), parseISO(wo.created_at));
+    return differenceInHours(new Date(), parseISO(dateStr));
   } catch {
     return 0;
   }
 }
 
-type FlowHealth = 'green' | 'amber' | 'red';
+function buildExceptions(workOrders: WorkOrder[]): Exception[] {
+  const exceptions: Exception[] = [];
 
-function calculateFlowHealth(workOrders: WorkOrder[], blockedCounts: Record<BlockerType, number>): { health: FlowHealth; reasons: string[] } {
-  const reasons: string[] = [];
-  
-  const totalBlocked = Object.values(blockedCounts).reduce((a, b) => a + b, 0);
-  const totalActive = workOrders.filter(wo => wo.status === 'in_progress' || wo.status === 'pending').length;
-  const blockedRatio = totalActive > 0 ? totalBlocked / totalActive : 0;
+  workOrders.forEach(wo => {
+    const agingHours = getAgingHours(wo.created_at);
+    const isOverdue = wo.due_date && new Date(wo.due_date) < new Date();
+    
+    // CRITICAL: Overdue + Blocked
+    if (isOverdue && !wo.qc_material_passed) {
+      exceptions.push({
+        id: `${wo.id}-mat-overdue`,
+        wo,
+        type: 'critical',
+        reason: 'Overdue & blocked by Material QC',
+        action: 'Approve material QC immediately',
+        aging_hours: agingHours
+      });
+      return;
+    }
 
-  // Check aging - WOs blocked for more than 48 hours
-  const severelyAged = workOrders.filter(wo => {
-    const blocker = getBlockerType(wo);
-    return blocker !== null && getAgingHours(wo) > 48;
-  }).length;
+    if (isOverdue && !wo.qc_first_piece_passed) {
+      exceptions.push({
+        id: `${wo.id}-fp-overdue`,
+        wo,
+        type: 'critical',
+        reason: 'Overdue & blocked by First Piece QC',
+        action: 'Complete first piece inspection',
+        aging_hours: agingHours
+      });
+      return;
+    }
 
-  // Check stage imbalance - if one blocker has more than 50% of blocked items
-  const maxBlocker = Math.max(...Object.values(blockedCounts));
-  const hasImbalance = totalBlocked > 0 && maxBlocker / totalBlocked > 0.6;
+    if (isOverdue && wo.external_status === 'pending') {
+      exceptions.push({
+        id: `${wo.id}-ext-overdue`,
+        wo,
+        type: 'critical',
+        reason: 'Overdue & waiting on external partner',
+        action: 'Escalate with vendor',
+        aging_hours: agingHours
+      });
+      return;
+    }
 
-  // Determine health
-  let health: FlowHealth = 'green';
+    // URGENT: Long aging blockers (>24h)
+    if (!wo.qc_material_passed && agingHours > 24) {
+      exceptions.push({
+        id: `${wo.id}-mat-aging`,
+        wo,
+        type: 'urgent',
+        reason: `Material QC pending ${Math.floor(agingHours / 24)}d`,
+        action: 'Review material documentation',
+        aging_hours: agingHours
+      });
+      return;
+    }
 
-  if (blockedRatio > 0.5 || severelyAged > 3) {
-    health = 'red';
-    if (blockedRatio > 0.5) reasons.push(`${Math.round(blockedRatio * 100)}% of WOs are blocked`);
-    if (severelyAged > 3) reasons.push(`${severelyAged} WOs blocked >48h`);
-  } else if (blockedRatio > 0.25 || severelyAged > 0 || hasImbalance) {
-    health = 'amber';
-    if (blockedRatio > 0.25) reasons.push(`${Math.round(blockedRatio * 100)}% of WOs are blocked`);
-    if (severelyAged > 0) reasons.push(`${severelyAged} WO${severelyAged > 1 ? 's' : ''} blocked >48h`);
-    if (hasImbalance) reasons.push('Stage imbalance detected');
-  }
+    if (!wo.qc_first_piece_passed && wo.qc_material_passed && agingHours > 24) {
+      exceptions.push({
+        id: `${wo.id}-fp-aging`,
+        wo,
+        type: 'urgent',
+        reason: `First Piece QC pending ${Math.floor(agingHours / 24)}d`,
+        action: 'Schedule first piece run',
+        aging_hours: agingHours
+      });
+      return;
+    }
 
-  if (reasons.length === 0) {
-    reasons.push('Production flowing smoothly');
-  }
+    if (wo.external_status === 'in_progress' && agingHours > 72) {
+      exceptions.push({
+        id: `${wo.id}-ext-aging`,
+        wo,
+        type: 'urgent',
+        reason: `At external partner >3 days`,
+        action: 'Follow up with partner',
+        aging_hours: agingHours
+      });
+      return;
+    }
 
-  return { health, reasons };
+    // ACTION NEEDED: Standard blockers
+    if (!wo.qc_material_passed) {
+      exceptions.push({
+        id: `${wo.id}-mat`,
+        wo,
+        type: 'action_needed',
+        reason: 'Awaiting Material QC',
+        action: 'Perform material inspection',
+        aging_hours: agingHours
+      });
+      return;
+    }
+
+    if (!wo.qc_first_piece_passed && wo.qc_material_passed) {
+      exceptions.push({
+        id: `${wo.id}-fp`,
+        wo,
+        type: 'action_needed',
+        reason: 'Awaiting First Piece QC',
+        action: 'Run first piece sample',
+        aging_hours: agingHours
+      });
+      return;
+    }
+
+    if (wo.external_status === 'pending' || wo.external_status === 'in_progress') {
+      exceptions.push({
+        id: `${wo.id}-ext`,
+        wo,
+        type: 'action_needed',
+        reason: 'At external processing',
+        action: 'Track partner status',
+        aging_hours: agingHours
+      });
+      return;
+    }
+
+    // Ready but not started (all gates passed, 0 progress)
+    if (wo.qc_material_passed && wo.qc_first_piece_passed && (wo.progress_percentage ?? 0) === 0) {
+      exceptions.push({
+        id: `${wo.id}-ready`,
+        wo,
+        type: 'action_needed',
+        reason: 'Ready for production',
+        action: 'Assign to machine',
+        aging_hours: agingHours
+      });
+    }
+  });
+
+  // Sort by priority: critical first, then urgent, then by aging
+  return exceptions.sort((a, b) => {
+    const typeOrder = { critical: 0, urgent: 1, action_needed: 2 };
+    if (typeOrder[a.type] !== typeOrder[b.type]) {
+      return typeOrder[a.type] - typeOrder[b.type];
+    }
+    return b.aging_hours - a.aging_hours;
+  });
 }
+
+const typeConfig: Record<ExceptionType, { label: string; icon: React.ElementType; color: string; bgColor: string }> = {
+  critical: { 
+    label: 'Critical', 
+    icon: AlertCircle, 
+    color: 'text-red-700 dark:text-red-300',
+    bgColor: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800'
+  },
+  urgent: { 
+    label: 'Urgent', 
+    icon: AlertTriangle, 
+    color: 'text-amber-700 dark:text-amber-300',
+    bgColor: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
+  },
+  action_needed: { 
+    label: 'Action Needed', 
+    icon: Target, 
+    color: 'text-blue-700 dark:text-blue-300',
+    bgColor: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800'
+  }
+};
 
 export default function ProductionProgress() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBucket, setSelectedBucket] = useState<BlockerType>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -155,14 +233,15 @@ export default function ProductionProgress() {
 
     const channel = supabase
       .channel("production_control_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders" },
-        () => loadWorkOrders()
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => loadWorkOrders())
       .subscribe();
 
+    // Auto-refresh every 60 seconds
+    const interval = setInterval(loadWorkOrders, 60000);
+
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, []);
@@ -173,7 +252,6 @@ export default function ProductionProgress() {
         .from("work_orders")
         .select(`
           id,
-          wo_id,
           display_id,
           customer,
           customer_po,
@@ -182,21 +260,20 @@ export default function ProductionProgress() {
           status,
           due_date,
           created_at,
+          current_stage,
           qc_material_passed,
           qc_first_piece_passed
         `)
         .in("status", ["in_progress", "pending"])
-        .order("created_at", { ascending: false });
+        .order("due_date", { ascending: true });
 
       if (error) throw error;
 
-      // Enrich with progress data
+      // Enrich with progress and external status
       const enriched = await Promise.all(
         (data || []).map(async (wo) => {
           const { data: progress } = await supabase.rpc("get_wo_progress", { _wo_id: wo.id });
-          const progressInfo = progress?.[0];
           
-          // Check external status
           const { data: externalMoves } = await supabase
             .from("wo_external_moves")
             .select("status")
@@ -206,8 +283,8 @@ export default function ProductionProgress() {
 
           return {
             ...wo,
-            progress_percentage: progressInfo?.progress_percentage ?? 0,
-            external_status: externalMoves && externalMoves.length > 0 ? externalMoves[0].status : null
+            progress_percentage: progress?.[0]?.progress_percentage ?? 0,
+            external_status: externalMoves?.[0]?.status ?? null
           };
         })
       );
@@ -220,52 +297,23 @@ export default function ProductionProgress() {
     }
   };
 
-  const blockedCounts = useMemo(() => {
-    const counts: Record<BlockerType, number> = {
-      material_qc: 0,
-      first_piece_qc: 0,
-      external: 0,
-      ready_not_started: 0
-    };
+  const exceptions = useMemo(() => buildExceptions(workOrders), [workOrders]);
 
-    workOrders.forEach(wo => {
-      const blocker = getBlockerType(wo);
-      if (blocker) counts[blocker]++;
-    });
-
-    return counts;
-  }, [workOrders]);
-
-  const flowHealth = useMemo(() => 
-    calculateFlowHealth(workOrders, blockedCounts), 
-    [workOrders, blockedCounts]
-  );
-
-  const filteredWorkOrders = useMemo(() => {
-    if (!selectedBucket) return [];
-    return workOrders.filter(wo => getBlockerType(wo) === selectedBucket);
-  }, [workOrders, selectedBucket]);
-
-  const totalBlocked = blockedCounts.material_qc + blockedCounts.first_piece_qc + blockedCounts.external + blockedCounts.ready_not_started;
+  const criticalCount = exceptions.filter(e => e.type === 'critical').length;
+  const urgentCount = exceptions.filter(e => e.type === 'urgent').length;
+  const actionCount = exceptions.filter(e => e.type === 'action_needed').length;
   const totalActive = workOrders.length;
-  const flowing = totalActive - totalBlocked;
+  const flowingCount = totalActive - exceptions.length;
 
-  const healthColors = {
-    green: 'bg-green-500',
-    amber: 'bg-amber-500',
-    red: 'bg-red-500'
-  };
-
-  const healthBgColors = {
-    green: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800',
-    amber: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800',
-    red: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800'
-  };
+  // Group exceptions by type for display
+  const criticalExceptions = exceptions.filter(e => e.type === 'critical');
+  const urgentExceptions = exceptions.filter(e => e.type === 'urgent');
+  const actionExceptions = exceptions.filter(e => e.type === 'action_needed');
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">Loading exceptions...</div>
       </div>
     );
   }
@@ -273,169 +321,222 @@ export default function ProductionProgress() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
-        {/* Header */}
+        {/* Header - Minimal */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Production Control</h1>
-            <p className="text-muted-foreground text-sm">Exception-focused view • Surface problems, not progress</p>
+            <p className="text-sm text-muted-foreground">
+              What's blocking flow? What must be done next?
+            </p>
           </div>
           
-          {/* Flow Health Indicator */}
-          <Card className={cn("border", healthBgColors[flowHealth.health])}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={cn("w-4 h-4 rounded-full animate-pulse", healthColors[flowHealth.health])} />
-              <div>
-                <div className="text-sm font-semibold capitalize flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Flow Health: {flowHealth.health.toUpperCase()}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {flowHealth.reasons.join(' • ')}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Summary Strip */}
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant="outline" className="gap-1">
-            <Package className="h-3 w-3" />
-            {totalActive} Active WOs
-          </Badge>
-          <Badge variant="secondary" className="gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-            <CheckCircle2 className="h-3 w-3" />
-            {flowing} Flowing
-          </Badge>
-          <Badge variant="secondary" className="gap-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
-            <AlertTriangle className="h-3 w-3" />
-            {totalBlocked} Blocked
-          </Badge>
-        </div>
-
-        {/* Blocker Buckets */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {BLOCKER_BUCKETS.map((bucket) => {
-            const count = blockedCounts[bucket.id] || 0;
-            const isSelected = selectedBucket === bucket.id;
-            const Icon = bucket.icon;
-
-            return (
-              <Card
-                key={bucket.id}
-                onClick={() => setSelectedBucket(isSelected ? null : bucket.id)}
-                className={cn(
-                  "cursor-pointer transition-all border-2",
-                  bucket.borderClass,
-                  bucket.bgClass,
-                  isSelected && "ring-2 ring-primary ring-offset-2",
-                  count === 0 && "opacity-50"
-                )}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <Icon className={cn("h-5 w-5", bucket.colorClass)} />
-                    <span className={cn("text-3xl font-bold", bucket.colorClass)}>
-                      {count}
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <CardTitle className="text-sm font-medium">{bucket.label}</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">{bucket.description}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Filtered Work Orders List */}
-        {selectedBucket && (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">
-                  {BLOCKER_BUCKETS.find(b => b.id === selectedBucket)?.label} — {filteredWorkOrders.length} Work Orders
-                </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedBucket(null)}>
-                  Clear Filter
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {filteredWorkOrders.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No work orders in this category
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredWorkOrders.map((wo) => {
-                    const agingHours = getAgingHours(wo);
-                    const isOverdue = wo.due_date && new Date(wo.due_date) < new Date();
-
-                    return (
-                      <div
-                        key={wo.id}
-                        onClick={() => navigate(`/work-orders/${wo.id}`)}
-                        className={cn(
-                          "flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors group",
-                          isOverdue && "border-red-300 dark:border-red-800"
-                        )}
-                      >
-                        <div className="flex items-center gap-4 min-w-0">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-semibold text-sm">{wo.display_id}</span>
-                              {isOverdue && (
-                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {wo.customer} • {wo.item_code}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4 flex-shrink-0">
-                          <div className="text-right hidden sm:block">
-                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {agingHours < 24 
-                                ? `${agingHours}h` 
-                                : formatDistanceToNow(parseISO(wo.created_at), { addSuffix: false })}
-                            </div>
-                            <div className="text-xs">
-                              {wo.quantity.toLocaleString()} pcs
-                            </div>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Empty State when no bucket selected */}
-        {!selectedBucket && totalBlocked > 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">Click a bucket above to see blocked work orders</p>
-            <p className="text-sm">Each bucket represents a specific blocker type</p>
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
+            <Timer className="h-3 w-3" />
+            Updated {format(new Date(), 'HH:mm')}
           </div>
-        )}
+        </div>
 
-        {!selectedBucket && totalBlocked === 0 && (
-          <div className="text-center py-12">
-            <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500" />
-            <p className="text-lg font-medium text-green-700 dark:text-green-400">All Clear!</p>
-            <p className="text-sm text-muted-foreground">No blocked work orders at this time</p>
+        {/* Status Strip - Answer the key question at a glance */}
+        <Card className={cn(
+          "border-2",
+          criticalCount > 0 ? "border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-950/20" :
+          urgentCount > 0 ? "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20" :
+          exceptions.length > 0 ? "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20" :
+          "border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-950/20"
+        )}>
+          <CardContent className="py-4 px-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                {criticalCount > 0 ? (
+                  <>
+                    <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                    <div>
+                      <p className="font-semibold text-red-700 dark:text-red-300">
+                        {criticalCount} Critical Issue{criticalCount > 1 ? 's' : ''} — Immediate Action Required
+                      </p>
+                      <p className="text-xs text-red-600/80 dark:text-red-400/80">
+                        Overdue work orders blocked and waiting
+                      </p>
+                    </div>
+                  </>
+                ) : urgentCount > 0 ? (
+                  <>
+                    <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <p className="font-semibold text-amber-700 dark:text-amber-300">
+                        {urgentCount} Urgent Item{urgentCount > 1 ? 's' : ''} — Attention Needed Today
+                      </p>
+                      <p className="text-xs text-amber-600/80 dark:text-amber-400/80">
+                        Long-aging blockers building up
+                      </p>
+                    </div>
+                  </>
+                ) : exceptions.length > 0 ? (
+                  <>
+                    <Target className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                    <div>
+                      <p className="font-semibold text-blue-700 dark:text-blue-300">
+                        {exceptions.length} Action Item{exceptions.length > 1 ? 's' : ''} — Normal Operations
+                      </p>
+                      <p className="text-xs text-blue-600/80 dark:text-blue-400/80">
+                        Work orders awaiting standard processing
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                    <div>
+                      <p className="font-semibold text-green-700 dark:text-green-300">
+                        All Clear — Production Flowing
+                      </p>
+                      <p className="text-xs text-green-600/80 dark:text-green-400/80">
+                        No blockers or pending actions
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4 text-sm">
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{totalActive}</p>
+                  <p className="text-xs text-muted-foreground">Active WOs</p>
+                </div>
+                <Separator orientation="vertical" className="h-10" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{flowingCount}</p>
+                  <p className="text-xs text-muted-foreground">Flowing</p>
+                </div>
+                <Separator orientation="vertical" className="h-10" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{exceptions.length}</p>
+                  <p className="text-xs text-muted-foreground">Blocked</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Exception Lists - Prioritized */}
+        <div className="space-y-4">
+          {/* Critical Section */}
+          {criticalExceptions.length > 0 && (
+            <ExceptionSection
+              type="critical"
+              exceptions={criticalExceptions}
+              navigate={navigate}
+            />
+          )}
+
+          {/* Urgent Section */}
+          {urgentExceptions.length > 0 && (
+            <ExceptionSection
+              type="urgent"
+              exceptions={urgentExceptions}
+              navigate={navigate}
+            />
+          )}
+
+          {/* Action Needed Section */}
+          {actionExceptions.length > 0 && (
+            <ExceptionSection
+              type="action_needed"
+              exceptions={actionExceptions}
+              navigate={navigate}
+            />
+          )}
+        </div>
+
+        {/* All Clear State */}
+        {exceptions.length === 0 && (
+          <div className="text-center py-16">
+            <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-green-500" />
+            <p className="text-xl font-semibold text-green-700 dark:text-green-400">Production Flowing Smoothly</p>
+            <p className="text-muted-foreground mt-2">
+              All {totalActive} active work orders are progressing without blockers
+            </p>
+            <Button 
+              variant="outline" 
+              className="mt-6 gap-2"
+              onClick={() => navigate('/work-orders')}
+            >
+              View All Work Orders
+              <ExternalLink className="h-4 w-4" />
+            </Button>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// Exception Section Component
+function ExceptionSection({ 
+  type, 
+  exceptions, 
+  navigate 
+}: { 
+  type: ExceptionType; 
+  exceptions: Exception[]; 
+  navigate: (path: string) => void;
+}) {
+  const config = typeConfig[type];
+  const Icon = config.icon;
+
+  return (
+    <Card className={cn("border-2", config.bgColor)}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Icon className={cn("h-5 w-5", config.color)} />
+          <CardTitle className={cn("text-base", config.color)}>
+            {config.label} ({exceptions.length})
+          </CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2">
+          {exceptions.map((exc) => (
+            <div
+              key={exc.id}
+              onClick={() => navigate(`/work-orders/${exc.wo.id}`)}
+              className="flex items-center justify-between p-3 rounded-lg bg-background/60 hover:bg-background cursor-pointer transition-colors group border border-transparent hover:border-muted"
+            >
+              <div className="flex items-center gap-4 min-w-0 flex-1">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono font-semibold text-sm">{exc.wo.display_id}</span>
+                    <span className="text-xs text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground truncate">{exc.wo.customer}</span>
+                    {exc.wo.due_date && new Date(exc.wo.due_date) < new Date() && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className={cn("text-xs font-medium", config.color)}>{exc.reason}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="text-right hidden sm:block">
+                  <Badge variant="outline" className="text-[10px] gap-1">
+                    <Zap className="h-2.5 w-2.5" />
+                    {exc.action}
+                  </Badge>
+                  <div className="text-[10px] text-muted-foreground mt-1 flex items-center justify-end gap-1">
+                    <Clock className="h-2.5 w-2.5" />
+                    {exc.aging_hours < 24 
+                      ? `${exc.aging_hours}h` 
+                      : `${Math.floor(exc.aging_hours / 24)}d ${exc.aging_hours % 24}h`}
+                  </div>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
