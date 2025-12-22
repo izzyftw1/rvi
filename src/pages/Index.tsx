@@ -1,14 +1,16 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Factory, ArrowDownUp, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ControlTowerHeader } from "@/components/dashboard/ControlTowerHeader";
 import { InternalFlowPanel } from "@/components/dashboard/InternalFlowPanel";
 import { ExternalFlowPanel } from "@/components/dashboard/ExternalFlowPanel";
 import { QuickActionCards } from "@/components/dashboard/QuickActionCards";
 import { ExecutiveRiskBar } from "@/components/dashboard/ExecutiveRiskBar";
+import { ModeToggle, OperatingMode } from "@/components/dashboard/ModeToggle";
+import { InternalSummaryStrip } from "@/components/dashboard/InternalSummaryStrip";
+import { ExternalSummaryStrip } from "@/components/dashboard/ExternalSummaryStrip";
 import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 
 interface DashboardSummary {
@@ -54,7 +56,7 @@ const Index = () => {
   });
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("internal");
+  const [activeMode, setActiveMode] = useState<OperatingMode>("internal");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -168,13 +170,18 @@ const Index = () => {
     return labels[key] || key;
   };
 
-  // Calculate alert counts
+  // Calculate metrics
   const criticalCount = (summary?.maintenance_overdue || 0) + (summary?.work_orders_delayed || 0) + (summary?.late_deliveries || 0);
   const warningCount = (summary?.material_waiting_qc || 0) + (summary?.qc_pending_approval || 0);
   const allClear = criticalCount === 0 && warningCount === 0;
 
-  // Calculate external overdue total
+  // Internal metrics
+  const internalJobCount = internalFlow.reduce((sum, s) => sum + (s.active_jobs || 0), 0);
+
+  // External metrics
   const externalOverdueTotal = Object.values(externalData).reduce((sum, p) => sum + (p.overdue || 0), 0);
+  const externalActiveTotal = Object.values(externalData).reduce((sum, p) => sum + (p.activeMoves || 0), 0);
+  const externalWipPcs = Object.values(externalData).reduce((sum, p) => sum + (p.pcs || 0), 0);
 
   if (loading) {
     return (
@@ -189,123 +196,102 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Executive Risk Bar - Global, always visible */}
+      {/* Executive Risk Bar - Global, always visible, unaffected by mode */}
       <ExecutiveRiskBar />
       
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Control Tower Header */}
         <ControlTowerHeader 
           criticalCount={criticalCount} 
           warningCount={warningCount} 
           allClear={allClear} 
         />
 
-        {/* Quick Action Cards - Always visible for rapid decision making */}
-        <QuickActionCards 
-          metrics={{
-            materialWaitingQC: summary?.material_waiting_qc || 0,
-            maintenanceOverdue: summary?.maintenance_overdue || 0,
-            workOrdersDelayed: summary?.work_orders_delayed || 0,
-            qcPendingApproval: summary?.qc_pending_approval || 0,
-            lateDeliveries: summary?.late_deliveries || 0,
-            dueToday: summary?.due_today || 0,
-            ordersInProduction: summary?.orders_in_production || 0,
-            externalWipPcs: summary?.external_wip_pcs || 0
-          }}
+        {/* Mode Toggle - Prominent, centered */}
+        <ModeToggle
+          activeMode={activeMode}
+          onModeChange={setActiveMode}
+          internalJobCount={internalJobCount}
+          externalOverdueCount={externalOverdueTotal}
+          externalActiveCount={externalActiveTotal}
         />
 
-        {/* Operating Mode Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 h-12">
-            <TabsTrigger 
-              value="internal" 
-              className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <Factory className="h-4 w-4 mr-2" />
-              Internal Flow
-              {internalFlow.reduce((sum, s) => sum + s.active_jobs, 0) > 0 && (
-                <span className="ml-2 bg-primary-foreground/20 px-1.5 py-0.5 rounded text-[10px]">
-                  {internalFlow.reduce((sum, s) => sum + s.active_jobs, 0)}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger 
-              value="external"
-              className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <ArrowDownUp className="h-4 w-4 mr-2" />
-              External Processing
-              {externalOverdueTotal > 0 && (
-                <span className="ml-2 bg-destructive px-1.5 py-0.5 rounded text-[10px] text-destructive-foreground">
-                  {externalOverdueTotal} overdue
-                </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
+        {/* Mode-specific Quick Actions */}
+        {activeMode === "internal" && (
+          <QuickActionCards 
+            metrics={{
+              materialWaitingQC: summary?.material_waiting_qc || 0,
+              maintenanceOverdue: summary?.maintenance_overdue || 0,
+              workOrdersDelayed: summary?.work_orders_delayed || 0,
+              qcPendingApproval: summary?.qc_pending_approval || 0,
+              lateDeliveries: summary?.late_deliveries || 0,
+              dueToday: summary?.due_today || 0,
+              ordersInProduction: summary?.orders_in_production || 0,
+              externalWipPcs: summary?.external_wip_pcs || 0
+            }}
+          />
+        )}
 
-          <TabsContent value="internal" className="mt-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Factory className="h-5 w-5 text-primary" />
-                    Production Pipeline
-                  </CardTitle>
-                  <button
-                    onClick={() => navigate('/production-progress')}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                  >
-                    Full View <ExternalLink className="h-3 w-3" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <InternalFlowPanel stages={internalFlow} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="external" className="mt-6">
-            <Card>
-              <CardHeader className="pb-3">
+        {/* Mode-specific Content */}
+        {activeMode === "internal" ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Factory className="h-5 w-5 text-primary" />
+                  Production Pipeline
+                </CardTitle>
+                <button
+                  onClick={() => navigate('/production-progress')}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  Full View <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <InternalFlowPanel stages={internalFlow} />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <ArrowDownUp className="h-5 w-5 text-primary" />
                   External Processing Status
                 </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ExternalFlowPanel 
-                  data={externalData} 
-                  onProcessClick={handleProcessClick} 
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                <button
+                  onClick={() => navigate('/partners')}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  Full View <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ExternalFlowPanel 
+                data={externalData} 
+                onProcessClick={handleProcessClick} 
+              />
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Key Status Summary - Bottom strip */}
-        <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border/50">
-          <div 
-            className="text-center cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => navigate('/work-orders?status=pending')}
-          >
-            <div className="text-3xl font-bold text-foreground">{summary?.orders_in_pipeline || 0}</div>
-            <p className="text-xs text-muted-foreground">Orders in Pipeline</p>
-          </div>
-          <div 
-            className="text-center cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => navigate('/production-progress')}
-          >
-            <div className="text-3xl font-bold text-primary">{summary?.orders_in_production || 0}</div>
-            <p className="text-xs text-muted-foreground">In Production</p>
-          </div>
-          <div 
-            className="text-center cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => navigate('/partners')}
-          >
-            <div className="text-3xl font-bold text-foreground">{(summary?.external_wip_pcs || 0).toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">External WIP pcs</p>
-          </div>
-        </div>
+        {/* Mode-specific Summary Strip */}
+        {activeMode === "internal" ? (
+          <InternalSummaryStrip
+            ordersInPipeline={summary?.orders_in_pipeline || 0}
+            ordersInProduction={summary?.orders_in_production || 0}
+            onTimeRate={summary?.on_time_rate_7d || 100}
+          />
+        ) : (
+          <ExternalSummaryStrip
+            totalActiveMoves={externalActiveTotal}
+            totalWipPcs={externalWipPcs}
+            overdueCount={externalOverdueTotal}
+          />
+        )}
       </main>
 
       {/* External Processing Detail Drawer */}
