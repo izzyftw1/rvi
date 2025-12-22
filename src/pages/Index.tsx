@@ -1,3 +1,18 @@
+/**
+ * Homepage Control Tower - Decision Layer
+ * 
+ * Design Principles:
+ * 1. READ-ONLY: All cards drill down only, no data entry
+ * 2. NO DUPLICATION: Internal/External modes don't double-count WIP
+ * 3. CONSISTENCY: Values match Production/Quality dashboards (same data sources)
+ * 4. FORWARD-LOOKING: Emphasis on risk and upcoming work, not historical reports
+ * 
+ * Data Sources:
+ * - Internal WIP: internal_flow_summary_vw (work_orders by current_stage)
+ * - External WIP: external_processing_summary_vw (wo_external_moves with status='sent')
+ * - Delivery Risk: work_orders with due_date in next 7 days, categorized by block reason
+ * - Quality Signals: daily_production_logs, qc_records, ncrs (today/this week)
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,7 +21,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ControlTowerHeader } from "@/components/dashboard/ControlTowerHeader";
 import { InternalFlowPanel } from "@/components/dashboard/InternalFlowPanel";
 import { ExternalFlowPanel } from "@/components/dashboard/ExternalFlowPanel";
-import { QuickActionCards } from "@/components/dashboard/QuickActionCards";
 import { ExecutiveRiskBar } from "@/components/dashboard/ExecutiveRiskBar";
 import { ModeToggle, OperatingMode } from "@/components/dashboard/ModeToggle";
 import { InternalSummaryStrip } from "@/components/dashboard/InternalSummaryStrip";
@@ -219,22 +233,6 @@ const Index = () => {
           externalOverdueCount={externalOverdueTotal}
           externalActiveCount={externalActiveTotal}
         />
-
-        {/* Mode-specific Quick Actions */}
-        {activeMode === "internal" && (
-          <QuickActionCards 
-            metrics={{
-              materialWaitingQC: summary?.material_waiting_qc || 0,
-              maintenanceOverdue: summary?.maintenance_overdue || 0,
-              workOrdersDelayed: summary?.work_orders_delayed || 0,
-              qcPendingApproval: summary?.qc_pending_approval || 0,
-              lateDeliveries: summary?.late_deliveries || 0,
-              dueToday: summary?.due_today || 0,
-              ordersInProduction: summary?.orders_in_production || 0,
-              externalWipPcs: summary?.external_wip_pcs || 0
-            }}
-          />
-        )}
 
         {/* Mode-specific Content */}
         {activeMode === "internal" ? (
