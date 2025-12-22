@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { FileText, Search, ClipboardCheck, CheckCircle } from "lucide-react";
+import { FileText, Search, ClipboardCheck, CheckCircle, Lock, Shield, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 
 interface WorkOrderWithQC {
@@ -22,6 +22,8 @@ interface WorkOrderWithQC {
   status: string;
   current_stage: string | null;
   qc_check_count: number;
+  quality_released: boolean;
+  final_qc_result: string | null;
 }
 
 const FinalQCList = () => {
@@ -37,11 +39,11 @@ const FinalQCList = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Get work orders that have QC checks or are in QC/packing/dispatch stages
+      // Get work orders that are in production, qc, packing, or dispatch stages
       const { data: woData, error: woError } = await supabase
         .from("work_orders")
-        .select("id, wo_number, display_id, customer, item_code, quantity, status, current_stage")
-        .in("current_stage", ["qc", "packing", "dispatch"])
+        .select("id, wo_number, display_id, customer, item_code, quantity, status, current_stage, quality_released, final_qc_result")
+        .in("current_stage", ["production", "qc", "packing", "dispatch"])
         .order("updated_at", { ascending: false })
         .limit(100);
 
@@ -63,50 +65,25 @@ const FinalQCList = () => {
         qcCountMap[qc.wo_id] = (qcCountMap[qc.wo_id] || 0) + 1;
       });
 
-      // Also fetch WOs with hourly QC checks regardless of stage
-      const { data: woWithQC, error: woQcError } = await supabase
-        .from("hourly_qc_checks")
-        .select("wo_id")
-        .order("check_datetime", { ascending: false });
-
-      if (woQcError) throw woQcError;
-
-      const woIdsWithQC = [...new Set((woWithQC || []).map((qc: any) => qc.wo_id))];
-      
-      // Fetch those WOs
-      const { data: additionalWOs, error: addError } = await supabase
-        .from("work_orders")
-        .select("id, wo_number, display_id, customer, item_code, quantity, status, current_stage")
-        .in("id", woIdsWithQC.length > 0 ? woIdsWithQC : ["00000000-0000-0000-0000-000000000000"])
-        .not("id", "in", `(${woIds.join(",")})`);
-
-      if (addError && addError.code !== "PGRST116") throw addError;
-
-      // Merge and deduplicate
-      const allWOs = [...(woData || []), ...(additionalWOs || [])];
-      const uniqueWOs = allWOs.filter((wo, index, self) => 
-        index === self.findIndex((w) => w.id === wo.id)
-      );
-
-      // Recount QC checks for all
-      const allWoIds = uniqueWOs.map((wo) => wo.id);
-      const { data: allQcCounts } = await supabase
-        .from("hourly_qc_checks")
-        .select("wo_id")
-        .in("wo_id", allWoIds.length > 0 ? allWoIds : ["00000000-0000-0000-0000-000000000000"]);
-
-      const finalQcCountMap: Record<string, number> = {};
-      (allQcCounts || []).forEach((qc: any) => {
-        finalQcCountMap[qc.wo_id] = (finalQcCountMap[qc.wo_id] || 0) + 1;
-      });
-
-      const result: WorkOrderWithQC[] = uniqueWOs.map((wo: any) => ({
+      const result: WorkOrderWithQC[] = (woData || []).map((wo: any) => ({
         ...wo,
-        qc_check_count: finalQcCountMap[wo.id] || 0,
+        qc_check_count: qcCountMap[wo.id] || 0,
       }));
 
-      // Sort by QC check count descending
-      result.sort((a, b) => b.qc_check_count - a.qc_check_count);
+      // Sort by stage priority (qc first, then others)
+      const stagePriority: Record<string, number> = {
+        'qc': 1,
+        'production': 2,
+        'packing': 3,
+        'dispatch': 4
+      };
+      
+      result.sort((a, b) => {
+        const priorityA = stagePriority[a.current_stage || ''] || 99;
+        const priorityB = stagePriority[b.current_stage || ''] || 99;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        return b.qc_check_count - a.qc_check_count;
+      });
 
       setWorkOrders(result);
     } catch (error: any) {
@@ -129,18 +106,43 @@ const FinalQCList = () => {
 
   const getStageColor = (stage: string | null) => {
     switch (stage) {
-      case "qc": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
-      case "packing": return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
+      case "production": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+      case "qc": return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
+      case "packing": return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400";
       case "dispatch": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       default: return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
     }
   };
 
+  const getFQCStatus = (wo: WorkOrderWithQC) => {
+    if (wo.quality_released) {
+      return (
+        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 gap-1">
+          <Lock className="h-3 w-3" />
+          Released
+        </Badge>
+      );
+    }
+    if (wo.final_qc_result === 'blocked') {
+      return (
+        <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Blocked
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="gap-1">
+        Pending
+      </Badge>
+    );
+  };
+
   return (
     <PageContainer>
       <PageHeader
-        title="Final QC Reports"
-        description="Generate final QC reports for work orders with inspection data"
+        title="Final QC"
+        description="Quality release work orders for dispatch"
         icon={<ClipboardCheck className="h-6 w-6" />}
       />
 
@@ -169,8 +171,8 @@ const FinalQCList = () => {
           ) : filteredWorkOrders.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No work orders with QC data found.</p>
-              <p className="text-sm">Work orders need hourly QC checks before generating final reports.</p>
+              <p>No work orders ready for Final QC.</p>
+              <p className="text-sm">Work orders must have production data before final inspection.</p>
             </div>
           ) : (
             <Table>
@@ -182,12 +184,13 @@ const FinalQCList = () => {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Stage</TableHead>
                   <TableHead className="text-right">QC Checks</TableHead>
+                  <TableHead>FQC Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredWorkOrders.map((wo) => (
-                  <TableRow key={wo.id}>
+                  <TableRow key={wo.id} className={wo.quality_released ? "bg-green-50/50 dark:bg-green-900/10" : ""}>
                     <TableCell className="font-medium">
                       {wo.display_id || wo.wo_number || wo.id.slice(0, 8)}
                     </TableCell>
@@ -209,15 +212,26 @@ const FinalQCList = () => {
                         <span className="text-muted-foreground">0</span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {getFQCStatus(wo)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button
                         size="sm"
-                        variant={wo.qc_check_count > 0 ? "default" : "outline"}
-                        onClick={() => navigate(`/dispatch-qc-report/${wo.id}`)}
-                        disabled={wo.qc_check_count === 0}
+                        variant={wo.quality_released ? "outline" : "default"}
+                        onClick={() => navigate(`/final-qc/${wo.id}`)}
                       >
-                        <FileText className="h-4 w-4 mr-2" />
-                        View Report
+                        {wo.quality_released ? (
+                          <>
+                            <FileText className="h-4 w-4 mr-2" />
+                            View
+                          </>
+                        ) : (
+                          <>
+                            <Shield className="h-4 w-4 mr-2" />
+                            Inspect
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

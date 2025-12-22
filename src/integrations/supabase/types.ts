@@ -457,6 +457,10 @@ export type Database = {
           drawing_number: string | null
           efficiency_percentage: number | null
           id: string
+          locked: boolean
+          locked_at: string | null
+          locked_by: string | null
+          locked_reason: string | null
           log_date: string
           machine_id: string
           ok_quantity: number | null
@@ -501,6 +505,10 @@ export type Database = {
           drawing_number?: string | null
           efficiency_percentage?: number | null
           id?: string
+          locked?: boolean
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_reason?: string | null
           log_date?: string
           machine_id: string
           ok_quantity?: number | null
@@ -545,6 +553,10 @@ export type Database = {
           drawing_number?: string | null
           efficiency_percentage?: number | null
           id?: string
+          locked?: boolean
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_reason?: string | null
           log_date?: string
           machine_id?: string
           ok_quantity?: number | null
@@ -5340,6 +5352,7 @@ export type Database = {
           due_date: string
           external_process_type: string | null
           external_status: string | null
+          final_qc_result: string | null
           financial_snapshot: Json | null
           forging_required: boolean | null
           forging_vendor: string | null
@@ -5379,13 +5392,18 @@ export type Database = {
           qc_raw_material_status: string | null
           qc_status: string | null
           qty_external_wip: number | null
+          quality_released: boolean
+          quality_released_at: string | null
+          quality_released_by: string | null
           quantity: number
           ready_for_dispatch: boolean | null
           revision: string | null
           sales_order: string | null
+          sampling_plan_reference: string | null
           site_id: string | null
           so_id: string | null
           status: Database["public"]["Enums"]["wo_status"]
+          traceability_frozen: boolean
           updated_at: string
           wo_id: string | null
           wo_number: string | null
@@ -5405,6 +5423,7 @@ export type Database = {
           due_date: string
           external_process_type?: string | null
           external_status?: string | null
+          final_qc_result?: string | null
           financial_snapshot?: Json | null
           forging_required?: boolean | null
           forging_vendor?: string | null
@@ -5444,13 +5463,18 @@ export type Database = {
           qc_raw_material_status?: string | null
           qc_status?: string | null
           qty_external_wip?: number | null
+          quality_released?: boolean
+          quality_released_at?: string | null
+          quality_released_by?: string | null
           quantity: number
           ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
+          sampling_plan_reference?: string | null
           site_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
+          traceability_frozen?: boolean
           updated_at?: string
           wo_id?: string | null
           wo_number?: string | null
@@ -5470,6 +5494,7 @@ export type Database = {
           due_date?: string
           external_process_type?: string | null
           external_status?: string | null
+          final_qc_result?: string | null
           financial_snapshot?: Json | null
           forging_required?: boolean | null
           forging_vendor?: string | null
@@ -5509,13 +5534,18 @@ export type Database = {
           qc_raw_material_status?: string | null
           qc_status?: string | null
           qty_external_wip?: number | null
+          quality_released?: boolean
+          quality_released_at?: string | null
+          quality_released_by?: string | null
           quantity?: number
           ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
+          sampling_plan_reference?: string | null
           site_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
+          traceability_frozen?: boolean
           updated_at?: string
           wo_id?: string | null
           wo_number?: string | null
