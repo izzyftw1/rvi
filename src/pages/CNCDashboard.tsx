@@ -41,6 +41,7 @@ interface MachineData {
   currentWO: any | null;
   lastMaintenanceDate: string | null;
   daysSinceLastMaintenance: number;
+  flowImpact: string | null; // Flow impact text derived from queued WOs
 }
 
 interface EligibleWorkOrder {
@@ -54,6 +55,37 @@ interface EligibleWorkOrder {
 }
 
 const MAINTENANCE_DUE_DAYS = 30;
+
+// Helper to derive flow impact text from queued work orders' stages
+const deriveFlowImpact = (stages: string[]): string | null => {
+  if (stages.length === 0) return null;
+  
+  // Count stages to find the primary one
+  const stageCounts: Record<string, number> = {};
+  stages.forEach(stage => {
+    stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+  });
+  
+  // Find the most common stage
+  const primaryStage = Object.entries(stageCounts)
+    .sort((a, b) => b[1] - a[1])[0]?.[0];
+  
+  if (!primaryStage) return null;
+  
+  // Map stages to flow impact descriptions
+  const stageFlowMap: Record<string, string> = {
+    'cutting': 'Blocking Cutting stage',
+    'forging': 'Blocking Forging stage',
+    'production': 'Feeds downstream stages',
+    'external': 'Upstream of External processing',
+    'qc': 'Feeds QC stage',
+    'packing': 'Feeds Packing',
+    'dispatch': 'Upstream of Dispatch',
+    'completed': 'Ready for completion'
+  };
+  
+  return stageFlowMap[primaryStage.toLowerCase()] || `Feeds ${primaryStage}`;
+};
 
 const CNCDashboard = () => {
   const navigate = useNavigate();
@@ -104,15 +136,19 @@ const CNCDashboard = () => {
         .filter(m => m.current_wo_id)
         .map(m => m.current_wo_id);
 
-      let currentWOs: Record<string, any> = {};
-      if (runningMachineWoIds.length > 0) {
+      // Get all queued WO IDs to fetch their stages
+      const queuedWoIds = (queuedAssignments || []).map(a => a.wo_id);
+      const allWoIds = [...new Set([...runningMachineWoIds, ...queuedWoIds])];
+
+      let woDetails: Record<string, any> = {};
+      if (allWoIds.length > 0) {
         const { data: woData } = await supabase
           .from("work_orders")
-          .select("id, display_id, customer, item_code, quantity")
-          .in("id", runningMachineWoIds);
+          .select("id, display_id, customer, item_code, quantity, current_stage")
+          .in("id", allWoIds);
         
         if (woData) {
-          currentWOs = Object.fromEntries(woData.map(wo => [wo.id, wo]));
+          woDetails = Object.fromEntries(woData.map(wo => [wo.id, wo]));
         }
       }
 
@@ -132,6 +168,12 @@ const CNCDashboard = () => {
           ? Math.floor(differenceInHours(new Date(), parseISO(machineQueue[0].scheduled_start)))
           : 0;
 
+        // Derive flow impact from queued WOs' stages
+        const queuedStages = machineQueue
+          .map(a => woDetails[a.wo_id]?.current_stage)
+          .filter(Boolean);
+        const flowImpact = deriveFlowImpact(queuedStages);
+
         // Determine readiness status
         let readiness: ReadinessStatus = 'ready';
         if (machine.status === 'running' || machine.current_wo_id) {
@@ -149,9 +191,10 @@ const CNCDashboard = () => {
           readiness,
           queueCount,
           oldestQueueAge: Math.max(0, oldestQueueAge),
-          currentWO: machine.current_wo_id ? currentWOs[machine.current_wo_id] : null,
+          currentWO: machine.current_wo_id ? woDetails[machine.current_wo_id] : null,
           lastMaintenanceDate,
-          daysSinceLastMaintenance
+          daysSinceLastMaintenance,
+          flowImpact
         };
       });
 
@@ -444,23 +487,31 @@ const CNCDashboard = () => {
 
                     {/* Queue Info */}
                     {machine.queueCount > 0 && (
-                      <div className="flex items-center justify-between text-xs p-2 bg-background/40 rounded">
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <Package className="h-3 w-3" />
-                          Queue
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{machine.queueCount} jobs</span>
-                          {machine.oldestQueueAge > 0 && (
-                            <span className={cn(
-                              "text-[10px]",
-                              machine.oldestQueueAge > 24 && "text-amber-600",
-                              machine.oldestQueueAge > 48 && "text-red-600"
-                            )}>
-                              ({machine.oldestQueueAge}h oldest)
-                            </span>
-                          )}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs p-2 bg-background/40 rounded">
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Package className="h-3 w-3" />
+                            Queue
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{machine.queueCount} jobs</span>
+                            {machine.oldestQueueAge > 0 && (
+                              <span className={cn(
+                                "text-[10px]",
+                                machine.oldestQueueAge > 24 && "text-amber-600",
+                                machine.oldestQueueAge > 48 && "text-red-600"
+                              )}>
+                                ({machine.oldestQueueAge}h oldest)
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        {/* Flow Impact */}
+                        {machine.flowImpact && (
+                          <p className="text-[10px] text-muted-foreground italic px-2">
+                            {machine.flowImpact}
+                          </p>
+                        )}
                       </div>
                     )}
 
