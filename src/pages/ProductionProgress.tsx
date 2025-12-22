@@ -348,72 +348,85 @@ function BucketCard({
             None
           </div>
         ) : (
-          <div className="space-y-1.5 max-h-64 overflow-y-auto">
-            {items.map((item) => {
-              const severity = getAgingSeverity(item.aging_hours);
-              const isLongBlocked = item.aging_hours >= 72;
-              
-              return (
-                <div
-                  key={item.wo.id}
-                  className={cn(
-                    "flex flex-col gap-2 p-2.5 rounded-md transition-colors",
-                    isLongBlocked 
-                      ? "bg-red-100/80 dark:bg-red-950/50 border-l-4 border-l-red-500" 
-                      : "bg-background/70 border border-muted/50"
-                  )}
-                >
-                  {/* Top row: WO info + age */}
-                  <div className="flex items-center justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-semibold text-sm">{item.wo.display_id}</span>
-                        <span className="text-xs text-muted-foreground truncate">{item.wo.customer}</span>
-                        {item.wo.due_date && new Date(item.wo.due_date) < new Date() && (
-                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-muted-foreground">{item.wo.item_code}</span>
-                        <span className="text-xs text-muted-foreground">•</span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          {config.owner}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Severity-colored age badge */}
-                    <Badge 
-                      variant="outline" 
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b">
+                  <th className="text-left py-2 px-1 font-medium">WO ID</th>
+                  <th className="text-left py-2 px-1 font-medium">Item</th>
+                  <th className="text-right py-2 px-1 font-medium">Qty</th>
+                  <th className="text-left py-2 px-1 font-medium">Blocker</th>
+                  <th className="text-center py-2 px-1 font-medium">Age</th>
+                  <th className="text-left py-2 px-1 font-medium">Owner</th>
+                  <th className="text-right py-2 px-1 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const severity = getAgingSeverity(item.aging_hours);
+                  const isLongBlocked = item.aging_hours >= 72;
+                  const isOverdue = item.wo.due_date && new Date(item.wo.due_date) < new Date();
+                  
+                  return (
+                    <tr
+                      key={item.wo.id}
                       className={cn(
-                        "text-xs font-medium gap-1 border flex-shrink-0",
-                        severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
-                        severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
-                        severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
+                        "border-b border-muted/30 last:border-0",
+                        isLongBlocked && "bg-red-50/50 dark:bg-red-950/30"
                       )}
                     >
-                      <Clock className="h-3 w-3" />
-                      {formatAgingDisplay(item.aging_hours)}
-                    </Badge>
-                  </div>
-                  
-                  {/* Action button */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-xs h-7 gap-1.5 justify-center"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(config.getActionPath(item.wo.id));
-                    }}
-                  >
-                    {config.actionLabel}
-                    <ArrowRight className="h-3 w-3" />
-                  </Button>
-                </div>
-              );
-            })}
+                      <td className="py-2 px-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-semibold">{item.wo.display_id}</span>
+                          {isOverdue && (
+                            <Badge variant="destructive" className="text-[9px] px-1 py-0">LATE</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-1 text-muted-foreground max-w-[120px] truncate">
+                        {item.wo.item_code}
+                      </td>
+                      <td className="py-2 px-1 text-right tabular-nums">
+                        {item.wo.quantity.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-1">
+                        <span className={cn("text-xs font-medium", config.color)}>
+                          {config.title.replace('Blocked – ', '').replace('Ready but ', '')}
+                        </span>
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-[10px] font-medium gap-0.5 border px-1.5",
+                            severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
+                            severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
+                            severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
+                          )}
+                        >
+                          <Clock className="h-2.5 w-2.5" />
+                          {formatAgingDisplay(item.aging_hours)}
+                        </Badge>
+                      </td>
+                      <td className="py-2 px-1 text-xs text-muted-foreground">
+                        {config.owner}
+                      </td>
+                      <td className="py-2 px-1 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[10px] h-6 px-2 gap-1"
+                          onClick={() => navigate(config.getActionPath(item.wo.id))}
+                        >
+                          {config.actionLabel}
+                          <ArrowRight className="h-2.5 w-2.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </CardContent>
