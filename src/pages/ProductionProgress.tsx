@@ -14,7 +14,9 @@ import {
   PlayCircle,
   Truck,
   Clock,
-  User
+  User,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInHours, parseISO, format } from "date-fns";
@@ -309,21 +311,37 @@ export default function ProductionProgress() {
     );
   }
 
+  // Generate contextual subtitles for buckets
+  const getSubtitle = (bucketType: BucketType): string => {
+    switch (bucketType) {
+      case 'material_qc':
+        return `${buckets.material_qc.length} WO${buckets.material_qc.length !== 1 ? 's' : ''} blocked from entering Cutting`;
+      case 'ready_not_started':
+        return `${buckets.ready_not_started.length} WO${buckets.ready_not_started.length !== 1 ? 's' : ''} idle despite available capacity`;
+      case 'first_piece_qc':
+        return `${buckets.first_piece_qc.length} WO${buckets.first_piece_qc.length !== 1 ? 's' : ''} awaiting first piece approval`;
+      case 'external_processing':
+        return `${buckets.external_processing.length} WO${buckets.external_processing.length !== 1 ? 's' : ''} at external partners`;
+      default:
+        return '';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
-        {/* Header with Flow Health */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Production Log</h1>
-            <p className="text-sm text-muted-foreground">
-              What's blocking flow? What must be done next?
-            </p>
-          </div>
-          
-          {/* Flow Health Indicator */}
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Production Log</h1>
+          <p className="text-sm text-muted-foreground">
+            What's blocking flow? What must be done next?
+          </p>
+        </div>
+
+        {/* Sticky Flow Health Indicator */}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-border/50">
           <div className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-full border",
+            "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border",
             flowHealth.status === 'GREEN' && "bg-green-100 dark:bg-green-950/50 border-green-300 dark:border-green-700",
             flowHealth.status === 'AMBER' && "bg-amber-100 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700",
             flowHealth.status === 'RED' && "bg-red-100 dark:bg-red-950/50 border-red-300 dark:border-red-700"
@@ -352,6 +370,7 @@ export default function ProductionProgress() {
                 bucketType={bucketKey}
                 items={buckets[bucketKey]}
                 navigate={navigate}
+                subtitle={getSubtitle(bucketKey)}
               />
             ))}
         </div>
@@ -375,17 +394,25 @@ export default function ProductionProgress() {
   );
 }
 
+const DEFAULT_VISIBLE_ROWS = 8;
+
 function BucketCard({ 
   bucketType, 
   items, 
-  navigate 
+  navigate,
+  subtitle
 }: { 
   bucketType: BucketType; 
   items: BucketItem[]; 
   navigate: (path: string) => void;
+  subtitle: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const config = bucketConfig[bucketType];
   const Icon = config.icon;
+  
+  const visibleItems = expanded ? items : items.slice(0, DEFAULT_VISIBLE_ROWS);
+  const hasMore = items.length > DEFAULT_VISIBLE_ROWS;
 
   return (
     <Card className={cn("border", items.length > 0 ? config.bgColor : "bg-muted/30 border-muted")}>
@@ -404,7 +431,7 @@ function BucketCard({
             {items.length}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground">{config.description}</p>
+        <p className="text-xs text-muted-foreground font-medium">{subtitle}</p>
       </CardHeader>
       <CardContent className="pt-0">
         {items.length === 0 ? (
@@ -412,85 +439,109 @@ function BucketCard({
             None
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-muted-foreground border-b">
-                  <th className="text-left py-2 px-1 font-medium">WO ID</th>
-                  <th className="text-left py-2 px-1 font-medium">Item</th>
-                  <th className="text-right py-2 px-1 font-medium">Qty</th>
-                  <th className="text-left py-2 px-1 font-medium">Blocker</th>
-                  <th className="text-center py-2 px-1 font-medium">Age</th>
-                  <th className="text-left py-2 px-1 font-medium">Owner</th>
-                  <th className="text-right py-2 px-1 font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const severity = getAgingSeverity(item.aging_hours);
-                  const isLongBlocked = item.aging_hours >= 72;
-                  const isOverdue = item.wo.due_date && new Date(item.wo.due_date) < new Date();
-                  
-                  return (
-                    <tr
-                      key={item.wo.id}
-                      className={cn(
-                        "border-b border-muted/30 last:border-0",
-                        isLongBlocked && "bg-red-50/50 dark:bg-red-950/30"
-                      )}
-                    >
-                      <td className="py-2 px-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-semibold">{item.wo.display_id}</span>
-                          {isOverdue && (
-                            <Badge variant="destructive" className="text-[9px] px-1 py-0">LATE</Badge>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2 px-1 text-muted-foreground max-w-[120px] truncate">
-                        {item.wo.item_code}
-                      </td>
-                      <td className="py-2 px-1 text-right tabular-nums">
-                        {item.wo.quantity.toLocaleString()}
-                      </td>
-                      <td className="py-2 px-1">
-                        <span className={cn("text-xs font-medium", config.color)}>
-                          {config.title.replace('Blocked – ', '').replace('Ready but ', '')}
-                        </span>
-                      </td>
-                      <td className="py-2 px-1 text-center">
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            "text-[10px] font-medium gap-0.5 border px-1.5",
-                            severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
-                            severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
-                            severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
-                          )}
-                        >
-                          <Clock className="h-2.5 w-2.5" />
-                          {formatAgingDisplay(item.aging_hours)}
-                        </Badge>
-                      </td>
-                      <td className="py-2 px-1 text-xs text-muted-foreground">
-                        {config.owner}
-                      </td>
-                      <td className="py-2 px-1 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-[10px] h-6 px-2 gap-1"
-                          onClick={() => navigate(config.getActionPath(item.wo.id))}
-                        >
-                          {config.actionLabel}
-                          <ArrowRight className="h-2.5 w-2.5" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b">
+                    <th className="text-left py-2 px-1 font-medium">WO ID</th>
+                    <th className="text-left py-2 px-1 font-medium">Item</th>
+                    <th className="text-right py-2 px-1 font-medium">Qty</th>
+                    <th className="text-left py-2 px-1 font-medium">Blocker</th>
+                    <th className="text-center py-2 px-1 font-medium">Age</th>
+                    <th className="text-left py-2 px-1 font-medium">Owner</th>
+                    <th className="text-right py-2 px-1 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleItems.map((item) => {
+                    const severity = getAgingSeverity(item.aging_hours);
+                    const isLongBlocked = item.aging_hours >= 72;
+                    const isOverdue = item.wo.due_date && new Date(item.wo.due_date) < new Date();
+                    
+                    return (
+                      <tr
+                        key={item.wo.id}
+                        className={cn(
+                          "border-b border-muted/30 last:border-0",
+                          isLongBlocked && "bg-red-50/50 dark:bg-red-950/30"
+                        )}
+                      >
+                        <td className="py-2 px-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-semibold">{item.wo.display_id}</span>
+                            {isOverdue && (
+                              <Badge variant="destructive" className="text-[9px] px-1 py-0">LATE</Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2 px-1 text-muted-foreground max-w-[120px] truncate">
+                          {item.wo.item_code}
+                        </td>
+                        <td className="py-2 px-1 text-right tabular-nums">
+                          {item.wo.quantity.toLocaleString()}
+                        </td>
+                        <td className="py-2 px-1">
+                          <span className={cn("text-xs font-medium", config.color)}>
+                            {config.title.replace('Blocked – ', '').replace('Ready but ', '')}
+                          </span>
+                        </td>
+                        <td className="py-2 px-1 text-center">
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              "text-[10px] font-medium gap-0.5 border px-1.5",
+                              severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
+                              severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
+                              severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
+                            )}
+                          >
+                            <Clock className="h-2.5 w-2.5" />
+                            {formatAgingDisplay(item.aging_hours)}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-1 text-xs text-muted-foreground">
+                          {config.owner}
+                        </td>
+                        <td className="py-2 px-1 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-[10px] h-6 px-2 gap-1"
+                            onClick={() => navigate(config.getActionPath(item.wo.id))}
+                          >
+                            {config.actionLabel}
+                            <ArrowRight className="h-2.5 w-2.5" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Show all toggle */}
+            {hasMore && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs text-muted-foreground hover:text-foreground gap-1"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? (
+                  <>
+                    <ChevronUp className="h-3 w-3" />
+                    Show less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3 w-3" />
+                    Show all ({items.length})
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
