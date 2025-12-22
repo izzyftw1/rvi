@@ -42,6 +42,7 @@ import { TodayFactorySnapshot } from "@/components/dashboard/TodayFactorySnapsho
 import { OverdueReturnsTable } from "@/components/dashboard/OverdueReturnsTable";
 import { QualityLossSignals } from "@/components/dashboard/QualityLossSignals";
 import { DeliveryRiskPanel } from "@/components/dashboard/DeliveryRiskPanel";
+import { CriticalTodayStrip } from "@/components/dashboard/CriticalTodayStrip";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -229,6 +230,9 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Critical Today Strip - Only visible when issues exist */}
+      <CriticalTodayStrip />
+      
       {/* Executive Risk Bar - Global, always visible, unaffected by mode */}
       <ExecutiveRiskBar />
       
