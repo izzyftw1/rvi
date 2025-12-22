@@ -70,6 +70,7 @@ import DailyProductionLog from "./pages/DailyProductionLog";
 import MachineUtilisation from "./pages/MachineUtilisation";
 import OperatorEfficiency from "./pages/OperatorEfficiency";
 import CNCProgrammerActivity from "./pages/CNCProgrammerActivity";
+import FinalQCList from "./pages/FinalQCList";
 
 
 const App = () => (
@@ -117,6 +118,7 @@ const App = () => (
           <Route path="/reports" element={<Reports />} />
           <Route path="/tolerance-setup" element={<ToleranceSetup />} />
           <Route path="/hourly-qc" element={<HourlyQC />} />
+          <Route path="/final-qc" element={<FinalQCList />} />
           <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
           <Route path="/department/:departmentName" element={<DepartmentDetail />} />
           <Route path="/material-requirements" element={<MaterialRequirements />} />
