@@ -1,23 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  Factory, 
-  Package, 
-  Truck, 
-  CheckCircle2,
-  AlertTriangle,
-  ClipboardCheck,
-  Wrench,
-  Clock
-} from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Factory, ArrowDownUp, ExternalLink } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CriticalAlertsBar } from "@/components/dashboard/CriticalAlertsBar";
-import { ExternalDashboard } from "@/components/dashboard/ExternalDashboard";
-import { cn } from "@/lib/utils";
+import { ControlTowerHeader } from "@/components/dashboard/ControlTowerHeader";
+import { InternalFlowPanel } from "@/components/dashboard/InternalFlowPanel";
+import { ExternalFlowPanel } from "@/components/dashboard/ExternalFlowPanel";
+import { QuickActionCards } from "@/components/dashboard/QuickActionCards";
+import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -40,25 +31,12 @@ interface InternalFlowStage {
   avg_wait_hours: number;
 }
 
-const STAGE_LABELS: Record<string, string> = {
-  goods_in: 'Goods In',
-  cutting: 'Cutting',
-  forging: 'Forging',
-  production: 'Production',
-  quality: 'Quality',
-  packing: 'Packing',
-  dispatch: 'Dispatch'
-};
-
-const STAGE_ICONS: Record<string, any> = {
-  goods_in: Package,
-  cutting: Factory,
-  forging: Factory,
-  production: Factory,
-  quality: ClipboardCheck,
-  packing: Package,
-  dispatch: Truck
-};
+interface ExternalProcessData {
+  pcs: number;
+  kg: number;
+  activeMoves: number;
+  overdue: number;
+}
 
 const Index = () => {
   const navigate = useNavigate();
@@ -66,6 +44,16 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [internalFlow, setInternalFlow] = useState<InternalFlowStage[]>([]);
+  const [externalData, setExternalData] = useState<Record<string, ExternalProcessData>>({
+    job_work: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+    plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+    buffing: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+    blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+    forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
+  });
+  const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("internal");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -95,9 +83,8 @@ const Index = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Real-time subscriptions
     const channel = supabase
-      .channel('dashboard-realtime')
+      .channel('control-tower-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => loadDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, () => loadDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => loadDashboardData())
@@ -130,323 +117,201 @@ const Index = () => {
       if (!flowError && flowData) {
         setInternalFlow(flowData);
       }
+
+      // Load external processing data
+      const { data: extSummary, error: extError } = await supabase
+        .from('external_processing_summary_vw')
+        .select('*');
+
+      if (!extError && extSummary) {
+        const extData: Record<string, ExternalProcessData> = {
+          job_work: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+          plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+          buffing: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+          blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+          forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
+        };
+
+        extSummary.forEach((row: any) => {
+          const processKey = row.process_name as string;
+          if (extData[processKey]) {
+            extData[processKey] = {
+              pcs: Math.round(row.pcs_total || 0),
+              kg: parseFloat((row.kg_total || 0).toFixed(1)),
+              activeMoves: row.active_moves || 0,
+              overdue: row.overdue || 0
+            };
+          }
+        });
+
+        setExternalData(extData);
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
   };
 
-  const handleHeaderCardClick = (route: string, query?: string) => {
-    navigate(query ? `${route}?${query}` : route);
+  const handleProcessClick = (process: string) => {
+    setSelectedProcess(process);
+    setDrawerOpen(true);
   };
 
-  const handleStageClick = (stageName: string) => {
-    navigate(`/production-progress?stage=${stageName}`);
+  const getProcessLabel = (key: string) => {
+    const labels: Record<string, string> = {
+      job_work: 'Job Work',
+      plating: 'Plating',
+      buffing: 'Buffing',
+      blasting: 'Blasting',
+      forging_ext: 'Forging'
+    };
+    return labels[key] || key;
   };
+
+  // Calculate alert counts
+  const criticalCount = (summary?.maintenance_overdue || 0) + (summary?.work_orders_delayed || 0) + (summary?.late_deliveries || 0);
+  const warningCount = (summary?.material_waiting_qc || 0) + (summary?.qc_pending_approval || 0);
+  const allClear = criticalCount === 0 && warningCount === 0;
+
+  // Calculate external overdue total
+  const externalOverdueTotal = Object.values(externalData).reduce((sum, p) => sum + (p.overdue || 0), 0);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <Factory className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">Loading Control Tower...</p>
         </div>
       </div>
     );
   }
 
-  const getStageBadgeColor = (activeJobs: number) => {
-    if (activeJobs === 0) return 'bg-muted/50 text-muted-foreground border-transparent';
-    if (activeJobs <= 5) return 'bg-primary/10 text-primary border-primary/20';
-    if (activeJobs <= 10) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
-    return 'bg-destructive/10 text-destructive border-destructive/20';
-  };
-
-  // Helper to determine if a metric is "inactive" (zero or no concern)
-  const isInactive = (value: number | undefined) => !value || value === 0;
-  
-  // Helper to get metric styling based on value
-  const getMetricStyle = (value: number | undefined, isCritical = false) => {
-    if (isInactive(value)) {
-      return {
-        textColor: 'text-muted-foreground',
-        iconColor: 'text-muted-foreground/50',
-        cardClass: 'opacity-60'
-      };
-    }
-    if (isCritical && value && value > 0) {
-      return {
-        textColor: 'text-destructive',
-        iconColor: 'text-destructive',
-        cardClass: 'border-destructive/30 bg-destructive/5'
-      };
-    }
-    return {
-      textColor: 'text-foreground',
-      iconColor: 'text-muted-foreground',
-      cardClass: ''
-    };
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 space-y-8">
-        {/* Critical Alerts Bar */}
-        <CriticalAlertsBar />
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Control Tower Header */}
+        <ControlTowerHeader 
+          criticalCount={criticalCount} 
+          warningCount={warningCount} 
+          allClear={allClear} 
+        />
 
-        {/* SECTION 1: Risk / Alerts - Actionable items needing attention */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Risk & Alerts</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <TooltipProvider>
-              {(() => {
-                const style = getMetricStyle(summary?.material_waiting_qc);
-                return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Card 
-                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
-                        onClick={() => handleHeaderCardClick('/qc/incoming')}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Material Waiting QC</p>
-                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.material_waiting_qc || 0}</p>
-                            </div>
-                            <Package className={cn("h-6 w-6", style.iconColor)} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Material lots pending QC approval</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })()}
+        {/* Quick Action Cards - Always visible for rapid decision making */}
+        <QuickActionCards 
+          metrics={{
+            materialWaitingQC: summary?.material_waiting_qc || 0,
+            maintenanceOverdue: summary?.maintenance_overdue || 0,
+            workOrdersDelayed: summary?.work_orders_delayed || 0,
+            qcPendingApproval: summary?.qc_pending_approval || 0,
+            lateDeliveries: summary?.late_deliveries || 0,
+            dueToday: summary?.due_today || 0,
+            ordersInProduction: summary?.orders_in_production || 0,
+            externalWipPcs: summary?.external_wip_pcs || 0
+          }}
+        />
 
-              {(() => {
-                const style = getMetricStyle(summary?.maintenance_overdue, true);
-                return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Card 
-                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
-                        onClick={() => handleHeaderCardClick('/machine-status')}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Maintenance Overdue</p>
-                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.maintenance_overdue || 0}</p>
-                            </div>
-                            <Wrench className={cn("h-6 w-6", style.iconColor)} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Active maintenance tasks not yet completed</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })()}
-
-              {(() => {
-                const style = getMetricStyle(summary?.work_orders_delayed, true);
-                return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Card 
-                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
-                        onClick={() => handleHeaderCardClick('/work-orders', 'status=delayed')}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Work Orders Delayed</p>
-                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.work_orders_delayed || 0}</p>
-                            </div>
-                            <AlertTriangle className={cn("h-6 w-6", style.iconColor)} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Work orders past their due date</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })()}
-
-              {(() => {
-                const style = getMetricStyle(summary?.qc_pending_approval);
-                return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Card 
-                        className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)}
-                        onClick={() => handleHeaderCardClick('/quality', 'status=pending')}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs text-muted-foreground">QC Pending Approval</p>
-                              <p className={cn("text-2xl font-bold", style.textColor)}>{summary?.qc_pending_approval || 0}</p>
-                            </div>
-                            <ClipboardCheck className={cn("h-6 w-6", style.iconColor)} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>QC checks awaiting approval</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })()}
-            </TooltipProvider>
-          </div>
-        </section>
-
-        {/* SECTION 2: Status - Current operational state */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Current Status</h2>
-          <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-            {(() => {
-              const style = getMetricStyle(summary?.orders_in_pipeline);
-              return (
-                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/work-orders', 'status=pending')}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("text-3xl font-bold", style.textColor)}>{summary?.orders_in_pipeline || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Orders in Pipeline</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-
-            {(() => {
-              const value = summary?.orders_in_production;
-              const style = getMetricStyle(value);
-              return (
-                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/production-progress')}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("text-3xl font-bold", value && value > 0 ? "text-primary" : style.textColor)}>{value || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Orders in Production</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-
-            {(() => {
-              const style = getMetricStyle(summary?.external_wip_pcs);
-              return (
-                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/partners')}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("text-3xl font-bold", style.textColor)}>{summary?.external_wip_pcs || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">External WIP pcs</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-          </div>
-        </section>
-
-        {/* SECTION 3: Throughput - Delivery performance */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Throughput & Delivery</h2>
-          <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-            {(() => {
-              const style = getMetricStyle(summary?.late_deliveries, true);
-              return (
-                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/logistics')}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("text-3xl font-bold", style.textColor)}>{summary?.late_deliveries || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Late Deliveries</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-
-            {(() => {
-              const value = summary?.due_today;
-              const style = getMetricStyle(value);
-              return (
-                <Card className={cn("cursor-pointer hover:shadow-md transition-all", style.cardClass)} onClick={() => handleHeaderCardClick('/work-orders', 'due=today')}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("text-3xl font-bold", value && value > 0 ? "text-amber-600 dark:text-amber-400" : style.textColor)}>{value || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Due Today</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-
-            {(() => {
-              const rate = summary?.on_time_rate_7d || 100;
-              const isGood = rate >= 90;
-              return (
-                <Card className="cursor-pointer hover:shadow-md transition-all" onClick={() => handleHeaderCardClick('/reports')}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("text-3xl font-bold", isGood ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{rate}%</div>
-                    <p className="text-xs text-muted-foreground mt-1">On-Time Rate 7d</p>
-                  </CardContent>
-                </Card>
-              );
-            })()}
-          </div>
-        </section>
-
-        {/* Tabbed View */}
-        <Tabs defaultValue="internal" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="internal">Internal Flow</TabsTrigger>
-            <TabsTrigger value="external">External Processing</TabsTrigger>
+        {/* Operating Mode Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 h-12">
+            <TabsTrigger 
+              value="internal" 
+              className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <Factory className="h-4 w-4 mr-2" />
+              Internal Flow
+              {internalFlow.reduce((sum, s) => sum + s.active_jobs, 0) > 0 && (
+                <span className="ml-2 bg-primary-foreground/20 px-1.5 py-0.5 rounded text-[10px]">
+                  {internalFlow.reduce((sum, s) => sum + s.active_jobs, 0)}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger 
+              value="external"
+              className="text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <ArrowDownUp className="h-4 w-4 mr-2" />
+              External Processing
+              {externalOverdueTotal > 0 && (
+                <span className="ml-2 bg-destructive px-1.5 py-0.5 rounded text-[10px] text-destructive-foreground">
+                  {externalOverdueTotal} overdue
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
-          
-          <TabsContent value="internal" className="space-y-6 mt-6">
-            {/* Internal Flow Kanban */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-              {internalFlow.map((stage) => {
-                const Icon = STAGE_ICONS[stage.stage_name];
-                return (
-                  <Card 
-                    key={stage.stage_name}
-                    className="cursor-pointer hover:shadow-lg transition-all hover:scale-105"
-                    onClick={() => handleStageClick(stage.stage_name)}
+
+          <TabsContent value="internal" className="mt-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Factory className="h-5 w-5 text-primary" />
+                    Production Pipeline
+                  </CardTitle>
+                  <button
+                    onClick={() => navigate('/production-progress')}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
                   >
-                    <CardContent className="p-4">
-                      <div className="flex flex-col items-center space-y-3">
-                        <Icon className="h-8 w-8 text-primary" />
-                        <h3 className="font-semibold text-center text-sm">{STAGE_LABELS[stage.stage_name]}</h3>
-                        <Badge variant="outline" className={cn("font-mono text-lg px-3 py-1", getStageBadgeColor(stage.active_jobs))}>
-                          {stage.active_jobs}
-                        </Badge>
-                        <div className="text-center space-y-1">
-                          <p className="text-xs text-muted-foreground">
-                            {Math.round(stage.pcs_remaining || 0)} pcs
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {(stage.kg_remaining || 0).toFixed(1)} kg
-                          </p>
-                          {stage.avg_wait_hours > 0 && (
-                            <p className="text-xs text-orange-600 font-medium">
-                              ~{Math.round(stage.avg_wait_hours)}h wait
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                    Full View <ExternalLink className="h-3 w-3" />
+                  </button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <InternalFlowPanel stages={internalFlow} />
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="external" className="mt-6">
-            <ExternalDashboard />
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ArrowDownUp className="h-5 w-5 text-primary" />
+                  External Processing Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ExternalFlowPanel 
+                  data={externalData} 
+                  onProcessClick={handleProcessClick} 
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Key Status Summary - Bottom strip */}
+        <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border/50">
+          <div 
+            className="text-center cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => navigate('/work-orders?status=pending')}
+          >
+            <div className="text-3xl font-bold text-foreground">{summary?.orders_in_pipeline || 0}</div>
+            <p className="text-xs text-muted-foreground">Orders in Pipeline</p>
+          </div>
+          <div 
+            className="text-center cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => navigate('/production-progress')}
+          >
+            <div className="text-3xl font-bold text-primary">{summary?.orders_in_production || 0}</div>
+            <p className="text-xs text-muted-foreground">In Production</p>
+          </div>
+          <div 
+            className="text-center cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => navigate('/partners')}
+          >
+            <div className="text-3xl font-bold text-foreground">{(summary?.external_wip_pcs || 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">External WIP pcs</p>
+          </div>
+        </div>
       </main>
+
+      {/* External Processing Detail Drawer */}
+      <ExternalProcessingDetailDrawer
+        processType={selectedProcess}
+        processLabel={getProcessLabel(selectedProcess || '')}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+      />
     </div>
   );
 };
