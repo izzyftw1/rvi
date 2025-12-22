@@ -16,6 +16,7 @@ import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, Al
 
 import { EnhancedProductionTab } from "@/components/EnhancedProductionTab";
 import { EnhancedStageHistory } from "@/components/EnhancedStageHistory";
+import { WorkOrderSummary } from "@/components/WorkOrderSummary";
 import { EnhancedQCRecords } from "@/components/EnhancedQCRecords";
 import { WOVersionLog } from "@/components/WOVersionLog";
 import { EnhancedExternalTab } from "@/components/EnhancedExternalTab";
@@ -659,31 +660,36 @@ const WorkOrderDetail = () => {
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto p-4 space-y-8">
         {/* ═══════════════════════════════════════════════════════════════════
-            SECTION 1: ORDER HEADER - Identity & Key Actions
+            SECTION 1: WORK ORDER SUMMARY - Single Operational View Header
         ═══════════════════════════════════════════════════════════════════ */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold">{wo.wo_number || wo.display_id || wo.wo_id}</h1>
-                <StatusBadge status={wo.status} />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {wo.customer} • {wo.item_code} • Qty: {wo.quantity}
-                {salesOrder && (
-                  <>
-                    {" • "}
-                    <button 
-                      onClick={() => navigate(`/sales`)}
-                      className="text-primary hover:underline"
-                    >
-                      PO: {salesOrder.po_number}
-                    </button>
-                  </>
-                )}
-              </p>
+          {/* Back Navigation */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => navigate('/work-orders')}
+            className="text-muted-foreground hover:text-foreground -ml-2"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to Work Orders
+          </Button>
+
+          {/* Work Order Summary Card */}
+          <WorkOrderSummary workOrder={wo} />
+
+          {/* Action Buttons Row */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {salesOrder && (
+                <button 
+                  onClick={() => navigate(`/sales`)}
+                  className="text-primary hover:underline"
+                >
+                  Customer PO: {salesOrder.po_number}
+                </button>
+              )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {canManageExternal && (
                 <Button 
                   onClick={() => setShowExternalDialog(true)} 
@@ -697,6 +703,7 @@ const WorkOrderDetail = () => {
               <Button 
                 onClick={() => setShowAssignmentDialog(true)} 
                 variant="default"
+                size="sm"
                 disabled={qcGatesBlocked || productionNotReleased}
                 title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Work order must be released for production first' : ''}
               >
@@ -704,7 +711,7 @@ const WorkOrderDetail = () => {
                 Assign Machines
               </Button>
               {hourlyQcRecords.length > 0 && (
-                <Button onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
+                <Button size="sm" onClick={() => navigate(`/dispatch-qc-report/${id}`)}>
                   <FileText className="h-4 w-4 mr-2" />
                   Final QC Report
                 </Button>
@@ -715,11 +722,10 @@ const WorkOrderDetail = () => {
                 onClick={() => setShowStageDialog(true)}
               >
                 <Edit className="h-4 w-4 mr-2" />
-                Stage: {wo.current_stage?.replace('_', ' ').toUpperCase() || 'N/A'}
+                Update Stage
               </Button>
             </div>
           </div>
-
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════
