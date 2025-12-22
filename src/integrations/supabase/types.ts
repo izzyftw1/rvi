@@ -346,6 +346,7 @@ export type Database = {
           id: string
           log_date: string
           machine_id: string
+          ok_quantity: number | null
           operator_id: string | null
           ordered_quantity: number | null
           party_code: string | null
@@ -353,6 +354,16 @@ export type Database = {
           product_description: string | null
           programmer_id: string | null
           raw_material_grade: string | null
+          rejection_dent: number | null
+          rejection_dimension: number | null
+          rejection_face_not_ok: number | null
+          rejection_forging_mark: number | null
+          rejection_lining: number | null
+          rejection_material_not_ok: number | null
+          rejection_previous_setup_fault: number | null
+          rejection_scratch: number | null
+          rejection_setting: number | null
+          rejection_tool_mark: number | null
           rework_quantity: number
           setup_number: string
           shift: string
@@ -363,6 +374,7 @@ export type Database = {
           target_override_reason: string | null
           target_quantity: number | null
           total_downtime_minutes: number
+          total_rejection_quantity: number | null
           updated_at: string
           wo_id: string | null
         }
@@ -378,6 +390,7 @@ export type Database = {
           id?: string
           log_date?: string
           machine_id: string
+          ok_quantity?: number | null
           operator_id?: string | null
           ordered_quantity?: number | null
           party_code?: string | null
@@ -385,6 +398,16 @@ export type Database = {
           product_description?: string | null
           programmer_id?: string | null
           raw_material_grade?: string | null
+          rejection_dent?: number | null
+          rejection_dimension?: number | null
+          rejection_face_not_ok?: number | null
+          rejection_forging_mark?: number | null
+          rejection_lining?: number | null
+          rejection_material_not_ok?: number | null
+          rejection_previous_setup_fault?: number | null
+          rejection_scratch?: number | null
+          rejection_setting?: number | null
+          rejection_tool_mark?: number | null
           rework_quantity?: number
           setup_number: string
           shift: string
@@ -395,6 +418,7 @@ export type Database = {
           target_override_reason?: string | null
           target_quantity?: number | null
           total_downtime_minutes?: number
+          total_rejection_quantity?: number | null
           updated_at?: string
           wo_id?: string | null
         }
@@ -410,6 +434,7 @@ export type Database = {
           id?: string
           log_date?: string
           machine_id?: string
+          ok_quantity?: number | null
           operator_id?: string | null
           ordered_quantity?: number | null
           party_code?: string | null
@@ -417,6 +442,16 @@ export type Database = {
           product_description?: string | null
           programmer_id?: string | null
           raw_material_grade?: string | null
+          rejection_dent?: number | null
+          rejection_dimension?: number | null
+          rejection_face_not_ok?: number | null
+          rejection_forging_mark?: number | null
+          rejection_lining?: number | null
+          rejection_material_not_ok?: number | null
+          rejection_previous_setup_fault?: number | null
+          rejection_scratch?: number | null
+          rejection_setting?: number | null
+          rejection_tool_mark?: number | null
           rework_quantity?: number
           setup_number?: string
           shift?: string
@@ -427,6 +462,7 @@ export type Database = {
           target_override_reason?: string | null
           target_quantity?: number | null
           total_downtime_minutes?: number
+          total_rejection_quantity?: number | null
           updated_at?: string
           wo_id?: string | null
         }
