@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -517,30 +518,37 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
 
       const effectiveMachineId = overrideMachine ? selectedMachineId : (autoMachine?.id || selectedMachineId);
       
-      const { error: logError } = await supabase.from("production_logs").insert({
-        wo_id: propWorkOrder?.id,
-        machine_id: effectiveMachineId || null,
+      if (!effectiveMachineId) {
+        toast.error("Please select a machine before submitting.");
+        setLoading(false);
+        return;
+      }
+      
+      const insertData = {
+        wo_id: propWorkOrder?.id || null,
+        machine_id: effectiveMachineId,
         log_date: format(data.log_date, "yyyy-MM-dd"),
-        shift: data.shift,
-        supervisor_id: data.supervisor_id || null,
-        setter_id: data.setter_id || null,
-        operator_ids: selectedOperators.length > 0 ? selectedOperators : null,
-        operator_type: data.operator_company,
+        shift: String(data.shift),
+        plant: 'MAIN',
+        setup_number: effectiveSetupNo || 'SETUP-001',
         shift_start_time: data.machine_start_time,
         shift_end_time: data.machine_end_time,
-        planned_minutes: grossRuntimeMinutes,
         actual_runtime_minutes: actualRuntimeMinutes,
         total_downtime_minutes: totalDowntimeMinutes,
-        downtime_events: downtimeEntries,
-        target_qty: targetQuantity,
-        quantity_completed: data.actual_production_qty,
-        qc_supervisor_id: data.qc_supervisor_id || null,
+        downtime_events: JSON.parse(JSON.stringify(downtimeEntries)) as Json,
+        target_quantity: targetQuantity,
+        actual_quantity: data.actual_production_qty,
+        ok_quantity: okPcs,
+        efficiency_percentage: efficiency,
+        operator_id: selectedOperators.length > 0 ? selectedOperators[0] : null,
+        party_code: partyCode !== "—" ? partyCode : null,
+        product_description: productDescription !== "—" ? productDescription : null,
+        drawing_number: drawingNumber !== "—" ? drawingNumber : null,
+        raw_material_grade: rawMaterialGrade !== "—" ? rawMaterialGrade : null,
+        ordered_quantity: orderedQuantity || null,
+        cycle_time_seconds: effectiveCycleTime || null,
         remarks: data.remarks?.trim() || null,
-        setup_no: effectiveSetupNo,
-        operator_id: user?.id,
-        log_timestamp: new Date().toISOString(),
-        cycle_time_override: overrideCycleTime ? effectiveCycleTime : null,
-        // Rejection quantities
+        created_by: user?.id || null,
         rejection_dent: rejectionValues.rejection_dent || 0,
         rejection_scratch: rejectionValues.rejection_scratch || 0,
         rejection_forging_mark: rejectionValues.rejection_forging_mark || 0,
@@ -552,8 +560,9 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         rejection_face_not_ok: rejectionValues.rejection_face_not_ok || 0,
         rejection_material_not_ok: rejectionValues.rejection_material_not_ok || 0,
         total_rejection_quantity: totalRejectionQty,
-        ok_quantity: okPcs,
-      });
+      };
+      
+      const { error: logError } = await supabase.from("daily_production_logs").insert([insertData]);
 
       if (logError) throw logError;
 
