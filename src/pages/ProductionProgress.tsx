@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { 
@@ -301,9 +301,6 @@ export default function ProductionProgress() {
 
   const criticalCount = exceptions.filter(e => e.type === 'critical').length;
   const urgentCount = exceptions.filter(e => e.type === 'urgent').length;
-  const actionCount = exceptions.filter(e => e.type === 'action_needed').length;
-  const totalActive = workOrders.length;
-  const flowingCount = totalActive - exceptions.length;
 
   // Group exceptions by type for display
   const criticalExceptions = exceptions.filter(e => e.type === 'critical');
@@ -336,87 +333,65 @@ export default function ProductionProgress() {
           </div>
         </div>
 
-        {/* Status Strip - Answer the key question at a glance */}
-        <Card className={cn(
-          "border-2",
-          criticalCount > 0 ? "border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-950/20" :
-          urgentCount > 0 ? "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20" :
-          exceptions.length > 0 ? "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20" :
-          "border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-950/20"
-        )}>
-          <CardContent className="py-4 px-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                {criticalCount > 0 ? (
-                  <>
-                    <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
-                    <div>
-                      <p className="font-semibold text-red-700 dark:text-red-300">
-                        {criticalCount} Critical Issue{criticalCount > 1 ? 's' : ''} — Immediate Action Required
-                      </p>
-                      <p className="text-xs text-red-600/80 dark:text-red-400/80">
-                        Overdue work orders blocked and waiting
-                      </p>
-                    </div>
-                  </>
-                ) : urgentCount > 0 ? (
-                  <>
-                    <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                    <div>
-                      <p className="font-semibold text-amber-700 dark:text-amber-300">
-                        {urgentCount} Urgent Item{urgentCount > 1 ? 's' : ''} — Attention Needed Today
-                      </p>
-                      <p className="text-xs text-amber-600/80 dark:text-amber-400/80">
-                        Long-aging blockers building up
-                      </p>
-                    </div>
-                  </>
-                ) : exceptions.length > 0 ? (
-                  <>
-                    <Target className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                    <div>
-                      <p className="font-semibold text-blue-700 dark:text-blue-300">
-                        {exceptions.length} Action Item{exceptions.length > 1 ? 's' : ''} — Normal Operations
-                      </p>
-                      <p className="text-xs text-blue-600/80 dark:text-blue-400/80">
-                        Work orders awaiting standard processing
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-                    <div>
-                      <p className="font-semibold text-green-700 dark:text-green-300">
-                        All Clear — Production Flowing
-                      </p>
-                      <p className="text-xs text-green-600/80 dark:text-green-400/80">
-                        No blockers or pending actions
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4 text-sm">
-                <div className="text-center">
-                  <p className="text-2xl font-bold">{totalActive}</p>
-                  <p className="text-xs text-muted-foreground">Active WOs</p>
+        {/* Exception Alert Banner - No KPIs, just the key message */}
+        {exceptions.length > 0 ? (
+          <div className={cn(
+            "flex items-center gap-3 p-4 rounded-lg border-2",
+            criticalCount > 0 ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30" :
+            urgentCount > 0 ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30" :
+            "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30"
+          )}>
+            {criticalCount > 0 ? (
+              <>
+                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-red-700 dark:text-red-300">
+                    {criticalCount} Critical — Immediate action required
+                  </p>
+                  <p className="text-xs text-red-600/80 dark:text-red-400/80">
+                    Overdue WOs blocked
+                  </p>
                 </div>
-                <Separator orientation="vertical" className="h-10" />
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{flowingCount}</p>
-                  <p className="text-xs text-muted-foreground">Flowing</p>
+              </>
+            ) : urgentCount > 0 ? (
+              <>
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-amber-700 dark:text-amber-300">
+                    {urgentCount} Urgent — Attention needed today
+                  </p>
+                  <p className="text-xs text-amber-600/80 dark:text-amber-400/80">
+                    Blockers aging &gt;24h
+                  </p>
                 </div>
-                <Separator orientation="vertical" className="h-10" />
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{exceptions.length}</p>
-                  <p className="text-xs text-muted-foreground">Blocked</p>
+              </>
+            ) : (
+              <>
+                <Target className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-blue-700 dark:text-blue-300">
+                    {exceptions.length} action item{exceptions.length > 1 ? 's' : ''} pending
+                  </p>
+                  <p className="text-xs text-blue-600/80 dark:text-blue-400/80">
+                    Standard processing required
+                  </p>
                 </div>
-              </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 p-4 rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30">
+            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-green-700 dark:text-green-300">
+                All Clear — No blockers
+              </p>
+              <p className="text-xs text-green-600/80 dark:text-green-400/80">
+                Production flowing normally
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        )}
 
         {/* Exception Lists - Prioritized */}
         <div className="space-y-4">
@@ -454,7 +429,7 @@ export default function ProductionProgress() {
             <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-green-500" />
             <p className="text-xl font-semibold text-green-700 dark:text-green-400">Production Flowing Smoothly</p>
             <p className="text-muted-foreground mt-2">
-              All {totalActive} active work orders are progressing without blockers
+              No blocked work orders at this time
             </p>
             <Button 
               variant="outline" 
