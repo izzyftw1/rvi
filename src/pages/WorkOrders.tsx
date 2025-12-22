@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ExternalLink, ArrowRight, Timer, Building2, Scissors, Hammer, Box, Inbox } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -15,7 +15,6 @@ import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
 import { isPast, parseISO, differenceInDays, format as formatDate } from "date-fns";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Internal stages
 const INTERNAL_STAGES = {
@@ -84,7 +83,7 @@ const KPICard = memo(({
 ));
 KPICard.displayName = "KPICard";
 
-// Work Order Card - Stage-dominant design with clear status signals
+// Work Order Card - Stage-dominant design with quick-scan operational indicators
 const WorkOrderRow = memo(({ 
   wo, 
   onDelete, 
@@ -108,8 +107,23 @@ const WorkOrderRow = memo(({
     m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
   );
 
+  // Days in current stage calculation
+  const daysInStage = useMemo(() => {
+    const stageDate = wo.stage_entered_at || wo.updated_at || wo.created_at;
+    if (!stageDate) return null;
+    return Math.max(0, differenceInDays(new Date(), parseISO(stageDate)));
+  }, [wo.stage_entered_at, wo.updated_at, wo.created_at]);
+
+  // Determine block reason (priority order)
+  const blockReason = useMemo(() => {
+    if (hasExternalOverdue) return 'Ext overdue';
+    if (wo.qc_gate_status === 'pending' || wo.qc_gate_status === 'failed') return 'QC pending';
+    if (wo.has_open_ncr) return 'NCR open';
+    return null;
+  }, [hasExternalOverdue, wo.qc_gate_status, wo.has_open_ncr]);
+
   // Determine card status for styling
-  const isBlocked = hasExternalOverdue;
+  const isBlocked = !!blockReason;
   const hasIssue = isOverdue || isBlocked;
   const isExternal = externalWipTotal > 0;
 
@@ -134,15 +148,22 @@ const WorkOrderRow = memo(({
         )} />
       )}
 
-      {/* STAGE - Dominant Visual Element */}
+      {/* STAGE + Days indicator */}
       <div className={cn(
-        "flex flex-row items-center justify-center gap-1.5 px-3 py-1.5 min-w-[80px] text-white relative",
+        "flex flex-col items-center justify-center px-2.5 py-1 min-w-[72px] text-white relative",
         stageConfig.color
       )}>
-        <StageIcon className="h-4 w-4" />
-        <span className="text-[11px] font-bold uppercase tracking-wide">
-          {stageConfig.label}
-        </span>
+        <div className="flex items-center gap-1">
+          <StageIcon className="h-3.5 w-3.5" />
+          <span className="text-[10px] font-bold uppercase tracking-wide">
+            {stageConfig.label}
+          </span>
+        </div>
+        {daysInStage !== null && daysInStage > 0 && (
+          <span className="text-[9px] opacity-80 font-medium">
+            {daysInStage}d
+          </span>
+        )}
         
         {/* Issue overlay icon on stage */}
         {hasIssue && (
@@ -160,69 +181,63 @@ const WorkOrderRow = memo(({
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 flex items-center gap-3 px-3 py-1.5">
-        {/* Primary: PO / Customer + Status Badge */}
+      <div className="flex-1 flex items-center gap-2 px-2.5 py-1">
+        {/* INT/EXT badge - compact */}
+        <Badge 
+          variant="outline" 
+          className={cn(
+            "text-[8px] px-1 py-0 h-4 font-bold tracking-wide flex-shrink-0",
+            isExternal 
+              ? "border-purple-400 text-purple-600 bg-purple-50" 
+              : "border-slate-300 text-slate-500 bg-slate-50"
+          )}
+        >
+          {isExternal ? 'EXT' : 'INT'}
+        </Badge>
+
+        {/* Primary: PO / Customer */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <p className="text-sm font-medium text-foreground truncate">
               {wo.customer_po || wo.wo_id?.slice(0, 8)}
             </p>
-            {/* Inline status badges */}
-            {isOverdue && (
-              <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 gap-0.5 whitespace-nowrap">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                {daysOverdue}d
+            {/* Block reason badge */}
+            {blockReason && (
+              <Badge className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap bg-amber-500/90 hover:bg-amber-500">
+                {blockReason}
               </Badge>
             )}
-            {isBlocked && !isOverdue && (
-              <Badge className="text-[9px] px-1 py-0 h-4 gap-0.5 whitespace-nowrap bg-amber-500 hover:bg-amber-500/90">
-                <Timer className="h-2.5 w-2.5" />
-                Ext
+            {/* Overdue badge */}
+            {isOverdue && (
+              <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap">
+                {daysOverdue}d late
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{wo.customer}</p>
+          <p className="text-[11px] text-muted-foreground truncate">{wo.customer}</p>
         </div>
 
         {/* Secondary: Item & Qty */}
-        <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="truncate max-w-[80px]">{wo.item_code}</span>
-          <span className="font-medium text-foreground">{wo.quantity?.toLocaleString()}</span>
+        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="truncate max-w-[70px] text-[11px]">{wo.item_code}</span>
+          <span className="font-medium text-foreground text-[11px]">{wo.quantity?.toLocaleString()}</span>
         </div>
 
-        {/* External Ownership indicator */}
+        {/* External WIP count if applicable */}
         {isExternal && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <Badge className="gap-1 text-[10px] px-1.5 py-0.5 h-5 whitespace-nowrap bg-purple-500 hover:bg-purple-600 text-white">
-                  <Building2 className="h-3 w-3" />
-                  External
-                  <span className="font-bold">{externalWipTotal}</span>
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="font-medium">At External Partner: {externalWipTotal} pcs</p>
-                {Object.entries(wo.external_wip || {}).map(([process, qty]: any) => (
-                  qty > 0 && <p key={process} className="text-xs">{process}: {qty}</p>
-                ))}
-                {hasExternalOverdue && (
-                  <p className="text-xs text-amber-500 mt-1">⚠ Return overdue</p>
-                )}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <span className="text-[10px] text-purple-600 font-medium whitespace-nowrap hidden lg:block">
+            {externalWipTotal} out
+          </span>
         )}
 
         {/* Due Date */}
         <div className="hidden md:block">
           {wo.due_date ? (
             <span className={cn(
-              "text-[10px] flex items-center gap-0.5",
+              "text-[10px] flex items-center gap-0.5 whitespace-nowrap",
               isOverdue ? "text-destructive font-semibold" : 
               daysUntilDue !== null && daysUntilDue <= 3 ? "text-amber-600 font-medium" : "text-muted-foreground"
             )}>
-              <Clock className="h-2.5 w-2.5" />
               {formatDate(parseISO(wo.due_date), 'MMM d')}
             </span>
           ) : null}
@@ -232,25 +247,25 @@ const WorkOrderRow = memo(({
         <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="h-6 w-6">
-                <MoreVertical className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" className="h-5 w-5">
+                <MoreVertical className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNavigate(wo.id); }}>
                 <ArrowRight className="h-4 w-4 mr-2" />
-                View Details
+                View
               </DropdownMenuItem>
               {canManageExternal && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSendToExternal(wo); }}>
                     <Send className="h-4 w-4 mr-2" />
-                    Send External
+                    Send Ext
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onReceiveFromExternal(wo); }}>
                     <Package className="h-4 w-4 mr-2" />
-                    Receive External
+                    Receive
                   </DropdownMenuItem>
                 </>
               )}
