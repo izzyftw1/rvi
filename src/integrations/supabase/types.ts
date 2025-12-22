@@ -5770,6 +5770,7 @@ export type Database = {
           downtime_hours: number | null
           downtime_hours_30d: number | null
           downtime_reason: string | null
+          last_log_at: string | null
           last_maintenance_date: string | null
           location: string | null
           machine_code: string | null
@@ -5782,7 +5783,17 @@ export type Database = {
           running_item: string | null
           running_wo: string | null
           running_wo_display: string | null
+          shift_a_output: number | null
+          shift_b_output: number | null
+          shift_c_output: number | null
           site_id: string | null
+          today_avg_efficiency: number | null
+          today_downtime_by_reason: Json | null
+          today_downtime_minutes: number | null
+          today_ok_qty: number | null
+          today_output: number | null
+          today_rejection: number | null
+          today_run_minutes: number | null
           updated_at: string | null
           uptime_7d: number | null
         }

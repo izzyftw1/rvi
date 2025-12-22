@@ -23,6 +23,17 @@ interface MachineCardProps {
     last_maintenance_date: string | null;
     uptime_7d: number;
     downtime_reason: string | null;
+    // New production log metrics
+    today_run_minutes?: number;
+    today_downtime_minutes?: number;
+    today_output?: number;
+    today_ok_qty?: number;
+    today_avg_efficiency?: number;
+    last_log_at?: string | null;
+    shift_a_output?: number;
+    shift_b_output?: number;
+    shift_c_output?: number;
+    today_downtime_by_reason?: Array<{ reason: string; minutes: number }>;
   };
   onViewHistory: () => void;
   onAddMaintenance: () => void;
@@ -102,6 +113,44 @@ export const MachineCard = ({ machine, onViewHistory, onAddMaintenance }: Machin
             {machine.downtime_reason && (
               <p className="text-xs text-muted-foreground mt-1">{machine.downtime_reason}</p>
             )}
+          </div>
+        )}
+
+        {/* Today's Production Metrics - Show actual utilization from logs */}
+        {(machine.today_run_minutes ?? 0) > 0 || (machine.today_output ?? 0) > 0 ? (
+          <div className="bg-blue-50 dark:bg-blue-950/20 rounded p-2 space-y-1">
+            <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Today's Activity</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-muted-foreground">Run Time</p>
+                <p className="font-semibold text-blue-600">{formatDowntime((machine.today_run_minutes ?? 0) / 60)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Output</p>
+                <p className="font-semibold text-green-600">{(machine.today_ok_qty ?? 0).toLocaleString()} pcs</p>
+              </div>
+            </div>
+            {(machine.today_avg_efficiency ?? 0) > 0 && (
+              <div className="flex items-center justify-between text-xs mt-1">
+                <span className="text-muted-foreground">Efficiency</span>
+                <span className={cn(
+                  "font-semibold",
+                  (machine.today_avg_efficiency ?? 0) >= 85 ? "text-green-600" :
+                  (machine.today_avg_efficiency ?? 0) >= 70 ? "text-amber-600" : "text-red-600"
+                )}>
+                  {(machine.today_avg_efficiency ?? 0).toFixed(1)}%
+                </span>
+              </div>
+            )}
+            {machine.last_log_at && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Last log: {new Date(machine.last_log_at).toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+        ) : machine.current_state === 'idle' && (
+          <div className="bg-muted/50 rounded p-2 text-xs text-center text-muted-foreground">
+            No production logs today
           </div>
         )}
 

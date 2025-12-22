@@ -18,6 +18,17 @@ interface Machine {
   last_maintenance_date: string | null;
   uptime_7d: number;
   downtime_reason: string | null;
+  // Production log metrics
+  today_run_minutes?: number;
+  today_downtime_minutes?: number;
+  today_output?: number;
+  today_ok_qty?: number;
+  today_avg_efficiency?: number;
+  last_log_at?: string | null;
+  shift_a_output?: number;
+  shift_b_output?: number;
+  shift_c_output?: number;
+  today_downtime_by_reason?: Array<{ reason: string; minutes: number }> | null;
 }
 
 export const MachineHealthTab = () => {
@@ -30,12 +41,13 @@ export const MachineHealthTab = () => {
   useEffect(() => {
     loadMachines();
 
-    // Real-time subscriptions
+    // Real-time subscriptions including daily_production_logs
     const channel = supabase
       .channel('machine-health-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, () => loadMachines())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_logs' }, () => loadMachines())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => loadMachines())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs' }, () => loadMachines())
       .subscribe();
 
     return () => {
@@ -52,7 +64,32 @@ export const MachineHealthTab = () => {
 
       if (error) throw error;
       if (data) {
-        setMachines(data);
+        // Cast the data to our Machine type, handling JSON fields
+        const typedMachines: Machine[] = data.map((m) => ({
+          machine_id: m.machine_id ?? '',
+          machine_code: m.machine_code ?? '',
+          machine_name: m.machine_name ?? '',
+          current_state: m.current_state ?? 'idle',
+          running_wo: m.running_wo,
+          running_wo_display: m.running_wo_display,
+          downtime_hours: m.downtime_hours ?? 0,
+          last_maintenance_date: m.last_maintenance_date,
+          uptime_7d: m.uptime_7d ?? 100,
+          downtime_reason: m.downtime_reason,
+          today_run_minutes: m.today_run_minutes ?? 0,
+          today_downtime_minutes: m.today_downtime_minutes ?? 0,
+          today_output: m.today_output ?? 0,
+          today_ok_qty: m.today_ok_qty ?? 0,
+          today_avg_efficiency: m.today_avg_efficiency ?? 0,
+          last_log_at: m.last_log_at,
+          shift_a_output: m.shift_a_output ?? 0,
+          shift_b_output: m.shift_b_output ?? 0,
+          shift_c_output: m.shift_c_output ?? 0,
+          today_downtime_by_reason: Array.isArray(m.today_downtime_by_reason) 
+            ? m.today_downtime_by_reason as Array<{ reason: string; minutes: number }>
+            : null,
+        }));
+        setMachines(typedMachines);
       }
       setLoading(false);
     } catch (error) {
@@ -83,7 +120,17 @@ export const MachineHealthTab = () => {
   const idleCount = machines.filter(m => m.current_state === 'idle').length;
   const maintenanceCount = machines.filter(m => m.current_state === 'maintenance').length;
   const downCount = machines.filter(m => m.current_state === 'down').length;
-  const utilizationPct = totalMachines > 0 ? ((runningCount / totalMachines) * 100).toFixed(1) : '0';
+  
+  // Use actual production log data for utilization when available
+  const machinesWithLogs = machines.filter(m => (m.today_run_minutes ?? 0) > 0);
+  const utilizationFromLogs = machinesWithLogs.length > 0;
+  const utilizationPct = utilizationFromLogs 
+    ? (machinesWithLogs.reduce((sum, m) => sum + (m.today_run_minutes ?? 0), 0) / (machinesWithLogs.length * 480) * 100).toFixed(1)
+    : totalMachines > 0 ? ((runningCount / totalMachines) * 100).toFixed(1) : '0';
+  
+  // Total output from logs today
+  const totalOutputToday = machines.reduce((sum, m) => sum + (m.today_ok_qty ?? 0), 0);
+  const totalDowntimeFromLogs = machines.reduce((sum, m) => sum + (m.today_downtime_minutes ?? 0), 0);
   
   const totalDowntimeToday = machines.reduce((sum, m) => {
     if (m.current_state === 'maintenance' || m.current_state === 'down') {
@@ -123,13 +170,23 @@ export const MachineHealthTab = () => {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Utilization</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {utilizationFromLogs ? 'Actual Utilization' : 'Utilization'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{utilizationPct}%</div>
             <p className="text-xs text-muted-foreground">
-              {runningCount} / {totalMachines} running
+              {utilizationFromLogs 
+                ? `${machinesWithLogs.length} machines logged today`
+                : `${runningCount} / ${totalMachines} running`
+              }
             </p>
+            {totalOutputToday > 0 && (
+              <p className="text-xs text-green-600 font-medium mt-1">
+                {totalOutputToday.toLocaleString()} pcs today
+              </p>
+            )}
           </CardContent>
         </Card>
 
