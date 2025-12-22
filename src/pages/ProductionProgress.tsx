@@ -342,16 +342,18 @@ export default function ProductionProgress() {
           </div>
         </div>
 
-        {/* Buckets Grid */}
+        {/* Buckets Grid - only show non-empty buckets */}
         <div className="grid gap-4 md:grid-cols-2">
-          {(Object.keys(bucketConfig) as BucketType[]).map((bucketKey) => (
-            <BucketCard
-              key={bucketKey}
-              bucketType={bucketKey}
-              items={buckets[bucketKey]}
-              navigate={navigate}
-            />
-          ))}
+          {(Object.keys(bucketConfig) as BucketType[])
+            .filter((bucketKey) => buckets[bucketKey].length > 0)
+            .map((bucketKey) => (
+              <BucketCard
+                key={bucketKey}
+                bucketType={bucketKey}
+                items={buckets[bucketKey]}
+                navigate={navigate}
+              />
+            ))}
         </div>
 
         {/* Empty State */}
