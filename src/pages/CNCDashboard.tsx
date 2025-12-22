@@ -254,12 +254,71 @@ const CNCDashboard = () => {
     };
   }, [machines]);
 
-  const readinessConfig: Record<ReadinessStatus, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
-    ready: { label: 'Ready', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800', icon: CheckCircle2 },
-    running: { label: 'Running', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800', icon: Activity },
-    setup_required: { label: 'Setup Required', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800', icon: Settings },
-    maintenance_due: { label: 'Maintenance Due', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800', icon: Wrench },
-    down: { label: 'Down', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800', icon: AlertTriangle }
+  // Determine high-impact machines: highest queue (top 20%) or blocking overdue WOs (>48h oldest)
+  const highImpactMachineIds = useMemo(() => {
+    const ids = new Set<string>();
+    
+    // Find machines with highest queue counts (top 20% or at least 3+ queued)
+    const machinesWithQueue = machines.filter(m => m.queueCount > 0);
+    if (machinesWithQueue.length > 0) {
+      const sortedByQueue = [...machinesWithQueue].sort((a, b) => b.queueCount - a.queueCount);
+      const topCount = Math.max(1, Math.ceil(sortedByQueue.length * 0.2));
+      const threshold = sortedByQueue[Math.min(topCount - 1, sortedByQueue.length - 1)]?.queueCount || 3;
+      
+      machinesWithQueue.forEach(m => {
+        if (m.queueCount >= threshold || m.queueCount >= 3) {
+          ids.add(m.id);
+        }
+      });
+    }
+    
+    // Add machines blocking overdue WOs (oldest queue age > 48h)
+    machines.forEach(m => {
+      if (m.oldestQueueAge > 48) {
+        ids.add(m.id);
+      }
+    });
+    
+    return ids;
+  }, [machines]);
+
+  // Neutral styling for low-impact machines, colored only for high-impact or critical states
+  const getCardStyling = (machine: MachineData) => {
+    const isHighImpact = highImpactMachineIds.has(machine.id);
+    const isDown = machine.readiness === 'down';
+    const isReady = machine.readiness === 'ready';
+    
+    // Always highlight: down machines and ready machines
+    if (isDown) {
+      return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
+    }
+    if (isReady) {
+      return 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800';
+    }
+    
+    // High-impact machines get colored backgrounds
+    if (isHighImpact) {
+      if (machine.readiness === 'running') {
+        return 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800';
+      }
+      if (machine.readiness === 'maintenance_due') {
+        return 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800';
+      }
+      if (machine.readiness === 'setup_required') {
+        return 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800';
+      }
+    }
+    
+    // Low-impact machines get neutral styling
+    return 'bg-muted/20 border-muted';
+  };
+
+  const readinessConfig: Record<ReadinessStatus, { label: string; color: string; icon: React.ElementType }> = {
+    ready: { label: 'Ready', color: 'text-green-600 dark:text-green-400', icon: CheckCircle2 },
+    running: { label: 'Running', color: 'text-blue-600 dark:text-blue-400', icon: Activity },
+    setup_required: { label: 'Setup Required', color: 'text-amber-600 dark:text-amber-400', icon: Settings },
+    maintenance_due: { label: 'Maintenance Due', color: 'text-orange-600 dark:text-orange-400', icon: Wrench },
+    down: { label: 'Down', color: 'text-red-600 dark:text-red-400', icon: AlertTriangle }
   };
 
   // Sort machines: Ready first, then running, then others
@@ -339,13 +398,15 @@ const CNCDashboard = () => {
                 ? differenceInMinutes(new Date(), parseISO(machine.current_job_start))
                 : 0;
 
+              const isHighImpact = highImpactMachineIds.has(machine.id);
+
               return (
                 <Card 
                   key={machine.id}
                   className={cn(
-                    "transition-all border-2",
-                    config.bgColor,
-                    isEligibleForAssignment && "ring-2 ring-green-400/50"
+                    "transition-all border",
+                    getCardStyling(machine),
+                    isEligibleForAssignment && "ring-2 ring-green-400/50 border-2"
                   )}
                 >
                   <CardContent className="p-4 space-y-3">
