@@ -127,6 +127,8 @@ const bucketConfig: Record<BucketType, {
   bgColor: string;
   description: string;
   isBlocker: boolean;
+  actionLabel: string;
+  getActionPath: (woId: string) => string;
 }> = {
   material_qc: { 
     title: 'Blocked – Material QC', 
@@ -134,7 +136,9 @@ const bucketConfig: Record<BucketType, {
     color: 'text-red-700 dark:text-red-300',
     bgColor: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800',
     description: 'Awaiting material inspection approval',
-    isBlocker: true
+    isBlocker: true,
+    actionLabel: 'Approve Material QC',
+    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`
   },
   first_piece_qc: { 
     title: 'Blocked – First Piece QC', 
@@ -142,7 +146,9 @@ const bucketConfig: Record<BucketType, {
     color: 'text-amber-700 dark:text-amber-300',
     bgColor: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800',
     description: 'Awaiting first piece approval',
-    isBlocker: true
+    isBlocker: true,
+    actionLabel: 'Perform First Piece Inspection',
+    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`
   },
   ready_not_started: { 
     title: 'Ready but Not Started', 
@@ -150,7 +156,9 @@ const bucketConfig: Record<BucketType, {
     color: 'text-blue-700 dark:text-blue-300',
     bgColor: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
     description: 'All gates passed, awaiting machine assignment',
-    isBlocker: true
+    isBlocker: true,
+    actionLabel: 'Assign Machine',
+    getActionPath: (woId) => `/work-orders/${woId}?tab=production`
   },
   external_processing: { 
     title: 'External Processing', 
@@ -158,7 +166,9 @@ const bucketConfig: Record<BucketType, {
     color: 'text-slate-700 dark:text-slate-300',
     bgColor: 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-700',
     description: 'At external partner – informational',
-    isBlocker: false
+    isBlocker: false,
+    actionLabel: 'View External Status',
+    getActionPath: (woId) => `/work-orders/${woId}?tab=external`
   }
 };
 
@@ -340,33 +350,33 @@ function BucketCard({
               return (
                 <div
                   key={item.wo.id}
-                  onClick={() => navigate(`/work-orders/${item.wo.id}`)}
                   className={cn(
-                    "flex items-center justify-between p-2.5 rounded-md cursor-pointer transition-colors group",
+                    "flex flex-col gap-2 p-2.5 rounded-md transition-colors",
                     isLongBlocked 
-                      ? "bg-red-100/80 dark:bg-red-950/50 border-l-4 border-l-red-500 hover:bg-red-100 dark:hover:bg-red-950/70" 
-                      : "bg-background/70 hover:bg-background border border-transparent hover:border-muted"
+                      ? "bg-red-100/80 dark:bg-red-950/50 border-l-4 border-l-red-500" 
+                      : "bg-background/70 border border-muted/50"
                   )}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-semibold text-sm">{item.wo.display_id}</span>
-                      <span className="text-xs text-muted-foreground truncate">{item.wo.customer}</span>
-                      {item.wo.due_date && new Date(item.wo.due_date) < new Date() && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
-                      )}
+                  {/* Top row: WO info + age */}
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-semibold text-sm">{item.wo.display_id}</span>
+                        <span className="text-xs text-muted-foreground truncate">{item.wo.customer}</span>
+                        {item.wo.due_date && new Date(item.wo.due_date) < new Date() && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-muted-foreground">{item.wo.item_code}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-muted-foreground">{item.wo.item_code}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Severity-colored age badge */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                    
+                    {/* Severity-colored age badge */}
                     <Badge 
                       variant="outline" 
                       className={cn(
-                        "text-xs font-medium gap-1 border",
+                        "text-xs font-medium gap-1 border flex-shrink-0",
                         severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
                         severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
                         severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
@@ -375,8 +385,21 @@ function BucketCard({
                       <Clock className="h-3 w-3" />
                       {formatAgingDisplay(item.aging_hours)}
                     </Badge>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
+                  
+                  {/* Action button */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs h-7 gap-1.5 justify-center"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(config.getActionPath(item.wo.id));
+                    }}
+                  >
+                    {config.actionLabel}
+                    <ArrowRight className="h-3 w-3" />
+                  </Button>
                 </div>
               );
             })}
