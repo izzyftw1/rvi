@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Search, FileSpreadsheet } from "lucide-react";
+import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -45,6 +45,37 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+// Downtime reasons matching Excel sheet
+const DOWNTIME_REASONS = [
+  "Machine Repair",
+  "No Power",
+  "Job Setting",
+  "Quality Problem",
+  "Material Not Available",
+  "Setting Change",
+  "Cleaning",
+  "Operator Training",
+  "Rework",
+  "Tool Change",
+  "No Operator",
+  "Tea Break",
+  "Operator Shifted",
+  "Lunch Break",
+  "Machine Idle",
+  "Other",
+] as const;
+
+type DowntimeReason = typeof DOWNTIME_REASONS[number];
+
+interface DowntimeEvent {
+  reason: DowntimeReason;
+  duration_minutes: number;
+  remark?: string;
+}
 
 const formSchema = z.object({
   log_date: z.date(),
@@ -55,6 +86,8 @@ const formSchema = z.object({
   setup_number: z.string().min(1, "Setup number is required"),
   operator_id: z.string().optional(),
   programmer_id: z.string().optional(),
+  shift_start_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
+  shift_end_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -91,10 +124,39 @@ interface ProductionLog {
   party_code: string | null;
   product_description: string | null;
   ordered_quantity: number | null;
+  shift_start_time: string | null;
+  shift_end_time: string | null;
+  total_downtime_minutes: number | null;
+  actual_runtime_minutes: number | null;
   machines: { name: string; machine_id: string } | null;
   work_orders: { display_id: string } | null;
   operator: { full_name: string } | null;
   programmer: { full_name: string } | null;
+}
+
+// Helper to parse time string to minutes since midnight
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+// Helper to calculate shift duration in minutes
+function calculateShiftDuration(startTime: string, endTime: string): number {
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+  
+  // Handle overnight shifts
+  if (endMinutes < startMinutes) {
+    return (24 * 60 - startMinutes) + endMinutes;
+  }
+  return endMinutes - startMinutes;
+}
+
+// Helper to format minutes as hours:minutes
+function formatMinutes(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
 }
 
 export default function DailyProductionLog() {
@@ -110,6 +172,12 @@ export default function DailyProductionLog() {
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
   const [filterDate, setFilterDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Downtime events state
+  const [downtimeEvents, setDowntimeEvents] = useState<DowntimeEvent[]>([]);
+  const [newDowntimeReason, setNewDowntimeReason] = useState<DowntimeReason>("Machine Repair");
+  const [newDowntimeDuration, setNewDowntimeDuration] = useState<string>("");
+  const [newDowntimeRemark, setNewDowntimeRemark] = useState<string>("");
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -122,8 +190,27 @@ export default function DailyProductionLog() {
       setup_number: "",
       operator_id: "",
       programmer_id: "",
+      shift_start_time: "08:30",
+      shift_end_time: "20:00",
     },
   });
+
+  const shiftStartTime = form.watch("shift_start_time");
+  const shiftEndTime = form.watch("shift_end_time");
+
+  // Calculate totals
+  const totalDowntimeMinutes = useMemo(() => {
+    return downtimeEvents.reduce((sum, event) => sum + event.duration_minutes, 0);
+  }, [downtimeEvents]);
+
+  const shiftDurationMinutes = useMemo(() => {
+    if (!shiftStartTime || !shiftEndTime) return 0;
+    return calculateShiftDuration(shiftStartTime, shiftEndTime);
+  }, [shiftStartTime, shiftEndTime]);
+
+  const actualRuntimeMinutes = useMemo(() => {
+    return Math.max(0, shiftDurationMinutes - totalDowntimeMinutes);
+  }, [shiftDurationMinutes, totalDowntimeMinutes]);
 
   useEffect(() => {
     loadData();
@@ -146,6 +233,10 @@ export default function DailyProductionLog() {
           party_code,
           product_description,
           ordered_quantity,
+          shift_start_time,
+          shift_end_time,
+          total_downtime_minutes,
+          actual_runtime_minutes,
           machines:machine_id(name, machine_id),
           work_orders:wo_id(display_id),
           operator:operator_id(full_name),
@@ -208,6 +299,32 @@ export default function DailyProductionLog() {
     form.setValue("wo_id", woId);
   };
 
+  const addDowntimeEvent = () => {
+    const duration = parseInt(newDowntimeDuration, 10);
+    if (isNaN(duration) || duration <= 0) {
+      toast({
+        title: "Invalid Duration",
+        description: "Please enter a valid duration in minutes",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newEvent: DowntimeEvent = {
+      reason: newDowntimeReason,
+      duration_minutes: duration,
+      remark: newDowntimeRemark || undefined,
+    };
+
+    setDowntimeEvents([...downtimeEvents, newEvent]);
+    setNewDowntimeDuration("");
+    setNewDowntimeRemark("");
+  };
+
+  const removeDowntimeEvent = (index: number) => {
+    setDowntimeEvents(downtimeEvents.filter((_, i) => i !== index));
+  };
+
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
@@ -219,6 +336,11 @@ export default function DailyProductionLog() {
         shift: data.shift,
         machine_id: data.machine_id,
         setup_number: data.setup_number,
+        shift_start_time: data.shift_start_time,
+        shift_end_time: data.shift_end_time,
+        downtime_events: downtimeEvents,
+        total_downtime_minutes: totalDowntimeMinutes,
+        actual_runtime_minutes: actualRuntimeMinutes,
         created_by: userData.user?.id,
       };
 
@@ -268,6 +390,7 @@ export default function DailyProductionLog() {
       setDialogOpen(false);
       form.reset();
       setSelectedWO(null);
+      setDowntimeEvents([]);
       loadData();
     } catch (error: any) {
       console.error("Error creating log:", error);
@@ -293,6 +416,15 @@ export default function DailyProductionLog() {
       log.setup_number?.toLowerCase().includes(search)
     );
   });
+
+  const resetForm = () => {
+    setDialogOpen(false);
+    form.reset();
+    setSelectedWO(null);
+    setDowntimeEvents([]);
+    setNewDowntimeDuration("");
+    setNewDowntimeRemark("");
+  };
 
   return (
     <div className="container mx-auto p-4 space-y-6">
@@ -343,20 +475,24 @@ export default function DailyProductionLog() {
             </div>
 
             {/* Add New Button */}
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => {
+              if (!open) resetForm();
+              else setDialogOpen(true);
+            }}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
                   New Log Entry
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>New Daily Production Log</DialogTitle>
                 </DialogHeader>
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                    {/* Basic Fields */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {/* Date */}
                       <FormField
                         control={form.control}
@@ -562,51 +698,199 @@ export default function DailyProductionLog() {
                       />
                     </div>
 
+                    {/* Time Tracking Section */}
+                    <Separator />
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Shift Time Tracking
+                      </h3>
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {/* Shift Start Time */}
+                        <FormField
+                          control={form.control}
+                          name="shift_start_time"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Shift Start</FormLabel>
+                              <FormControl>
+                                <Input type="time" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Shift End Time */}
+                        <FormField
+                          control={form.control}
+                          name="shift_end_time"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Shift End</FormLabel>
+                              <FormControl>
+                                <Input type="time" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Calculated Shift Duration */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Shift Duration</label>
+                          <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center text-sm font-medium">
+                            {formatMinutes(shiftDurationMinutes)}
+                          </div>
+                        </div>
+
+                        {/* Actual Runtime (Auto-calculated) */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-green-600">Actual Runtime</label>
+                          <div className="h-10 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md flex items-center text-sm font-semibold text-green-700 dark:text-green-400">
+                            {formatMinutes(actualRuntimeMinutes)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Downtime Events Section */}
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          Downtime Events
+                        </h3>
+                        {totalDowntimeMinutes > 0 && (
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                            Total: {formatMinutes(totalDowntimeMinutes)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Add Downtime Event */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-4 bg-muted/50 rounded-lg">
+                        <div className="sm:col-span-1">
+                          <label className="text-xs font-medium text-muted-foreground">Reason</label>
+                          <Select value={newDowntimeReason} onValueChange={(v) => setNewDowntimeReason(v as DowntimeReason)}>
+                            <SelectTrigger className="mt-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DOWNTIME_REASONS.map((reason) => (
+                                <SelectItem key={reason} value={reason}>
+                                  {reason}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">Duration (min)</label>
+                          <Input
+                            type="number"
+                            placeholder="Minutes"
+                            value={newDowntimeDuration}
+                            onChange={(e) => setNewDowntimeDuration(e.target.value)}
+                            className="mt-1"
+                            min="1"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">Remark (optional)</label>
+                          <Input
+                            placeholder="Optional note"
+                            value={newDowntimeRemark}
+                            onChange={(e) => setNewDowntimeRemark(e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Button type="button" onClick={addDowntimeEvent} size="sm" className="w-full">
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Downtime Events List */}
+                      {downtimeEvents.length > 0 && (
+                        <div className="space-y-2">
+                          {downtimeEvents.map((event, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between p-3 bg-card border rounded-lg"
+                            >
+                              <div className="flex items-center gap-4">
+                                <Badge variant="outline">{event.reason}</Badge>
+                                <span className="text-sm font-medium">{event.duration_minutes} min</span>
+                                {event.remark && (
+                                  <span className="text-sm text-muted-foreground">— {event.remark}</span>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeDowntimeEvent(index)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {downtimeEvents.length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          No downtime events added. Add events above if there was any downtime during the shift.
+                        </p>
+                      )}
+                    </div>
+
                     {/* Auto-populated WO Details */}
                     {selectedWO && (
-                      <Card className="bg-muted/50">
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm">Work Order Details (Auto-populated)</CardTitle>
-                        </CardHeader>
-                        <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Party Code:</span>
-                            <p className="font-medium">{selectedWO.customer || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Product:</span>
-                            <p className="font-medium">{selectedWO.item_code || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Drawing No:</span>
-                            <p className="font-medium">{selectedWO.revision || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Material Grade:</span>
-                            <p className="font-medium">{selectedWO.material_size_mm || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Ordered Qty:</span>
-                            <p className="font-medium">{selectedWO.quantity?.toLocaleString() || "-"}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Cycle Time:</span>
-                            <p className="font-medium">{selectedWO.cycle_time_seconds ? `${selectedWO.cycle_time_seconds}s` : "-"}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <>
+                        <Separator />
+                        <Card className="bg-muted/50">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Work Order Details (Auto-populated)</CardTitle>
+                          </CardHeader>
+                          <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Party Code:</span>
+                              <p className="font-medium">{selectedWO.customer || "-"}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Product:</span>
+                              <p className="font-medium">{selectedWO.item_code || "-"}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Drawing No:</span>
+                              <p className="font-medium">{selectedWO.revision || "-"}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Material Grade:</span>
+                              <p className="font-medium">{selectedWO.material_size_mm || "-"}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Ordered Qty:</span>
+                              <p className="font-medium">{selectedWO.quantity?.toLocaleString() || "-"}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Cycle Time:</span>
+                              <p className="font-medium">{selectedWO.cycle_time_seconds ? `${selectedWO.cycle_time_seconds}s` : "-"}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </>
                     )}
 
                     <div className="flex justify-end gap-2 pt-4">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setDialogOpen(false);
-                          form.reset();
-                          setSelectedWO(null);
-                        }}
-                      >
+                      <Button type="button" variant="outline" onClick={resetForm}>
                         Cancel
                       </Button>
                       <Button type="submit" disabled={submitting}>
@@ -649,14 +933,14 @@ export default function DailyProductionLog() {
                   <TableRow>
                     <TableHead>Plant</TableHead>
                     <TableHead>Shift</TableHead>
+                    <TableHead>Time</TableHead>
                     <TableHead>Machine</TableHead>
                     <TableHead>Setup</TableHead>
                     <TableHead>Work Order</TableHead>
-                    <TableHead>Party</TableHead>
                     <TableHead>Product</TableHead>
-                    <TableHead>Qty</TableHead>
+                    <TableHead>Downtime</TableHead>
+                    <TableHead>Runtime</TableHead>
                     <TableHead>Operator</TableHead>
-                    <TableHead>Programmer</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -664,6 +948,9 @@ export default function DailyProductionLog() {
                     <TableRow key={log.id}>
                       <TableCell>{log.plant}</TableCell>
                       <TableCell>{log.shift}</TableCell>
+                      <TableCell className="text-xs">
+                        {log.shift_start_time?.slice(0, 5)} - {log.shift_end_time?.slice(0, 5)}
+                      </TableCell>
                       <TableCell>
                         <span className="font-mono text-xs">
                           {log.machines?.machine_id}
@@ -677,11 +964,26 @@ export default function DailyProductionLog() {
                       <TableCell>
                         {log.work_orders?.display_id || "-"}
                       </TableCell>
-                      <TableCell>{log.party_code || "-"}</TableCell>
                       <TableCell>{log.product_description || "-"}</TableCell>
-                      <TableCell>{log.ordered_quantity?.toLocaleString() || "-"}</TableCell>
+                      <TableCell>
+                        {log.total_downtime_minutes ? (
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                            {formatMinutes(log.total_downtime_minutes)}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {log.actual_runtime_minutes ? (
+                          <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                            {formatMinutes(log.actual_runtime_minutes)}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>{log.operator?.full_name || "-"}</TableCell>
-                      <TableCell>{log.programmer?.full_name || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

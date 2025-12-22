@@ -335,9 +335,11 @@ export type Database = {
       }
       daily_production_logs: {
         Row: {
+          actual_runtime_minutes: number
           created_at: string
           created_by: string | null
           cycle_time_seconds: number | null
+          downtime_events: Json
           drawing_number: string | null
           id: string
           log_date: string
@@ -351,13 +353,18 @@ export type Database = {
           raw_material_grade: string | null
           setup_number: string
           shift: string
+          shift_end_time: string
+          shift_start_time: string
+          total_downtime_minutes: number
           updated_at: string
           wo_id: string | null
         }
         Insert: {
+          actual_runtime_minutes?: number
           created_at?: string
           created_by?: string | null
           cycle_time_seconds?: number | null
+          downtime_events?: Json
           drawing_number?: string | null
           id?: string
           log_date?: string
@@ -371,13 +378,18 @@ export type Database = {
           raw_material_grade?: string | null
           setup_number: string
           shift: string
+          shift_end_time?: string
+          shift_start_time?: string
+          total_downtime_minutes?: number
           updated_at?: string
           wo_id?: string | null
         }
         Update: {
+          actual_runtime_minutes?: number
           created_at?: string
           created_by?: string | null
           cycle_time_seconds?: number | null
+          downtime_events?: Json
           drawing_number?: string | null
           id?: string
           log_date?: string
@@ -391,6 +403,9 @@ export type Database = {
           raw_material_grade?: string | null
           setup_number?: string
           shift?: string
+          shift_end_time?: string
+          shift_start_time?: string
+          total_downtime_minutes?: number
           updated_at?: string
           wo_id?: string | null
         }
