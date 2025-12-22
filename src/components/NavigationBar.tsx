@@ -70,6 +70,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       "/production-progress": "/production-progress",
       "/daily-production-log": "/daily-production-log",
       "/machine-utilisation": "/machine-utilisation",
+      "/operator-efficiency": "/operator-efficiency",
       "/cnc-dashboard": "/cnc-dashboard",
       "/floor-dashboard": "/floor-dashboard",
       
@@ -143,6 +144,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
         { label: "Work Orders", path: "/work-orders", icon: Search },
         { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
         { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
+        { label: "Operator Efficiency", path: "/operator-efficiency", icon: Activity },
         { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
         { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
       ]
