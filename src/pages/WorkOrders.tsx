@@ -583,136 +583,123 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
           />
         </div>
 
-        {/* Two-Level Filter Bar */}
-        <Card>
-          <CardContent className="py-3 px-4 space-y-3">
-            {/* Level 1: Primary Toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground mr-2">Show:</span>
-              <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
-                <button
-                  onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all",
-                    primaryFilter === 'internal' 
-                      ? "bg-primary text-primary-foreground shadow-sm" 
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Building2 className="h-4 w-4" />
-                  In-House
-                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
-                    {kpis.internalCount}
-                  </Badge>
-                </button>
-                <button
-                  onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all",
-                    primaryFilter === 'external' 
-                      ? "bg-accent text-accent-foreground shadow-sm" 
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  With Partners
-                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
-                    {kpis.externalCount}
-                  </Badge>
-                </button>
-              </div>
-
-              {/* Issue Filter Badge */}
-              {issueFilter !== 'all' && (
-                <Badge 
-                  variant={issueFilter === 'blocked' ? 'destructive' : 'default'}
-                  className="cursor-pointer ml-2" 
-                  onClick={() => setIssueFilter('all')}
-                >
-                  {issueFilter === 'blocked' ? 'Needs Action' : 'Running Late'} 
-                  <span className="ml-1">×</span>
-                </Badge>
+        {/* Filter Bar - Secondary visual weight */}
+        <div className="flex flex-wrap items-center gap-3 py-2">
+          {/* Primary Toggle - Compact */}
+          <div className="inline-flex rounded-md border border-border/60 p-0.5 bg-muted/20">
+            <button
+              onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded transition-all",
+                primaryFilter === 'internal' 
+                  ? "bg-background text-foreground shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
               )}
-            </div>
+            >
+              In-House
+              <span className="text-[10px] opacity-70">{kpis.internalCount}</span>
+            </button>
+            <button
+              onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded transition-all",
+                primaryFilter === 'external' 
+                  ? "bg-background text-foreground shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Partners
+              <span className="text-[10px] opacity-70">{kpis.externalCount}</span>
+            </button>
+          </div>
 
-            {/* Level 2: Contextual Stage Filters + Search */}
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Search */}
-              <div className="relative flex-1 min-w-[200px] max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Find job..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9"
-                />
-              </div>
+          {/* Divider */}
+          <div className="h-4 w-px bg-border/50" />
 
-              {/* Contextual Stage Pills */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Demoted "All" as reset link - only show when a stage is selected */}
-                {stageFilter !== 'all' && (
-                  <button
-                    onClick={() => setStageFilter('all')}
-                    className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors mr-1"
-                  >
-                    ← All {stageCounts.all}
-                  </button>
+          {/* Stage Pills - Subtle */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {stageFilter !== 'all' && (
+              <button
+                onClick={() => setStageFilter('all')}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mr-0.5"
+              >
+                ×
+              </button>
+            )}
+            
+            {primaryFilter === 'internal' 
+              ? Object.entries(INTERNAL_STAGES)
+                  .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
+                  .map(([key, config]) => (
+                    <button
+                      key={key}
+                      onClick={() => setStageFilter(key)}
+                      className={cn(
+                        "px-2 py-0.5 text-[10px] font-medium rounded transition-colors",
+                        stageFilter === key 
+                          ? "bg-foreground/10 text-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      {config.label} {stageCounts[key] || 0}
+                    </button>
+                  ))
+              : Object.entries(EXTERNAL_STAGES)
+                  .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
+                  .map(([key, config]) => (
+                    <button
+                      key={key}
+                      onClick={() => setStageFilter(key)}
+                      className={cn(
+                        "px-2 py-0.5 text-[10px] font-medium rounded transition-colors",
+                        stageFilter === key 
+                          ? "bg-foreground/10 text-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      {config.label} {stageCounts[key] || 0}
+                    </button>
+                  ))
+            }
+
+            {isAdmin && (
+              <button
+                onClick={() => setShowInactiveStages(!showInactiveStages)}
+                className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors ml-1"
+              >
+                {showInactiveStages ? '−' : '+'}
+              </button>
+            )}
+          </div>
+
+          {/* Issue Filter - if active */}
+          {issueFilter !== 'all' && (
+            <>
+              <div className="h-4 w-px bg-border/50" />
+              <button 
+                onClick={() => setIssueFilter('all')}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded",
+                  issueFilter === 'blocked' ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"
                 )}
-                
-                {primaryFilter === 'internal' 
-                  ? Object.entries(INTERNAL_STAGES)
-                      .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
-                      .map(([key, config]) => (
-                        <button
-                          key={key}
-                          onClick={() => setStageFilter(key)}
-                          className={cn(
-                            "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                            stageFilter === key 
-                              ? cn("text-white", config.color)
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
-                          )}
-                        >
-                          {config.label} ({stageCounts[key] || 0})
-                        </button>
-                      ))
-                  : Object.entries(EXTERNAL_STAGES)
-                      .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
-                      .map(([key, config]) => (
-                        <button
-                          key={key}
-                          onClick={() => setStageFilter(key)}
-                          className={cn(
-                            "px-3 py-1 text-xs font-medium rounded-full transition-colors",
-                            stageFilter === key 
-                              ? cn("text-white", config.color)
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
-                          )}
-                        >
-                          {config.label} ({stageCounts[key] || 0})
-                        </button>
-                      ))
-                }
+              >
+                {issueFilter === 'blocked' ? 'Blocked' : 'Late'} ×
+              </button>
+            </>
+          )}
 
-                {/* Show inactive stages toggle - admin only */}
-                {isAdmin && (
-                  <button
-                    onClick={() => setShowInactiveStages(!showInactiveStages)}
-                    className={cn(
-                      "px-2 py-1 text-xs rounded transition-colors ml-1",
-                      showInactiveStages 
-                        ? "text-primary underline underline-offset-2" 
-                        : "text-muted-foreground/60 hover:text-muted-foreground"
-                    )}
-                  >
-                    {showInactiveStages ? 'Hide empty' : '+ Show all'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          {/* Spacer + Search */}
+          <div className="flex-1" />
+          <div className="relative w-48">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+            <Input
+              placeholder="Find..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-7 text-xs bg-muted/30 border-border/50"
+            />
+          </div>
+        </div>
 
         {/* Error State */}
         {error && (
