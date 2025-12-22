@@ -335,12 +335,14 @@ export type Database = {
       }
       daily_production_logs: {
         Row: {
+          actual_quantity: number
           actual_runtime_minutes: number
           created_at: string
           created_by: string | null
           cycle_time_seconds: number | null
           downtime_events: Json
           drawing_number: string | null
+          efficiency_percentage: number | null
           id: string
           log_date: string
           machine_id: string
@@ -351,21 +353,28 @@ export type Database = {
           product_description: string | null
           programmer_id: string | null
           raw_material_grade: string | null
+          rework_quantity: number
           setup_number: string
           shift: string
           shift_end_time: string
           shift_start_time: string
+          target_override: number | null
+          target_override_by: string | null
+          target_override_reason: string | null
+          target_quantity: number | null
           total_downtime_minutes: number
           updated_at: string
           wo_id: string | null
         }
         Insert: {
+          actual_quantity?: number
           actual_runtime_minutes?: number
           created_at?: string
           created_by?: string | null
           cycle_time_seconds?: number | null
           downtime_events?: Json
           drawing_number?: string | null
+          efficiency_percentage?: number | null
           id?: string
           log_date?: string
           machine_id: string
@@ -376,21 +385,28 @@ export type Database = {
           product_description?: string | null
           programmer_id?: string | null
           raw_material_grade?: string | null
+          rework_quantity?: number
           setup_number: string
           shift: string
           shift_end_time?: string
           shift_start_time?: string
+          target_override?: number | null
+          target_override_by?: string | null
+          target_override_reason?: string | null
+          target_quantity?: number | null
           total_downtime_minutes?: number
           updated_at?: string
           wo_id?: string | null
         }
         Update: {
+          actual_quantity?: number
           actual_runtime_minutes?: number
           created_at?: string
           created_by?: string | null
           cycle_time_seconds?: number | null
           downtime_events?: Json
           drawing_number?: string | null
+          efficiency_percentage?: number | null
           id?: string
           log_date?: string
           machine_id?: string
@@ -401,10 +417,15 @@ export type Database = {
           product_description?: string | null
           programmer_id?: string | null
           raw_material_grade?: string | null
+          rework_quantity?: number
           setup_number?: string
           shift?: string
           shift_end_time?: string
           shift_start_time?: string
+          target_override?: number | null
+          target_override_by?: string | null
+          target_override_reason?: string | null
+          target_quantity?: number | null
           total_downtime_minutes?: number
           updated_at?: string
           wo_id?: string | null

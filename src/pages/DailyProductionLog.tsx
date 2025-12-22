@@ -3,9 +3,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle } from "lucide-react";
+import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle, Target, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -45,9 +46,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 
 // Downtime reasons matching Excel sheet
 const DOWNTIME_REASONS = [
@@ -88,6 +90,8 @@ const formSchema = z.object({
   programmer_id: z.string().optional(),
   shift_start_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
   shift_end_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format"),
+  actual_quantity: z.number().min(0, "Must be 0 or greater"),
+  rework_quantity: z.number().min(0, "Must be 0 or greater"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -128,6 +132,10 @@ interface ProductionLog {
   shift_end_time: string | null;
   total_downtime_minutes: number | null;
   actual_runtime_minutes: number | null;
+  target_quantity: number | null;
+  actual_quantity: number | null;
+  rework_quantity: number | null;
+  efficiency_percentage: number | null;
   machines: { name: string; machine_id: string } | null;
   work_orders: { display_id: string } | null;
   operator: { full_name: string } | null;
@@ -159,8 +167,17 @@ function formatMinutes(minutes: number): string {
   return `${hours}h ${mins}m`;
 }
 
+// Helper to calculate target quantity
+function calculateTargetQuantity(runtimeMinutes: number, cycleTimeSeconds: number | null): number {
+  if (!cycleTimeSeconds || cycleTimeSeconds <= 0) return 0;
+  return Math.floor((runtimeMinutes * 60) / cycleTimeSeconds);
+}
+
 export default function DailyProductionLog() {
   const { toast } = useToast();
+  const { hasAnyRole } = useUserRole();
+  const isSupervisor = hasAnyRole(['admin', 'ops_manager', 'super_admin']);
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -179,6 +196,11 @@ export default function DailyProductionLog() {
   const [newDowntimeDuration, setNewDowntimeDuration] = useState<string>("");
   const [newDowntimeRemark, setNewDowntimeRemark] = useState<string>("");
 
+  // Target override state (Supervisor only)
+  const [enableTargetOverride, setEnableTargetOverride] = useState(false);
+  const [targetOverride, setTargetOverride] = useState<string>("");
+  const [targetOverrideReason, setTargetOverrideReason] = useState<string>("");
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -192,11 +214,14 @@ export default function DailyProductionLog() {
       programmer_id: "",
       shift_start_time: "08:30",
       shift_end_time: "20:00",
+      actual_quantity: 0,
+      rework_quantity: 0,
     },
   });
 
   const shiftStartTime = form.watch("shift_start_time");
   const shiftEndTime = form.watch("shift_end_time");
+  const actualQuantity = form.watch("actual_quantity");
 
   // Calculate totals
   const totalDowntimeMinutes = useMemo(() => {
@@ -211,6 +236,26 @@ export default function DailyProductionLog() {
   const actualRuntimeMinutes = useMemo(() => {
     return Math.max(0, shiftDurationMinutes - totalDowntimeMinutes);
   }, [shiftDurationMinutes, totalDowntimeMinutes]);
+
+  // Calculate target quantity: (runtime minutes × 60) / cycle time seconds
+  const calculatedTargetQuantity = useMemo(() => {
+    return calculateTargetQuantity(actualRuntimeMinutes, selectedWO?.cycle_time_seconds || null);
+  }, [actualRuntimeMinutes, selectedWO?.cycle_time_seconds]);
+
+  // Effective target (override if set, otherwise calculated)
+  const effectiveTarget = useMemo(() => {
+    if (enableTargetOverride && targetOverride) {
+      const override = parseInt(targetOverride, 10);
+      if (!isNaN(override) && override > 0) return override;
+    }
+    return calculatedTargetQuantity;
+  }, [enableTargetOverride, targetOverride, calculatedTargetQuantity]);
+
+  // Calculate efficiency: (actual / target) × 100
+  const efficiencyPercentage = useMemo(() => {
+    if (effectiveTarget <= 0) return 0;
+    return Math.round((actualQuantity / effectiveTarget) * 100 * 100) / 100;
+  }, [actualQuantity, effectiveTarget]);
 
   useEffect(() => {
     loadData();
@@ -237,6 +282,10 @@ export default function DailyProductionLog() {
           shift_end_time,
           total_downtime_minutes,
           actual_runtime_minutes,
+          target_quantity,
+          actual_quantity,
+          rework_quantity,
+          efficiency_percentage,
           machines:machine_id(name, machine_id),
           work_orders:wo_id(display_id),
           operator:operator_id(full_name),
@@ -297,6 +346,10 @@ export default function DailyProductionLog() {
     const wo = workOrders.find((w) => w.id === woId);
     setSelectedWO(wo || null);
     form.setValue("wo_id", woId);
+    // Reset target override when WO changes
+    setEnableTargetOverride(false);
+    setTargetOverride("");
+    setTargetOverrideReason("");
   };
 
   const addDowntimeEvent = () => {
@@ -326,6 +379,16 @@ export default function DailyProductionLog() {
   };
 
   const onSubmit = async (data: FormData) => {
+    // Validate target override if enabled
+    if (enableTargetOverride && !targetOverrideReason.trim()) {
+      toast({
+        title: "Override Reason Required",
+        description: "Please provide a reason for the target override",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -341,8 +404,19 @@ export default function DailyProductionLog() {
         downtime_events: downtimeEvents,
         total_downtime_minutes: totalDowntimeMinutes,
         actual_runtime_minutes: actualRuntimeMinutes,
+        target_quantity: effectiveTarget,
+        actual_quantity: data.actual_quantity,
+        rework_quantity: data.rework_quantity,
+        efficiency_percentage: efficiencyPercentage,
         created_by: userData.user?.id,
       };
+
+      // Add target override fields if applicable
+      if (enableTargetOverride && targetOverride) {
+        insertData.target_override = parseInt(targetOverride, 10);
+        insertData.target_override_reason = targetOverrideReason;
+        insertData.target_override_by = userData.user?.id;
+      }
 
       // Add optional fields
       if (data.wo_id) {
@@ -387,10 +461,7 @@ export default function DailyProductionLog() {
         description: "Production log entry created",
       });
 
-      setDialogOpen(false);
-      form.reset();
-      setSelectedWO(null);
-      setDowntimeEvents([]);
+      resetForm();
       loadData();
     } catch (error: any) {
       console.error("Error creating log:", error);
@@ -424,6 +495,17 @@ export default function DailyProductionLog() {
     setDowntimeEvents([]);
     setNewDowntimeDuration("");
     setNewDowntimeRemark("");
+    setEnableTargetOverride(false);
+    setTargetOverride("");
+    setTargetOverrideReason("");
+  };
+
+  const getEfficiencyColor = (efficiency: number | null) => {
+    if (!efficiency) return "bg-muted text-muted-foreground";
+    if (efficiency >= 100) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+    if (efficiency >= 80) return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+    if (efficiency >= 60) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+    return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
   };
 
   return (
@@ -485,7 +567,7 @@ export default function DailyProductionLog() {
                   New Log Entry
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>New Daily Production Log</DialogTitle>
                 </DialogHeader>
@@ -851,6 +933,129 @@ export default function DailyProductionLog() {
                       )}
                     </div>
 
+                    {/* Production Quantity Section */}
+                    <Separator />
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold flex items-center gap-2">
+                        <Target className="h-4 w-4" />
+                        Production Quantity & Efficiency
+                      </h3>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {/* Calculated Target */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Calculated Target</label>
+                          <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center text-sm font-medium">
+                            {calculatedTargetQuantity > 0 ? calculatedTargetQuantity.toLocaleString() : "-"}
+                          </div>
+                          {selectedWO?.cycle_time_seconds && (
+                            <p className="text-xs text-muted-foreground">
+                              Based on {selectedWO.cycle_time_seconds}s cycle time
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Effective Target (with override) */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-primary">Effective Target</label>
+                          <div className="h-10 px-3 py-2 bg-primary/10 border border-primary/20 rounded-md flex items-center text-sm font-semibold text-primary">
+                            {effectiveTarget > 0 ? effectiveTarget.toLocaleString() : "-"}
+                          </div>
+                        </div>
+
+                        {/* Actual Quantity */}
+                        <FormField
+                          control={form.control}
+                          name="actual_quantity"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Actual Production</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  {...field}
+                                  onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {/* Rework Quantity */}
+                        <FormField
+                          control={form.control}
+                          name="rework_quantity"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Rework Quantity</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  {...field}
+                                  onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Efficiency Display */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div className="sm:col-span-2 space-y-2">
+                          <label className="text-sm font-medium flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4" />
+                            Efficiency (Read-only)
+                          </label>
+                          <div className={cn(
+                            "h-12 px-4 py-2 rounded-md flex items-center text-lg font-bold",
+                            getEfficiencyColor(efficiencyPercentage)
+                          )}>
+                            {effectiveTarget > 0 ? `${efficiencyPercentage}%` : "-"}
+                          </div>
+                        </div>
+
+                        {/* Target Override (Supervisor Only) */}
+                        {isSupervisor && (
+                          <div className="sm:col-span-2 space-y-3 p-3 border border-dashed rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id="target-override"
+                                checked={enableTargetOverride}
+                                onCheckedChange={(checked) => setEnableTargetOverride(checked as boolean)}
+                              />
+                              <label htmlFor="target-override" className="text-sm font-medium cursor-pointer">
+                                Override Target (Supervisor)
+                              </label>
+                            </div>
+                            
+                            {enableTargetOverride && (
+                              <div className="space-y-2">
+                                <Input
+                                  type="number"
+                                  placeholder="Override target quantity"
+                                  value={targetOverride}
+                                  onChange={(e) => setTargetOverride(e.target.value)}
+                                  min="1"
+                                />
+                                <Textarea
+                                  placeholder="Reason for override (required)"
+                                  value={targetOverrideReason}
+                                  onChange={(e) => setTargetOverrideReason(e.target.value)}
+                                  rows={2}
+                                  className="resize-none"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Auto-populated WO Details */}
                     {selectedWO && (
                       <>
@@ -933,13 +1138,13 @@ export default function DailyProductionLog() {
                   <TableRow>
                     <TableHead>Plant</TableHead>
                     <TableHead>Shift</TableHead>
-                    <TableHead>Time</TableHead>
                     <TableHead>Machine</TableHead>
-                    <TableHead>Setup</TableHead>
                     <TableHead>Work Order</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Downtime</TableHead>
                     <TableHead>Runtime</TableHead>
+                    <TableHead className="text-right">Target</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead className="text-right">Rework</TableHead>
+                    <TableHead className="text-right">Efficiency</TableHead>
                     <TableHead>Operator</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -948,9 +1153,6 @@ export default function DailyProductionLog() {
                     <TableRow key={log.id}>
                       <TableCell>{log.plant}</TableCell>
                       <TableCell>{log.shift}</TableCell>
-                      <TableCell className="text-xs">
-                        {log.shift_start_time?.slice(0, 5)} - {log.shift_end_time?.slice(0, 5)}
-                      </TableCell>
                       <TableCell>
                         <span className="font-mono text-xs">
                           {log.machines?.machine_id}
@@ -960,24 +1162,31 @@ export default function DailyProductionLog() {
                           {log.machines?.name}
                         </span>
                       </TableCell>
-                      <TableCell>{log.setup_number}</TableCell>
                       <TableCell>
                         {log.work_orders?.display_id || "-"}
-                      </TableCell>
-                      <TableCell>{log.product_description || "-"}</TableCell>
-                      <TableCell>
-                        {log.total_downtime_minutes ? (
-                          <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-                            {formatMinutes(log.total_downtime_minutes)}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
                       </TableCell>
                       <TableCell>
                         {log.actual_runtime_minutes ? (
                           <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                             {formatMinutes(log.actual_runtime_minutes)}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {log.target_quantity?.toLocaleString() || "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {log.actual_quantity?.toLocaleString() || "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {log.rework_quantity || "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {log.efficiency_percentage != null ? (
+                          <Badge className={getEfficiencyColor(log.efficiency_percentage)}>
+                            {log.efficiency_percentage}%
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">-</span>
