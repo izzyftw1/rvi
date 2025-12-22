@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle, Target, TrendingUp } from "lucide-react";
+import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle, Target, TrendingUp, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -73,6 +73,35 @@ const DOWNTIME_REASONS = [
 
 type DowntimeReason = typeof DOWNTIME_REASONS[number];
 
+// Rejection reason keys matching the database columns
+const REJECTION_REASONS = [
+  { key: "rejection_dent", label: "Dent" },
+  { key: "rejection_scratch", label: "Scratch" },
+  { key: "rejection_forging_mark", label: "Forging Mark" },
+  { key: "rejection_lining", label: "Lining" },
+  { key: "rejection_dimension", label: "Dimension" },
+  { key: "rejection_tool_mark", label: "Tool Mark" },
+  { key: "rejection_setting", label: "Setting" },
+  { key: "rejection_previous_setup_fault", label: "Previous Setup Fault" },
+  { key: "rejection_face_not_ok", label: "Face Not OK" },
+  { key: "rejection_material_not_ok", label: "Material Not OK" },
+] as const;
+
+type RejectionKey = typeof REJECTION_REASONS[number]["key"];
+
+interface RejectionBreakdown {
+  rejection_dent: number;
+  rejection_scratch: number;
+  rejection_forging_mark: number;
+  rejection_lining: number;
+  rejection_dimension: number;
+  rejection_tool_mark: number;
+  rejection_setting: number;
+  rejection_previous_setup_fault: number;
+  rejection_face_not_ok: number;
+  rejection_material_not_ok: number;
+}
+
 interface DowntimeEvent {
   reason: DowntimeReason;
   duration_minutes: number;
@@ -133,6 +162,8 @@ interface ProductionLog {
   total_downtime_minutes: number | null;
   actual_runtime_minutes: number | null;
   target_quantity: number | null;
+  total_rejection_quantity: number | null;
+  ok_quantity: number | null;
   actual_quantity: number | null;
   rework_quantity: number | null;
   efficiency_percentage: number | null;
@@ -201,6 +232,20 @@ export default function DailyProductionLog() {
   const [targetOverride, setTargetOverride] = useState<string>("");
   const [targetOverrideReason, setTargetOverrideReason] = useState<string>("");
 
+  // Rejection breakdown state
+  const [rejectionBreakdown, setRejectionBreakdown] = useState<RejectionBreakdown>({
+    rejection_dent: 0,
+    rejection_scratch: 0,
+    rejection_forging_mark: 0,
+    rejection_lining: 0,
+    rejection_dimension: 0,
+    rejection_tool_mark: 0,
+    rejection_setting: 0,
+    rejection_previous_setup_fault: 0,
+    rejection_face_not_ok: 0,
+    rejection_material_not_ok: 0,
+  });
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -251,6 +296,16 @@ export default function DailyProductionLog() {
     return calculatedTargetQuantity;
   }, [enableTargetOverride, targetOverride, calculatedTargetQuantity]);
 
+  // Calculate total rejection quantity
+  const totalRejectionQuantity = useMemo(() => {
+    return Object.values(rejectionBreakdown).reduce((sum, val) => sum + val, 0);
+  }, [rejectionBreakdown]);
+
+  // Calculate OK quantity: actual - total rejection
+  const okQuantity = useMemo(() => {
+    return Math.max(0, actualQuantity - totalRejectionQuantity);
+  }, [actualQuantity, totalRejectionQuantity]);
+
   // Calculate efficiency: (actual / target) × 100
   const efficiencyPercentage = useMemo(() => {
     if (effectiveTarget <= 0) return 0;
@@ -286,6 +341,8 @@ export default function DailyProductionLog() {
           actual_quantity,
           rework_quantity,
           efficiency_percentage,
+          total_rejection_quantity,
+          ok_quantity,
           machines:machine_id(name, machine_id),
           work_orders:wo_id(display_id),
           operator:operator_id(full_name),
@@ -408,6 +465,10 @@ export default function DailyProductionLog() {
         actual_quantity: data.actual_quantity,
         rework_quantity: data.rework_quantity,
         efficiency_percentage: efficiencyPercentage,
+        // Rejection breakdown fields
+        ...rejectionBreakdown,
+        total_rejection_quantity: totalRejectionQuantity,
+        ok_quantity: okQuantity,
         created_by: userData.user?.id,
       };
 
@@ -498,6 +559,18 @@ export default function DailyProductionLog() {
     setEnableTargetOverride(false);
     setTargetOverride("");
     setTargetOverrideReason("");
+    setRejectionBreakdown({
+      rejection_dent: 0,
+      rejection_scratch: 0,
+      rejection_forging_mark: 0,
+      rejection_lining: 0,
+      rejection_dimension: 0,
+      rejection_tool_mark: 0,
+      rejection_setting: 0,
+      rejection_previous_setup_fault: 0,
+      rejection_face_not_ok: 0,
+      rejection_material_not_ok: 0,
+    });
   };
 
   const getEfficiencyColor = (efficiency: number | null) => {
@@ -1056,6 +1129,50 @@ export default function DailyProductionLog() {
                       </div>
                     </div>
 
+                    {/* Rejection Breakdown Section */}
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold flex items-center gap-2">
+                          <XCircle className="h-4 w-4 text-red-500" />
+                          Rejection Breakdown
+                        </h3>
+                        <div className="flex gap-3">
+                          {totalRejectionQuantity > 0 && (
+                            <Badge variant="destructive">
+                              Total Rejected: {totalRejectionQuantity.toLocaleString()}
+                            </Badge>
+                          )}
+                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                            OK Qty: {okQuantity.toLocaleString()}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {REJECTION_REASONS.map((reason) => (
+                          <div key={reason.key} className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">
+                              {reason.label}
+                            </label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={rejectionBreakdown[reason.key] || 0}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value, 10) || 0;
+                                setRejectionBreakdown((prev) => ({
+                                  ...prev,
+                                  [reason.key]: Math.max(0, value),
+                                }));
+                              }}
+                              className="h-9"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Auto-populated WO Details */}
                     {selectedWO && (
                       <>
@@ -1143,7 +1260,8 @@ export default function DailyProductionLog() {
                     <TableHead>Runtime</TableHead>
                     <TableHead className="text-right">Target</TableHead>
                     <TableHead className="text-right">Actual</TableHead>
-                    <TableHead className="text-right">Rework</TableHead>
+                    <TableHead className="text-right">Rejected</TableHead>
+                    <TableHead className="text-right">OK Qty</TableHead>
                     <TableHead className="text-right">Efficiency</TableHead>
                     <TableHead>Operator</TableHead>
                   </TableRow>
@@ -1181,7 +1299,22 @@ export default function DailyProductionLog() {
                         {log.actual_quantity?.toLocaleString() || "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {log.rework_quantity || "-"}
+                        {log.total_rejection_quantity ? (
+                          <span className="text-red-600 dark:text-red-400 font-medium">
+                            {log.total_rejection_quantity.toLocaleString()}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {log.ok_quantity != null ? (
+                          <span className="text-green-600 dark:text-green-400 font-medium">
+                            {log.ok_quantity.toLocaleString()}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {log.efficiency_percentage != null ? (
