@@ -160,27 +160,30 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
     fetchPartnerRisks();
   }, [data]);
 
-  // Calculate totals and find worst process
-  const totalActive = Object.values(data).reduce((sum, p) => sum + (p.activeMoves || 0), 0);
-  const totalOverdue = Object.values(data).reduce((sum, p) => sum + (p.overdue || 0), 0);
-  const totalPcs = Object.values(data).reduce((sum, p) => sum + (p.pcs || 0), 0);
-  const maxOverdue = Math.max(...Object.values(data).map(p => p.overdue || 0));
+  // Calculate totals and find worst process with null-safety
+  const safeData = data ?? {};
+  const totalActive = Object.values(safeData).reduce((sum, p) => sum + (p?.activeMoves ?? 0), 0);
+  const totalOverdue = Object.values(safeData).reduce((sum, p) => sum + (p?.overdue ?? 0), 0);
+  const totalPcs = Object.values(safeData).reduce((sum, p) => sum + (p?.pcs ?? 0), 0);
+  const maxOverdue = Math.max(...Object.values(safeData).map(p => p?.overdue ?? 0), 0);
 
   // Find worst process
   useEffect(() => {
     let worstKey: string | null = null;
     let worstScore = 0;
     
-    Object.entries(data).forEach(([key, processData]) => {
-      const score = processData.overdue * 10 + processData.pcs;
-      if (score > worstScore && processData.overdue > 0) {
+    Object.entries(safeData).forEach(([key, processData]) => {
+      const overdue = processData?.overdue ?? 0;
+      const pcs = processData?.pcs ?? 0;
+      const score = overdue * 10 + pcs;
+      if (score > worstScore && overdue > 0) {
         worstScore = score;
         worstKey = key;
       }
     });
     
     setWorstProcess(worstKey);
-  }, [data]);
+  }, [safeData]);
 
   const handleProcessClick = (key: string) => {
     if (selectedProcess === key) {
@@ -339,7 +342,7 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                       {processData.kg > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/50 text-center">
                           <span className="text-xs text-muted-foreground">
-                            {processData.kg.toFixed(1)} kg
+                            {(processData.kg ?? 0).toFixed(1)} kg
                           </span>
                         </div>
                       )}
@@ -350,7 +353,7 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                   <div className="text-xs space-y-1">
                     <p className="font-semibold">{label}</p>
                     <p>{processData.activeMoves} active moves</p>
-                    <p>{processData.pcs.toLocaleString()} pcs • {processData.kg.toFixed(1)} kg</p>
+                    <p>{(processData.pcs ?? 0).toLocaleString()} pcs • {(processData.kg ?? 0).toFixed(1)} kg</p>
                     {hasOverdue && <p className="text-destructive">{processData.overdue} overdue returns</p>}
                   </div>
                 </TooltipContent>

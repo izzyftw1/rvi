@@ -189,18 +189,20 @@ const Index = () => {
     return labels[key] || key;
   };
 
-  // Calculate metrics
-  const criticalCount = (summary?.maintenance_overdue || 0) + (summary?.work_orders_delayed || 0) + (summary?.late_deliveries || 0);
-  const warningCount = (summary?.material_waiting_qc || 0) + (summary?.qc_pending_approval || 0);
+  // Calculate metrics with null-safety
+  const criticalCount = (summary?.maintenance_overdue ?? 0) + (summary?.work_orders_delayed ?? 0) + (summary?.late_deliveries ?? 0);
+  const warningCount = (summary?.material_waiting_qc ?? 0) + (summary?.qc_pending_approval ?? 0);
   const allClear = criticalCount === 0 && warningCount === 0;
 
-  // Internal metrics
-  const internalJobCount = internalFlow.reduce((sum, s) => sum + (s.active_jobs || 0), 0);
+  // Internal metrics with null-safety
+  const internalJobCount = Array.isArray(internalFlow) 
+    ? internalFlow.reduce((sum, s) => sum + (s?.active_jobs ?? 0), 0) 
+    : 0;
 
-  // External metrics
-  const externalOverdueTotal = Object.values(externalData).reduce((sum, p) => sum + (p.overdue || 0), 0);
-  const externalActiveTotal = Object.values(externalData).reduce((sum, p) => sum + (p.activeMoves || 0), 0);
-  const externalWipPcs = Object.values(externalData).reduce((sum, p) => sum + (p.pcs || 0), 0);
+  // External metrics with null-safety
+  const externalOverdueTotal = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.overdue ?? 0), 0);
+  const externalActiveTotal = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.activeMoves ?? 0), 0);
+  const externalWipPcs = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.pcs ?? 0), 0);
 
   if (loading) {
     return (

@@ -86,16 +86,18 @@ export const QualityLossSignals = () => {
 
         const firstPieceFailCount = fpFailures?.length || 0;
 
-        // Build signals array
+        // Build signals array with null-safe values
+        const safeRejectionRate = Number.isFinite(rejectionRate) ? rejectionRate : 0;
+        
         const qualitySignals: QualitySignal[] = [
           {
             label: 'Rejection Rate',
-            value: `${rejectionRate.toFixed(1)}%`,
+            value: `${safeRejectionRate.toFixed(1)}%`,
             subtext: `${totalRejected} of ${totalProduced} pcs`,
             icon: TrendingDown,
-            color: rejectionRate > 5 ? 'text-destructive' : rejectionRate > 2 ? 'text-amber-600' : 'text-emerald-600',
-            bgColor: rejectionRate > 5 ? 'bg-destructive/10' : rejectionRate > 2 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-            severity: rejectionRate > 5 ? 'critical' : rejectionRate > 2 ? 'warning' : 'ok',
+            color: safeRejectionRate > 5 ? 'text-destructive' : safeRejectionRate > 2 ? 'text-amber-600' : 'text-emerald-600',
+            bgColor: safeRejectionRate > 5 ? 'bg-destructive/10' : safeRejectionRate > 2 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+            severity: safeRejectionRate > 5 ? 'critical' : safeRejectionRate > 2 ? 'warning' : 'ok',
             link: '/quality-analytics'
           },
           {
