@@ -111,23 +111,26 @@ const WorkOrderRow = memo(({
   // Determine card status for styling
   const isBlocked = hasExternalOverdue;
   const hasIssue = isOverdue || isBlocked;
+  const isExternal = externalWipTotal > 0;
 
   return (
     <div 
       className={cn(
         "group flex items-stretch rounded-md cursor-pointer transition-all hover:shadow-md overflow-hidden border",
-        // Background tint for issues
+        // Background tint for issues (priority)
         isOverdue && "bg-destructive/5 border-destructive/40",
         isBlocked && !isOverdue && "bg-amber-500/5 border-amber-500/40",
-        !hasIssue && "bg-card border-border hover:border-border/80"
+        // External ownership distinction (when no issues)
+        !hasIssue && isExternal && "bg-purple-500/5 border-purple-500/30 hover:border-purple-500/50",
+        !hasIssue && !isExternal && "bg-card border-border hover:border-border/80"
       )}
       onClick={() => onNavigate(wo.id)}
     >
       {/* Status Strip - Left edge indicator */}
-      {hasIssue && (
+      {(hasIssue || isExternal) && (
         <div className={cn(
           "w-1 flex-shrink-0",
-          isOverdue ? "bg-destructive" : "bg-amber-500"
+          isOverdue ? "bg-destructive" : isBlocked ? "bg-amber-500" : "bg-purple-500"
         )} />
       )}
 
@@ -187,24 +190,25 @@ const WorkOrderRow = memo(({
           <span className="font-medium text-foreground">{wo.quantity?.toLocaleString()}</span>
         </div>
 
-        {/* External WIP indicator */}
-        {externalWipTotal > 0 && (
+        {/* External Ownership indicator */}
+        {isExternal && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger>
-                <Badge variant="outline" className={cn(
-                  "gap-0.5 text-[10px] px-1.5 py-0 h-4 whitespace-nowrap",
-                  hasExternalOverdue ? "border-amber-500 text-amber-600 bg-amber-500/10" : "border-accent text-accent"
-                )}>
-                  <ExternalLink className="h-2.5 w-2.5" />
-                  {externalWipTotal}
+                <Badge className="gap-1 text-[10px] px-1.5 py-0.5 h-5 whitespace-nowrap bg-purple-500 hover:bg-purple-600 text-white">
+                  <Building2 className="h-3 w-3" />
+                  External
+                  <span className="font-bold">{externalWipTotal}</span>
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="font-medium">External WIP: {externalWipTotal} pcs</p>
+                <p className="font-medium">At External Partner: {externalWipTotal} pcs</p>
                 {Object.entries(wo.external_wip || {}).map(([process, qty]: any) => (
                   qty > 0 && <p key={process} className="text-xs">{process}: {qty}</p>
                 ))}
+                {hasExternalOverdue && (
+                  <p className="text-xs text-amber-500 mt-1">⚠ Return overdue</p>
+                )}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
