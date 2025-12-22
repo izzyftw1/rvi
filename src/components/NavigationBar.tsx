@@ -79,8 +79,10 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       "/qc/incoming": "/qc/incoming",
       "/quality": "/quality",
       "/hourly-qc": "/hourly-qc",
-      "/tolerance-setup": "/tolerance-setup",
+      "/final-qc": "/final-qc",
       "/dispatch-qc-report": "/dispatch-qc-report",
+      "/tolerance-setup": "/tolerance-setup",
+      "/instruments": "/instruments",
       "/instrument-management": "/instrument-management",
       
       // Logistics - packing, dispatch, goods inwards
@@ -159,9 +161,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
         { label: "Material QC", path: "/qc/incoming", icon: ClipboardCheck },
         { label: "First Piece QC", path: "/quality", icon: ClipboardCheck },
         { label: "Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
-        { label: "Final QC & Dispatch", path: "/dispatch-qc-report", icon: ClipboardCheck },
+        { label: "Final QC Reports", path: "/final-qc", icon: ClipboardCheck },
         { label: "Tolerances", path: "/tolerance-setup", icon: ClipboardCheck },
-        { label: "Instrument Management", path: "/instrument-management", icon: ClipboardCheck },
+        { label: "Instruments", path: "/instruments", icon: ClipboardCheck },
       ]
     },
     {
