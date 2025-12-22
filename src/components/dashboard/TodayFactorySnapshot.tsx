@@ -110,6 +110,8 @@ export const TodayFactorySnapshot = () => {
       // Active work orders
       const activeWorkOrders = (workOrders.data || []).length;
 
+      const safeRejectionPercent = Number.isFinite(rejectionPercent) ? rejectionPercent : 0;
+      
       setMetrics({
         activeWorkOrders,
         machinesRunning,
@@ -117,7 +119,7 @@ export const TodayFactorySnapshot = () => {
         productionToday,
         targetToday,
         rejectionPcs,
-        rejectionPercent: parseFloat(rejectionPercent.toFixed(1)),
+        rejectionPercent: parseFloat(safeRejectionPercent.toFixed(1)),
         ipqcDue: Math.max(ipqcDue, ipqcCompleted),
         ipqcCompleted
       });

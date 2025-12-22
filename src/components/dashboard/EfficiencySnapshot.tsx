@@ -100,21 +100,24 @@ export const EfficiencySnapshot = () => {
         }
       });
 
+      const safeAvgTurnaround = Number.isFinite(avgTurnaround) ? avgTurnaround : 0;
+      const safeQcPassRate = Number.isFinite(qcPassRate) ? qcPassRate : 0;
+      
       const metricsData: EfficiencyMetric[] = [
         {
           label: 'Avg Turnaround',
-          value: avgTurnaround.toFixed(1),
+          value: safeAvgTurnaround.toFixed(1),
           unit: 'days',
           icon: TrendingUp,
-          status: avgTurnaround <= 7 ? 'good' : avgTurnaround <= 14 ? 'warning' : 'critical'
+          status: safeAvgTurnaround <= 7 ? 'good' : safeAvgTurnaround <= 14 ? 'warning' : 'critical'
         },
         {
           label: 'QC Pass Rate',
-          value: qcPassRate.toFixed(1),
+          value: safeQcPassRate.toFixed(1),
           unit: '%',
           icon: CheckCircle,
-          progress: qcPassRate,
-          status: qcPassRate >= 90 ? 'good' : qcPassRate >= 75 ? 'warning' : 'critical'
+          progress: safeQcPassRate,
+          status: safeQcPassRate >= 90 ? 'good' : safeQcPassRate >= 75 ? 'warning' : 'critical'
         },
         {
           label: 'External WIP',

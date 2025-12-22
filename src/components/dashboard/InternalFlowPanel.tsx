@@ -142,13 +142,14 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
     fetchBlockingReasons();
   }, [stages]);
 
-  // Calculate totals for quick glance
-  const totalActiveJobs = stages.reduce((sum, s) => sum + (s.active_jobs || 0), 0);
-  const totalPcs = stages.reduce((sum, s) => sum + (s.pcs_remaining || 0), 0);
+  // Calculate totals for quick glance with null-safety
+  const safeStages = Array.isArray(stages) ? stages : [];
+  const totalActiveJobs = safeStages.reduce((sum, s) => sum + (s?.active_jobs ?? 0), 0);
+  const totalPcs = safeStages.reduce((sum, s) => sum + (s?.pcs_remaining ?? 0), 0);
 
   // Identify bottlenecks (top 2 stages with highest wait hours * pcs)
   const enhancedStages: EnhancedStageData[] = STAGE_ORDER.map(key => {
-    const stage = stages.find(s => s.stage_name === key) || { 
+    const stage = safeStages.find(s => s?.stage_name === key) || { 
       stage_name: key, 
       active_jobs: 0, 
       pcs_remaining: 0, 
@@ -164,13 +165,13 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
     };
   });
 
-  // Score stages for bottleneck identification
+  // Score stages for bottleneck identification with null-safety
   const stageScores = enhancedStages
     .map((stage, index) => ({
       index,
       stage_name: stage.stage_name,
-      score: (stage.avg_wait_hours * stage.pcs_remaining) + (stage.active_jobs * 10),
-      hasWork: stage.active_jobs > 0
+      score: ((stage.avg_wait_hours ?? 0) * (stage.pcs_remaining ?? 0)) + ((stage.active_jobs ?? 0) * 10),
+      hasWork: (stage.active_jobs ?? 0) > 0
     }))
     .filter(s => s.hasWork && s.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -282,25 +283,25 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
                             {/* Pcs and wait time */}
                             <div className="flex justify-between text-[10px]">
                               <span className="text-muted-foreground">
-                                {Math.round(stage.pcs_remaining).toLocaleString()} pcs
+                                {Math.round(stage.pcs_remaining ?? 0).toLocaleString()} pcs
                               </span>
                               <span className={cn(
                                 "flex items-center gap-0.5 font-medium",
-                                stage.avg_wait_hours > 8 ? "text-destructive" :
-                                stage.avg_wait_hours > 4 ? "text-amber-600" : "text-muted-foreground"
+                                (stage.avg_wait_hours ?? 0) > 8 ? "text-destructive" :
+                                (stage.avg_wait_hours ?? 0) > 4 ? "text-amber-600" : "text-muted-foreground"
                               )}>
                                 <Clock className="h-2.5 w-2.5" />
-                                {Math.round(stage.avg_wait_hours)}h wait
+                                {Math.round(stage.avg_wait_hours ?? 0)}h wait
                               </span>
                             </div>
                             
                             {/* Progress bar colored by severity */}
                             <Progress 
-                              value={Math.min((stage.avg_wait_hours / 12) * 100, 100)} 
+                              value={Math.min(((stage.avg_wait_hours ?? 0) / 12) * 100, 100)} 
                               className={cn(
                                 "h-1.5",
-                                stage.avg_wait_hours > 8 ? "[&>div]:bg-destructive" :
-                                stage.avg_wait_hours > 4 ? "[&>div]:bg-amber-500" : ""
+                                (stage.avg_wait_hours ?? 0) > 8 ? "[&>div]:bg-destructive" :
+                                (stage.avg_wait_hours ?? 0) > 4 ? "[&>div]:bg-amber-500" : ""
                               )}
                             />
                             
@@ -325,15 +326,15 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
                   <TooltipContent side="bottom" className="max-w-[200px]">
                     <div className="text-xs space-y-1">
                       <p className="font-semibold">{config.label}</p>
-                      <p>{stage.active_jobs} jobs • {Math.round(stage.pcs_remaining).toLocaleString()} pcs</p>
-                      <p>Avg wait: {stage.avg_wait_hours.toFixed(1)} hours</p>
+                      <p>{(stage?.active_jobs ?? 0)} jobs • {Math.round(stage?.pcs_remaining ?? 0).toLocaleString()} pcs</p>
+                      <p>Avg wait: {(stage.avg_wait_hours ?? 0).toFixed(1)} hours</p>
                       {stage.isBottleneck && (
                         <p className="text-destructive font-medium">
                           ⚠️ Bottleneck #{stage.bottleneckRank}
                         </p>
                       )}
-                      {stage.blockingReason.type !== 'none' && (
-                        <p>Block: {stage.blockingReason.label} ({stage.blockingReason.count})</p>
+                      {stage.blockingReason?.type !== 'none' && (
+                        <p>Block: {stage.blockingReason?.label ?? 'Unknown'} ({stage.blockingReason?.count ?? 0})</p>
                       )}
                     </div>
                   </TooltipContent>
