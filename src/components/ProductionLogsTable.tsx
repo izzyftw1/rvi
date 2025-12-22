@@ -14,13 +14,15 @@ import { format } from "date-fns";
 
 interface ProductionLog {
   id: string;
-  log_timestamp: string;
-  quantity_completed: number;
-  quantity_scrap: number;
-  shift: string | null;
-  remarks: string | null;
+  log_date: string;
+  created_at: string;
+  actual_quantity: number;
+  total_rejection_quantity: number | null;
+  ok_quantity: number | null;
+  shift: string;
   machine_id: string;
   operator_id: string | null;
+  efficiency_percentage: number | null;
 }
 
 interface ProductionLogsTableProps {
@@ -37,13 +39,13 @@ export function ProductionLogsTable({ woId }: ProductionLogsTableProps) {
     loadProductionLogs();
 
     const channel = supabase
-      .channel("production_logs_changes")
+      .channel(`production_logs_${woId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "production_logs",
+          table: "daily_production_logs",
           filter: `wo_id=eq.${woId}`,
         },
         () => {
@@ -60,10 +62,10 @@ export function ProductionLogsTable({ woId }: ProductionLogsTableProps) {
   const loadProductionLogs = async () => {
     try {
       const { data: logsData, error } = await supabase
-        .from("production_logs")
-        .select("*")
+        .from("daily_production_logs")
+        .select("id, log_date, created_at, actual_quantity, total_rejection_quantity, ok_quantity, shift, machine_id, operator_id, efficiency_percentage")
         .eq("wo_id", woId)
-        .order("log_timestamp", { ascending: false });
+        .order("log_date", { ascending: false });
 
       if (error) throw error;
 
@@ -71,31 +73,33 @@ export function ProductionLogsTable({ woId }: ProductionLogsTableProps) {
 
       // Load machine names
       const machineIds = [...new Set(logsData?.map((log) => log.machine_id) || [])];
-      const { data: machinesData } = await supabase
-        .from("machines")
-        .select("id, machine_id, name")
-        .in("id", machineIds);
+      if (machineIds.length > 0) {
+        const { data: machinesData } = await supabase
+          .from("machines")
+          .select("id, machine_id, name")
+          .in("id", machineIds);
 
-      const machineMap: Record<string, string> = {};
-      machinesData?.forEach((machine) => {
-        machineMap[machine.id] = `${machine.machine_id} - ${machine.name}`;
-      });
-      setMachineNames(machineMap);
+        const machineMap: Record<string, string> = {};
+        machinesData?.forEach((machine) => {
+          machineMap[machine.id] = `${machine.machine_id} - ${machine.name}`;
+        });
+        setMachineNames(machineMap);
+      }
 
-      // Load operator names
+      // Load operator names from people table
       const operatorIds = logsData
         ?.map((log) => log.operator_id)
         .filter((id): id is string => id !== null) || [];
       
       if (operatorIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from("profiles")
+        const { data: peopleData } = await supabase
+          .from("people")
           .select("id, full_name")
           .in("id", operatorIds);
 
         const operatorMap: Record<string, string> = {};
-        profilesData?.forEach((profile) => {
-          operatorMap[profile.id] = profile.full_name;
+        peopleData?.forEach((person) => {
+          operatorMap[person.id] = person.full_name;
         });
         setOperatorNames(operatorMap);
       }
@@ -115,14 +119,14 @@ export function ProductionLogsTable({ woId }: ProductionLogsTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Timestamp</TableHead>
+              <TableHead>Date</TableHead>
               <TableHead>Machine</TableHead>
               <TableHead>Operator</TableHead>
-              <TableHead className="text-right">Completed</TableHead>
-              <TableHead className="text-right">Scrap</TableHead>
-              <TableHead className="text-right">Net</TableHead>
+              <TableHead className="text-right">Actual Qty</TableHead>
+              <TableHead className="text-right">Rejections</TableHead>
+              <TableHead className="text-right">OK Pcs</TableHead>
+              <TableHead className="text-right">Efficiency</TableHead>
               <TableHead>Shift</TableHead>
-              <TableHead>Remarks</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -142,32 +146,42 @@ export function ProductionLogsTable({ woId }: ProductionLogsTableProps) {
               logs.map((log) => (
                 <TableRow key={log.id}>
                   <TableCell>
-                    {format(new Date(log.log_timestamp), "MMM dd, yyyy HH:mm")}
+                    {format(new Date(log.log_date), "MMM dd, yyyy")}
                   </TableCell>
                   <TableCell>{machineNames[log.machine_id] || "Unknown"}</TableCell>
                   <TableCell>
                     {log.operator_id ? operatorNames[log.operator_id] || "Unknown" : "-"}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {log.quantity_completed.toLocaleString()}
+                  <TableCell className="text-right font-medium">
+                    {log.actual_quantity.toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Badge variant="destructive">
-                      {log.quantity_scrap.toLocaleString()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {(log.quantity_completed - log.quantity_scrap).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    {log.shift && (
-                      <Badge variant="outline">
-                        {log.shift === "day" ? "Day" : "Night"}
+                    {(log.total_rejection_quantity || 0) > 0 ? (
+                      <Badge variant="destructive">
+                        {(log.total_rejection_quantity || 0).toLocaleString()}
                       </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
                     )}
                   </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {log.remarks || "-"}
+                  <TableCell className="text-right font-semibold text-green-600">
+                    {(log.ok_quantity || 0).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {log.efficiency_percentage !== null ? (
+                      <Badge 
+                        variant={log.efficiency_percentage >= 100 ? "default" : log.efficiency_percentage >= 80 ? "secondary" : "destructive"}
+                      >
+                        {log.efficiency_percentage}%
+                      </Badge>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {log.shift === "day" ? "Day" : "Night"}
+                    </Badge>
                   </TableCell>
                 </TableRow>
               ))

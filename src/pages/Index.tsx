@@ -125,6 +125,7 @@ const Index = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => loadDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hourly_qc_checks' }, () => loadDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_logs' }, () => loadDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs' }, () => loadDashboardData())
       .subscribe();
 
     return () => {

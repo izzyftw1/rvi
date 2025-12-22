@@ -50,15 +50,15 @@ export function WOProgressCard({
       setAnimatedProgress(progressPercentage);
     }, 100);
 
-    // Real-time subscription for production logs
+    // Real-time subscription for daily production logs
     const channel = supabase
-      .channel('production_progress')
+      .channel(`wo_progress_${woId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'production_logs',
+          table: 'daily_production_logs',
           filter: `wo_id=eq.${woId}`
         },
         () => {
@@ -75,35 +75,29 @@ export function WOProgressCard({
 
   const loadProductionStats = async () => {
     try {
-      // Get today's production
+      // Get today's production from daily_production_logs
       const today = new Date().toISOString().split('T')[0];
       const { data: todayLogs } = await supabase
-        .from('production_logs')
-        .select('quantity_completed, quantity_scrap, remarks, log_timestamp')
+        .from('daily_production_logs')
+        .select('actual_quantity, total_rejection_quantity, ok_quantity, actual_runtime_minutes, downtime_events')
         .eq('wo_id', woId)
-        .gte('log_timestamp', today);
+        .eq('log_date', today);
 
-      const completedToday = todayLogs?.reduce((sum, log) => sum + (log.quantity_completed || 0), 0) || 0;
+      const completedToday = todayLogs?.reduce((sum, log) => sum + (log.actual_quantity || 0), 0) || 0;
       
       // Calculate average rate (pieces per hour)
       const hoursWorked = todayLogs?.reduce((sum, log) => {
-        return sum + ((log as any).planned_minutes || 60) / 60;
+        return sum + (log.actual_runtime_minutes || 60) / 60;
       }, 0) || 1;
       const avgRatePerHour = completedToday / hoursWorked;
 
-      // Aggregate scrap reasons from remarks
-      const scrapMap = new Map<string, number>();
-      todayLogs?.forEach(log => {
-        if (log.quantity_scrap && log.remarks) {
-          const current = scrapMap.get(log.remarks) || 0;
-          scrapMap.set(log.remarks, current + log.quantity_scrap);
-        }
-      });
-
-      const scrapReasons = Array.from(scrapMap.entries())
-        .map(([reason, count]) => ({ reason, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
+      // Aggregate scrap by rejection type (since we have detailed rejection columns)
+      const totalRejections = todayLogs?.reduce((sum, log) => sum + (log.total_rejection_quantity || 0), 0) || 0;
+      
+      // Create generic scrap reason summary
+      const scrapReasons = totalRejections > 0 
+        ? [{ reason: 'Total Rejections', count: totalRejections }]
+        : [];
 
       setStats({ completedToday, avgRatePerHour, scrapReasons });
     } catch (error) {
