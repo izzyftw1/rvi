@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, XCircle, AlertCircle, FlaskConical, Target } from "lucide-react";
 import { format } from "date-fns";
+import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
 
 interface QCRecord {
   id: string;
@@ -71,6 +72,13 @@ export function EnhancedQCRecords({ qcRecords, workOrder }: EnhancedQCRecordsPro
 
   return (
     <div className="space-y-4">
+      {/* Production Context from Daily Production Log - Read Only */}
+      <ProductionContextDisplay
+        workOrderId={workOrder.id}
+        title="Production Context (from Daily Log)"
+        showRejectionDetails={true}
+      />
+
       {/* QC Gates Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className={workOrder.qc_material_passed ? 'border-green-500' : 'border-red-500'}>

@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, XCircle, Zap } from "lucide-react";
 import { InstrumentSelector } from "./InstrumentSelector";
+import { ProductionContextDisplay } from "./ProductionContextDisplay";
 
 interface DimensionTolerance {
   dimension_name: string;
@@ -337,6 +338,14 @@ export const FirstPieceQCForm = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Production Context from Daily Production Log - Read Only */}
+        <ProductionContextDisplay
+          workOrderId={workOrderId}
+          compact={false}
+          title="Production Context (from Daily Log)"
+          showRejectionDetails={false}
+        />
+
         {/* Instrument Selection */}
         <InstrumentSelector
           value={selectedInstrumentId}
