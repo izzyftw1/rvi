@@ -14,6 +14,7 @@ import { ExternalSummaryStrip } from "@/components/dashboard/ExternalSummaryStri
 import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 import { TodayFactorySnapshot } from "@/components/dashboard/TodayFactorySnapshot";
 import { OverdueReturnsTable } from "@/components/dashboard/OverdueReturnsTable";
+import { QualityLossSignals } from "@/components/dashboard/QualityLossSignals";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -239,6 +240,9 @@ const Index = () => {
           <>
             {/* Today's Factory Snapshot - Internal Mode Only */}
             <TodayFactorySnapshot />
+
+            {/* Quality & Loss Signals - Internal Mode Only */}
+            <QualityLossSignals />
 
             <Card>
               <CardHeader className="pb-3">
