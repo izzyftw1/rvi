@@ -4,11 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Users, Building2, ExternalLink } from "lucide-react";
+import { Shield, Users, Building2, ExternalLink, HardHat } from "lucide-react";
 import { UsersManagement } from "@/components/admin/UsersManagement";
 import { RolesManagement } from "@/components/admin/RolesManagement";
 import { DepartmentsManagement } from "@/components/admin/DepartmentsManagement";
 import { ExternalPartnersManagement } from "@/components/admin/ExternalPartnersManagement";
+import { PeopleManagement } from "@/components/admin/PeopleManagement";
 
 export default function Admin() {
   const [roles, setRoles] = useState<any[]>([]);
@@ -78,6 +79,10 @@ export default function Admin() {
                 <ExternalLink className="h-4 w-4" />
                 External Partners
               </TabsTrigger>
+              <TabsTrigger value="people" className="gap-2">
+                <HardHat className="h-4 w-4" />
+                People
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="users" className="space-y-4">
@@ -94,6 +99,10 @@ export default function Admin() {
 
             <TabsContent value="partners" className="space-y-4">
               <ExternalPartnersManagement />
+            </TabsContent>
+
+            <TabsContent value="people" className="space-y-4">
+              <PeopleManagement />
             </TabsContent>
           </Tabs>
         </div>
