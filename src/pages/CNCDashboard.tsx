@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 type ReadinessStatus = 'ready' | 'setup_required' | 'maintenance_due' | 'running' | 'down';
+type PriorityLevel = 'high' | 'medium' | 'low' | null;
 
 interface MachineData {
   id: string;
@@ -42,6 +43,8 @@ interface MachineData {
   lastMaintenanceDate: string | null;
   daysSinceLastMaintenance: number;
   flowImpact: string | null; // Flow impact text derived from queued WOs
+  priority: PriorityLevel; // Priority badge level
+  hasOverdueWOs: boolean; // Whether any queued WOs are overdue
 }
 
 interface EligibleWorkOrder {
@@ -85,6 +88,28 @@ const deriveFlowImpact = (stages: string[]): string | null => {
   };
   
   return stageFlowMap[primaryStage.toLowerCase()] || `Feeds ${primaryStage}`;
+};
+
+// Helper to calculate priority level based on queue metrics
+const calculatePriority = (
+  queueCount: number, 
+  oldestQueueAge: number, 
+  hasOverdueWOs: boolean
+): PriorityLevel => {
+  if (queueCount === 0) return null;
+  
+  // High priority: overdue WOs, high queue (5+), or very old queue (72h+)
+  if (hasOverdueWOs || queueCount >= 5 || oldestQueueAge >= 72) {
+    return 'high';
+  }
+  
+  // Medium priority: moderate queue (3+) or aging queue (24h+)
+  if (queueCount >= 3 || oldestQueueAge >= 24) {
+    return 'medium';
+  }
+  
+  // Low priority: has queue but manageable
+  return 'low';
 };
 
 const CNCDashboard = () => {
@@ -144,7 +169,7 @@ const CNCDashboard = () => {
       if (allWoIds.length > 0) {
         const { data: woData } = await supabase
           .from("work_orders")
-          .select("id, display_id, customer, item_code, quantity, current_stage")
+          .select("id, display_id, customer, item_code, quantity, current_stage, due_date")
           .in("id", allWoIds);
         
         if (woData) {
@@ -169,10 +194,19 @@ const CNCDashboard = () => {
           : 0;
 
         // Derive flow impact from queued WOs' stages
-        const queuedStages = machineQueue
-          .map(a => woDetails[a.wo_id]?.current_stage)
-          .filter(Boolean);
+        const queuedWOs = machineQueue.map(a => woDetails[a.wo_id]).filter(Boolean);
+        const queuedStages = queuedWOs.map(wo => wo?.current_stage).filter(Boolean);
         const flowImpact = deriveFlowImpact(queuedStages);
+
+        // Check for overdue WOs
+        const now = new Date();
+        const hasOverdueWOs = queuedWOs.some(wo => {
+          if (!wo?.due_date) return false;
+          return parseISO(wo.due_date) < now;
+        });
+
+        // Calculate priority level
+        const priority = calculatePriority(queueCount, oldestQueueAge, hasOverdueWOs);
 
         // Determine readiness status
         let readiness: ReadinessStatus = 'ready';
@@ -194,7 +228,9 @@ const CNCDashboard = () => {
           currentWO: machine.current_wo_id ? woDetails[machine.current_wo_id] : null,
           lastMaintenanceDate,
           daysSinceLastMaintenance,
-          flowImpact
+          flowImpact,
+          priority,
+          hasOverdueWOs
         };
       });
 
@@ -455,11 +491,26 @@ const CNCDashboard = () => {
                   <CardContent className="p-4 space-y-3">
                     {/* Header */}
                     <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">{machine.name}</h3>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-lg truncate">{machine.name}</h3>
+                          {machine.priority && (
+                            <Badge 
+                              variant="outline" 
+                              className={cn(
+                                "text-[10px] px-1.5 py-0 h-4 shrink-0",
+                                machine.priority === 'high' && "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200",
+                                machine.priority === 'medium' && "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200",
+                                machine.priority === 'low' && "bg-muted text-muted-foreground border-muted"
+                              )}
+                            >
+                              {machine.priority === 'high' ? 'High Impact' : machine.priority === 'medium' ? 'Medium Impact' : 'Low Impact'}
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground font-mono">{machine.machine_id}</p>
                       </div>
-                      <Icon className={cn("h-5 w-5", config.color)} />
+                      <Icon className={cn("h-5 w-5 shrink-0", config.color)} />
                     </div>
 
                     {/* Status Badge */}
