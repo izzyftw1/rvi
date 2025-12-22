@@ -333,6 +333,119 @@ export type Database = {
           },
         ]
       }
+      daily_production_logs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          cycle_time_seconds: number | null
+          drawing_number: string | null
+          id: string
+          log_date: string
+          machine_id: string
+          operator_id: string | null
+          ordered_quantity: number | null
+          party_code: string | null
+          plant: string
+          product_description: string | null
+          programmer_id: string | null
+          raw_material_grade: string | null
+          setup_number: string
+          shift: string
+          updated_at: string
+          wo_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          cycle_time_seconds?: number | null
+          drawing_number?: string | null
+          id?: string
+          log_date?: string
+          machine_id: string
+          operator_id?: string | null
+          ordered_quantity?: number | null
+          party_code?: string | null
+          plant: string
+          product_description?: string | null
+          programmer_id?: string | null
+          raw_material_grade?: string | null
+          setup_number: string
+          shift: string
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          cycle_time_seconds?: number | null
+          drawing_number?: string | null
+          id?: string
+          log_date?: string
+          machine_id?: string
+          operator_id?: string | null
+          ordered_quantity?: number | null
+          party_code?: string | null
+          plant?: string
+          product_description?: string | null
+          programmer_id?: string | null
+          raw_material_grade?: string | null
+          setup_number?: string
+          shift?: string
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_production_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_programmer_id_fkey"
+            columns: ["programmer_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           created_at: string

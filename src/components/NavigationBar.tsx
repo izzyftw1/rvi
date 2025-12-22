@@ -68,6 +68,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       // Production - execution & scheduling only
       "/work-orders": "/work-orders",
       "/production-progress": "/production-progress",
+      "/daily-production-log": "/daily-production-log",
       "/cnc-dashboard": "/cnc-dashboard",
       "/floor-dashboard": "/floor-dashboard",
       
@@ -139,7 +140,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       allowedRoles: ['admin', 'production', 'ops_manager'],
       items: [
         { label: "Work Orders", path: "/work-orders", icon: Search },
-        { label: "Production Log", path: "/production-progress", icon: BarChart3 },
+        { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
         { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
         { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
       ]
