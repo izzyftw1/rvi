@@ -15,6 +15,7 @@ import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalP
 import { TodayFactorySnapshot } from "@/components/dashboard/TodayFactorySnapshot";
 import { OverdueReturnsTable } from "@/components/dashboard/OverdueReturnsTable";
 import { QualityLossSignals } from "@/components/dashboard/QualityLossSignals";
+import { DeliveryRiskPanel } from "@/components/dashboard/DeliveryRiskPanel";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -241,8 +242,11 @@ const Index = () => {
             {/* Today's Factory Snapshot - Internal Mode Only */}
             <TodayFactorySnapshot />
 
-            {/* Quality & Loss Signals - Internal Mode Only */}
+            {/* Quality & Loss Signals */}
             <QualityLossSignals />
+
+            {/* Delivery Risk Outlook */}
+            <DeliveryRiskPanel />
 
             <Card>
               <CardHeader className="pb-3">
