@@ -12,6 +12,7 @@ import { ModeToggle, OperatingMode } from "@/components/dashboard/ModeToggle";
 import { InternalSummaryStrip } from "@/components/dashboard/InternalSummaryStrip";
 import { ExternalSummaryStrip } from "@/components/dashboard/ExternalSummaryStrip";
 import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
+import { TodayFactorySnapshot } from "@/components/dashboard/TodayFactorySnapshot";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -234,25 +235,30 @@ const Index = () => {
 
         {/* Mode-specific Content */}
         {activeMode === "internal" ? (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Factory className="h-5 w-5 text-primary" />
-                  Production Pipeline
-                </CardTitle>
-                <button
-                  onClick={() => navigate('/production-progress')}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                >
-                  Full View <ExternalLink className="h-3 w-3" />
-                </button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <InternalFlowPanel stages={internalFlow} />
-            </CardContent>
-          </Card>
+          <>
+            {/* Today's Factory Snapshot - Internal Mode Only */}
+            <TodayFactorySnapshot />
+
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Factory className="h-5 w-5 text-primary" />
+                    Production Pipeline
+                  </CardTitle>
+                  <button
+                    onClick={() => navigate('/production-progress')}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    Full View <ExternalLink className="h-3 w-3" />
+                  </button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <InternalFlowPanel stages={internalFlow} />
+              </CardContent>
+            </Card>
+          </>
         ) : (
           <Card>
             <CardHeader className="pb-3">
