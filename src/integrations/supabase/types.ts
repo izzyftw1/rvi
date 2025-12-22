@@ -2378,10 +2378,86 @@ export type Database = {
         }
         Relationships: []
       }
+      ncr_actions: {
+        Row: {
+          action_type: string
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_to: string | null
+          completed_at: string | null
+          completed_by: string | null
+          completion_notes: string | null
+          created_at: string
+          description: string
+          due_date: string | null
+          id: string
+          ncr_id: string
+          status: string
+          updated_at: string
+          verification_notes: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          action_type: string
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completion_notes?: string | null
+          created_at?: string
+          description: string
+          due_date?: string | null
+          id?: string
+          ncr_id: string
+          status?: string
+          updated_at?: string
+          verification_notes?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          action_type?: string
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completion_notes?: string | null
+          created_at?: string
+          description?: string
+          due_date?: string | null
+          id?: string
+          ncr_id?: string
+          status?: string
+          updated_at?: string
+          verification_notes?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ncr_actions_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: false
+            referencedRelation: "ncrs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ncrs: {
         Row: {
+          action_completed_at: string | null
+          action_completed_by: string | null
+          action_due_date: string | null
+          action_notes: string | null
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_to: string | null
           closed_at: string | null
           closed_by: string | null
+          closure_notes: string | null
           corrective_action: string | null
           created_at: string
           created_by: string | null
@@ -2391,12 +2467,15 @@ export type Database = {
           effectiveness_verified: boolean | null
           id: string
           issue_description: string
+          material_lot_id: string | null
           ncr_number: string
           ncr_type: Database["public"]["Enums"]["ncr_type"]
           operation_type: Database["public"]["Enums"]["operation_type"] | null
           preventive_action: string | null
+          production_log_id: string | null
           qc_record_id: string | null
           quantity_affected: number
+          raised_from: string | null
           responsible_person: string | null
           root_cause: string | null
           source_reference: string | null
@@ -2406,8 +2485,16 @@ export type Database = {
           work_order_id: string | null
         }
         Insert: {
+          action_completed_at?: string | null
+          action_completed_by?: string | null
+          action_due_date?: string | null
+          action_notes?: string | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to?: string | null
           closed_at?: string | null
           closed_by?: string | null
+          closure_notes?: string | null
           corrective_action?: string | null
           created_at?: string
           created_by?: string | null
@@ -2417,12 +2504,15 @@ export type Database = {
           effectiveness_verified?: boolean | null
           id?: string
           issue_description: string
+          material_lot_id?: string | null
           ncr_number: string
           ncr_type: Database["public"]["Enums"]["ncr_type"]
           operation_type?: Database["public"]["Enums"]["operation_type"] | null
           preventive_action?: string | null
+          production_log_id?: string | null
           qc_record_id?: string | null
           quantity_affected: number
+          raised_from?: string | null
           responsible_person?: string | null
           root_cause?: string | null
           source_reference?: string | null
@@ -2432,8 +2522,16 @@ export type Database = {
           work_order_id?: string | null
         }
         Update: {
+          action_completed_at?: string | null
+          action_completed_by?: string | null
+          action_due_date?: string | null
+          action_notes?: string | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to?: string | null
           closed_at?: string | null
           closed_by?: string | null
+          closure_notes?: string | null
           corrective_action?: string | null
           created_at?: string
           created_by?: string | null
@@ -2443,12 +2541,15 @@ export type Database = {
           effectiveness_verified?: boolean | null
           id?: string
           issue_description?: string
+          material_lot_id?: string | null
           ncr_number?: string
           ncr_type?: Database["public"]["Enums"]["ncr_type"]
           operation_type?: Database["public"]["Enums"]["operation_type"] | null
           preventive_action?: string | null
+          production_log_id?: string | null
           qc_record_id?: string | null
           quantity_affected?: number
+          raised_from?: string | null
           responsible_person?: string | null
           root_cause?: string | null
           source_reference?: string | null
@@ -2458,6 +2559,20 @@ export type Database = {
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ncrs_material_lot_id_fkey"
+            columns: ["material_lot_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ncrs_production_log_id_fkey"
+            columns: ["production_log_id"]
+            isOneToOne: false
+            referencedRelation: "daily_production_logs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ncrs_qc_record_id_fkey"
             columns: ["qc_record_id"]

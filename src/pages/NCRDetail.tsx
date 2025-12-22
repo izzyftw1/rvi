@@ -10,9 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, AlertTriangle, CheckCircle, Clock, FileWarning, Save, Lock } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, Clock, FileWarning, Save, Lock, Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { NCRActionManager } from '@/components/ncr/NCRActionManager';
+import { NCRLinkedData } from '@/components/ncr/NCRLinkedData';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface NCR {
   id: string;
@@ -37,6 +40,10 @@ interface NCR {
   closed_by: string | null;
   closed_at: string | null;
   created_at: string;
+  raised_from: string | null;
+  material_lot_id: string | null;
+  production_log_id: string | null;
+  closure_notes: string | null;
   work_orders?: { wo_number: string; display_id: string } | null;
 }
 
@@ -50,9 +57,12 @@ const STATUS_CONFIG = {
 export default function NCRDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { hasRole } = useUserRole();
   const [ncr, setNCR] = useState<NCR | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  
+  const isQualityUser = hasRole('quality') || hasRole('admin');
   
   const [formData, setFormData] = useState<{
     disposition: 'REWORK' | 'SCRAP' | 'USE_AS_IS' | 'RETURN_TO_SUPPLIER' | '';
@@ -61,6 +71,7 @@ export default function NCRDetail() {
     preventive_action: string;
     effectiveness_check: string;
     effectiveness_verified: boolean;
+    closure_notes: string;
   }>({
     disposition: '',
     root_cause: '',
@@ -68,6 +79,7 @@ export default function NCRDetail() {
     preventive_action: '',
     effectiveness_check: '',
     effectiveness_verified: false,
+    closure_notes: '',
   });
 
   useEffect(() => {
@@ -86,7 +98,7 @@ export default function NCRDetail() {
         .single();
 
       if (error) throw error;
-      setNCR(data);
+      setNCR(data as NCR);
       setFormData({
         disposition: data.disposition || '',
         root_cause: data.root_cause || '',
@@ -94,6 +106,7 @@ export default function NCRDetail() {
         preventive_action: data.preventive_action || '',
         effectiveness_check: data.effectiveness_check || '',
         effectiveness_verified: data.effectiveness_verified || false,
+        closure_notes: data.closure_notes || '',
       });
     } catch (error) {
       console.error('Error loading NCR:', error);
@@ -105,6 +118,7 @@ export default function NCRDetail() {
 
   const canClose = () => {
     return (
+      isQualityUser &&
       formData.disposition &&
       formData.root_cause &&
       formData.corrective_action &&
@@ -150,6 +164,7 @@ export default function NCRDetail() {
           preventive_action: formData.preventive_action || null,
           effectiveness_check: formData.effectiveness_check || null,
           effectiveness_verified: formData.effectiveness_verified,
+          closure_notes: formData.closure_notes || null,
           status: newStatus,
         } as any)
         .eq('id', ncr.id);
@@ -168,7 +183,11 @@ export default function NCRDetail() {
 
   const handleClose = async () => {
     if (!ncr || !canClose()) {
-      toast.error('Cannot close NCR. Please complete all required fields.');
+      if (!isQualityUser) {
+        toast.error('Only Quality users can close NCRs');
+      } else {
+        toast.error('Cannot close NCR. Please complete all required fields.');
+      }
       return;
     }
 
@@ -185,6 +204,7 @@ export default function NCRDetail() {
           preventive_action: formData.preventive_action,
           effectiveness_check: formData.effectiveness_check,
           effectiveness_verified: true,
+          closure_notes: formData.closure_notes,
           status: 'CLOSED',
           closed_by: user?.user?.id,
           closed_at: new Date().toISOString(),
@@ -206,8 +226,8 @@ export default function NCRDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-6">
-          <p>Loading...</p>
+        <div className="container mx-auto px-4 py-6 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -243,6 +263,11 @@ export default function NCRDetail() {
                 <StatusIcon className="h-3 w-3 mr-1" />
                 {statusConfig.label}
               </Badge>
+              {ncr.raised_from && (
+                <Badge variant="outline">
+                  From: {ncr.raised_from.replace('_', ' ')}
+                </Badge>
+              )}
             </div>
             <p className="text-muted-foreground">
               Created {format(new Date(ncr.created_at), 'dd MMM yyyy HH:mm')}
@@ -255,19 +280,31 @@ export default function NCRDetail() {
                 <Save className="h-4 w-4 mr-2" />
                 Save
               </Button>
-              <Button 
-                onClick={handleClose} 
-                disabled={saving || !canClose()}
-                variant={canClose() ? 'default' : 'secondary'}
-              >
-                <Lock className="h-4 w-4 mr-2" />
-                Close NCR
-              </Button>
+              {isQualityUser && (
+                <Button 
+                  onClick={handleClose} 
+                  disabled={saving || !canClose()}
+                  variant={canClose() ? 'default' : 'secondary'}
+                >
+                  <Lock className="h-4 w-4 mr-2" />
+                  Close NCR
+                </Button>
+              )}
             </div>
           )}
         </div>
 
-        {!isClosed && missingReqs.length > 0 && (
+        {/* Role-based warning */}
+        {!isQualityUser && !isClosed && (
+          <Alert>
+            <Shield className="h-4 w-4" />
+            <AlertDescription>
+              You can update actions assigned to you, but only Quality users can close this NCR.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!isClosed && isQualityUser && missingReqs.length > 0 && (
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
@@ -277,156 +314,185 @@ export default function NCRDetail() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Details Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>NCR Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label className="text-muted-foreground">Type</Label>
-                <p className="font-medium">{ncr.ncr_type}</p>
-              </div>
-              {ncr.source_reference && (
+          {/* Left Column - Details & Linked Data */}
+          <div className="space-y-6">
+            {/* Details Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>NCR Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <Label className="text-muted-foreground">Source Reference</Label>
-                  <p className="font-medium">{ncr.source_reference}</p>
+                  <Label className="text-muted-foreground">Type</Label>
+                  <p className="font-medium">{ncr.ncr_type}</p>
                 </div>
-              )}
-              {ncr.work_orders && (
+                {ncr.source_reference && (
+                  <div>
+                    <Label className="text-muted-foreground">Source Reference</Label>
+                    <p className="font-medium">{ncr.source_reference}</p>
+                  </div>
+                )}
                 <div>
-                  <Label className="text-muted-foreground">Work Order</Label>
-                  <p className="font-medium">
-                    <Button 
-                      variant="link" 
-                      className="p-0 h-auto"
-                      onClick={() => navigate(`/work-orders/${ncr.work_order_id}`)}
-                    >
-                      {ncr.work_orders.display_id || ncr.work_orders.wo_number}
-                    </Button>
-                  </p>
+                  <Label className="text-muted-foreground">Quantity Affected</Label>
+                  <p className="font-medium">{ncr.quantity_affected} {ncr.unit}</p>
                 </div>
-              )}
-              <div>
-                <Label className="text-muted-foreground">Quantity Affected</Label>
-                <p className="font-medium">{ncr.quantity_affected} {ncr.unit}</p>
-              </div>
-              {ncr.due_date && (
-                <div>
-                  <Label className="text-muted-foreground">Due Date</Label>
-                  <p className="font-medium">{format(new Date(ncr.due_date), 'dd MMM yyyy')}</p>
-                </div>
-              )}
-              {ncr.closed_at && (
-                <div>
-                  <Label className="text-muted-foreground">Closed At</Label>
-                  <p className="font-medium">{format(new Date(ncr.closed_at), 'dd MMM yyyy HH:mm')}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                {ncr.due_date && (
+                  <div>
+                    <Label className="text-muted-foreground">Due Date</Label>
+                    <p className="font-medium">{format(new Date(ncr.due_date), 'dd MMM yyyy')}</p>
+                  </div>
+                )}
+                {ncr.closed_at && (
+                  <div>
+                    <Label className="text-muted-foreground">Closed At</Label>
+                    <p className="font-medium">{format(new Date(ncr.closed_at), 'dd MMM yyyy HH:mm')}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Issue & Disposition */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Issue Description</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-muted rounded-lg">
-                <p>{ncr.issue_description}</p>
-              </div>
-              
-              <Separator />
-              
-              <div className="space-y-2">
-                <Label>Disposition *</Label>
-                <Select 
-                  value={formData.disposition} 
-                  onValueChange={(v) => setFormData(prev => ({ ...prev, disposition: v as 'REWORK' | 'SCRAP' | 'USE_AS_IS' | 'RETURN_TO_SUPPLIER' | '' }))}
-                  disabled={isClosed}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select disposition..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="REWORK">Rework</SelectItem>
-                    <SelectItem value="SCRAP">Scrap</SelectItem>
-                    <SelectItem value="USE_AS_IS">Use As-Is</SelectItem>
-                    <SelectItem value="RETURN_TO_SUPPLIER">Return to Supplier</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Linked Data */}
+            <NCRLinkedData
+              ncrId={ncr.id}
+              workOrderId={ncr.work_order_id}
+              qcRecordId={ncr.qc_record_id}
+              materialLotId={ncr.material_lot_id}
+              productionLogId={ncr.production_log_id}
+              raisedFrom={ncr.raised_from}
+            />
+          </div>
 
-          {/* 8D Steps */}
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <CardTitle>8D Problem Solving</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Middle & Right Columns */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Issue & Disposition */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Issue Description</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <p>{ncr.issue_description}</p>
+                </div>
+                
+                <Separator />
+                
                 <div className="space-y-2">
-                  <Label>D4 - Root Cause Analysis *</Label>
-                  <Textarea
-                    value={formData.root_cause}
-                    onChange={(e) => setFormData(prev => ({ ...prev, root_cause: e.target.value }))}
-                    placeholder="Identify the root cause of the problem..."
-                    rows={4}
+                  <Label>Disposition *</Label>
+                  <Select 
+                    value={formData.disposition} 
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, disposition: v as 'REWORK' | 'SCRAP' | 'USE_AS_IS' | 'RETURN_TO_SUPPLIER' | '' }))}
                     disabled={isClosed}
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select disposition..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="REWORK">Rework</SelectItem>
+                      <SelectItem value="SCRAP">Scrap</SelectItem>
+                      <SelectItem value="USE_AS_IS">Use As-Is</SelectItem>
+                      <SelectItem value="RETURN_TO_SUPPLIER">Return to Supplier</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Actions Manager */}
+            <NCRActionManager
+              ncrId={ncr.id}
+              isQualityUser={isQualityUser}
+              isNCRClosed={isClosed}
+              onActionsUpdate={loadNCR}
+            />
+
+            {/* 8D Steps */}
+            <Card>
+              <CardHeader>
+                <CardTitle>8D Problem Solving</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>D4 - Root Cause Analysis *</Label>
+                    <Textarea
+                      value={formData.root_cause}
+                      onChange={(e) => setFormData(prev => ({ ...prev, root_cause: e.target.value }))}
+                      placeholder="Identify the root cause of the problem..."
+                      rows={4}
+                      disabled={isClosed || !isQualityUser}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>D5 - Corrective Actions *</Label>
+                    <Textarea
+                      value={formData.corrective_action}
+                      onChange={(e) => setFormData(prev => ({ ...prev, corrective_action: e.target.value }))}
+                      placeholder="Define corrective actions to address the root cause..."
+                      rows={4}
+                      disabled={isClosed || !isQualityUser}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>D7 - Preventive Actions *</Label>
+                    <Textarea
+                      value={formData.preventive_action}
+                      onChange={(e) => setFormData(prev => ({ ...prev, preventive_action: e.target.value }))}
+                      placeholder="Define preventive actions to avoid recurrence..."
+                      rows={4}
+                      disabled={isClosed || !isQualityUser}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>D8 - Effectiveness Verification *</Label>
+                    <Textarea
+                      value={formData.effectiveness_check}
+                      onChange={(e) => setFormData(prev => ({ ...prev, effectiveness_check: e.target.value }))}
+                      placeholder="Document how effectiveness was verified..."
+                      rows={4}
+                      disabled={isClosed || !isQualityUser}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>D5 - Corrective Actions *</Label>
-                  <Textarea
-                    value={formData.corrective_action}
-                    onChange={(e) => setFormData(prev => ({ ...prev, corrective_action: e.target.value }))}
-                    placeholder="Define corrective actions to address the root cause..."
-                    rows={4}
-                    disabled={isClosed}
-                  />
-                </div>
+                {isQualityUser && !isClosed && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Closure Notes</Label>
+                      <Textarea
+                        value={formData.closure_notes}
+                        onChange={(e) => setFormData(prev => ({ ...prev, closure_notes: e.target.value }))}
+                        placeholder="Additional notes for closure..."
+                        rows={2}
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>D7 - Preventive Actions *</Label>
-                  <Textarea
-                    value={formData.preventive_action}
-                    onChange={(e) => setFormData(prev => ({ ...prev, preventive_action: e.target.value }))}
-                    placeholder="Define preventive actions to avoid recurrence..."
-                    rows={4}
-                    disabled={isClosed}
-                  />
-                </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="effectiveness_verified"
+                        checked={formData.effectiveness_verified}
+                        onChange={(e) => setFormData(prev => ({ ...prev, effectiveness_verified: e.target.checked }))}
+                        className="h-4 w-4"
+                      />
+                      <Label htmlFor="effectiveness_verified" className="cursor-pointer">
+                        I confirm that effectiveness has been verified
+                      </Label>
+                    </div>
+                  </>
+                )}
 
-                <div className="space-y-2">
-                  <Label>D8 - Effectiveness Verification *</Label>
-                  <Textarea
-                    value={formData.effectiveness_check}
-                    onChange={(e) => setFormData(prev => ({ ...prev, effectiveness_check: e.target.value }))}
-                    placeholder="Document how effectiveness was verified..."
-                    rows={4}
-                    disabled={isClosed}
-                  />
-                </div>
-              </div>
-
-              {!isClosed && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="effectiveness_verified"
-                    checked={formData.effectiveness_verified}
-                    onChange={(e) => setFormData(prev => ({ ...prev, effectiveness_verified: e.target.checked }))}
-                    className="h-4 w-4"
-                  />
-                  <Label htmlFor="effectiveness_verified" className="cursor-pointer">
-                    I confirm that effectiveness has been verified
-                  </Label>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                {isClosed && ncr.closure_notes && (
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <Label className="text-green-800 dark:text-green-300">Closure Notes</Label>
+                    <p className="mt-1">{ncr.closure_notes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
