@@ -50,6 +50,20 @@ function getAgingHours(dateStr: string): number {
   }
 }
 
+type AgingSeverity = 'green' | 'amber' | 'red';
+
+function getAgingSeverity(hours: number): AgingSeverity {
+  if (hours < 24) return 'green';
+  if (hours < 72) return 'amber';
+  return 'red';
+}
+
+function formatAgingDisplay(hours: number): string {
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
 interface Buckets {
   material_qc: BucketItem[];
   first_piece_qc: BucketItem[];
@@ -319,35 +333,53 @@ function BucketCard({
           </div>
         ) : (
           <div className="space-y-1.5 max-h-64 overflow-y-auto">
-            {items.map((item) => (
-              <div
-                key={item.wo.id}
-                onClick={() => navigate(`/work-orders/${item.wo.id}`)}
-                className="flex items-center justify-between p-2.5 rounded-md bg-background/70 hover:bg-background cursor-pointer transition-colors border border-transparent hover:border-muted group"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-semibold text-sm">{item.wo.display_id}</span>
-                    <span className="text-xs text-muted-foreground truncate">{item.wo.customer}</span>
-                    {item.wo.due_date && new Date(item.wo.due_date) < new Date() && (
-                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
-                    )}
+            {items.map((item) => {
+              const severity = getAgingSeverity(item.aging_hours);
+              const isLongBlocked = item.aging_hours >= 72;
+              
+              return (
+                <div
+                  key={item.wo.id}
+                  onClick={() => navigate(`/work-orders/${item.wo.id}`)}
+                  className={cn(
+                    "flex items-center justify-between p-2.5 rounded-md cursor-pointer transition-colors group",
+                    isLongBlocked 
+                      ? "bg-red-100/80 dark:bg-red-950/50 border-l-4 border-l-red-500 hover:bg-red-100 dark:hover:bg-red-950/70" 
+                      : "bg-background/70 hover:bg-background border border-transparent hover:border-muted"
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-sm">{item.wo.display_id}</span>
+                      <span className="text-xs text-muted-foreground truncate">{item.wo.customer}</span>
+                      {item.wo.due_date && new Date(item.wo.due_date) < new Date() && (
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-muted-foreground">{item.wo.item_code}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-muted-foreground">{item.wo.item_code}</span>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  
+                  {/* Severity-colored age badge */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Badge 
+                      variant="outline" 
+                      className={cn(
+                        "text-xs font-medium gap-1 border",
+                        severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
+                        severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
+                        severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
+                      )}
+                    >
                       <Clock className="h-3 w-3" />
-                      {item.aging_hours < 24 
-                        ? `${item.aging_hours}h` 
-                        : `${Math.floor(item.aging_hours / 24)}d`
-                      }
-                    </span>
+                      {formatAgingDisplay(item.aging_hours)}
+                    </Badge>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
