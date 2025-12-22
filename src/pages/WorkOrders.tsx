@@ -36,6 +36,28 @@ const EXTERNAL_STAGES = {
   blasting: { label: 'Blasting', color: 'bg-gray-500', process: 'Blasting' },
 };
 
+// Block reasons for filtering
+const BLOCK_REASONS = {
+  qc_pending: { label: 'QC pending', key: 'qc_pending' },
+  ncr_open: { label: 'NCR open', key: 'ncr_open' },
+  ext_overdue: { label: 'Ext overdue', key: 'ext_overdue' },
+  not_released: { label: 'Not released', key: 'not_released' },
+  material_pending: { label: 'Material pending', key: 'material_pending' },
+};
+
+// Helper to determine block reason for a work order
+const getBlockReason = (wo: any): string | null => {
+  const hasExternalOverdue = wo.external_moves?.some((m: any) => 
+    m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
+  );
+  if (hasExternalOverdue) return 'ext_overdue';
+  if (wo.qc_gate_status === 'pending' || wo.qc_gate_status === 'failed') return 'qc_pending';
+  if (wo.has_open_ncr) return 'ncr_open';
+  if (wo.planning_status === 'pending' || wo.status === 'draft') return 'not_released';
+  if (wo.material_status === 'pending' || wo.material_received === false) return 'material_pending';
+  return null;
+};
+
 // Legacy stage mapping for display
 const STAGES = { ...INTERNAL_STAGES };
 
@@ -114,19 +136,17 @@ const WorkOrderRow = memo(({
     return Math.max(0, differenceInDays(new Date(), parseISO(stageDate)));
   }, [wo.stage_entered_at, wo.updated_at, wo.created_at]);
 
-  // Determine block reason (priority order)
-  const blockReason = useMemo(() => {
-    if (hasExternalOverdue) return 'Ext overdue';
-    if (wo.qc_gate_status === 'pending' || wo.qc_gate_status === 'failed') return 'QC pending';
-    if (wo.has_open_ncr) return 'NCR open';
-    return null;
-  }, [hasExternalOverdue, wo.qc_gate_status, wo.has_open_ncr]);
+  // Get block reason using shared helper
+  const blockReasonKey = getBlockReason(wo);
+  const blockReasonLabel = blockReasonKey 
+    ? BLOCK_REASONS[blockReasonKey as keyof typeof BLOCK_REASONS]?.label || blockReasonKey 
+    : null;
 
   // Visual severity logic:
   // - Critical (red): overdue AND blocked
   // - Warning (amber): overdue but progressing OR blocked but on time
   // - Neutral: on time and not blocked
-  const isBlocked = !!blockReason;
+  const isBlocked = !!blockReasonKey;
   const isCritical = isOverdue && isBlocked;
   const isWarning = (isOverdue && !isBlocked) || (!isOverdue && isBlocked);
   const hasIssue = isCritical || isWarning;
@@ -207,12 +227,12 @@ const WorkOrderRow = memo(({
               {wo.customer_po || wo.wo_id?.slice(0, 8)}
             </p>
             {/* Block reason badge */}
-            {blockReason && (
+            {blockReasonLabel && (
               <Badge className={cn(
                 "text-[8px] px-1 py-0 h-3.5 whitespace-nowrap",
                 isCritical ? "bg-destructive/90 hover:bg-destructive" : "bg-amber-500/90 hover:bg-amber-500"
               )}>
-                {blockReason}
+                {blockReasonLabel}
               </Badge>
             )}
             {/* Overdue badge - only show if progressing (amber) */}
@@ -321,6 +341,8 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   const [stageFilter, setStageFilter] = useState<string>(() => searchParams.get('stage') || 'all');
   // Issue filter for blocked/delayed
   const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>('all');
+  // Block reason filter
+  const [blockReasonFilter, setBlockReasonFilter] = useState<string>('all');
   // Show inactive (zero-count) stages toggle - for admins
   const [showInactiveStages, setShowInactiveStages] = useState(false);
   const isAdmin = hasAnyRole(['admin', 'super_admin']);
@@ -493,15 +515,16 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
     if (issueFilter === 'delayed') {
       filtered = filtered.filter(wo => wo.due_date && isPast(parseISO(wo.due_date)));
     } else if (issueFilter === 'blocked') {
-      filtered = filtered.filter(wo => 
-        wo.external_moves?.some((m: any) => 
-          m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
-        )
-      );
+      filtered = filtered.filter(wo => getBlockReason(wo) !== null);
+    }
+
+    // Block reason filter
+    if (blockReasonFilter !== 'all') {
+      filtered = filtered.filter(wo => getBlockReason(wo) === blockReasonFilter);
     }
 
     return filtered;
-  }, [workOrders, searchQuery, primaryFilter, stageFilter, issueFilter]);
+  }, [workOrders, searchQuery, primaryFilter, stageFilter, issueFilter, blockReasonFilter]);
 
   // Stage counts for filter bar - contextual based on primary filter
   const stageCounts = useMemo(() => {
@@ -523,6 +546,16 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
     
     return counts;
   }, [filteredOrders, primaryFilter]);
+
+  // Block reason counts for filter dropdown
+  const blockReasonCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0 };
+    Object.keys(BLOCK_REASONS).forEach(key => {
+      counts[key] = workOrders.filter(wo => getBlockReason(wo) === key).length;
+    });
+    counts.all = Object.values(counts).reduce((sum, c) => sum + c, 0);
+    return counts;
+  }, [workOrders]);
 
   const handleDeleteWorkOrder = async (woId: string, displayId: string) => {
     if (!confirm(`Delete Work Order ${displayId}?`)) return;
@@ -672,20 +705,66 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
             )}
           </div>
 
+          {/* Divider */}
+          <div className="h-4 w-px bg-border/50" />
+
+          {/* Block Reason Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={cn(
+                "flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition-colors",
+                blockReasonFilter !== 'all' 
+                  ? "bg-amber-500/10 text-amber-600" 
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}>
+                {blockReasonFilter !== 'all' 
+                  ? BLOCK_REASONS[blockReasonFilter as keyof typeof BLOCK_REASONS]?.label 
+                  : 'Block reason'}
+                {blockReasonCounts.all > 0 && (
+                  <span className="opacity-70">{blockReasonFilter === 'all' ? blockReasonCounts.all : ''}</span>
+                )}
+                {blockReasonFilter !== 'all' && <span className="ml-0.5">×</span>}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[140px]">
+              {blockReasonFilter !== 'all' && (
+                <>
+                  <DropdownMenuItem onClick={() => setBlockReasonFilter('all')}>
+                    Clear filter
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {Object.entries(BLOCK_REASONS)
+                .filter(([key]) => blockReasonCounts[key] > 0)
+                .map(([key, config]) => (
+                  <DropdownMenuItem 
+                    key={key}
+                    onClick={() => setBlockReasonFilter(key)}
+                    className={cn(blockReasonFilter === key && "bg-accent")}
+                  >
+                    <span className="flex-1">{config.label}</span>
+                    <span className="text-muted-foreground text-xs">{blockReasonCounts[key]}</span>
+                  </DropdownMenuItem>
+                ))
+              }
+              {blockReasonCounts.all === 0 && (
+                <DropdownMenuItem disabled>No blocked items</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* Issue Filter - if active */}
           {issueFilter !== 'all' && (
-            <>
-              <div className="h-4 w-px bg-border/50" />
-              <button 
-                onClick={() => setIssueFilter('all')}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded",
-                  issueFilter === 'blocked' ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"
-                )}
-              >
-                {issueFilter === 'blocked' ? 'Blocked' : 'Late'} ×
-              </button>
-            </>
+            <button 
+              onClick={() => setIssueFilter('all')}
+              className={cn(
+                "flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded",
+                issueFilter === 'blocked' ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"
+              )}
+            >
+              {issueFilter === 'blocked' ? 'Blocked' : 'Late'} ×
+            </button>
           )}
 
           {/* Spacer + Search */}
