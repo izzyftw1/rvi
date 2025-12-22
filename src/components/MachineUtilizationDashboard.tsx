@@ -4,9 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, AlertTriangle, Clock, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
-import { differenceInMinutes, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface QueuedWorkOrder {
@@ -34,64 +32,44 @@ export const MachineUtilizationDashboard = () => {
   useEffect(() => {
     calculateMetrics();
 
+    // Real-time subscription for production logs
+    const channel = supabase
+      .channel('machine-utilization-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs' }, () => calculateMetrics())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, () => calculateMetrics())
+      .subscribe();
+
     const interval = setInterval(calculateMetrics, 60000); // Update every minute
-    return () => clearInterval(interval);
+    
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const calculateMetrics = async () => {
     try {
-      // Get all machines
-      const { data: machines, error: machinesError } = await supabase
-        .from("machines")
+      // Get all machines with production log data from the view
+      const { data: machineData, error: machineError } = await supabase
+        .from("machine_status_vw")
         .select("*");
 
-      if (machinesError) throw machinesError;
+      if (machineError) throw machineError;
 
-      const totalMachines = machines?.length || 0;
-      const runningMachines = machines?.filter((m) => m.status === "running").length || 0;
+      const totalMachines = machineData?.length || 0;
+      const runningMachines = machineData?.filter((m) => m.current_state === "running").length || 0;
 
-      // Calculate utilization for today
-      const today = new Date();
-      const dayStart = startOfDay(today);
-      const dayEnd = endOfDay(today);
-      const totalMinutesInDay = differenceInMinutes(dayEnd, dayStart);
-
-      const { data: todayAssignments, error: assignmentsError } = await supabase
-        .from("wo_machine_assignments")
-        .select("machine_id, scheduled_start, scheduled_end, actual_start, actual_end, status")
-        .gte("scheduled_start", dayStart.toISOString())
-        .lte("scheduled_end", dayEnd.toISOString());
-
-      if (assignmentsError) throw assignmentsError;
-
-      // Calculate utilization per machine
-      const machineUtilization = new Map<string, number>();
+      // Calculate actual utilization from production logs
+      const machinesWithLogs = machineData?.filter((m) => (m.today_run_minutes ?? 0) > 0) || [];
+      const totalRunMinutes = machinesWithLogs.reduce((sum, m) => sum + (m.today_run_minutes ?? 0), 0);
+      const totalOutputToday = machineData?.reduce((sum, m) => sum + (m.today_ok_qty ?? 0), 0) || 0;
       
-      todayAssignments?.forEach((assignment) => {
-        const start = assignment.actual_start
-          ? new Date(assignment.actual_start)
-          : new Date(assignment.scheduled_start);
-        const end = assignment.actual_end
-          ? new Date(assignment.actual_end)
-          : assignment.status === "running"
-          ? new Date()
-          : new Date(assignment.scheduled_end);
-
-        const runMinutes = differenceInMinutes(end, start);
-        const current = machineUtilization.get(assignment.machine_id) || 0;
-        machineUtilization.set(assignment.machine_id, current + runMinutes);
-      });
-
-      // Calculate overall utilization rate
-      let totalUtilizedMinutes = 0;
-      machineUtilization.forEach((minutes) => {
-        totalUtilizedMinutes += minutes;
-      });
-
-      const utilizationRate =
-        totalMachines > 0
-          ? (totalUtilizedMinutes / (totalMinutesInDay * totalMachines)) * 100
-          : 0;
+      // Calculate utilization rate based on actual production logs (8 hour shift = 480 minutes)
+      const utilizationRate = machinesWithLogs.length > 0
+        ? (totalRunMinutes / (machinesWithLogs.length * 480)) * 100
+        : totalMachines > 0
+        ? (runningMachines / totalMachines) * 100
+        : 0;
 
       // Find bottlenecks (machines with longest queue times)
       const { data: queuedJobs, error: queueError } = await supabase
@@ -128,24 +106,30 @@ export const MachineUtilizationDashboard = () => {
 
       const bottleneckMachines = Array.from(machineQueue.entries())
         .map(([machineId, count]) => {
-          const machine = machines?.find((m) => m.id === machineId);
+          const machine = machineData?.find((m) => m.machine_id === machineId);
           return { machine, queueLength: count, machineId };
         })
         .sort((a, b) => b.queueLength - a.queueLength)
         .slice(0, 5);
 
-      // Find top performers (highest utilization)
-      const topPerformers = Array.from(machineUtilization.entries())
-        .map(([machineId, minutes]) => {
-          const machine = machines?.find((m) => m.id === machineId);
-          const utilization = (minutes / totalMinutesInDay) * 100;
-          return { machine, utilization, machineId };
+      // Find top performers based on actual production log output
+      const topPerformers = (machineData || [])
+        .filter((m) => (m.today_run_minutes ?? 0) > 0 || (m.today_ok_qty ?? 0) > 0)
+        .map((m) => {
+          const utilization = ((m.today_run_minutes ?? 0) / 480) * 100; // 8 hour shift
+          return { 
+            machine: { machine_id: m.machine_code, name: m.machine_name }, 
+            utilization: Math.min(utilization, 100), 
+            machineId: m.machine_id,
+            output: m.today_ok_qty ?? 0,
+            efficiency: m.today_avg_efficiency ?? 0
+          };
         })
         .sort((a, b) => b.utilization - a.utilization)
         .slice(0, 5);
 
       // Calculate average idle time
-      const idleMachines = machines?.filter((m) => m.status === "idle") || [];
+      const idleMachines = machineData?.filter((m) => m.current_state === "idle") || [];
       const averageIdleTime = idleMachines.length;
 
       setMetrics({

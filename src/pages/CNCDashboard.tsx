@@ -252,6 +252,7 @@ const CNCDashboard = () => {
       .channel("cnc-dashboard-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "machines" }, () => loadMachines())
       .on("postgres_changes", { event: "*", schema: "public", table: "wo_machine_assignments" }, () => loadMachines())
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadMachines())
       .subscribe();
 
     const interval = setInterval(loadMachines, 30000);
