@@ -11,7 +11,8 @@ import {
   ArrowRight,
   Clock,
   Ban,
-  Package
+  Package,
+  ShieldAlert
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,11 +32,17 @@ interface QualitySignal {
   isNcrMetric?: boolean;
 }
 
+interface GoodsInQcHold {
+  count: number;
+  totalPcs: number;
+}
+
 export const QualityLossSignals = () => {
   const navigate = useNavigate();
   const [signals, setSignals] = useState<QualitySignal[]>([]);
   const [ncrSignals, setNcrSignals] = useState<QualitySignal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [goodsInQcHold, setGoodsInQcHold] = useState<GoodsInQcHold>({ count: 0, totalPcs: 0 });
 
   useEffect(() => {
     const fetchQualityData = async () => {
@@ -83,6 +90,19 @@ export const QualityLossSignals = () => {
           .from('work_orders')
           .select('id, status, quantity')
           .in('status', ['in_progress', 'qc', 'packing', 'pending']);
+
+        // Fetch material lots on QC hold (Goods In QC Hold) - reuse same source
+        const { data: qcHoldLots } = await supabase
+          .from('material_lots')
+          .select('id, net_weight')
+          .eq('qc_status', 'hold');
+
+        // Calculate Goods In QC Hold metrics
+        const holdLotsCount = qcHoldLots?.length || 0;
+        // Approximate pcs from net_weight (each lot represents material for production)
+        // Using a simple estimation - each lot's net_weight roughly corresponds to pcs
+        const holdLotsTotalWeight = qcHoldLots?.reduce((sum, lot) => sum + (lot.net_weight || 0), 0) || 0;
+        setGoodsInQcHold({ count: holdLotsCount, totalPcs: Math.round(holdLotsTotalWeight) });
 
         const activeWoIds = new Set((workOrders || []).map(wo => wo.id));
 
@@ -240,6 +260,7 @@ export const QualityLossSignals = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, () => fetchQualityData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, () => fetchQualityData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => fetchQualityData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => fetchQualityData())
       .subscribe();
 
     return () => {
@@ -299,14 +320,21 @@ export const QualityLossSignals = () => {
     );
   };
 
+  const hasGoodsInQcHold = goodsInQcHold.count > 0;
+
   return (
-    <Card>
+    <Card className={cn(
+      "transition-all",
+      hasGoodsInQcHold && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/10"
+    )}>
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
             <AlertTriangle className={cn(
               "h-4 w-4",
-              criticalCount > 0 ? "text-destructive" : warningCount > 0 ? "text-amber-500" : "text-emerald-500"
+              hasGoodsInQcHold ? "text-amber-500" : 
+              criticalCount > 0 ? "text-destructive" : 
+              warningCount > 0 ? "text-amber-500" : "text-emerald-500"
             )} />
             Quality & Loss Signals
             {criticalCount > 0 && (
@@ -320,12 +348,24 @@ export const QualityLossSignals = () => {
               </Badge>
             )}
           </CardTitle>
-          <button
-            onClick={() => navigate('/quality-analytics')}
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-          >
-            Analytics <ArrowRight className="h-3 w-3" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Goods In QC Hold Badge - clickable */}
+            {hasGoodsInQcHold && (
+              <Badge 
+                className="bg-amber-500 hover:bg-amber-600 text-white cursor-pointer flex items-center gap-1 text-[10px] animate-pulse"
+                onClick={() => navigate('/qc-incoming?filter=hold')}
+              >
+                <ShieldAlert className="h-3 w-3" />
+                {goodsInQcHold.totalPcs.toLocaleString()} kg blocked by QC
+              </Badge>
+            )}
+            <button
+              onClick={() => navigate('/quality-analytics')}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              Analytics <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4 pt-0 space-y-4">
