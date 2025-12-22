@@ -393,27 +393,29 @@ const FloorDashboard = () => {
                               </div>
                             </div>
 
-                            {/* Avg Wait Time */}
-                            {avgWaitHours > 0 && (
-                              <div className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-muted/30">
-                                <span className="text-muted-foreground flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  Avg Wait
-                                </span>
-                                <span className={cn(
-                                  "font-medium",
-                                  avgWaitHours > 24 && "text-amber-600 dark:text-amber-400",
-                                  avgWaitHours > 48 && "text-red-600 dark:text-red-400"
-                                )}>
-                                  {avgWaitHours < 24 ? `${avgWaitHours}h` : `${Math.round(avgWaitHours / 24)}d`}
-                                </span>
-                              </div>
-                            )}
+                            {/* Guidance Text */}
+                            <div className="text-xs text-muted-foreground italic px-1">
+                              {blockedCount > 0 && blockedCount >= readyCount && (
+                                <span>Primary blocker: {orders.some(o => !o.qc_material_passed) ? 'Material QC' : 'First Piece QC'}</span>
+                              )}
+                              {blockedCount === 0 && readyCount > 0 && loadLevel === 'underloaded' && (
+                                <span>Capacity available, ready to execute</span>
+                              )}
+                              {blockedCount === 0 && readyCount > 0 && loadLevel === 'overloaded' && (
+                                <span>Queue exceeds daily capacity</span>
+                              )}
+                              {blockedCount === 0 && readyCount > 0 && loadLevel === 'balanced' && (
+                                <span>Load balanced, execution on track</span>
+                              )}
+                              {readyCount === 0 && blockedCount > 0 && (
+                                <span>All WOs blocked, none ready to run</span>
+                              )}
+                            </div>
 
                             {/* Quick Actions */}
                             <div className="pt-2 border-t">
                               <button
-                                onClick={() => navigate(`/work-orders?stage=${stage}`)}
+                                onClick={() => navigate(`/production-progress?stage=${stage}`)}
                                 className="w-full flex items-center justify-between text-xs text-primary hover:underline group"
                               >
                                 <span>View {queuedCount} work orders</span>
