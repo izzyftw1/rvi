@@ -265,6 +265,41 @@ export default function ProductionProgress() {
   const buckets = useMemo(() => categorizeToBuckets(workOrders), [workOrders]);
 
   const totalBlockers = buckets.material_qc.length + buckets.first_piece_qc.length + buckets.ready_not_started.length;
+  
+  // Calculate flow health
+  const flowHealth = useMemo(() => {
+    const allItems = [
+      ...buckets.material_qc,
+      ...buckets.first_piece_qc,
+      ...buckets.ready_not_started
+    ];
+    
+    const redCount = allItems.filter(i => i.aging_hours >= 72).length;
+    const amberCount = allItems.filter(i => i.aging_hours >= 24 && i.aging_hours < 72).length;
+    
+    if (redCount > 0) {
+      return { 
+        status: 'RED' as const, 
+        reason: `${redCount} WO${redCount > 1 ? 's' : ''} blocked >3 days`
+      };
+    }
+    if (amberCount > 0) {
+      return { 
+        status: 'AMBER' as const, 
+        reason: `${amberCount} WO${amberCount > 1 ? 's' : ''} blocked >24h`
+      };
+    }
+    if (totalBlockers > 0) {
+      return { 
+        status: 'GREEN' as const, 
+        reason: `${totalBlockers} blocker${totalBlockers > 1 ? 's' : ''}, all <24h`
+      };
+    }
+    return { 
+      status: 'GREEN' as const, 
+      reason: 'No blockers'
+    };
+  }, [buckets, totalBlockers]);
 
   if (loading) {
     return (
@@ -277,7 +312,7 @@ export default function ProductionProgress() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
-        {/* Header */}
+        {/* Header with Flow Health */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Production Log</h1>
@@ -286,9 +321,24 @@ export default function ProductionProgress() {
             </p>
           </div>
           
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <Timer className="h-3 w-3" />
-            Updated {format(new Date(), 'HH:mm')}
+          {/* Flow Health Indicator */}
+          <div className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-full border",
+            flowHealth.status === 'GREEN' && "bg-green-100 dark:bg-green-950/50 border-green-300 dark:border-green-700",
+            flowHealth.status === 'AMBER' && "bg-amber-100 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700",
+            flowHealth.status === 'RED' && "bg-red-100 dark:bg-red-950/50 border-red-300 dark:border-red-700"
+          )}>
+            <span className={cn(
+              "text-xs font-bold",
+              flowHealth.status === 'GREEN' && "text-green-700 dark:text-green-300",
+              flowHealth.status === 'AMBER' && "text-amber-700 dark:text-amber-300",
+              flowHealth.status === 'RED' && "text-red-700 dark:text-red-300"
+            )}>
+              Flow: {flowHealth.status}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {flowHealth.reason}
+            </span>
           </div>
         </div>
 
