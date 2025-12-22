@@ -12,6 +12,16 @@ import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
 import { QCSummaryStats, QCInfoAlert, QCActionRequired, QCHistory } from "@/components/qc/QCPageLayout";
 import { EmptyState } from "@/components/ui/empty-state";
 
+interface ProductionMetrics {
+  runtime_minutes: number;
+  actual_quantity: number;
+  rejection_quantity: number;
+  efficiency: number;
+  machine_name: string;
+  operator_name: string;
+  shift: string;
+}
+
 interface WorkOrderQCSummary {
   id: string;
   wo_id: string;
@@ -26,6 +36,8 @@ interface WorkOrderQCSummary {
   failed_qc_count: number;
   last_qc_date: string | null;
   qc_type_needed: string | null;
+  // Production metrics from Daily Production Log (read-only)
+  production_metrics: ProductionMetrics | null;
 }
 
 const Quality = () => {
@@ -64,6 +76,39 @@ const Quality = () => {
 
       if (qcError) throw qcError;
 
+      // Fetch production metrics from daily_production_logs for all work orders
+      const woIds = (workOrders || []).map(wo => wo.id);
+      const { data: productionLogs } = await supabase
+        .from("daily_production_logs")
+        .select(`
+          wo_id,
+          actual_runtime_minutes,
+          actual_quantity,
+          total_rejection_quantity,
+          efficiency_percentage,
+          shift,
+          machines:machine_id(name),
+          operator:operator_id(full_name)
+        `)
+        .in("wo_id", woIds)
+        .order("log_date", { ascending: false });
+
+      // Map production metrics by wo_id (use latest log per WO)
+      const productionByWo = new Map<string, ProductionMetrics>();
+      productionLogs?.forEach(log => {
+        if (!productionByWo.has(log.wo_id)) {
+          productionByWo.set(log.wo_id, {
+            runtime_minutes: log.actual_runtime_minutes || 0,
+            actual_quantity: log.actual_quantity || 0,
+            rejection_quantity: log.total_rejection_quantity || 0,
+            efficiency: log.efficiency_percentage || 0,
+            machine_name: (log.machines as any)?.name || "-",
+            operator_name: (log.operator as any)?.full_name || "-",
+            shift: log.shift || "-",
+          });
+        }
+      });
+
       const total = qcRecords?.length || 0;
       const passed = qcRecords?.filter(r => r.result === 'pass').length || 0;
       const failed = qcRecords?.filter(r => r.result === 'fail').length || 0;
@@ -89,6 +134,7 @@ const Quality = () => {
 
       const summaries: WorkOrderQCSummary[] = (workOrders || []).map(wo => {
         const qcInfo = qcByWo.get(wo.id);
+        const prodMetrics = productionByWo.get(wo.id) || null;
         return {
           id: wo.id,
           wo_id: wo.wo_id,
@@ -102,7 +148,8 @@ const Quality = () => {
           passed_qc_count: qcInfo?.passed || 0,
           failed_qc_count: qcInfo?.failed || 0,
           last_qc_date: qcInfo?.lastDate || null,
-          qc_type_needed: qcInfo?.neededType || null
+          qc_type_needed: qcInfo?.neededType || null,
+          production_metrics: prodMetrics,
         };
       });
 
@@ -259,7 +306,9 @@ const Quality = () => {
                     <TableHead>First Piece</TableHead>
                     <TableHead className="text-center">Passed</TableHead>
                     <TableHead className="text-center">Failed</TableHead>
-                    <TableHead>Last QC</TableHead>
+                    <TableHead className="text-right text-xs">Prod Qty</TableHead>
+                    <TableHead className="text-right text-xs">Rej Qty</TableHead>
+                    <TableHead className="text-right text-xs">Eff %</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -288,8 +337,21 @@ const Quality = () => {
                           <span className="text-destructive font-medium">{wo.failed_qc_count}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {wo.last_qc_date ? new Date(wo.last_qc_date).toLocaleDateString() : '-'}
+                      {/* Production metrics from Daily Production Log - Read Only */}
+                      <TableCell className="text-right text-sm">
+                        {wo.production_metrics?.actual_quantity ?? '-'}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        {wo.production_metrics?.rejection_quantity ? (
+                          <span className="text-destructive">{wo.production_metrics.rejection_quantity}</span>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        {wo.production_metrics?.efficiency ? (
+                          <span className={wo.production_metrics.efficiency >= 100 ? 'text-emerald-600' : 'text-amber-600'}>
+                            {wo.production_metrics.efficiency.toFixed(1)}%
+                          </span>
+                        ) : '-'}
                       </TableCell>
                       <TableCell>
                         <Eye className="h-4 w-4 text-primary" />

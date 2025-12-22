@@ -8,6 +8,7 @@ import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
 import { QCSummaryStats, QCInfoAlert, QCActionRequired, QCHistory } from "@/components/qc/QCPageLayout";
+import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, Package, Clock, ArrowRight, Inbox } from "lucide-react";

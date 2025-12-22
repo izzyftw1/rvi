@@ -14,6 +14,7 @@ import { ArrowLeft, AlertTriangle, ClipboardCheck, Search, Clock } from "lucide-
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { QCSummaryStats, QCInfoAlert, QCSection } from "@/components/qc/QCPageLayout";
 import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
+import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
 
 const OPERATIONS = ['A', 'B', 'C', 'D'] as const;
 
@@ -286,7 +287,7 @@ const HourlyQC = () => {
               Back to Work Orders
             </Button>
 
-            {/* Summary */}
+            {/* Work Order Summary */}
             <Card className="border-primary/20 bg-primary/5">
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
@@ -298,6 +299,26 @@ const HourlyQC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Production Context from Daily Production Log - Read Only */}
+            {machineId && (
+              <ProductionContextDisplay
+                workOrderId={selectedWorkOrder.id}
+                machineId={machineId}
+                title="Production Context (from Daily Log)"
+                showRejectionDetails={true}
+              />
+            )}
+            {!machineId && (
+              <Card className="border-muted bg-muted/20">
+                <CardContent className="pt-4">
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Select a machine to view production context from Daily Production Log
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Entry Form */}
             <QCSection title="QC Entry Form" icon={<ClipboardCheck className="h-5 w-5" />}>
