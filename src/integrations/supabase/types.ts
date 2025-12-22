@@ -204,6 +204,119 @@ export type Database = {
           },
         ]
       }
+      cnc_programmer_activity: {
+        Row: {
+          activity_date: string
+          created_at: string
+          created_by: string | null
+          drawing_number: string | null
+          first_piece_approval_time: string | null
+          id: string
+          item_code: string | null
+          machine_counter_reading: number | null
+          machine_id: string | null
+          party_code: string | null
+          programmer_id: string | null
+          qc_approver_id: string | null
+          setup_duration_minutes: number | null
+          setup_end_time: string | null
+          setup_start_time: string | null
+          setup_type: string
+          updated_at: string
+          wo_id: string | null
+        }
+        Insert: {
+          activity_date?: string
+          created_at?: string
+          created_by?: string | null
+          drawing_number?: string | null
+          first_piece_approval_time?: string | null
+          id?: string
+          item_code?: string | null
+          machine_counter_reading?: number | null
+          machine_id?: string | null
+          party_code?: string | null
+          programmer_id?: string | null
+          qc_approver_id?: string | null
+          setup_duration_minutes?: number | null
+          setup_end_time?: string | null
+          setup_start_time?: string | null
+          setup_type?: string
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Update: {
+          activity_date?: string
+          created_at?: string
+          created_by?: string | null
+          drawing_number?: string | null
+          first_piece_approval_time?: string | null
+          id?: string
+          item_code?: string | null
+          machine_counter_reading?: number | null
+          machine_id?: string | null
+          party_code?: string | null
+          programmer_id?: string | null
+          qc_approver_id?: string | null
+          setup_duration_minutes?: number | null
+          setup_end_time?: string | null
+          setup_start_time?: string | null
+          setup_type?: string
+          updated_at?: string
+          wo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cnc_programmer_activity_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_programmer_id_fkey"
+            columns: ["programmer_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_qc_approver_id_fkey"
+            columns: ["qc_approver_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_master: {
         Row: {
           account_owner: string | null
