@@ -115,7 +115,7 @@ const WorkOrderRow = memo(({
   return (
     <div 
       className={cn(
-        "group flex items-stretch rounded-lg cursor-pointer transition-all hover:shadow-lg overflow-hidden border",
+        "group flex items-stretch rounded-md cursor-pointer transition-all hover:shadow-md overflow-hidden border",
         // Background tint for issues
         isOverdue && "bg-destructive/5 border-destructive/40",
         isBlocked && !isOverdue && "bg-amber-500/5 border-amber-500/40",
@@ -126,65 +126,65 @@ const WorkOrderRow = memo(({
       {/* Status Strip - Left edge indicator */}
       {hasIssue && (
         <div className={cn(
-          "w-1.5 flex-shrink-0",
+          "w-1 flex-shrink-0",
           isOverdue ? "bg-destructive" : "bg-amber-500"
         )} />
       )}
 
       {/* STAGE - Dominant Visual Element */}
       <div className={cn(
-        "flex flex-col items-center justify-center px-4 py-3 min-w-[90px] text-white relative",
+        "flex flex-row items-center justify-center gap-1.5 px-3 py-1.5 min-w-[80px] text-white relative",
         stageConfig.color
       )}>
-        <StageIcon className="h-6 w-6 mb-1" />
-        <span className="text-xs font-bold uppercase tracking-wide text-center leading-tight">
+        <StageIcon className="h-4 w-4" />
+        <span className="text-[11px] font-bold uppercase tracking-wide">
           {stageConfig.label}
         </span>
         
         {/* Issue overlay icon on stage */}
         {hasIssue && (
           <div className={cn(
-            "absolute -top-1 -right-1 rounded-full p-0.5",
+            "absolute -top-0.5 -right-0.5 rounded-full p-0.5",
             isOverdue ? "bg-destructive" : "bg-amber-500"
           )}>
             {isOverdue ? (
-              <AlertTriangle className="h-3 w-3 text-white" />
+              <AlertTriangle className="h-2.5 w-2.5 text-white" />
             ) : (
-              <Timer className="h-3 w-3 text-white" />
+              <Timer className="h-2.5 w-2.5 text-white" />
             )}
           </div>
         )}
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 flex items-center gap-4 px-4 py-3">
+      <div className="flex-1 flex items-center gap-3 px-3 py-1.5">
         {/* Primary: PO / Customer + Status Badge */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-medium text-foreground truncate">
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium text-foreground truncate">
               {wo.customer_po || wo.wo_id?.slice(0, 8)}
             </p>
             {/* Inline status badges */}
             {isOverdue && (
-              <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 gap-1 whitespace-nowrap">
-                <AlertTriangle className="h-3 w-3" />
-                {daysOverdue}d overdue
+              <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 gap-0.5 whitespace-nowrap">
+                <AlertTriangle className="h-2.5 w-2.5" />
+                {daysOverdue}d
               </Badge>
             )}
             {isBlocked && !isOverdue && (
-              <Badge className="text-[10px] px-1.5 py-0 h-5 gap-1 whitespace-nowrap bg-amber-500 hover:bg-amber-500/90">
-                <Timer className="h-3 w-3" />
-                Ext. delayed
+              <Badge className="text-[9px] px-1 py-0 h-4 gap-0.5 whitespace-nowrap bg-amber-500 hover:bg-amber-500/90">
+                <Timer className="h-2.5 w-2.5" />
+                Ext
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground truncate">{wo.customer}</p>
+          <p className="text-xs text-muted-foreground truncate">{wo.customer}</p>
         </div>
 
         {/* Secondary: Item & Qty */}
-        <div className="hidden sm:block text-right min-w-[100px]">
-          <p className="text-xs text-muted-foreground truncate">{wo.item_code}</p>
-          <p className="text-sm font-medium">{wo.quantity?.toLocaleString()} pcs</p>
+        <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="truncate max-w-[80px]">{wo.item_code}</span>
+          <span className="font-medium text-foreground">{wo.quantity?.toLocaleString()}</span>
         </div>
 
         {/* External WIP indicator */}
@@ -193,11 +193,11 @@ const WorkOrderRow = memo(({
             <Tooltip>
               <TooltipTrigger>
                 <Badge variant="outline" className={cn(
-                  "gap-1 text-xs whitespace-nowrap",
+                  "gap-0.5 text-[10px] px-1.5 py-0 h-4 whitespace-nowrap",
                   hasExternalOverdue ? "border-amber-500 text-amber-600 bg-amber-500/10" : "border-accent text-accent"
                 )}>
-                  <ExternalLink className="h-3 w-3" />
-                  {externalWipTotal} ext
+                  <ExternalLink className="h-2.5 w-2.5" />
+                  {externalWipTotal}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
@@ -211,28 +211,25 @@ const WorkOrderRow = memo(({
         )}
 
         {/* Due Date */}
-        <div className="hidden md:block min-w-[70px] text-right">
+        <div className="hidden md:block">
           {wo.due_date ? (
             <span className={cn(
-              "text-xs flex items-center justify-end gap-1",
+              "text-[10px] flex items-center gap-0.5",
               isOverdue ? "text-destructive font-semibold" : 
               daysUntilDue !== null && daysUntilDue <= 3 ? "text-amber-600 font-medium" : "text-muted-foreground"
             )}>
-              <Clock className="h-3 w-3" />
-              {formatDate(parseISO(wo.due_date), 'MMM dd')}
+              <Clock className="h-2.5 w-2.5" />
+              {formatDate(parseISO(wo.due_date), 'MMM d')}
             </span>
-          ) : (
-            <span className="text-xs text-muted-foreground/50">—</span>
-          )}
+          ) : null}
         </div>
-
 
         {/* Quick Actions */}
         <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreVertical className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-6 w-6">
+                <MoreVertical className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -735,7 +732,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
 
         {/* Work Orders List */}
         {!loading && !error && filteredOrders.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {filteredOrders.map((wo) => (
               <WorkOrderRow
                 key={wo.id}
