@@ -13,7 +13,8 @@ import {
   ShieldAlert, 
   Truck, 
   Wrench,
-  Clock
+  Clock,
+  User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInHours, differenceInDays, parseISO } from "date-fns";
@@ -25,6 +26,7 @@ interface CriticalItem {
   oldestAge: string;
   icon: React.ElementType;
   route: string;
+  owner: string;
 }
 
 export const CriticalTodayStrip = () => {
@@ -110,7 +112,8 @@ export const CriticalTodayStrip = () => {
           count: blockingNcrs.length,
           oldestAge: daysOld > 0 ? `${daysOld}d old` : 'Today',
           icon: FileWarning,
-          route: '/ncr-management?status=open'
+          route: '/ncr-management?status=open',
+          owner: 'Quality'
         });
       }
 
@@ -128,7 +131,8 @@ export const CriticalTodayStrip = () => {
           count: staleQcHolds.length,
           oldestAge: daysOld > 0 ? `${daysOld}d ${hoursOld % 24}h` : `${hoursOld}h`,
           icon: ShieldAlert,
-          route: '/quality?filter=pending'
+          route: '/quality?filter=pending',
+          owner: 'Quality'
         });
       }
 
@@ -148,7 +152,8 @@ export const CriticalTodayStrip = () => {
           count: overdueExternal.length,
           oldestAge: `${daysOverdue}d late`,
           icon: Truck,
-          route: '/partners?filter=overdue'
+          route: '/partners?filter=overdue',
+          owner: 'Logistics'
         });
       }
 
@@ -181,7 +186,8 @@ export const CriticalTodayStrip = () => {
           count: blockedByMaintenance.length,
           oldestAge,
           icon: Wrench,
-          route: '/machine-status?filter=maintenance'
+          route: '/machine-status?filter=maintenance',
+          owner: 'Maintenance'
         });
       }
 
@@ -230,9 +236,15 @@ export const CriticalTodayStrip = () => {
                       <span className="font-bold text-destructive">{item.count}</span>
                       <span className="text-xs text-foreground">{item.label}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                      <Clock className="h-2.5 w-2.5" />
-                      <span>Oldest: {item.oldestAge}</span>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        {item.oldestAge}
+                      </span>
+                      <span className="flex items-center gap-1 border-l border-muted-foreground/30 pl-2">
+                        <User className="h-2.5 w-2.5" />
+                        {item.owner}
+                      </span>
                     </div>
                   </div>
                 </button>
