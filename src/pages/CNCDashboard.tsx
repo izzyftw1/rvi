@@ -117,9 +117,12 @@ const CNCDashboard = () => {
   const [machines, setMachines] = useState<MachineData[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [queueDialogOpen, setQueueDialogOpen] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
   const [eligibleWOs, setEligibleWOs] = useState<EligibleWorkOrder[]>([]);
+  const [queuedWOs, setQueuedWOs] = useState<any[]>([]);
   const [loadingWOs, setLoadingWOs] = useState(false);
+  const [loadingQueue, setLoadingQueue] = useState(false);
 
   const loadMachines = useCallback(async () => {
     try {
@@ -315,7 +318,58 @@ const CNCDashboard = () => {
     }
   };
 
-  // Summary metrics
+  // Handler to view queued work orders for a machine
+  const handleViewQueue = async (machine: MachineData) => {
+    setSelectedMachine(machine);
+    setQueueDialogOpen(true);
+    setLoadingQueue(true);
+
+    try {
+      // Get queued assignments for this machine
+      const { data: assignments, error: assignError } = await supabase
+        .from("wo_machine_assignments")
+        .select("wo_id, scheduled_start")
+        .eq("machine_id", machine.id)
+        .eq("status", "scheduled")
+        .order("scheduled_start", { ascending: true });
+
+      if (assignError) throw assignError;
+
+      if (!assignments || assignments.length === 0) {
+        setQueuedWOs([]);
+        return;
+      }
+
+      // Get work order details
+      const woIds = assignments.map(a => a.wo_id);
+      const { data: wos, error: woError } = await supabase
+        .from("work_orders")
+        .select("id, display_id, customer, item_code, quantity, due_date, current_stage")
+        .in("id", woIds);
+
+      if (woError) throw woError;
+
+      // Merge with scheduled times
+      const enriched = (wos || []).map(wo => {
+        const assignment = assignments.find(a => a.wo_id === wo.id);
+        return {
+          ...wo,
+          scheduledStart: assignment?.scheduled_start
+        };
+      }).sort((a, b) => {
+        if (!a.scheduledStart || !b.scheduledStart) return 0;
+        return new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime();
+      });
+
+      setQueuedWOs(enriched);
+    } catch (error: any) {
+      toast.error("Failed to load queued work orders");
+      setQueuedWOs([]);
+    } finally {
+      setLoadingQueue(false);
+    }
+  };
+
   const metrics = useMemo(() => {
     const ready = machines.filter(m => m.readiness === 'ready');
     const running = machines.filter(m => m.readiness === 'running');
@@ -483,10 +537,11 @@ const CNCDashboard = () => {
                 <Card 
                   key={machine.id}
                   className={cn(
-                    "transition-all border",
+                    "transition-all border cursor-pointer hover:shadow-md",
                     getCardStyling(machine),
                     isEligibleForAssignment && "ring-2 ring-green-400/50 border-2"
                   )}
+                  onClick={() => handleViewQueue(machine)}
                 >
                   <CardContent className="p-4 space-y-3">
                     {/* Header */}
@@ -571,7 +626,10 @@ const CNCDashboard = () => {
                       <Button 
                         className="w-full gap-2" 
                         size="sm"
-                        onClick={() => handleOpenAssignDialog(machine)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenAssignDialog(machine);
+                        }}
                       >
                         <Play className="h-4 w-4" />
                         Assign Work
@@ -584,8 +642,8 @@ const CNCDashboard = () => {
                           className="w-full gap-2" 
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            // TODO: Implement clear maintenance flow
+                          onClick={(e) => {
+                            e.stopPropagation();
                             toast.info("Maintenance clearance workflow coming soon");
                           }}
                         >
@@ -604,7 +662,8 @@ const CNCDashboard = () => {
                           className="w-full gap-2" 
                           size="sm"
                           variant="outline"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             toast.info("Setup completion workflow coming soon");
                           }}
                         >
@@ -620,7 +679,8 @@ const CNCDashboard = () => {
                           className="w-full gap-2" 
                           size="sm"
                           variant="destructive"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             toast.info("Machine recovery workflow coming soon");
                           }}
                         >
@@ -687,6 +747,70 @@ const CNCDashboard = () => {
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {wo.customer} • {wo.item_code} • {wo.quantity.toLocaleString()} pcs
                             </p>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+
+        {/* Queue View Dialog */}
+        <Dialog open={queueDialogOpen} onOpenChange={setQueueDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Queued Work Orders – {selectedMachine?.name}</DialogTitle>
+              <DialogDescription>
+                {selectedMachine?.queueCount || 0} work order{(selectedMachine?.queueCount || 0) !== 1 ? 's' : ''} scheduled for this machine
+              </DialogDescription>
+            </DialogHeader>
+
+            <ScrollArea className="max-h-[400px]">
+              {loadingQueue ? (
+                <div className="py-8 text-center text-muted-foreground">Loading queued work orders...</div>
+              ) : queuedWOs.length === 0 ? (
+                <div className="py-8 text-center">
+                  <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+                  <p className="text-muted-foreground">No work orders in queue</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {queuedWOs.map((wo, index) => {
+                    const isOverdue = wo.due_date && new Date(wo.due_date) < new Date();
+                    
+                    return (
+                      <div
+                        key={wo.id}
+                        onClick={() => {
+                          setQueueDialogOpen(false);
+                          navigate(`/work-orders/${wo.id}`);
+                        }}
+                        className={cn(
+                          "p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors group",
+                          isOverdue && "border-red-300 dark:border-red-800"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">#{index + 1}</span>
+                              <span className="font-mono font-semibold text-sm">{wo.display_id}</span>
+                              {isOverdue && (
+                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">
+                              {wo.customer} • {wo.item_code} • {wo.quantity?.toLocaleString()} pcs
+                            </p>
+                            {wo.due_date && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Due: {new Date(wo.due_date).toLocaleDateString()}
+                              </p>
+                            )}
                           </div>
                           <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                         </div>
