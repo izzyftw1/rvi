@@ -43,6 +43,7 @@ import { OverdueReturnsTable } from "@/components/dashboard/OverdueReturnsTable"
 import { QualityLossSignals } from "@/components/dashboard/QualityLossSignals";
 import { DeliveryRiskPanel } from "@/components/dashboard/DeliveryRiskPanel";
 import { CriticalTodayStrip } from "@/components/dashboard/CriticalTodayStrip";
+import { LossImpactIndicator } from "@/components/dashboard/LossImpactIndicator";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -264,6 +265,9 @@ const Index = () => {
 
             {/* TERTIARY: Quality Signals - Issues to watch */}
             <QualityLossSignals />
+
+            {/* LOSS IMPACT: Visual emphasis on losses */}
+            <LossImpactIndicator />
 
             {/* CONTEXT: Today's Status (collapsed priority) */}
             <TodayFactorySnapshot />
