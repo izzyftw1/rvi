@@ -1,17 +1,28 @@
 /**
- * Homepage Control Tower - Decision Layer
+ * Homepage Control Tower - Decision-First Dashboard
  * 
  * Design Principles:
- * 1. READ-ONLY: All cards drill down only, no data entry
- * 2. NO DUPLICATION: Internal/External modes don't double-count WIP
- * 3. CONSISTENCY: Values match Production/Quality dashboards (same data sources)
- * 4. FORWARD-LOOKING: Emphasis on risk and upcoming work, not historical reports
+ * 1. DECISION-FIRST: Prioritize actionable blockers over status metrics
+ * 2. URGENCY: Critical items at top, sorted by days blocked and impact
+ * 3. OWNERSHIP: Each blocked item shows responsible department
+ * 4. IMPACT: Show financial/delivery risk indicators
+ * 5. READ-ONLY: All cards drill down only, no data entry
+ * 6. NO DUPLICATION: Internal/External modes don't double-count WIP
+ * 
+ * Layout Order (Internal Mode):
+ * 1. Executive Risk Bar - Global alerts (always visible)
+ * 2. Actionable Blockers - "Needs Your Decision" section
+ * 3. Delivery Risk Panel - Upcoming deadline pressure
+ * 4. Quality Loss Signals - Quality issues needing attention
+ * 5. Today's Snapshot - Status context (secondary)
+ * 6. Production Pipeline - Operational view (tertiary)
  * 
  * Data Sources:
  * - Internal WIP: internal_flow_summary_vw (work_orders by current_stage)
  * - External WIP: external_processing_summary_vw (wo_external_moves with status='sent')
- * - Delivery Risk: work_orders with due_date in next 7 days, categorized by block reason
- * - Quality Signals: daily_production_logs, qc_records, ncrs (today/this week)
+ * - Blockers: work_orders with blocks, sorted by urgency
+ * - Delivery Risk: work_orders with due_date in next 7 days
+ * - Quality Signals: daily_production_logs, qc_records, ncrs
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +30,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Factory, ArrowDownUp, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ControlTowerHeader } from "@/components/dashboard/ControlTowerHeader";
+import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
 import { InternalFlowPanel } from "@/components/dashboard/InternalFlowPanel";
 import { ExternalFlowPanel } from "@/components/dashboard/ExternalFlowPanel";
 import { ExecutiveRiskBar } from "@/components/dashboard/ExecutiveRiskBar";
@@ -239,16 +251,20 @@ const Index = () => {
 
         {/* Mode-specific Content */}
         {activeMode === "internal" ? (
-          <>
-            {/* Today's Factory Snapshot - Internal Mode Only */}
-            <TodayFactorySnapshot />
+          <div className="space-y-4">
+            {/* PRIMARY: Actionable Blockers - What needs decision NOW */}
+            <ActionableBlockers />
 
-            {/* Quality & Loss Signals */}
-            <QualityLossSignals />
-
-            {/* Delivery Risk Outlook */}
+            {/* SECONDARY: Delivery Risk - Upcoming pressure */}
             <DeliveryRiskPanel />
 
+            {/* TERTIARY: Quality Signals - Issues to watch */}
+            <QualityLossSignals />
+
+            {/* CONTEXT: Today's Status (collapsed priority) */}
+            <TodayFactorySnapshot />
+
+            {/* REFERENCE: Production Pipeline */}
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -268,7 +284,7 @@ const Index = () => {
                 <InternalFlowPanel stages={internalFlow} />
               </CardContent>
             </Card>
-          </>
+          </div>
         ) : (
           <div className="space-y-4">
             <Card>
