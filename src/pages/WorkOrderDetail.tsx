@@ -23,9 +23,7 @@ import { EnhancedExternalTab } from "@/components/EnhancedExternalTab";
 import { WOTimelineVisualization } from "@/components/WOTimelineVisualization";
 import { WOAuditTrailModal } from "@/components/WOAuditTrailModal";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
-import { ExternalProcessingTab } from "@/components/ExternalProcessingTab";
-import { ExternalMovementsTab } from "@/components/ExternalMovementsTab";
-import { ExternalProcessingHistoryTab } from "@/components/ExternalProcessingHistoryTab";
+import { ExternalChallanTable } from "@/components/ExternalChallanTable";
 
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
@@ -893,34 +891,9 @@ const WorkOrderDetail = () => {
             {woOEE && <OEEWidget metrics={woOEE} title="Work Order OEE" />}
           </section>
         )}
-        {/* External Processing - Compact inline (only if exists) */}
-        {(wo.external_out_total > 0 || externalMoves.length > 0) && (
-          <Card>
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">External Processing</span>
-                <div className="flex items-center gap-6 text-sm">
-                  <div className="text-center">
-                    <span className="font-bold">{wo.external_out_total || 0}</span>
-                    <span className="text-muted-foreground ml-1">sent</span>
-                  </div>
-                  <div className="text-center">
-                    <span className="font-bold">{wo.external_in_total || 0}</span>
-                    <span className="text-muted-foreground ml-1">returned</span>
-                  </div>
-                  {((wo.external_out_total || 0) - (wo.external_in_total || 0)) > 0 && (
-                    <Badge variant="outline" className="text-amber-600 border-amber-500/50">
-                      {(wo.external_out_total || 0) - (wo.external_in_total || 0)} out
-                    </Badge>
-                  )}
-                  <Button variant="ghost" size="sm" className="h-7" onClick={() => setActiveTab('external')}>
-                    Details →
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+
+        {/* External Processing - Challan-based Table */}
+        <ExternalChallanTable workOrderId={id || ""} />
 
         {/* NCRs */}
         <WorkOrderNCRList workOrderId={wo.id} />
