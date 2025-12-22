@@ -2532,6 +2532,36 @@ export type Database = {
           },
         ]
       }
+      people: {
+        Row: {
+          created_at: string
+          employment_type: Database["public"]["Enums"]["employment_type"]
+          full_name: string
+          id: string
+          is_active: boolean
+          role: Database["public"]["Enums"]["person_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          employment_type?: Database["public"]["Enums"]["employment_type"]
+          full_name: string
+          id?: string
+          is_active?: boolean
+          role: Database["public"]["Enums"]["person_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          employment_type?: Database["public"]["Enums"]["employment_type"]
+          full_name?: string
+          id?: string
+          is_active?: boolean
+          role?: Database["public"]["Enums"]["person_role"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ppe_inventory: {
         Row: {
           category: string
@@ -5575,6 +5605,7 @@ export type Database = {
         | "maintenance"
         | "design"
         | "packing"
+      employment_type: "internal" | "agency"
       execution_direction: "IN" | "OUT" | "COMPLETE"
       first_piece_qc_status: "not_required" | "pending" | "approved" | "failed"
       followup_channel: "phone" | "email" | "whatsapp" | "in_person"
@@ -5621,6 +5652,7 @@ export type Database = {
         | "upi"
         | "card"
         | "other"
+      person_role: "operator" | "programmer" | "qc_inspector"
       production_release_status: "NOT_RELEASED" | "RELEASED"
       qc_result: "pass" | "fail" | "rework" | "pending"
       qc_type: "first_piece" | "in_process" | "final" | "incoming"
@@ -5862,6 +5894,7 @@ export const Constants = {
         "design",
         "packing",
       ],
+      employment_type: ["internal", "agency"],
       execution_direction: ["IN", "OUT", "COMPLETE"],
       first_piece_qc_status: ["not_required", "pending", "approved", "failed"],
       followup_channel: ["phone", "email", "whatsapp", "in_person"],
@@ -5902,6 +5935,7 @@ export const Constants = {
         "card",
         "other",
       ],
+      person_role: ["operator", "programmer", "qc_inspector"],
       production_release_status: ["NOT_RELEASED", "RELEASED"],
       qc_result: ["pass", "fail", "rework", "pending"],
       qc_type: ["first_piece", "in_process", "final", "incoming"],
