@@ -122,18 +122,23 @@ const WorkOrderRow = memo(({
     return null;
   }, [hasExternalOverdue, wo.qc_gate_status, wo.has_open_ncr]);
 
-  // Determine card status for styling
+  // Visual severity logic:
+  // - Critical (red): overdue AND blocked
+  // - Warning (amber): overdue but progressing OR blocked but on time
+  // - Neutral: on time and not blocked
   const isBlocked = !!blockReason;
-  const hasIssue = isOverdue || isBlocked;
+  const isCritical = isOverdue && isBlocked;
+  const isWarning = (isOverdue && !isBlocked) || (!isOverdue && isBlocked);
+  const hasIssue = isCritical || isWarning;
   const isExternal = externalWipTotal > 0;
 
   return (
     <div 
       className={cn(
         "group flex items-stretch rounded-md cursor-pointer transition-all hover:shadow-md overflow-hidden border",
-        // Background tint for issues (priority)
-        isOverdue && "bg-destructive/5 border-destructive/40",
-        isBlocked && !isOverdue && "bg-amber-500/5 border-amber-500/40",
+        // Background tint based on severity
+        isCritical && "bg-destructive/5 border-destructive/40",
+        isWarning && "bg-amber-500/5 border-amber-500/40",
         // External ownership distinction (when no issues)
         !hasIssue && isExternal && "bg-purple-500/5 border-purple-500/30 hover:border-purple-500/50",
         !hasIssue && !isExternal && "bg-card border-border hover:border-border/80"
@@ -144,7 +149,7 @@ const WorkOrderRow = memo(({
       {(hasIssue || isExternal) && (
         <div className={cn(
           "w-1 flex-shrink-0",
-          isOverdue ? "bg-destructive" : isBlocked ? "bg-amber-500" : "bg-purple-500"
+          isCritical ? "bg-destructive" : isWarning ? "bg-amber-500" : "bg-purple-500"
         )} />
       )}
 
@@ -169,9 +174,9 @@ const WorkOrderRow = memo(({
         {hasIssue && (
           <div className={cn(
             "absolute -top-0.5 -right-0.5 rounded-full p-0.5",
-            isOverdue ? "bg-destructive" : "bg-amber-500"
+            isCritical ? "bg-destructive" : "bg-amber-500"
           )}>
-            {isOverdue ? (
+            {isCritical ? (
               <AlertTriangle className="h-2.5 w-2.5 text-white" />
             ) : (
               <Timer className="h-2.5 w-2.5 text-white" />
@@ -203,12 +208,21 @@ const WorkOrderRow = memo(({
             </p>
             {/* Block reason badge */}
             {blockReason && (
-              <Badge className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap bg-amber-500/90 hover:bg-amber-500">
+              <Badge className={cn(
+                "text-[8px] px-1 py-0 h-3.5 whitespace-nowrap",
+                isCritical ? "bg-destructive/90 hover:bg-destructive" : "bg-amber-500/90 hover:bg-amber-500"
+              )}>
                 {blockReason}
               </Badge>
             )}
-            {/* Overdue badge */}
-            {isOverdue && (
+            {/* Overdue badge - only show if progressing (amber) */}
+            {isOverdue && !isBlocked && (
+              <Badge className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap bg-amber-500/90 hover:bg-amber-500">
+                {daysOverdue}d late
+              </Badge>
+            )}
+            {/* Critical overdue badge */}
+            {isCritical && (
               <Badge variant="destructive" className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap">
                 {daysOverdue}d late
               </Badge>
