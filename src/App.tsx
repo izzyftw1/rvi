@@ -67,6 +67,7 @@ import NCRManagement from "./pages/NCRManagement";
 import NCRDetail from "./pages/NCRDetail";
 import InstrumentManagement from "./pages/InstrumentManagement";
 import DailyProductionLog from "./pages/DailyProductionLog";
+import MachineUtilisation from "./pages/MachineUtilisation";
 
 
 const App = () => (
@@ -123,6 +124,7 @@ const App = () => (
           <Route path="/factory-calendar" element={<FactoryCalendar />} />
           <Route path="/production-progress" element={<ProductionProgress />} />
           <Route path="/daily-production-log" element={<DailyProductionLog />} />
+          <Route path="/machine-utilisation" element={<MachineUtilisation />} />
           <Route path="/finance/dashboard" element={<FinanceDashboard />} />
           <Route path="/finance/invoices" element={<Invoices />} />
           <Route path="/finance/invoices/create" element={<CreateInvoices />} />
