@@ -69,6 +69,7 @@ import InstrumentManagement from "./pages/InstrumentManagement";
 import DailyProductionLog from "./pages/DailyProductionLog";
 import MachineUtilisation from "./pages/MachineUtilisation";
 import OperatorEfficiency from "./pages/OperatorEfficiency";
+import CNCProgrammerActivity from "./pages/CNCProgrammerActivity";
 
 
 const App = () => (
@@ -127,6 +128,7 @@ const App = () => (
           <Route path="/daily-production-log" element={<DailyProductionLog />} />
           <Route path="/machine-utilisation" element={<MachineUtilisation />} />
           <Route path="/operator-efficiency" element={<OperatorEfficiency />} />
+          <Route path="/cnc-programmer-activity" element={<CNCProgrammerActivity />} />
           <Route path="/finance/dashboard" element={<FinanceDashboard />} />
           <Route path="/finance/invoices" element={<Invoices />} />
           <Route path="/finance/invoices/create" element={<CreateInvoices />} />
