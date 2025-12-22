@@ -122,6 +122,7 @@ export default function OperatorEfficiency() {
           total_rejection_quantity,
           target_quantity,
           efficiency_percentage,
+          ok_quantity,
           operator:operator_id(full_name),
           machines:machine_id(name, machine_id)
         `)
