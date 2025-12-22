@@ -1,140 +1,86 @@
-import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
+import { Progress } from "@/components/ui/progress";
 import { MachineUtilizationDashboard } from "@/components/MachineUtilizationDashboard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Progress } from "@/components/ui/progress";
-import { Factory, TrendingUp, Users, CheckCircle2, AlertTriangle, Clock, Hammer, Package, Inbox } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
+import { 
+  Factory, 
+  TrendingUp, 
+  Users, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Clock, 
+  Hammer, 
+  Package, 
+  Inbox,
+  Pause,
+  ArrowRight,
+  Zap,
+  Activity
+} from "lucide-react";
+import { differenceInHours, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 
-const OPERATIONS = ['A', 'B', 'C', 'D'] as const;
+// Stage configuration with daily capacity estimates
+interface StageConfig {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  dailyCapacity: number; // estimated WOs per day
+  isProduction: boolean;
+}
 
-// Stage configuration with modern colors
-const STAGE_CONFIG = {
-  goods_in: { label: 'Goods In', icon: Inbox, color: 'hsl(var(--muted))' },
-  cutting_queue: { label: 'Cutting', icon: Package, color: 'hsl(210 90% 52%)' },
-  forging_queue: { label: 'Forging', icon: Hammer, color: 'hsl(38 92% 50%)' },
-  production: { label: 'Production', icon: Factory, color: 'hsl(210 90% 42%)' },
-  qc: { label: 'QC', icon: CheckCircle2, color: 'hsl(142 76% 36%)' },
-  packing: { label: 'Packing', icon: Package, color: 'hsl(210 70% 40%)' },
-  dispatch: { label: 'Dispatch', icon: Package, color: 'hsl(142 76% 40%)' },
+const STAGE_CONFIG: Record<string, StageConfig> = {
+  goods_in: { label: 'Goods In', icon: Inbox, color: 'hsl(var(--muted-foreground))', dailyCapacity: 20, isProduction: false },
+  cutting_queue: { label: 'Cutting', icon: Package, color: 'hsl(210 90% 52%)', dailyCapacity: 8, isProduction: true },
+  forging_queue: { label: 'Forging', icon: Hammer, color: 'hsl(38 92% 50%)', dailyCapacity: 6, isProduction: true },
+  production: { label: 'CNC Production', icon: Factory, color: 'hsl(210 90% 42%)', dailyCapacity: 10, isProduction: true },
+  qc: { label: 'Quality Check', icon: CheckCircle2, color: 'hsl(142 76% 36%)', dailyCapacity: 15, isProduction: false },
+  packing: { label: 'Packing', icon: Package, color: 'hsl(210 70% 40%)', dailyCapacity: 12, isProduction: false },
+  dispatch: { label: 'Dispatch', icon: Package, color: 'hsl(142 76% 40%)', dailyCapacity: 20, isProduction: false },
 };
 
-// Memoized WO Card Component
-const WorkOrderCard = memo(({ wo, onClick }: { wo: any; onClick: () => void }) => {
-  const stage = STAGE_CONFIG[wo.current_stage as keyof typeof STAGE_CONFIG];
-  const Icon = stage?.icon || Factory;
-  const isOverdue = wo.due_date && new Date(wo.due_date) < new Date();
-  const daysUntilDue = wo.due_date ? differenceInDays(new Date(wo.due_date), new Date()) : null;
-  
-  const getProgressPercent = () => {
-    if (!wo.quantity || wo.quantity === 0) return 0;
-    const completed = wo.qty_completed || 0;
-    return Math.min(100, Math.round((completed / wo.quantity) * 100));
-  };
+type LoadLevel = 'underloaded' | 'balanced' | 'overloaded';
 
-  return (
-    <Card
-      className="cursor-pointer hover:shadow-lg transition-all duration-300 group animate-fade-in"
-      onClick={onClick}
-    >
-      <CardContent className="p-3">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <HoverCard>
-              <HoverCardTrigger>
-                <p className="text-sm font-semibold truncate hover:text-primary transition-colors">
-                  {wo.display_id || wo.wo_id}
-                </p>
-              </HoverCardTrigger>
-              <HoverCardContent className="w-80">
-                <div className="space-y-2">
-                  <h4 className="font-semibold">Work Order Details</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-muted-foreground">Customer:</div>
-                    <div className="font-medium">{wo.customer}</div>
-                    <div className="text-muted-foreground">Item:</div>
-                    <div className="font-medium">{wo.item_code}</div>
-                    <div className="text-muted-foreground">Quantity:</div>
-                    <div>{wo.quantity?.toLocaleString()}</div>
-                    <div className="text-muted-foreground">Progress:</div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={getProgressPercent()} className="h-2 flex-1" />
-                      <span className="text-xs font-medium">{getProgressPercent()}%</span>
-                    </div>
-                  </div>
-                </div>
-              </HoverCardContent>
-            </HoverCard>
-            <Badge
-              variant={wo.status === 'in_progress' ? 'default' : 'secondary'}
-              className="text-xs"
-            >
-              {wo.status}
-            </Badge>
-          </div>
-          
-          <p className="text-xs text-muted-foreground truncate">
-            {wo.customer}
-          </p>
-          
-          <div className="flex items-center gap-1.5">
-            <Icon className="h-3.5 w-3.5" style={{ color: stage?.color }} />
-            <span className="text-xs font-medium" style={{ color: stage?.color }}>
-              {stage?.label || wo.current_stage}
-            </span>
-          </div>
-          
-          <p className="text-xs font-mono truncate text-muted-foreground">
-            {wo.item_code}
-          </p>
-          
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Qty: {wo.quantity?.toLocaleString()}
-            </span>
-            {wo.due_date && (
-              <div className={cn(
-                "flex items-center gap-1",
-                isOverdue && "text-destructive font-semibold"
-              )}>
-                {isOverdue && <AlertTriangle className="h-3 w-3" />}
-                <Clock className="h-3 w-3" />
-                <span>
-                  {daysUntilDue !== null && daysUntilDue >= 0 
-                    ? `${daysUntilDue}d` 
-                    : daysUntilDue !== null && daysUntilDue < 0 
-                      ? `${Math.abs(daysUntilDue)}d overdue`
-                      : format(new Date(wo.due_date), "MMM dd")}
-                </span>
-              </div>
-            )}
-          </div>
-          
-          {wo.sales_order && (
-            <p className="text-xs text-muted-foreground truncate">
-              PO: {wo.sales_order.po_number}
-            </p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-});
+interface StageStatus {
+  stage: string;
+  config: StageConfig;
+  queuedCount: number;
+  loadLevel: LoadLevel;
+  loadPercent: number;
+  blockedCount: number;
+  readyCount: number;
+  avgWaitHours: number;
+  orders: any[];
+}
 
-WorkOrderCard.displayName = "WorkOrderCard";
+function getLoadLevel(queuedCount: number, dailyCapacity: number): { level: LoadLevel; percent: number } {
+  const percent = Math.round((queuedCount / dailyCapacity) * 100);
+  if (percent <= 50) return { level: 'underloaded', percent };
+  if (percent <= 120) return { level: 'balanced', percent };
+  return { level: 'overloaded', percent };
+}
+
+function getAvgWaitHours(orders: any[]): number {
+  if (orders.length === 0) return 0;
+  const totalHours = orders.reduce((sum, wo) => {
+    try {
+      return sum + differenceInHours(new Date(), parseISO(wo.stage_entered_at || wo.created_at));
+    } catch {
+      return sum;
+    }
+  }, 0);
+  return Math.round(totalHours / orders.length);
+}
 
 const FloorDashboard = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
-  const [operators, setOperators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
 
@@ -142,34 +88,37 @@ const FloorDashboard = () => {
     try {
       setLoading(true);
       
-      const [woResult, machinesResult, operatorsResult] = await Promise.all([
+      const [woResult, machinesResult] = await Promise.all([
         supabase
           .from("work_orders")
           .select(`
-            *,
-            sales_order:sales_orders(so_id, customer, po_number)
+            id,
+            wo_id,
+            display_id,
+            customer,
+            item_code,
+            quantity,
+            status,
+            current_stage,
+            due_date,
+            created_at,
+            qc_material_passed,
+            qc_first_piece_passed
           `)
           .in("status", ["pending", "in_progress"])
           .order("due_date", { ascending: true }),
         
         supabase
           .from("machines")
-          .select("*")
-          .order("machine_id", { ascending: true }),
-        
-        supabase
-          .from("profiles")
-          .select("id, full_name, department_id")
-          .order("full_name", { ascending: true })
+          .select("id, machine_id, name, status, current_wo_id")
+          .order("machine_id", { ascending: true })
       ]);
 
       if (woResult.error) throw woResult.error;
       if (machinesResult.error) throw machinesResult.error;
-      if (operatorsResult.error) throw operatorsResult.error;
 
       setWorkOrders(woResult.data || []);
       setMachines(machinesResult.data || []);
-      setOperators(operatorsResult.data || []);
     } catch (error: any) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -179,7 +128,6 @@ const FloorDashboard = () => {
 
   useEffect(() => {
     loadData();
-    // Auto-refresh every 30 seconds
     const refreshInterval = setInterval(loadData, 30000);
 
     let timeout: NodeJS.Timeout;
@@ -193,14 +141,6 @@ const FloorDashboard = () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "production_logs" }, () => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "wo_machine_assignments" }, () => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
-      })
       .subscribe();
 
     return () => {
@@ -211,178 +151,306 @@ const FloorDashboard = () => {
   }, [loadData]);
 
   useEffect(() => {
-    if (lastUpdate > 0) {
-      loadData();
-    }
+    if (lastUpdate > 0) loadData();
   }, [lastUpdate, loadData]);
 
-  // Memoized stage groups
-  const stageGroups = useMemo(() => {
-    return Object.entries(STAGE_CONFIG).map(([stage, config]) => ({
-      stage,
-      ...config,
-      orders: workOrders.filter((wo) => wo.current_stage === stage),
-    }));
+  // Calculate stage statuses with load balancing info
+  const stageStatuses = useMemo((): StageStatus[] => {
+    return Object.entries(STAGE_CONFIG)
+      .map(([stage, config]) => {
+        const orders = workOrders.filter((wo) => wo.current_stage === stage);
+        const { level, percent } = getLoadLevel(orders.length, config.dailyCapacity);
+        
+        const blockedCount = orders.filter(wo => 
+          !wo.qc_material_passed || !wo.qc_first_piece_passed
+        ).length;
+        
+        const readyCount = orders.filter(wo => 
+          wo.qc_material_passed && wo.qc_first_piece_passed
+        ).length;
+
+        return {
+          stage,
+          config,
+          queuedCount: orders.length,
+          loadLevel: level,
+          loadPercent: percent,
+          blockedCount,
+          readyCount,
+          avgWaitHours: getAvgWaitHours(orders),
+          orders
+        };
+      })
+      .filter(s => s.queuedCount > 0 || s.config.isProduction); // Hide irrelevant stages with no orders
   }, [workOrders]);
 
-  // Memoized stats
-  const stats = useMemo(() => {
-    const totalWOs = workOrders.length;
-    const totalPartsTarget = workOrders.reduce((sum, wo) => sum + (wo.quantity || 0), 0);
-    const totalPartsCompleted = workOrders.reduce((sum, wo) => sum + (wo.qty_completed || 0), 0);
-    const avgEfficiency = totalPartsTarget > 0 ? Math.round((totalPartsCompleted / totalPartsTarget) * 100) : 0;
-    const idleMachines = machines.filter(m => m.status === 'idle').length;
+  // Overall balance metrics
+  const balanceMetrics = useMemo(() => {
+    const productionStages = stageStatuses.filter(s => s.config.isProduction);
+    const overloadedStages = productionStages.filter(s => s.loadLevel === 'overloaded');
+    const idleStages = productionStages.filter(s => s.loadLevel === 'underloaded' && s.queuedCount === 0);
+    const totalQueued = stageStatuses.reduce((sum, s) => sum + s.queuedCount, 0);
+    const totalBlocked = stageStatuses.reduce((sum, s) => sum + s.blockedCount, 0);
     
+    const activeMachines = machines.filter(m => m.status === 'running' || m.current_wo_id).length;
+    const idleMachines = machines.filter(m => m.status === 'idle' && !m.current_wo_id).length;
+
     return {
-      totalWOs,
-      avgEfficiency,
+      overloadedCount: overloadedStages.length,
+      idleStageCount: idleStages.length,
+      totalQueued,
+      totalBlocked,
+      activeMachines,
       idleMachines,
-      totalPartsCompleted: totalPartsCompleted.toLocaleString(),
+      totalMachines: machines.length
     };
-  }, [workOrders, machines]);
+  }, [stageStatuses, machines]);
+
+  const loadColors = {
+    underloaded: 'text-blue-600 dark:text-blue-400',
+    balanced: 'text-green-600 dark:text-green-400',
+    overloaded: 'text-red-600 dark:text-red-400'
+  };
+
+  const loadBgColors = {
+    underloaded: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800',
+    balanced: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800',
+    overloaded: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800'
+  };
+
+  const loadLabels = {
+    underloaded: 'Idle Capacity',
+    balanced: 'Balanced',
+    overloaded: 'Overloaded'
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto p-4 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Production Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-            <TrendingUp className="h-3.5 w-3.5" />
-            Real-time production monitoring and machine utilization
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Floor Dashboard</h1>
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Activity className="h-3.5 w-3.5" />
+              Load balancing & execution readiness
+            </p>
+          </div>
+
+          {/* Quick Balance Summary */}
+          <div className="flex flex-wrap gap-2">
+            {balanceMetrics.overloadedCount > 0 && (
+              <Badge variant="destructive" className="gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {balanceMetrics.overloadedCount} Overloaded
+              </Badge>
+            )}
+            {balanceMetrics.idleStageCount > 0 && (
+              <Badge variant="secondary" className="gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                <Pause className="h-3 w-3" />
+                {balanceMetrics.idleStageCount} Idle
+              </Badge>
+            )}
+            {balanceMetrics.totalBlocked > 0 && (
+              <Badge variant="outline" className="gap-1">
+                <Clock className="h-3 w-3" />
+                {balanceMetrics.totalBlocked} Blocked
+              </Badge>
+            )}
+          </div>
         </div>
 
-        {/* Summary Ribbon */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">WOs in Progress</p>
-                  <p className="text-2xl font-bold text-primary">{stats.totalWOs}</p>
+        {/* Machine Utilization Strip */}
+        <Card className="bg-muted/30">
+          <CardContent className="py-3 px-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <Factory className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{balanceMetrics.totalMachines} Machines</span>
                 </div>
-                <Factory className="h-8 w-8 text-primary/60" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Efficiency</p>
-                  <p className="text-2xl font-bold text-success">{stats.avgEfficiency}%</p>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    {balanceMetrics.activeMachines} Running
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-gray-400" />
+                    {balanceMetrics.idleMachines} Idle
+                  </span>
                 </div>
-                <TrendingUp className="h-8 w-8 text-success/60" />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/20">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Idle Machines</p>
-                  <p className="text-2xl font-bold text-accent">{stats.idleMachines}</p>
-                </div>
-                <Clock className="h-8 w-8 text-accent/60" />
+              <div className="text-xs text-muted-foreground">
+                {balanceMetrics.totalQueued} WOs in queue
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-muted/30 to-muted/10">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Parts Completed</p>
-                  <p className="text-2xl font-bold">{stats.totalPartsCompleted}</p>
-                </div>
-                <CheckCircle2 className="h-8 w-8 text-muted-foreground/60" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Main Content */}
-        <Tabs defaultValue="overview" className="w-full">
+        <Tabs defaultValue="stages" className="w-full">
           <TabsList className="grid w-full md:w-auto grid-cols-3">
-            <TabsTrigger value="overview" className="gap-2">
-              <Factory className="h-4 w-4" />
-              Overview
+            <TabsTrigger value="stages" className="gap-2">
+              <Zap className="h-4 w-4" />
+              Stage Load
             </TabsTrigger>
             <TabsTrigger value="machines" className="gap-2">
-              <Package className="h-4 w-4" />
-              Machine Utilization
+              <Factory className="h-4 w-4" />
+              Machines
             </TabsTrigger>
             <TabsTrigger value="operators" className="gap-2">
               <Users className="h-4 w-4" />
-              Operator Efficiency
+              Operators
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-6">
+          <TabsContent value="stages" className="mt-6">
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[1, 2, 3, 4].map((i) => (
                   <Card key={i}>
-                    <CardContent className="p-3 space-y-2">
-                      <Skeleton className="h-5 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
+                    <CardContent className="p-4 space-y-3">
+                      <Skeleton className="h-6 w-1/2" />
                       <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-20 w-full" />
                     </CardContent>
                   </Card>
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {stageGroups.map((group) => {
-                  const Icon = group.icon;
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {stageStatuses.map((stageStatus) => {
+                  const { stage, config, queuedCount, loadLevel, loadPercent, blockedCount, readyCount, avgWaitHours, orders } = stageStatus;
+                  const Icon = config.icon;
+                  const isIdle = queuedCount === 0;
+
                   return (
-                    <div key={group.stage} className="space-y-3">
-                      <div className="flex items-center gap-2 px-2">
-                        <Icon className="h-4 w-4" style={{ color: group.color }} />
-                        <h3 className="font-semibold text-sm" style={{ color: group.color }}>
-                          {group.label}
-                        </h3>
-                        <Badge
-                          variant="secondary"
-                          className="ml-auto"
-                          style={{
-                            backgroundColor: `${group.color}20`,
-                            color: group.color,
-                            borderColor: `${group.color}40`
-                          }}
-                        >
-                          {group.orders.length}
-                        </Badge>
-                      </div>
+                    <Card 
+                      key={stage} 
+                      className={cn(
+                        "transition-all border-2",
+                        isIdle ? "border-dashed border-muted-foreground/30" : loadBgColors[loadLevel]
+                      )}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-5 w-5" style={{ color: config.color }} />
+                            <CardTitle className="text-base">{config.label}</CardTitle>
+                          </div>
+                          {!isIdle && (
+                            <Badge 
+                              variant="secondary" 
+                              className={cn("text-xs", loadColors[loadLevel])}
+                            >
+                              {loadLabels[loadLevel]}
+                            </Badge>
+                          )}
+                        </div>
+                      </CardHeader>
                       
-                      <div className="space-y-2">
-                        {group.orders.length === 0 ? (
-                          <Card className="bg-muted/30">
-                            <CardContent className="py-8 text-center">
-                              <p className="text-xs text-muted-foreground">
-                                No orders in {group.label.toLowerCase()}
-                              </p>
-                            </CardContent>
-                          </Card>
+                      <CardContent className="space-y-4">
+                        {isIdle ? (
+                          <div className="text-center py-6">
+                            <Pause className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+                            <p className="text-sm font-medium text-muted-foreground">Stage Idle</p>
+                            <p className="text-xs text-muted-foreground/70">
+                              Capacity: {config.dailyCapacity} WOs/day
+                            </p>
+                          </div>
                         ) : (
-                          group.orders.map((wo) => (
-                            <WorkOrderCard
-                              key={wo.id}
-                              wo={wo}
-                              onClick={() => navigate(`/work-orders/${wo.id}`)}
-                            />
-                          ))
+                          <>
+                            {/* Load Bar */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">Queue vs Capacity</span>
+                                <span className={cn("font-semibold", loadColors[loadLevel])}>
+                                  {queuedCount} / {config.dailyCapacity}
+                                </span>
+                              </div>
+                              <Progress 
+                                value={Math.min(loadPercent, 150)} 
+                                className={cn(
+                                  "h-2",
+                                  loadLevel === 'overloaded' && "[&>div]:bg-red-500",
+                                  loadLevel === 'balanced' && "[&>div]:bg-green-500",
+                                  loadLevel === 'underloaded' && "[&>div]:bg-blue-500"
+                                )}
+                              />
+                              <p className="text-[10px] text-muted-foreground text-right">
+                                {loadPercent}% of daily capacity
+                              </p>
+                            </div>
+
+                            {/* Breakdown */}
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="flex items-center justify-between p-2 rounded bg-muted/50">
+                                <span className="text-muted-foreground">Ready</span>
+                                <span className="font-semibold text-green-600 dark:text-green-400">{readyCount}</span>
+                              </div>
+                              <div className="flex items-center justify-between p-2 rounded bg-muted/50">
+                                <span className="text-muted-foreground">Blocked</span>
+                                <span className={cn(
+                                  "font-semibold",
+                                  blockedCount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+                                )}>
+                                  {blockedCount}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Avg Wait Time */}
+                            {avgWaitHours > 0 && (
+                              <div className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-muted/30">
+                                <span className="text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  Avg Wait
+                                </span>
+                                <span className={cn(
+                                  "font-medium",
+                                  avgWaitHours > 24 && "text-amber-600 dark:text-amber-400",
+                                  avgWaitHours > 48 && "text-red-600 dark:text-red-400"
+                                )}>
+                                  {avgWaitHours < 24 ? `${avgWaitHours}h` : `${Math.round(avgWaitHours / 24)}d`}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Quick Actions */}
+                            <div className="pt-2 border-t">
+                              <button
+                                onClick={() => navigate(`/work-orders?stage=${stage}`)}
+                                className="w-full flex items-center justify-between text-xs text-primary hover:underline group"
+                              >
+                                <span>View {queuedCount} work orders</span>
+                                <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </button>
+                            </div>
+                          </>
                         )}
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
+            )}
+
+            {/* Imbalance Alert */}
+            {!loading && balanceMetrics.overloadedCount > 0 && balanceMetrics.idleStageCount > 0 && (
+              <Card className="mt-6 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30">
+                <CardContent className="py-4 px-6">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800 dark:text-amber-200">Stage Imbalance Detected</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                        {balanceMetrics.overloadedCount} stage{balanceMetrics.overloadedCount > 1 ? 's are' : ' is'} overloaded while {balanceMetrics.idleStageCount} stage{balanceMetrics.idleStageCount > 1 ? 's are' : ' is'} idle. 
+                        Consider reallocating resources or investigating blockers.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
@@ -402,9 +470,6 @@ const FloorDashboard = () => {
                 <div className="text-center py-12 text-muted-foreground">
                   <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p className="text-sm">Operator efficiency metrics coming soon</p>
-                  <p className="text-xs mt-2">
-                    Track daily/weekly output vs targets, downtime logs, and average piece time
-                  </p>
                 </div>
               </CardContent>
             </Card>
