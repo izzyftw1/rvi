@@ -277,6 +277,12 @@ const WorkOrderRow = memo(({
           ) : null}
         </div>
 
+        {/* Open affordance - visible on hover */}
+        <span className="hidden sm:flex items-center gap-0.5 text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground transition-colors flex-shrink-0">
+          Open
+          <ArrowRight className="h-3 w-3" />
+        </span>
+
         {/* Quick Actions */}
         <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <DropdownMenu>
