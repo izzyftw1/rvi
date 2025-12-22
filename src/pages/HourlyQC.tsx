@@ -10,11 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
-import { ArrowLeft, AlertTriangle, ClipboardCheck, Search, Clock } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ClipboardCheck, Search, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { QCSummaryStats, QCInfoAlert, QCSection } from "@/components/qc/QCPageLayout";
 import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
 import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
+import { RejectionClassificationReview } from "@/components/qc/RejectionClassificationReview";
+import { NCRFormDialog } from "@/components/ncr/NCRFormDialog";
+import { format } from "date-fns";
 
 const OPERATIONS = ['A', 'B', 'C', 'D'] as const;
 
@@ -29,6 +32,24 @@ interface EligibleWorkOrder {
   tolerances_defined: boolean;
   last_qc_check?: string;
   qc_check_count: number;
+  first_piece_approved?: boolean;
+  last_production_entry?: string;
+}
+
+interface ProductionLogData {
+  id: string;
+  rejection_dent: number | null;
+  rejection_scratch: number | null;
+  rejection_forging_mark: number | null;
+  rejection_lining: number | null;
+  rejection_dimension: number | null;
+  rejection_tool_mark: number | null;
+  rejection_setting: number | null;
+  rejection_previous_setup_fault: number | null;
+  rejection_face_not_ok: number | null;
+  rejection_material_not_ok: number | null;
+  total_rejection_quantity: number | null;
+  created_at: string;
 }
 
 const HourlyQC = () => {
@@ -58,6 +79,11 @@ const HourlyQC = () => {
     thread: 'ok', visual: 'ok', plating: 'ok', platingThickness: 'ok', remarks: ''
   });
 
+  // Additional state for enhanced QC features
+  const [productionLogData, setProductionLogData] = useState<ProductionLogData | null>(null);
+  const [showNCRDialog, setShowNCRDialog] = useState(false);
+  const [ncrPrefill, setNcrPrefill] = useState<{ issueDescription?: string; sourceReference?: string }>({});
+
   useEffect(() => {
     loadEligibleWorkOrders();
     loadMachines();
@@ -75,6 +101,38 @@ const HourlyQC = () => {
   useEffect(() => {
     if (selectedWorkOrder && operation) loadTolerances();
   }, [selectedWorkOrder, operation]);
+
+  // Load production log data when machine is selected
+  useEffect(() => {
+    if (selectedWorkOrder && machineId) {
+      loadProductionLogData();
+    }
+  }, [selectedWorkOrder, machineId]);
+
+  const loadProductionLogData = async () => {
+    if (!selectedWorkOrder || !machineId) return;
+    try {
+      const { data, error } = await supabase
+        .from('daily_production_logs')
+        .select(`
+          id,
+          rejection_dent, rejection_scratch, rejection_forging_mark,
+          rejection_lining, rejection_dimension, rejection_tool_mark,
+          rejection_setting, rejection_previous_setup_fault,
+          rejection_face_not_ok, rejection_material_not_ok,
+          total_rejection_quantity, created_at
+        `)
+        .eq('wo_id', selectedWorkOrder.id)
+        .eq('machine_id', machineId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      setProductionLogData(data?.[0] || null);
+    } catch (error) {
+      console.error('Error loading production log data:', error);
+    }
+  };
 
   const loadMachines = async () => {
     try {
@@ -320,6 +378,28 @@ const HourlyQC = () => {
               </Card>
             )}
 
+            {/* Rejection Classification Review - Read Only from Production, QC can Confirm/Challenge */}
+            {machineId && productionLogData && productionLogData.total_rejection_quantity && productionLogData.total_rejection_quantity > 0 && (
+              <RejectionClassificationReview
+                workOrderId={selectedWorkOrder.id}
+                productionLogId={productionLogData.id}
+                totalRejection={productionLogData.total_rejection_quantity}
+                rejectionBreakdown={[
+                  { key: 'rejection_dent', label: 'Dent', productionCount: productionLogData.rejection_dent || 0 },
+                  { key: 'rejection_scratch', label: 'Scratch', productionCount: productionLogData.rejection_scratch || 0 },
+                  { key: 'rejection_forging_mark', label: 'Forging Mark', productionCount: productionLogData.rejection_forging_mark || 0 },
+                  { key: 'rejection_lining', label: 'Lining', productionCount: productionLogData.rejection_lining || 0 },
+                  { key: 'rejection_dimension', label: 'Dimension', productionCount: productionLogData.rejection_dimension || 0 },
+                  { key: 'rejection_tool_mark', label: 'Tool Mark', productionCount: productionLogData.rejection_tool_mark || 0 },
+                  { key: 'rejection_setting', label: 'Setting', productionCount: productionLogData.rejection_setting || 0 },
+                  { key: 'rejection_previous_setup_fault', label: 'Previous Setup', productionCount: productionLogData.rejection_previous_setup_fault || 0 },
+                  { key: 'rejection_face_not_ok', label: 'Face Not OK', productionCount: productionLogData.rejection_face_not_ok || 0 },
+                  { key: 'rejection_material_not_ok', label: 'Material Not OK', productionCount: productionLogData.rejection_material_not_ok || 0 },
+                ].filter(r => r.productionCount > 0)}
+                onUpdate={loadProductionLogData}
+              />
+            )}
+
             {/* Entry Form */}
             <QCSection title="QC Entry Form" icon={<ClipboardCheck className="h-5 w-5" />}>
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -448,9 +528,27 @@ const HourlyQC = () => {
                       />
                     </div>
 
-                    <Button type="submit" className="w-full" size="lg">
-                      Submit QC Check
-                    </Button>
+                    {/* NCR Button for Pattern Detection */}
+                    <div className="flex gap-2">
+                      <Button type="submit" className="flex-1" size="lg">
+                        Submit QC Check
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={() => {
+                          setNcrPrefill({
+                            issueDescription: `In-Process QC Issue Detected - ${selectedWorkOrder.display_id}`,
+                            sourceReference: `Hourly QC Check - Operation ${operation}`
+                          });
+                          setShowNCRDialog(true);
+                        }}
+                      >
+                        <AlertTriangle className="h-4 w-4 mr-2" />
+                        Raise NCR
+                      </Button>
+                    </div>
                   </>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
@@ -459,6 +557,18 @@ const HourlyQC = () => {
                 )}
               </form>
             </QCSection>
+
+            {/* NCR Dialog */}
+            <NCRFormDialog
+              open={showNCRDialog}
+              onOpenChange={setShowNCRDialog}
+              onSuccess={() => setShowNCRDialog(false)}
+              prefillData={{
+                workOrderId: selectedWorkOrder.id,
+                issueDescription: ncrPrefill.issueDescription,
+                sourceReference: ncrPrefill.sourceReference,
+              }}
+            />
           </div>
         </PageContainer>
       </div>
