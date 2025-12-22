@@ -1568,6 +1568,73 @@ export type Database = {
           },
         ]
       }
+      machine_utilisation_reviews: {
+        Row: {
+          action_taken: string | null
+          actual_runtime_minutes: number
+          created_at: string
+          expected_runtime_minutes: number
+          id: string
+          machine_id: string
+          reason: string | null
+          review_date: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          updated_at: string
+          utilisation_percentage: number
+        }
+        Insert: {
+          action_taken?: string | null
+          actual_runtime_minutes?: number
+          created_at?: string
+          expected_runtime_minutes?: number
+          id?: string
+          machine_id: string
+          reason?: string | null
+          review_date: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+          utilisation_percentage?: number
+        }
+        Update: {
+          action_taken?: string | null
+          actual_runtime_minutes?: number
+          created_at?: string
+          expected_runtime_minutes?: number
+          id?: string
+          machine_id?: string
+          reason?: string | null
+          review_date?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+          utilisation_percentage?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machine_utilisation_reviews_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "machine_utilisation_reviews_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "machine_utilisation_reviews_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+        ]
+      }
       machines: {
         Row: {
           created_at: string
