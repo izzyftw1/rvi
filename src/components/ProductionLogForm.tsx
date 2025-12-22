@@ -23,8 +23,9 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2, Lock, FileText, Wrench, Calculator, Info } from "lucide-react";
+import { Loader2, Lock, FileText, Wrench, Calculator, Info, Unlock } from "lucide-react";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 import { formatCount, formatPercent } from "@/lib/displayUtils";
 
@@ -59,8 +60,8 @@ interface ProductionLogFormProps {
   disabled?: boolean;
 }
 
-// Read-only field component with lock icon
-function ReadOnlyField({ label, value, hint }: { label: string; value: string | number | null; hint?: string }) {
+// Locked read-only field component
+function LockedField({ label, value, hint }: { label: string; value: string | number | null; hint?: string }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs text-muted-foreground flex items-center gap-1">
@@ -70,6 +71,65 @@ function ReadOnlyField({ label, value, hint }: { label: string; value: string | 
       <div className="h-9 px-3 py-2 rounded-md bg-muted border border-input text-sm font-medium flex items-center">
         {value ?? "—"}
       </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+// Overridable field component
+function OverridableField({ 
+  label, 
+  autoValue, 
+  overrideValue, 
+  onOverrideChange,
+  isOverriding,
+  onToggleOverride,
+  type = "text",
+  placeholder,
+  hint
+}: { 
+  label: string; 
+  autoValue: string | number | null;
+  overrideValue: string;
+  onOverrideChange: (value: string) => void;
+  isOverriding: boolean;
+  onToggleOverride: (checked: boolean) => void;
+  type?: "text" | "number";
+  placeholder?: string;
+  hint?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+          {isOverriding ? <Unlock className="h-3 w-3 text-amber-500" /> : <Lock className="h-3 w-3" />}
+          {label}
+        </Label>
+        <div className="flex items-center gap-1">
+          <Checkbox 
+            id={`override-${label}`}
+            checked={isOverriding}
+            onCheckedChange={onToggleOverride}
+            className="h-3 w-3"
+          />
+          <Label htmlFor={`override-${label}`} className="text-xs text-muted-foreground cursor-pointer">
+            Override
+          </Label>
+        </div>
+      </div>
+      {isOverriding ? (
+        <Input
+          type={type}
+          value={overrideValue}
+          onChange={(e) => onOverrideChange(e.target.value)}
+          placeholder={placeholder || `Override ${label.toLowerCase()}`}
+          className="border-amber-500/50 bg-amber-500/5"
+        />
+      ) : (
+        <div className="h-9 px-3 py-2 rounded-md bg-muted border border-input text-sm font-medium flex items-center">
+          {autoValue ?? "—"}
+        </div>
+      )}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
@@ -97,6 +157,16 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const [selectedMachine, setSelectedMachine] = useState<string>("");
   const [runState, setRunState] = useState<string>("running");
   
+  // Override states
+  const [overrideCycleTime, setOverrideCycleTime] = useState(false);
+  const [cycleTimeOverrideValue, setCycleTimeOverrideValue] = useState("");
+  const [overrideMachine, setOverrideMachine] = useState(false);
+  const [overrideSetup, setOverrideSetup] = useState(false);
+  const [setupOverrideValue, setSetupOverrideValue] = useState("");
+  
+  // Auto-populated machine from assignment
+  const [autoMachine, setAutoMachine] = useState<Machine | null>(null);
+  
   const {
     register,
     handleSubmit,
@@ -122,25 +192,49 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const downtimeMinutes = watch("downtime_minutes") || 0;
 
   // ==========================================
-  // LAYER 1: AUTO-PULLED READ-ONLY VALUES
+  // LAYER 1: AUTO-PULLED & LOCKED VALUES
   // ==========================================
-  const cycleTimeSeconds = propWorkOrder?.cycle_time_seconds || 0;
-  const orderQuantity = propWorkOrder?.quantity || 0;
-  const itemCode = propWorkOrder?.item_code || "—";
-  const customer = propWorkOrder?.customer || "—";
-  const revision = propWorkOrder?.revision || "—";
-  const materialSize = propWorkOrder?.material_size_mm || "—";
-  const displayId = propWorkOrder?.display_id || "—";
+  const workOrderNo = propWorkOrder?.display_id || "—";
+  const partyCode = propWorkOrder?.customer || "—";
+  const productDescription = propWorkOrder?.item_code || "—";
+  const drawingNumber = propWorkOrder?.revision || "—";
+  const rawMaterialGrade = propWorkOrder?.material_size_mm || "—";
+  const orderedQuantity = propWorkOrder?.quantity || 0;
+  const baseCycleTime = propWorkOrder?.cycle_time_seconds || 0;
+  
+  // Effective cycle time (override or base)
+  const effectiveCycleTime = useMemo(() => {
+    if (overrideCycleTime && cycleTimeOverrideValue) {
+      const parsed = parseFloat(cycleTimeOverrideValue);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return baseCycleTime;
+  }, [overrideCycleTime, cycleTimeOverrideValue, baseCycleTime]);
+
+  // Effective setup number
+  const effectiveSetupNo = useMemo(() => {
+    if (overrideSetup && setupOverrideValue) {
+      return setupOverrideValue;
+    }
+    // Auto-generate from WO if available
+    return propWorkOrder?.display_id ? `${propWorkOrder.display_id}-S1` : "";
+  }, [overrideSetup, setupOverrideValue, propWorkOrder?.display_id]);
 
   // ==========================================
   // LAYER 3: SYSTEM-CALCULATED OUTPUTS
   // ==========================================
   
-  // Target quantity = (runtime_minutes × 60) / cycle_time_seconds
+  // Target Qty per Hour = 3600 / cycle_time_seconds
+  const targetQtyPerHour = useMemo(() => {
+    if (!effectiveCycleTime || effectiveCycleTime <= 0) return 0;
+    return Math.floor(3600 / effectiveCycleTime);
+  }, [effectiveCycleTime]);
+
+  // Target quantity for runtime = (runtime_minutes × 60) / cycle_time_seconds
   const targetQuantity = useMemo(() => {
-    if (!actualRuntime || !cycleTimeSeconds || cycleTimeSeconds <= 0) return 0;
-    return Math.floor((actualRuntime * 60) / cycleTimeSeconds);
-  }, [actualRuntime, cycleTimeSeconds]);
+    if (!actualRuntime || !effectiveCycleTime || effectiveCycleTime <= 0) return 0;
+    return Math.floor((actualRuntime * 60) / effectiveCycleTime);
+  }, [actualRuntime, effectiveCycleTime]);
 
   // OK quantity = completed - scrap
   const okQuantity = useMemo(() => {
@@ -174,6 +268,21 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     loadMachines();
   }, [propWorkOrder]);
 
+  // Auto-select first assigned machine
+  useEffect(() => {
+    if (machines.length > 0 && !overrideMachine && !selectedMachine) {
+      const firstMachine = machines[0];
+      setAutoMachine(firstMachine);
+      setSelectedMachine(firstMachine.id);
+      setValue("machine_id", firstMachine.id);
+    }
+  }, [machines, overrideMachine, selectedMachine, setValue]);
+
+  // Update setup_no when effective value changes
+  useEffect(() => {
+    setValue("setup_no", effectiveSetupNo);
+  }, [effectiveSetupNo, setValue]);
+
   const loadMachines = async () => {
     try {
       if (propWorkOrder?.id) {
@@ -181,7 +290,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
           .from("wo_machine_assignments")
           .select("machine_id, machines(id, machine_id, name, current_wo_id)")
           .eq("wo_id", propWorkOrder.id)
-          .eq("status", "running");
+          .in("status", ["scheduled", "running"]);
 
         if (assignError) throw assignError;
 
@@ -190,6 +299,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
           .filter(Boolean) || [];
         
         setMachines(assignedMachines as Machine[]);
+        
+        // Set first assigned machine as auto value
+        if (assignedMachines.length > 0) {
+          setAutoMachine(assignedMachines[0] as Machine);
+        }
       } else {
         const { data, error } = await supabase
           .from("machines")
@@ -235,7 +349,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         machine_id: data.machine_id,
         run_state: data.run_state,
         downtime_minutes: data.downtime_minutes || 0,
-        setup_no: data.setup_no,
+        setup_no: effectiveSetupNo,
         operation_code: data.operation_code,
         operator_type: data.operator_type,
         planned_minutes: actualRuntime + downtimeMinutes,
@@ -247,6 +361,8 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         actions_taken: data.actions_taken,
         operator_id: user?.id,
         log_timestamp: new Date().toISOString(),
+        // Store override info
+        cycle_time_override: overrideCycleTime ? effectiveCycleTime : null,
       });
 
       if (logError) throw logError;
@@ -279,6 +395,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       reset();
       setSelectedMachine("");
       setRunState("running");
+      setOverrideCycleTime(false);
+      setCycleTimeOverrideValue("");
+      setOverrideMachine(false);
+      setOverrideSetup(false);
+      setSetupOverrideValue("");
     } catch (error: any) {
       toast.error(error.message || "Failed to submit production log");
     } finally {
@@ -303,81 +424,139 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           Log Production
-          <Badge variant="outline" className="text-xs font-normal">Three-Layer Form</Badge>
+          <Badge variant="outline" className="text-xs font-normal">Auto-Populated</Badge>
         </CardTitle>
         <CardDescription>
-          Read-only fields are auto-populated. Enter manual inputs and system will calculate outputs.
+          Fields are auto-populated from Work Order. Some fields can be overridden if needed.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           
           {/* ==========================================
-              LAYER 1: AUTO-PULLED READ-ONLY VALUES
-              (From Sales Order, Work Order, Routing)
+              LAYER 1: AUTO-PULLED & LOCKED VALUES
               ========================================== */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <FileText className="h-4 w-4" />
               Auto-Pulled from Work Order
-              <Badge variant="secondary" className="text-xs">Read-Only</Badge>
+              <Badge variant="secondary" className="text-xs">Locked</Badge>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-lg bg-muted/30 border border-dashed">
-              <ReadOnlyField label="Work Order" value={displayId} />
-              <ReadOnlyField label="Customer" value={customer} />
-              <ReadOnlyField label="Item Code" value={itemCode} />
-              <ReadOnlyField label="Revision" value={revision} />
-              <ReadOnlyField label="Material Size" value={materialSize} />
-              <ReadOnlyField 
-                label="Cycle Time" 
-                value={cycleTimeSeconds ? `${cycleTimeSeconds}s` : "—"} 
+              <LockedField label="Work Order No" value={workOrderNo} />
+              <LockedField label="Party Code" value={partyCode} />
+              <LockedField label="Product Description" value={productDescription} />
+              <LockedField label="Drawing Number" value={drawingNumber} />
+              <LockedField label="Raw Material Grade" value={rawMaterialGrade} />
+              <LockedField label="Ordered Quantity" value={formatCount(orderedQuantity)} />
+              
+              {/* Overridable: Cycle Time */}
+              <OverridableField
+                label="Cycle Time (sec)"
+                autoValue={baseCycleTime ? `${baseCycleTime}s` : null}
+                overrideValue={cycleTimeOverrideValue}
+                onOverrideChange={setCycleTimeOverrideValue}
+                isOverriding={overrideCycleTime}
+                onToggleOverride={setOverrideCycleTime}
+                type="number"
+                placeholder="e.g., 45"
                 hint="From routing"
               />
-              <ReadOnlyField label="Order Qty" value={formatCount(orderQuantity)} />
-              <ReadOnlyField 
-                label="Status" 
-                value={propWorkOrder?.status || "—"} 
-              />
+              
+              {/* Derived: Target Qty per Hour */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calculator className="h-3 w-3" />
+                  Target Qty/Hour
+                </Label>
+                <div className="h-9 px-3 py-2 rounded-md bg-primary/5 border border-primary/20 text-sm font-bold flex items-center text-primary">
+                  {formatCount(targetQtyPerHour)}
+                </div>
+                <p className="text-xs text-muted-foreground italic">3600 / cycle_time</p>
+              </div>
             </div>
           </div>
 
           <Separator />
 
           {/* ==========================================
-              LAYER 2: MANUAL OPERATOR/SUPERVISOR INPUTS
+              LAYER 2: OVERRIDABLE & MANUAL INPUTS
               ========================================== */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Wrench className="h-4 w-4" />
-              Manual Inputs
+              Production Inputs
               <Badge variant="default" className="text-xs">Editable</Badge>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Machine Selection */}
-              <div className="space-y-2">
-                <Label htmlFor="machine_id">Machine *</Label>
-                <Select
-                  value={selectedMachine}
-                  onValueChange={(value) => {
-                    setSelectedMachine(value);
-                    setValue("machine_id", value);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={machines.length === 0 ? "No machines assigned" : "Select machine"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {machines.map((machine) => (
-                      <SelectItem key={machine.id} value={machine.id}>
-                        {machine.machine_id} - {machine.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              
+              {/* Overridable: Machine */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                    {overrideMachine ? <Unlock className="h-3 w-3 text-amber-500" /> : <Lock className="h-3 w-3" />}
+                    Machine No *
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Checkbox 
+                      id="override-machine"
+                      checked={overrideMachine}
+                      onCheckedChange={(checked) => {
+                        setOverrideMachine(!!checked);
+                        if (!checked && autoMachine) {
+                          setSelectedMachine(autoMachine.id);
+                          setValue("machine_id", autoMachine.id);
+                        }
+                      }}
+                      className="h-3 w-3"
+                    />
+                    <Label htmlFor="override-machine" className="text-xs text-muted-foreground cursor-pointer">
+                      Override
+                    </Label>
+                  </div>
+                </div>
+                {overrideMachine ? (
+                  <Select
+                    value={selectedMachine}
+                    onValueChange={(value) => {
+                      setSelectedMachine(value);
+                      setValue("machine_id", value);
+                    }}
+                  >
+                    <SelectTrigger className="border-amber-500/50 bg-amber-500/5">
+                      <SelectValue placeholder="Select machine" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {machines.map((machine) => (
+                        <SelectItem key={machine.id} value={machine.id}>
+                          {machine.machine_id} - {machine.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="h-9 px-3 py-2 rounded-md bg-muted border border-input text-sm font-medium flex items-center">
+                    {autoMachine ? `${autoMachine.machine_id} - ${autoMachine.name}` : "No machine assigned"}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">From WO assignment</p>
                 {errors.machine_id && (
                   <p className="text-sm text-destructive">{errors.machine_id.message}</p>
                 )}
               </div>
+
+              {/* Overridable: Setup No */}
+              <OverridableField
+                label="Setup No"
+                autoValue={propWorkOrder?.display_id ? `${propWorkOrder.display_id}-S1` : null}
+                overrideValue={setupOverrideValue}
+                onOverrideChange={setSetupOverrideValue}
+                isOverriding={overrideSetup}
+                onToggleOverride={setOverrideSetup}
+                type="text"
+                placeholder="e.g., SETUP-001"
+                hint="Auto-generated from WO"
+              />
 
               {/* Run State */}
               <div className="space-y-2">
@@ -440,9 +619,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                   min="0"
                   {...register("downtime_minutes")}
                 />
-                {errors.downtime_minutes && (
-                  <p className="text-sm text-destructive">{errors.downtime_minutes.message}</p>
-                )}
               </div>
 
               {/* Operator Type */}
@@ -484,17 +660,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                   type="number"
                   min="0"
                   {...register("quantity_scrap")}
-                />
-              </div>
-
-              {/* Setup Number */}
-              <div className="space-y-2">
-                <Label htmlFor="setup_no">Setup No.</Label>
-                <Input
-                  id="setup_no"
-                  type="text"
-                  placeholder="e.g., SETUP-001"
-                  {...register("setup_no")}
                 />
               </div>
 
@@ -582,7 +747,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3" />
-              Calculated fields update automatically based on your inputs. They cannot be edited directly.
+              Calculated fields update automatically. They cannot be edited directly.
             </p>
           </div>
 
