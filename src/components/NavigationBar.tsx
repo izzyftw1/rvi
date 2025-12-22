@@ -65,34 +65,39 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       "/material-requirements": "/material-requirements",
       "/purchase/dashboard": "/purchase/dashboard",
       
-      // Production - corrected paths
+      // Production - execution & scheduling only
       "/work-orders": "/work-orders",
       "/production-progress": "/production-progress",
       "/cnc-dashboard": "/cnc-dashboard",
       "/floor-dashboard": "/floor-dashboard",
-      "/hourly-qc": "/hourly-qc",
-      "/tolerance-setup": "/tolerance-setup",
-      "/genealogy": "/genealogy",
       
-      // QC & Dispatch - corrected paths
+      // Quality - inspection, approval, tolerances, compliance
       "/qc/incoming": "/qc/incoming",
       "/quality": "/quality",
+      "/hourly-qc": "/hourly-qc",
+      "/tolerance-setup": "/tolerance-setup",
+      "/dispatch-qc-report": "/dispatch-qc-report",
+      "/instrument-management": "/instrument-management",
+      
+      // Logistics - packing, dispatch, goods inwards
       "/packing": "/packing",
       "/dispatch": "/dispatch",
+      "/materials/inwards": "/materials/inwards",
+      "/logistics": "/logistics",
+      "/reports/rpo-inventory": "/reports/rpo-inventory",
       
       // Finance - corrected paths
       "/finance/dashboard": "/finance/dashboard",
       "/reports/reconciliation": "/reports/reconciliation",
       "/finance/reports": "/finance/reports",
       
-      // Logistics - corrected paths
-      "/materials/inwards": "/materials/inwards",
-      "/logistics": "/logistics",
-      "/reports/rpo-inventory": "/reports/rpo-inventory",
-      
       // External - corrected paths
       "/partners": "/partners",
-      "/partner-performance": "/partner-performance"
+      "/partner-performance": "/partner-performance",
+      
+      // Admin
+      "/admin": "/admin",
+      "/factory-calendar": "/factory-calendar"
     };
 
     const correctedPath = routeMap[path];
@@ -134,12 +139,9 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       allowedRoles: ['admin', 'production', 'ops_manager'],
       items: [
         { label: "Work Orders", path: "/work-orders", icon: Search },
-        { label: "Production Log", path: "/production-progress", icon: BarChart3},
-        { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
+        { label: "Production Log", path: "/production-progress", icon: BarChart3 },
         { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
-        { label: "Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
-        { label: "Tolerances", path: "/tolerance-setup", icon: ClipboardCheck },
-        { label: "Genealogy", path: "/genealogy", icon: BarChart3 },
+        { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
       ]
     },
     {
@@ -147,9 +149,12 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       icon: ClipboardCheck,
       allowedRoles: ['admin', 'production', 'quality'],
       items: [
-        { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck },
-        { label: "Incoming QC", path: "/qc/incoming", icon: ClipboardCheck },
-        { label: "Hourly QC (Active Machines)", path: "/hourly-qc", icon: ClipboardCheck },
+        { label: "Material QC", path: "/qc/incoming", icon: ClipboardCheck },
+        { label: "First Piece QC", path: "/quality", icon: ClipboardCheck },
+        { label: "Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
+        { label: "Final QC & Dispatch", path: "/dispatch-qc-report", icon: ClipboardCheck },
+        { label: "Tolerances", path: "/tolerance-setup", icon: ClipboardCheck },
+        { label: "Instrument Management", path: "/instrument-management", icon: ClipboardCheck },
       ]
     },
     {
