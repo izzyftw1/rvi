@@ -80,6 +80,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       "/quality": "/quality",
       "/hourly-qc": "/hourly-qc",
       "/final-qc": "/final-qc",
+      "/quality/traceability": "/quality/traceability",
       "/dispatch-qc-report": "/dispatch-qc-report",
       "/tolerance-setup": "/tolerance-setup",
       "/instruments": "/instruments",
@@ -162,6 +163,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
         { label: "First Piece QC", path: "/quality", icon: ClipboardCheck },
         { label: "Hourly QC", path: "/hourly-qc", icon: ClipboardCheck },
         { label: "Final QC Reports", path: "/final-qc", icon: ClipboardCheck },
+        { label: "Traceability", path: "/quality/traceability", icon: ClipboardCheck },
         { label: "Tolerances", path: "/tolerance-setup", icon: ClipboardCheck },
         { label: "Instruments", path: "/instruments", icon: ClipboardCheck },
       ]

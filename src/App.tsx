@@ -72,6 +72,7 @@ import OperatorEfficiency from "./pages/OperatorEfficiency";
 import CNCProgrammerActivity from "./pages/CNCProgrammerActivity";
 import FinalQCList from "./pages/FinalQCList";
 import FinalQC from "./pages/FinalQC";
+import QualityTraceability from "./pages/QualityTraceability";
 
 
 const App = () => (
@@ -121,6 +122,7 @@ const App = () => (
           <Route path="/hourly-qc" element={<HourlyQC />} />
           <Route path="/final-qc" element={<FinalQCList />} />
           <Route path="/final-qc/:woId" element={<FinalQC />} />
+          <Route path="/quality/traceability" element={<QualityTraceability />} />
           <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
           <Route path="/department/:departmentName" element={<DepartmentDetail />} />
           <Route path="/material-requirements" element={<MaterialRequirements />} />
