@@ -156,9 +156,10 @@ const Index = () => {
         extSummary.forEach((row: any) => {
           const processKey = row.process_name as string;
           if (extData[processKey]) {
+            const kgTotal = row.kg_total ?? 0;
             extData[processKey] = {
               pcs: Math.round(row.pcs_total || 0),
-              kg: parseFloat((row.kg_total || 0).toFixed(1)),
+              kg: parseFloat(Number(kgTotal).toFixed(1)),
               activeMoves: row.active_moves || 0,
               overdue: row.overdue || 0
             };
