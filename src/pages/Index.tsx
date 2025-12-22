@@ -13,6 +13,7 @@ import { InternalSummaryStrip } from "@/components/dashboard/InternalSummaryStri
 import { ExternalSummaryStrip } from "@/components/dashboard/ExternalSummaryStrip";
 import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 import { TodayFactorySnapshot } from "@/components/dashboard/TodayFactorySnapshot";
+import { OverdueReturnsTable } from "@/components/dashboard/OverdueReturnsTable";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -260,28 +261,33 @@ const Index = () => {
             </Card>
           </>
         ) : (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <ArrowDownUp className="h-5 w-5 text-primary" />
-                  External Processing Status
-                </CardTitle>
-                <button
-                  onClick={() => navigate('/partners')}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                >
-                  Full View <ExternalLink className="h-3 w-3" />
-                </button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ExternalFlowPanel 
-                data={externalData} 
-                onProcessClick={handleProcessClick} 
-              />
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <ArrowDownUp className="h-5 w-5 text-primary" />
+                    External Processing Status
+                  </CardTitle>
+                  <button
+                    onClick={() => navigate('/partners')}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    Full View <ExternalLink className="h-3 w-3" />
+                  </button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ExternalFlowPanel 
+                  data={externalData} 
+                  onProcessClick={handleProcessClick} 
+                />
+              </CardContent>
+            </Card>
+
+            {/* Overdue Returns Table - Primary action list for external follow-ups */}
+            <OverdueReturnsTable selectedProcess={selectedProcess} />
+          </div>
         )}
 
         {/* Mode-specific Summary Strip */}
