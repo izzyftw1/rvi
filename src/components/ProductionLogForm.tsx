@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,35 +25,41 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Loader2, Lock, FileText, Wrench, Calculator, Info, Unlock } from "lucide-react";
+import { Loader2, Lock, FileText, Wrench, Calculator, Info, Unlock, CalendarIcon } from "lucide-react";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 import { formatCount, formatPercent } from "@/lib/displayUtils";
+import { cn } from "@/lib/utils";
 
 const productionLogSchema = z.object({
-  machine_id: z.string().uuid("Please select a machine"),
-  run_state: z.enum(['running', 'stopped', 'material_wait', 'maintenance', 'setup'], {
-    required_error: "Please select run state"
-  }),
-  downtime_minutes: z.coerce.number().min(0).optional(),
-  setup_no: z.string().optional(),
-  operation_code: z.string().optional(),
-  operator_type: z.enum(['RVI', 'CONTRACTOR'], { required_error: "Please select operator type" }),
-  actual_runtime_minutes: z.coerce.number().min(0, "Must be 0 or greater"),
-  quantity_completed: z.coerce.number().min(0, "Must be 0 or greater"),
-  quantity_scrap: z.coerce.number().min(0, "Must be 0 or greater"),
-  shift: z.string().optional(),
-  remarks: z.string().optional(),
-  actions_taken: z.string().optional(),
+  log_date: z.date({ required_error: "Date is required" }),
+  shift: z.enum(['day', 'night'], { required_error: "Shift is required" }),
+  supervisor_id: z.string().uuid("Please select a supervisor").optional(),
+  setter_id: z.string().uuid("Please select a setter").optional(),
+  operator_ids: z.array(z.string().uuid()).optional(),
+  operator_company: z.enum(['RVI', 'CONTRACTOR'], { required_error: "Please select company" }),
+  machine_start_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:MM)"),
+  machine_end_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:MM)"),
+  actual_production_qty: z.coerce.number().min(0, "Must be 0 or greater"),
+  qc_supervisor_id: z.string().uuid("Please select QC supervisor").optional(),
+  remarks: z.string().max(500, "Remarks must be less than 500 characters").optional(),
 });
 
 type ProductionLogFormData = z.infer<typeof productionLogSchema>;
+
+interface Person {
+  id: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+}
 
 interface Machine {
   id: string;
   machine_id: string;
   name: string;
-  current_wo_id: string | null;
 }
 
 interface ProductionLogFormProps {
@@ -151,16 +158,33 @@ function CalculatedField({ label, value, formula }: { label: string; value: stri
   );
 }
 
+// Helper to parse time string to minutes
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+// Helper to calculate duration in minutes
+function calculateDuration(startTime: string, endTime: string): number {
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+  if (endMinutes < startMinutes) {
+    return (24 * 60 - startMinutes) + endMinutes;
+  }
+  return endMinutes - startMinutes;
+}
+
 export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }: ProductionLogFormProps = {}) {
   const [loading, setLoading] = useState(false);
+  const [people, setPeople] = useState<Person[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [selectedMachine, setSelectedMachine] = useState<string>("");
-  const [runState, setRunState] = useState<string>("running");
+  const [selectedOperators, setSelectedOperators] = useState<string[]>([]);
   
   // Override states
   const [overrideCycleTime, setOverrideCycleTime] = useState(false);
   const [cycleTimeOverrideValue, setCycleTimeOverrideValue] = useState("");
   const [overrideMachine, setOverrideMachine] = useState(false);
+  const [selectedMachineId, setSelectedMachineId] = useState("");
   const [overrideSetup, setOverrideSetup] = useState(false);
   const [setupOverrideValue, setSetupOverrideValue] = useState("");
   
@@ -177,19 +201,19 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   } = useForm<ProductionLogFormData>({
     resolver: zodResolver(productionLogSchema),
     defaultValues: {
-      operator_type: 'RVI',
-      run_state: 'running',
-      actual_runtime_minutes: 0,
-      quantity_completed: 0,
-      quantity_scrap: 0,
-      downtime_minutes: 0,
+      log_date: new Date(),
+      shift: 'day',
+      operator_company: 'RVI',
+      machine_start_time: "08:30",
+      machine_end_time: "20:00",
+      actual_production_qty: 0,
     }
   });
 
-  const actualRuntime = watch("actual_runtime_minutes") || 0;
-  const quantityCompleted = watch("quantity_completed") || 0;
-  const quantityScrap = watch("quantity_scrap") || 0;
-  const downtimeMinutes = watch("downtime_minutes") || 0;
+  const logDate = watch("log_date");
+  const startTime = watch("machine_start_time") || "08:30";
+  const endTime = watch("machine_end_time") || "20:00";
+  const actualQty = watch("actual_production_qty") || 0;
 
   // ==========================================
   // LAYER 1: AUTO-PULLED & LOCKED VALUES
@@ -202,7 +226,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const orderedQuantity = propWorkOrder?.quantity || 0;
   const baseCycleTime = propWorkOrder?.cycle_time_seconds || 0;
   
-  // Effective cycle time (override or base)
+  // Effective cycle time
   const effectiveCycleTime = useMemo(() => {
     if (overrideCycleTime && cycleTimeOverrideValue) {
       const parsed = parseFloat(cycleTimeOverrideValue);
@@ -216,7 +240,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     if (overrideSetup && setupOverrideValue) {
       return setupOverrideValue;
     }
-    // Auto-generate from WO if available
     return propWorkOrder?.display_id ? `${propWorkOrder.display_id}-S1` : "";
   }, [overrideSetup, setupOverrideValue, propWorkOrder?.display_id]);
 
@@ -224,75 +247,69 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   // LAYER 3: SYSTEM-CALCULATED OUTPUTS
   // ==========================================
   
-  // Target Qty per Hour = 3600 / cycle_time_seconds
+  // Runtime from times
+  const runtimeMinutes = useMemo(() => {
+    return calculateDuration(startTime, endTime);
+  }, [startTime, endTime]);
+
+  // Target Qty per Hour
   const targetQtyPerHour = useMemo(() => {
     if (!effectiveCycleTime || effectiveCycleTime <= 0) return 0;
     return Math.floor(3600 / effectiveCycleTime);
   }, [effectiveCycleTime]);
 
-  // Target quantity for runtime = (runtime_minutes × 60) / cycle_time_seconds
+  // Target quantity for runtime
   const targetQuantity = useMemo(() => {
-    if (!actualRuntime || !effectiveCycleTime || effectiveCycleTime <= 0) return 0;
-    return Math.floor((actualRuntime * 60) / effectiveCycleTime);
-  }, [actualRuntime, effectiveCycleTime]);
+    if (!runtimeMinutes || !effectiveCycleTime || effectiveCycleTime <= 0) return 0;
+    return Math.floor((runtimeMinutes * 60) / effectiveCycleTime);
+  }, [runtimeMinutes, effectiveCycleTime]);
 
-  // OK quantity = completed - scrap
-  const okQuantity = useMemo(() => {
-    return Math.max(0, quantityCompleted - quantityScrap);
-  }, [quantityCompleted, quantityScrap]);
-
-  // Efficiency = (actual / target) × 100
+  // Efficiency
   const efficiency = useMemo(() => {
     if (targetQuantity <= 0) return 0;
-    return Math.round((quantityCompleted / targetQuantity) * 100);
-  }, [quantityCompleted, targetQuantity]);
+    return Math.round((actualQty / targetQuantity) * 100);
+  }, [actualQty, targetQuantity]);
 
-  // Scrap rate = (scrap / completed) × 100
-  const scrapRate = useMemo(() => {
-    if (quantityCompleted <= 0) return 0;
-    return Math.round((quantityScrap / quantityCompleted) * 100 * 10) / 10;
-  }, [quantityScrap, quantityCompleted]);
-
-  // Total time = runtime + downtime
-  const totalTime = useMemo(() => {
-    return actualRuntime + downtimeMinutes;
-  }, [actualRuntime, downtimeMinutes]);
-
-  // Uptime percentage
-  const uptimePercent = useMemo(() => {
-    if (totalTime <= 0) return 100;
-    return Math.round((actualRuntime / totalTime) * 100);
-  }, [actualRuntime, totalTime]);
+  // Filter people by role
+  const supervisors = useMemo(() => 
+    people.filter(p => p.role === 'supervisor' && p.is_active), [people]);
+  const setters = useMemo(() => 
+    people.filter(p => p.role === 'setter' && p.is_active), [people]);
+  const operators = useMemo(() => 
+    people.filter(p => p.role === 'operator' && p.is_active), [people]);
+  const qcSupervisors = useMemo(() => 
+    people.filter(p => (p.role === 'qc_supervisor' || p.role === 'quality') && p.is_active), [people]);
 
   useEffect(() => {
+    loadPeople();
     loadMachines();
   }, [propWorkOrder]);
 
-  // Auto-select first assigned machine
-  useEffect(() => {
-    if (machines.length > 0 && !overrideMachine && !selectedMachine) {
-      const firstMachine = machines[0];
-      setAutoMachine(firstMachine);
-      setSelectedMachine(firstMachine.id);
-      setValue("machine_id", firstMachine.id);
+  const loadPeople = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("people")
+        .select("id, full_name, role, is_active")
+        .eq("is_active", true)
+        .order("full_name");
+      
+      if (error) throw error;
+      setPeople(data || []);
+    } catch (error) {
+      console.error("Error loading people:", error);
     }
-  }, [machines, overrideMachine, selectedMachine, setValue]);
-
-  // Update setup_no when effective value changes
-  useEffect(() => {
-    setValue("setup_no", effectiveSetupNo);
-  }, [effectiveSetupNo, setValue]);
+  };
 
   const loadMachines = async () => {
     try {
       if (propWorkOrder?.id) {
-        const { data: assignments, error: assignError } = await supabase
+        const { data: assignments, error } = await supabase
           .from("wo_machine_assignments")
-          .select("machine_id, machines(id, machine_id, name, current_wo_id)")
+          .select("machine_id, machines(id, machine_id, name)")
           .eq("wo_id", propWorkOrder.id)
           .in("status", ["scheduled", "running"]);
 
-        if (assignError) throw assignError;
+        if (error) throw error;
 
         const assignedMachines = assignments
           ?.map(a => a.machines)
@@ -300,28 +317,36 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         
         setMachines(assignedMachines as Machine[]);
         
-        // Set first assigned machine as auto value
         if (assignedMachines.length > 0) {
-          setAutoMachine(assignedMachines[0] as Machine);
+          const first = assignedMachines[0] as Machine;
+          setAutoMachine(first);
+          setSelectedMachineId(first.id);
         }
       } else {
         const { data, error } = await supabase
           .from("machines")
-          .select("id, machine_id, name, current_wo_id")
+          .select("id, machine_id, name")
           .order("machine_id");
 
         if (error) throw error;
         setMachines(data || []);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error loading machines:", error);
-      toast.error("Failed to load machines");
+    }
+  };
+
+  const handleOperatorToggle = (operatorId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedOperators(prev => [...prev, operatorId]);
+    } else {
+      setSelectedOperators(prev => prev.filter(id => id !== operatorId));
     }
   };
 
   const onSubmit = async (data: ProductionLogFormData) => {
     if (propWorkOrder && propWorkOrder.production_release_status !== 'RELEASED') {
-      toast.error("Cannot log production until work order is released for production.");
+      toast.error("Cannot log production until work order is released.");
       return;
     }
     
@@ -343,49 +368,38 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
           })
           .eq("id", propWorkOrder.id);
       }
+
+      const effectiveMachineId = overrideMachine ? selectedMachineId : (autoMachine?.id || selectedMachineId);
       
       const { error: logError } = await supabase.from("production_logs").insert({
         wo_id: propWorkOrder?.id,
-        machine_id: data.machine_id,
-        run_state: data.run_state,
-        downtime_minutes: data.downtime_minutes || 0,
-        setup_no: effectiveSetupNo,
-        operation_code: data.operation_code,
-        operator_type: data.operator_type,
-        planned_minutes: actualRuntime + downtimeMinutes,
-        target_qty: targetQuantity,
-        quantity_completed: data.quantity_completed,
-        quantity_scrap: data.quantity_scrap,
+        machine_id: effectiveMachineId || null,
+        log_date: format(data.log_date, "yyyy-MM-dd"),
         shift: data.shift,
-        remarks: data.remarks,
-        actions_taken: data.actions_taken,
+        supervisor_id: data.supervisor_id || null,
+        setter_id: data.setter_id || null,
+        operator_ids: selectedOperators.length > 0 ? selectedOperators : null,
+        operator_type: data.operator_company,
+        shift_start_time: data.machine_start_time,
+        shift_end_time: data.machine_end_time,
+        planned_minutes: runtimeMinutes,
+        target_qty: targetQuantity,
+        quantity_completed: data.actual_production_qty,
+        qc_supervisor_id: data.qc_supervisor_id || null,
+        remarks: data.remarks?.trim() || null,
+        setup_no: effectiveSetupNo,
         operator_id: user?.id,
         log_timestamp: new Date().toISOString(),
-        // Store override info
         cycle_time_override: overrideCycleTime ? effectiveCycleTime : null,
       });
 
       if (logError) throw logError;
 
-      if (data.run_state === 'maintenance' && data.downtime_minutes && data.downtime_minutes > 0) {
-        const startTime = new Date();
-        const endTime = new Date(startTime.getTime() + data.downtime_minutes * 60000);
-        
-        await supabase.from("maintenance_logs").insert({
-          machine_id: data.machine_id,
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          downtime_reason: data.actions_taken || `Maintenance: ${data.remarks || 'Unspecified'}`,
-          logged_by: user?.id,
-        });
-      }
-
-      if (data.quantity_completed > 0 && propWorkOrder?.id) {
+      if (data.actual_production_qty > 0 && propWorkOrder?.id) {
         await createExecutionRecord({
           workOrderId: propWorkOrder.id,
           operationType: 'CNC',
-          processName: data.operation_code || undefined,
-          quantity: data.quantity_completed,
+          quantity: data.actual_production_qty,
           unit: 'pcs',
           direction: 'COMPLETE',
         });
@@ -393,8 +407,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
 
       toast.success("Production log submitted successfully");
       reset();
-      setSelectedMachine("");
-      setRunState("running");
+      setSelectedOperators([]);
       setOverrideCycleTime(false);
       setCycleTimeOverrideValue("");
       setOverrideMachine(false);
@@ -412,7 +425,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       <Card className="border-muted">
         <CardContent className="p-4">
           <p className="text-sm text-muted-foreground">
-            Production logging is blocked. The work order must be released and QC gates must pass before logging production.
+            Production logging is blocked. Work order must be released and QC gates must pass.
           </p>
         </CardContent>
       </Card>
@@ -427,15 +440,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
           <Badge variant="outline" className="text-xs font-normal">Auto-Populated</Badge>
         </CardTitle>
         <CardDescription>
-          Fields are auto-populated from Work Order. Some fields can be overridden if needed.
+          Fields are auto-populated from Work Order. Enter only the required manual inputs.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           
-          {/* ==========================================
-              LAYER 1: AUTO-PULLED & LOCKED VALUES
-              ========================================== */}
+          {/* LAYER 1: AUTO-PULLED & LOCKED VALUES */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <FileText className="h-4 w-4" />
@@ -450,7 +461,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
               <LockedField label="Raw Material Grade" value={rawMaterialGrade} />
               <LockedField label="Ordered Quantity" value={formatCount(orderedQuantity)} />
               
-              {/* Overridable: Cycle Time */}
               <OverridableField
                 label="Cycle Time (sec)"
                 autoValue={baseCycleTime ? `${baseCycleTime}s` : null}
@@ -463,7 +473,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 hint="From routing"
               />
               
-              {/* Derived: Target Qty per Hour */}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Calculator className="h-3 w-3" />
@@ -474,78 +483,42 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 </div>
                 <p className="text-xs text-muted-foreground italic">3600 / cycle_time</p>
               </div>
-            </div>
-          </div>
 
-          <Separator />
-
-          {/* ==========================================
-              LAYER 2: OVERRIDABLE & MANUAL INPUTS
-              ========================================== */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Wrench className="h-4 w-4" />
-              Production Inputs
-              <Badge variant="default" className="text-xs">Editable</Badge>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              
-              {/* Overridable: Machine */}
+              {/* Overridable Machine */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-muted-foreground flex items-center gap-1">
                     {overrideMachine ? <Unlock className="h-3 w-3 text-amber-500" /> : <Lock className="h-3 w-3" />}
-                    Machine No *
+                    Machine No
                   </Label>
                   <div className="flex items-center gap-1">
                     <Checkbox 
-                      id="override-machine"
                       checked={overrideMachine}
-                      onCheckedChange={(checked) => {
-                        setOverrideMachine(!!checked);
-                        if (!checked && autoMachine) {
-                          setSelectedMachine(autoMachine.id);
-                          setValue("machine_id", autoMachine.id);
-                        }
-                      }}
+                      onCheckedChange={(c) => setOverrideMachine(!!c)}
                       className="h-3 w-3"
                     />
-                    <Label htmlFor="override-machine" className="text-xs text-muted-foreground cursor-pointer">
-                      Override
-                    </Label>
+                    <Label className="text-xs text-muted-foreground cursor-pointer">Override</Label>
                   </div>
                 </div>
                 {overrideMachine ? (
-                  <Select
-                    value={selectedMachine}
-                    onValueChange={(value) => {
-                      setSelectedMachine(value);
-                      setValue("machine_id", value);
-                    }}
-                  >
+                  <Select value={selectedMachineId} onValueChange={setSelectedMachineId}>
                     <SelectTrigger className="border-amber-500/50 bg-amber-500/5">
                       <SelectValue placeholder="Select machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {machines.map((machine) => (
-                        <SelectItem key={machine.id} value={machine.id}>
-                          {machine.machine_id} - {machine.name}
-                        </SelectItem>
+                      {machines.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.machine_id} - {m.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 ) : (
                   <div className="h-9 px-3 py-2 rounded-md bg-muted border border-input text-sm font-medium flex items-center">
-                    {autoMachine ? `${autoMachine.machine_id} - ${autoMachine.name}` : "No machine assigned"}
+                    {autoMachine ? `${autoMachine.machine_id} - ${autoMachine.name}` : "No assignment"}
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">From WO assignment</p>
-                {errors.machine_id && (
-                  <p className="text-sm text-destructive">{errors.machine_id.message}</p>
-                )}
               </div>
 
-              {/* Overridable: Setup No */}
               <OverridableField
                 label="Setup No"
                 autoValue={propWorkOrder?.display_id ? `${propWorkOrder.display_id}-S1` : null}
@@ -555,39 +528,51 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 onToggleOverride={setOverrideSetup}
                 type="text"
                 placeholder="e.g., SETUP-001"
-                hint="Auto-generated from WO"
+                hint="Auto-generated"
               />
+            </div>
+          </div>
 
-              {/* Run State */}
+          <Separator />
+
+          {/* LAYER 2: MANUAL INPUTS */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Wrench className="h-4 w-4" />
+              Manual Inputs
+              <Badge variant="default" className="text-xs">Required</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              {/* Date */}
               <div className="space-y-2">
-                <Label htmlFor="run_state">Run State *</Label>
-                <Select 
-                  value={runState}
-                  onValueChange={(value) => {
-                    setRunState(value);
-                    setValue("run_state", value as any);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select run state" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="running">Running</SelectItem>
-                    <SelectItem value="stopped">Stopped</SelectItem>
-                    <SelectItem value="material_wait">Material Wait</SelectItem>
-                    <SelectItem value="maintenance">Maintenance</SelectItem>
-                    <SelectItem value="setup">Setup</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.run_state && (
-                  <p className="text-sm text-destructive">{errors.run_state.message}</p>
-                )}
+                <Label>Date *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn("w-full justify-start text-left font-normal", !logDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {logDate ? format(logDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={logDate}
+                      onSelect={(date) => date && setValue("log_date", date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {errors.log_date && <p className="text-sm text-destructive">{errors.log_date.message}</p>}
               </div>
 
               {/* Shift */}
               <div className="space-y-2">
-                <Label htmlFor="shift">Shift</Label>
-                <Select onValueChange={(value) => setValue("shift", value)}>
+                <Label>Shift *</Label>
+                <Select defaultValue="day" onValueChange={(v) => setValue("shift", v as any)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select shift" />
                   </SelectTrigger>
@@ -598,115 +583,132 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 </Select>
               </div>
 
-              {/* Actual Runtime Minutes */}
+              {/* From Which Company */}
               <div className="space-y-2">
-                <Label htmlFor="actual_runtime_minutes">Actual Runtime (min) *</Label>
-                <Input
-                  id="actual_runtime_minutes"
-                  type="number"
-                  min="0"
-                  {...register("actual_runtime_minutes")}
-                />
-                <p className="text-xs text-muted-foreground">Time machine was actively running</p>
-              </div>
-
-              {/* Downtime Minutes */}
-              <div className="space-y-2">
-                <Label htmlFor="downtime_minutes">Downtime (min)</Label>
-                <Input
-                  id="downtime_minutes"
-                  type="number"
-                  min="0"
-                  {...register("downtime_minutes")}
-                />
-              </div>
-
-              {/* Operator Type */}
-              <div className="space-y-2">
-                <Label htmlFor="operator_type">Operator Type *</Label>
-                <Select 
-                  defaultValue="RVI"
-                  onValueChange={(value) => setValue("operator_type", value as any)}
-                >
+                <Label>From Which Company *</Label>
+                <Select defaultValue="RVI" onValueChange={(v) => setValue("operator_company", v as any)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
+                    <SelectValue placeholder="Select company" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="RVI">RVI</SelectItem>
-                    <SelectItem value="CONTRACTOR">CONTRACTOR</SelectItem>
+                    <SelectItem value="CONTRACTOR">Contractor</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Quantity Completed */}
+              {/* Supervisor */}
               <div className="space-y-2">
-                <Label htmlFor="quantity_completed">Qty Completed *</Label>
-                <Input
-                  id="quantity_completed"
-                  type="number"
-                  min="0"
-                  {...register("quantity_completed")}
-                />
-                {errors.quantity_completed && (
-                  <p className="text-sm text-destructive">{errors.quantity_completed.message}</p>
-                )}
-              </div>
-
-              {/* Quantity Scrap */}
-              <div className="space-y-2">
-                <Label htmlFor="quantity_scrap">Qty Scrap</Label>
-                <Input
-                  id="quantity_scrap"
-                  type="number"
-                  min="0"
-                  {...register("quantity_scrap")}
-                />
-              </div>
-
-              {/* Operation Code */}
-              <div className="space-y-2">
-                <Label htmlFor="operation_code">Operation</Label>
-                <Select onValueChange={(value) => setValue("operation_code", value)}>
+                <Label>Supervisor</Label>
+                <Select onValueChange={(v) => setValue("supervisor_id", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select operation" />
+                    <SelectValue placeholder="Select supervisor" />
                   </SelectTrigger>
                   <SelectContent>
-                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(op => (
-                      <SelectItem key={op} value={op}>Op {op}</SelectItem>
+                    {supervisors.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Actions Taken */}
+              {/* Setter */}
+              <div className="space-y-2">
+                <Label>Setter</Label>
+                <Select onValueChange={(v) => setValue("setter_id", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select setter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {setters.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* QC Supervisor */}
+              <div className="space-y-2">
+                <Label>QC Supervisor Name</Label>
+                <Select onValueChange={(v) => setValue("qc_supervisor_id", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select QC supervisor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {qcSupervisors.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Machine Start Time */}
+              <div className="space-y-2">
+                <Label>Machine Start Time *</Label>
+                <Input type="time" {...register("machine_start_time")} />
+                {errors.machine_start_time && <p className="text-sm text-destructive">{errors.machine_start_time.message}</p>}
+              </div>
+
+              {/* Machine End Time */}
+              <div className="space-y-2">
+                <Label>Machine End Time *</Label>
+                <Input type="time" {...register("machine_end_time")} />
+                {errors.machine_end_time && <p className="text-sm text-destructive">{errors.machine_end_time.message}</p>}
+              </div>
+
+              {/* Actual Production Qty */}
+              <div className="space-y-2">
+                <Label>Actual Production Qty *</Label>
+                <Input type="number" min="0" {...register("actual_production_qty")} />
+                {errors.actual_production_qty && <p className="text-sm text-destructive">{errors.actual_production_qty.message}</p>}
+              </div>
+
+              {/* Operator(s) Selection */}
               <div className="space-y-2 md:col-span-3">
-                <Label htmlFor="actions_taken">Actions Taken</Label>
-                <Textarea
-                  id="actions_taken"
-                  placeholder="Describe actions taken during this period..."
-                  rows={2}
-                  {...register("actions_taken")}
-                />
+                <Label>Operator(s)</Label>
+                <div className="flex flex-wrap gap-2 p-3 rounded-md border bg-background min-h-[60px]">
+                  {operators.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">No operators available</span>
+                  ) : (
+                    operators.map((op) => (
+                      <label 
+                        key={op.id}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer transition-colors text-sm",
+                          selectedOperators.includes(op.id) 
+                            ? "bg-primary text-primary-foreground border-primary" 
+                            : "bg-muted hover:bg-muted/80"
+                        )}
+                      >
+                        <Checkbox 
+                          checked={selectedOperators.includes(op.id)}
+                          onCheckedChange={(c) => handleOperatorToggle(op.id, !!c)}
+                          className="h-3 w-3"
+                        />
+                        {op.full_name}
+                      </label>
+                    ))
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">Select all operators who worked on this log</p>
               </div>
 
               {/* Remarks */}
               <div className="space-y-2 md:col-span-3">
-                <Label htmlFor="remarks">Remarks</Label>
+                <Label>Remarks</Label>
                 <Textarea
-                  id="remarks"
                   placeholder="Any additional notes..."
                   rows={2}
                   {...register("remarks")}
                 />
+                {errors.remarks && <p className="text-sm text-destructive">{errors.remarks.message}</p>}
               </div>
             </div>
           </div>
 
           <Separator />
 
-          {/* ==========================================
-              LAYER 3: SYSTEM-CALCULATED OUTPUTS
-              ========================================== */}
+          {/* LAYER 3: SYSTEM-CALCULATED */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Calculator className="h-4 w-4" />
@@ -714,40 +716,14 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
               <Badge variant="outline" className="text-xs border-primary/50 text-primary">Auto</Badge>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20">
-              <CalculatedField 
-                label="Target Qty" 
-                value={formatCount(targetQuantity)} 
-                formula="(runtime × 60) / cycle_time"
-              />
-              <CalculatedField 
-                label="OK Qty" 
-                value={formatCount(okQuantity)} 
-                formula="completed − scrap"
-              />
-              <CalculatedField 
-                label="Efficiency" 
-                value={`${formatPercent(efficiency)}%`} 
-                formula="(actual / target) × 100"
-              />
-              <CalculatedField 
-                label="Scrap Rate" 
-                value={`${scrapRate}%`} 
-                formula="(scrap / completed) × 100"
-              />
-              <CalculatedField 
-                label="Total Time" 
-                value={`${totalTime} min`} 
-                formula="runtime + downtime"
-              />
-              <CalculatedField 
-                label="Uptime" 
-                value={`${uptimePercent}%`} 
-                formula="(runtime / total) × 100"
-              />
+              <CalculatedField label="Runtime" value={`${runtimeMinutes} min`} formula="end - start time" />
+              <CalculatedField label="Target Qty" value={formatCount(targetQuantity)} formula="(runtime × 60) / cycle" />
+              <CalculatedField label="Efficiency" value={`${formatPercent(efficiency)}%`} formula="(actual / target) × 100" />
+              <CalculatedField label="Variance" value={formatCount(actualQty - targetQuantity)} formula="actual − target" />
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3" />
-              Calculated fields update automatically. They cannot be edited directly.
+              These values are calculated automatically and cannot be edited.
             </p>
           </div>
 
