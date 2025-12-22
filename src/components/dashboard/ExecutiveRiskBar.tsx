@@ -136,7 +136,8 @@ export const ExecutiveRiskBar = () => {
       icon: Clock,
       route: '/work-orders?status=delayed',
       severity: 'critical' as const,
-      tooltip: 'Work orders past their due date'
+      tooltip: 'Work orders past their due date',
+      owner: 'Production'
     },
     {
       key: 'qcBlockingRelease',
@@ -145,7 +146,8 @@ export const ExecutiveRiskBar = () => {
       icon: ClipboardX,
       route: '/final-qc',
       severity: 'critical' as const,
-      tooltip: 'Final QC pending or failed, blocking release'
+      tooltip: 'Final QC pending or failed, blocking release',
+      owner: 'Quality'
     },
     {
       key: 'ncrsOverdue',
@@ -154,7 +156,8 @@ export const ExecutiveRiskBar = () => {
       icon: AlertTriangle,
       route: '/ncr?status=open',
       severity: 'critical' as const,
-      tooltip: 'Open NCRs older than 7 days'
+      tooltip: 'Open NCRs older than 7 days',
+      owner: 'Quality'
     },
     {
       key: 'maintenanceOverdue',
@@ -163,7 +166,8 @@ export const ExecutiveRiskBar = () => {
       icon: Wrench,
       route: '/machine-status',
       severity: 'warning' as const,
-      tooltip: 'Machines without maintenance in 30 days'
+      tooltip: 'Machines without maintenance in 30 days',
+      owner: 'Maintenance'
     },
     {
       key: 'materialWaitingQC',
@@ -172,7 +176,8 @@ export const ExecutiveRiskBar = () => {
       icon: Package,
       route: '/qc/incoming',
       severity: 'warning' as const,
-      tooltip: 'Material lots pending QC approval'
+      tooltip: 'Material lots pending QC approval',
+      owner: 'Quality'
     },
     {
       key: 'externalJobsDelayed',
@@ -181,7 +186,8 @@ export const ExecutiveRiskBar = () => {
       icon: Truck,
       route: '/partners',
       severity: 'critical' as const,
-      tooltip: 'External jobs past expected return date'
+      tooltip: 'External jobs past expected return date',
+      owner: 'Logistics'
     }
   ];
 
