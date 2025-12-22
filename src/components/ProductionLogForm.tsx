@@ -28,10 +28,36 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Loader2, Lock, FileText, Wrench, Calculator, Info, Unlock, CalendarIcon } from "lucide-react";
+import { Loader2, Lock, FileText, Wrench, Calculator, Info, Unlock, CalendarIcon, Clock, X } from "lucide-react";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 import { formatCount, formatPercent } from "@/lib/displayUtils";
 import { cn } from "@/lib/utils";
+
+// Downtime reasons
+const DOWNTIME_REASONS = [
+  "Machine Repair",
+  "No Power",
+  "Job Setting",
+  "Quality Problem",
+  "Material Not Available",
+  "Setting Change",
+  "Cleaning",
+  "Operator Training",
+  "Rework",
+  "Tool Change",
+  "No Operator",
+  "Tea Break",
+  "Lunch Break",
+  "Operator Shifted to Other Work",
+  "Other",
+] as const;
+
+type DowntimeReason = typeof DOWNTIME_REASONS[number];
+
+interface DowntimeEntry {
+  reason: DowntimeReason;
+  minutes: number;
+}
 
 const productionLogSchema = z.object({
   log_date: z.date({ required_error: "Date is required" }),
@@ -180,6 +206,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedOperators, setSelectedOperators] = useState<string[]>([]);
   
+  // Downtime entries state
+  const [downtimeEntries, setDowntimeEntries] = useState<DowntimeEntry[]>([]);
+  const [selectedDowntimeReason, setSelectedDowntimeReason] = useState<DowntimeReason | "">("");
+  const [downtimeMinutesInput, setDowntimeMinutesInput] = useState("");
+  
   // Override states
   const [overrideCycleTime, setOverrideCycleTime] = useState(false);
   const [cycleTimeOverrideValue, setCycleTimeOverrideValue] = useState("");
@@ -214,6 +245,43 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const startTime = watch("machine_start_time") || "08:30";
   const endTime = watch("machine_end_time") || "20:00";
   const actualQty = watch("actual_production_qty") || 0;
+  
+  // Total downtime from entries
+  const totalDowntimeMinutes = useMemo(() => {
+    return downtimeEntries.reduce((sum, entry) => sum + entry.minutes, 0);
+  }, [downtimeEntries]);
+
+  // Add downtime entry
+  const addDowntimeEntry = () => {
+    if (!selectedDowntimeReason) {
+      toast.error("Please select a downtime reason");
+      return;
+    }
+    const minutes = parseInt(downtimeMinutesInput, 10);
+    if (isNaN(minutes) || minutes <= 0) {
+      toast.error("Please enter valid minutes (> 0)");
+      return;
+    }
+    
+    // Check if reason already exists
+    const existingIndex = downtimeEntries.findIndex(e => e.reason === selectedDowntimeReason);
+    if (existingIndex >= 0) {
+      // Update existing entry
+      setDowntimeEntries(prev => prev.map((e, i) => 
+        i === existingIndex ? { ...e, minutes: e.minutes + minutes } : e
+      ));
+    } else {
+      setDowntimeEntries(prev => [...prev, { reason: selectedDowntimeReason, minutes }]);
+    }
+    
+    setSelectedDowntimeReason("");
+    setDowntimeMinutesInput("");
+  };
+
+  // Remove downtime entry
+  const removeDowntimeEntry = (index: number) => {
+    setDowntimeEntries(prev => prev.filter((_, i) => i !== index));
+  };
 
   // ==========================================
   // LAYER 1: AUTO-PULLED & LOCKED VALUES
@@ -247,10 +315,15 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   // LAYER 3: SYSTEM-CALCULATED OUTPUTS
   // ==========================================
   
-  // Runtime from times
-  const runtimeMinutes = useMemo(() => {
+  // Gross runtime from times (before deducting downtime)
+  const grossRuntimeMinutes = useMemo(() => {
     return calculateDuration(startTime, endTime);
   }, [startTime, endTime]);
+
+  // Actual runtime = gross - downtime
+  const actualRuntimeMinutes = useMemo(() => {
+    return Math.max(0, grossRuntimeMinutes - totalDowntimeMinutes);
+  }, [grossRuntimeMinutes, totalDowntimeMinutes]);
 
   // Target Qty per Hour
   const targetQtyPerHour = useMemo(() => {
@@ -258,17 +331,23 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     return Math.floor(3600 / effectiveCycleTime);
   }, [effectiveCycleTime]);
 
-  // Target quantity for runtime
+  // Target quantity for actual runtime (after downtime deducted)
   const targetQuantity = useMemo(() => {
-    if (!runtimeMinutes || !effectiveCycleTime || effectiveCycleTime <= 0) return 0;
-    return Math.floor((runtimeMinutes * 60) / effectiveCycleTime);
-  }, [runtimeMinutes, effectiveCycleTime]);
+    if (!actualRuntimeMinutes || !effectiveCycleTime || effectiveCycleTime <= 0) return 0;
+    return Math.floor((actualRuntimeMinutes * 60) / effectiveCycleTime);
+  }, [actualRuntimeMinutes, effectiveCycleTime]);
 
   // Efficiency
   const efficiency = useMemo(() => {
     if (targetQuantity <= 0) return 0;
     return Math.round((actualQty / targetQuantity) * 100);
   }, [actualQty, targetQuantity]);
+
+  // Uptime percentage
+  const uptimePercent = useMemo(() => {
+    if (grossRuntimeMinutes <= 0) return 100;
+    return Math.round((actualRuntimeMinutes / grossRuntimeMinutes) * 100);
+  }, [actualRuntimeMinutes, grossRuntimeMinutes]);
 
   // Filter people by role
   const supervisors = useMemo(() => 
@@ -382,7 +461,10 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         operator_type: data.operator_company,
         shift_start_time: data.machine_start_time,
         shift_end_time: data.machine_end_time,
-        planned_minutes: runtimeMinutes,
+        planned_minutes: grossRuntimeMinutes,
+        actual_runtime_minutes: actualRuntimeMinutes,
+        total_downtime_minutes: totalDowntimeMinutes,
+        downtime_events: downtimeEntries,
         target_qty: targetQuantity,
         quantity_completed: data.actual_production_qty,
         qc_supervisor_id: data.qc_supervisor_id || null,
@@ -408,6 +490,9 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       toast.success("Production log submitted successfully");
       reset();
       setSelectedOperators([]);
+      setDowntimeEntries([]);
+      setSelectedDowntimeReason("");
+      setDowntimeMinutesInput("");
       setOverrideCycleTime(false);
       setCycleTimeOverrideValue("");
       setOverrideMachine(false);
@@ -693,6 +778,82 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 <p className="text-xs text-muted-foreground">Select all operators who worked on this log</p>
               </div>
 
+              {/* Structured Downtime Section */}
+              <div className="space-y-3 md:col-span-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <Label>Downtime Breakdown</Label>
+                  {totalDowntimeMinutes > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      Total: {totalDowntimeMinutes} min
+                    </Badge>
+                  )}
+                </div>
+                
+                {/* Add downtime entry */}
+                <div className="flex flex-wrap gap-2 items-end p-3 rounded-md border bg-muted/30">
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <Label className="text-xs">Reason</Label>
+                    <Select 
+                      value={selectedDowntimeReason} 
+                      onValueChange={(v) => setSelectedDowntimeReason(v as DowntimeReason)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select reason" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DOWNTIME_REASONS.map((reason) => (
+                          <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Label className="text-xs">Minutes</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder="0"
+                      value={downtimeMinutesInput}
+                      onChange={(e) => setDowntimeMinutesInput(e.target.value)}
+                    />
+                  </div>
+                  <Button type="button" variant="secondary" size="sm" onClick={addDowntimeEntry}>
+                    Add
+                  </Button>
+                </div>
+
+                {/* Display added entries */}
+                {downtimeEntries.length > 0 && (
+                  <div className="space-y-2">
+                    {downtimeEntries.map((entry, index) => (
+                      <div 
+                        key={index}
+                        className="flex items-center justify-between px-3 py-2 rounded-md bg-background border"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline">{entry.minutes} min</Badge>
+                          <span className="text-sm">{entry.reason}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeDowntimeEntry(index)}
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {downtimeEntries.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No downtime recorded. Add entries above if applicable.</p>
+                )}
+              </div>
+
               {/* Remarks */}
               <div className="space-y-2 md:col-span-3">
                 <Label>Remarks</Label>
@@ -716,7 +877,10 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
               <Badge variant="outline" className="text-xs border-primary/50 text-primary">Auto</Badge>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20">
-              <CalculatedField label="Runtime" value={`${runtimeMinutes} min`} formula="end - start time" />
+              <CalculatedField label="Gross Time" value={`${grossRuntimeMinutes} min`} formula="end - start time" />
+              <CalculatedField label="Actual Runtime" value={`${actualRuntimeMinutes} min`} formula="gross - downtime" />
+              <CalculatedField label="Total Downtime" value={`${totalDowntimeMinutes} min`} formula="sum of entries" />
+              <CalculatedField label="Uptime" value={`${uptimePercent}%`} formula="(actual / gross) × 100" />
               <CalculatedField label="Target Qty" value={formatCount(targetQuantity)} formula="(runtime × 60) / cycle" />
               <CalculatedField label="Efficiency" value={`${formatPercent(efficiency)}%`} formula="(actual / target) × 100" />
               <CalculatedField label="Variance" value={formatCount(actualQty - targetQuantity)} formula="actual − target" />
