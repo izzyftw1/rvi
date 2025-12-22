@@ -705,31 +705,62 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
           </div>
         )}
 
-        {/* Empty State */}
+        {/* Empty State - Contextual messaging */}
         {!loading && !error && filteredOrders.length === 0 && (
-          <Card>
-            <CardContent className="py-0">
-              <EmptyState
-                icon="workOrders"
-                title={issueFilter !== 'all' 
-                  ? `No ${issueFilter} work orders`
-                  : stageFilter !== 'all' 
-                    ? `No orders in this stage`
-                    : `No ${primaryFilter} work orders`
+          <Card className="border-dashed">
+            <CardContent className="py-8">
+              {(() => {
+                // Build contextual empty state based on active filters
+                let icon: "workOrders" | "search" | "partners" | "calendar" = "workOrders";
+                let title = "No work orders";
+                let description = "Create a new work order to get started.";
+                
+                if (searchQuery) {
+                  icon = "search";
+                  title = "No matching work orders";
+                  description = `No work orders found for "${searchQuery}". Try a different search term.`;
+                } else if (issueFilter === 'blocked') {
+                  title = "No blocked work orders";
+                  description = "Great news! No work orders are currently blocked by external delays.";
+                } else if (issueFilter === 'delayed') {
+                  icon = "calendar";
+                  title = "No overdue work orders";
+                  description = "Everything is on track! No work orders are past their due date.";
+                } else if (primaryFilter === 'external') {
+                  icon = "partners";
+                  if (stageFilter !== 'all') {
+                    const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
+                    title = `No orders at ${externalStage?.label || 'External'}`;
+                    description = `No work orders currently at ${externalStage?.label || 'this external process'}.`;
+                  } else {
+                    title = "No external jobs in progress";
+                    description = "No work orders are currently at external partners.";
+                  }
+                } else if (stageFilter !== 'all') {
+                  const internalStage = INTERNAL_STAGES[stageFilter as keyof typeof INTERNAL_STAGES];
+                  title = `No work orders in ${internalStage?.label || 'this stage'}`;
+                  description = `The ${internalStage?.label || 'selected'} queue is empty.`;
+                } else {
+                  title = "No internal work orders";
+                  description = "All work orders are currently at external partners, or none exist yet.";
                 }
-                description={primaryFilter === 'external' 
-                  ? "No work orders currently at external partners."
-                  : "All clear! Create a new work order to get started."
-                }
-                action={issueFilter === 'all' && stageFilter === 'all' ? {
-                  label: "Create Work Order",
-                  onClick: () => navigate("/work-orders/new"),
-                } : {
-                  label: "Clear Filters",
-                  onClick: () => { setIssueFilter('all'); setStageFilter('all'); setSearchQuery(''); },
-                  variant: "outline",
-                }}
-              />
+
+                return (
+                  <EmptyState
+                    icon={icon}
+                    title={title}
+                    description={description}
+                    action={searchQuery || issueFilter !== 'all' || stageFilter !== 'all' ? {
+                      label: "Clear Filters",
+                      onClick: () => { setIssueFilter('all'); setStageFilter('all'); setSearchQuery(''); },
+                      variant: "outline",
+                    } : {
+                      label: "Create Work Order",
+                      onClick: () => navigate("/work-orders/new"),
+                    }}
+                  />
+                );
+              })()}
             </CardContent>
           </Card>
         )}
