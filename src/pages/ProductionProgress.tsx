@@ -13,7 +13,8 @@ import {
   Beaker,
   PlayCircle,
   Truck,
-  Clock
+  Clock,
+  User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInHours, parseISO, format } from "date-fns";
@@ -129,6 +130,7 @@ const bucketConfig: Record<BucketType, {
   isBlocker: boolean;
   actionLabel: string;
   getActionPath: (woId: string) => string;
+  owner: string;
 }> = {
   material_qc: { 
     title: 'Blocked – Material QC', 
@@ -138,7 +140,8 @@ const bucketConfig: Record<BucketType, {
     description: 'Awaiting material inspection approval',
     isBlocker: true,
     actionLabel: 'Approve Material QC',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`
+    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`,
+    owner: 'Quality'
   },
   first_piece_qc: { 
     title: 'Blocked – First Piece QC', 
@@ -148,7 +151,8 @@ const bucketConfig: Record<BucketType, {
     description: 'Awaiting first piece approval',
     isBlocker: true,
     actionLabel: 'Perform First Piece Inspection',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`
+    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`,
+    owner: 'QC / Production'
   },
   ready_not_started: { 
     title: 'Ready but Not Started', 
@@ -158,7 +162,8 @@ const bucketConfig: Record<BucketType, {
     description: 'All gates passed, awaiting machine assignment',
     isBlocker: true,
     actionLabel: 'Assign Machine',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=production`
+    getActionPath: (woId) => `/work-orders/${woId}?tab=production`,
+    owner: 'Production Planning'
   },
   external_processing: { 
     title: 'External Processing', 
@@ -168,7 +173,8 @@ const bucketConfig: Record<BucketType, {
     description: 'At external partner – informational',
     isBlocker: false,
     actionLabel: 'View External Status',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=external`
+    getActionPath: (woId) => `/work-orders/${woId}?tab=external`,
+    owner: 'Procurement / External Ops'
   }
 };
 
@@ -369,6 +375,11 @@ function BucketCard({
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-xs text-muted-foreground">{item.wo.item_code}</span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          {config.owner}
+                        </span>
                       </div>
                     </div>
                     
