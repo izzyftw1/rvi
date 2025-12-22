@@ -513,39 +513,41 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Work Orders</h1>
-            <p className="text-sm text-muted-foreground">Operational Control Panel</p>
+            <h1 className="text-2xl font-bold text-foreground">Production Workload</h1>
+            <p className="text-sm text-muted-foreground">
+              {kpis.total} active jobs · {kpis.delayed > 0 ? `${kpis.delayed} need attention` : "On track"}
+            </p>
           </div>
           <Button onClick={() => navigate("/work-orders/new")} size="sm">
             <Plus className="h-4 w-4 mr-1" />
-            New WO
+            New Job
           </Button>
         </div>
 
         {/* KPI Summary Bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KPICard 
-            label="Active Orders" 
+            label="In Progress" 
             count={kpis.total} 
             icon={Factory} 
             onClick={() => { setIssueFilter('all'); setStageFilter('all'); }}
           />
           <KPICard 
-            label="Blocked / Overdue Ext" 
+            label="Needs Action" 
             count={kpis.blocked} 
             icon={AlertTriangle} 
             variant={kpis.blocked > 0 ? 'danger' : 'default'}
             onClick={() => setIssueFilter('blocked')}
           />
           <KPICard 
-            label="Past Due Date" 
+            label="Running Late" 
             count={kpis.delayed} 
             icon={Clock} 
             variant={kpis.delayed > 0 ? 'warning' : 'default'}
             onClick={() => setIssueFilter('delayed')}
           />
           <KPICard 
-            label="At External" 
+            label="With Partners" 
             count={kpis.externalCount} 
             icon={ExternalLink} 
             onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
@@ -557,7 +559,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
           <CardContent className="py-3 px-4 space-y-3">
             {/* Level 1: Primary Toggle */}
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground mr-2">View:</span>
+              <span className="text-xs font-medium text-muted-foreground mr-2">Show:</span>
               <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
                 <button
                   onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
@@ -569,7 +571,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
                   )}
                 >
                   <Building2 className="h-4 w-4" />
-                  Internal
+                  In-House
                   <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
                     {kpis.internalCount}
                   </Badge>
@@ -584,7 +586,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
                   )}
                 >
                   <ExternalLink className="h-4 w-4" />
-                  External
+                  With Partners
                   <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
                     {kpis.externalCount}
                   </Badge>
@@ -598,7 +600,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
                   className="cursor-pointer ml-2" 
                   onClick={() => setIssueFilter('all')}
                 >
-                  {issueFilter === 'blocked' ? 'Blocked Only' : 'Delayed Only'} 
+                  {issueFilter === 'blocked' ? 'Needs Action' : 'Running Late'} 
                   <span className="ml-1">×</span>
                 </Badge>
               )}
@@ -610,7 +612,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
               <div className="relative flex-1 min-w-[200px] max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search..."
+                  placeholder="Find job..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 h-9"
@@ -625,7 +627,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
                     onClick={() => setStageFilter('all')}
                     className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors mr-1"
                   >
-                    ← All ({stageCounts.all})
+                    ← All {stageCounts.all}
                   </button>
                 )}
                 
@@ -712,37 +714,37 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
               {(() => {
                 // Build contextual empty state based on active filters
                 let icon: "workOrders" | "search" | "partners" | "calendar" = "workOrders";
-                let title = "No work orders";
-                let description = "Create a new work order to get started.";
+                let title = "Ready to start";
+                let description = "No jobs in the queue. Create one to get moving.";
                 
                 if (searchQuery) {
                   icon = "search";
-                  title = "No matching work orders";
-                  description = `No work orders found for "${searchQuery}". Try a different search term.`;
+                  title = "No matches";
+                  description = `Nothing found for "${searchQuery}". Try different keywords.`;
                 } else if (issueFilter === 'blocked') {
-                  title = "No blocked work orders";
-                  description = "Great news! No work orders are currently blocked by external delays.";
+                  title = "All clear";
+                  description = "No jobs waiting on external partners. Keep it moving!";
                 } else if (issueFilter === 'delayed') {
                   icon = "calendar";
-                  title = "No overdue work orders";
-                  description = "Everything is on track! No work orders are past their due date.";
+                  title = "On schedule";
+                  description = "No late jobs. Everything is running on time.";
                 } else if (primaryFilter === 'external') {
                   icon = "partners";
                   if (stageFilter !== 'all') {
                     const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
-                    title = `No orders at ${externalStage?.label || 'External'}`;
-                    description = `No work orders currently at ${externalStage?.label || 'this external process'}.`;
+                    title = `${externalStage?.label || 'Partner'} queue empty`;
+                    description = `No jobs at ${externalStage?.label || 'this partner'} right now.`;
                   } else {
-                    title = "No external jobs in progress";
-                    description = "No work orders are currently at external partners.";
+                    title = "Nothing with partners";
+                    description = "All jobs are in-house. Send work out when ready.";
                   }
                 } else if (stageFilter !== 'all') {
                   const internalStage = INTERNAL_STAGES[stageFilter as keyof typeof INTERNAL_STAGES];
-                  title = `No work orders in ${internalStage?.label || 'this stage'}`;
-                  description = `The ${internalStage?.label || 'selected'} queue is empty.`;
+                  title = `${internalStage?.label || 'Stage'} is clear`;
+                  description = `No jobs waiting in ${internalStage?.label || 'this stage'}. Check other queues.`;
                 } else {
-                  title = "No internal work orders";
-                  description = "All work orders are currently at external partners, or none exist yet.";
+                  title = "In-house queue empty";
+                  description = "Jobs may be with partners, or create a new one to start.";
                 }
 
                 return (
@@ -751,11 +753,11 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
                     title={title}
                     description={description}
                     action={searchQuery || issueFilter !== 'all' || stageFilter !== 'all' ? {
-                      label: "Clear Filters",
+                      label: "Show All",
                       onClick: () => { setIssueFilter('all'); setStageFilter('all'); setSearchQuery(''); },
                       variant: "outline",
                     } : {
-                      label: "Create Work Order",
+                      label: "Start New Job",
                       onClick: () => navigate("/work-orders/new"),
                     }}
                   />
