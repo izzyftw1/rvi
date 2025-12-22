@@ -22,6 +22,9 @@ interface NCRFormDialogProps {
     qcRecordId?: string;
     issueDescription?: string;
     sourceReference?: string;
+    raisedFrom?: 'incoming_qc' | 'inprocess_qc' | 'final_qc' | 'production';
+    materialLotId?: string;
+    productionLogId?: string;
   };
 }
 
@@ -31,9 +34,17 @@ interface WorkOrder {
   display_id: string;
 }
 
+interface MaterialLot {
+  id: string;
+  lot_id: string;
+  alloy: string;
+  heat_no: string | null;
+}
+
 export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NCRFormDialogProps) {
   const [loading, setLoading] = useState(false);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [materialLots, setMaterialLots] = useState<MaterialLot[]>([]);
   
   const [formData, setFormData] = useState({
     ncr_type: 'INTERNAL' as NCRType,
@@ -46,17 +57,24 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
     corrective_action: '',
     disposition: '' as NCRDisposition | '',
     due_date: '',
+    raised_from: prefillData?.raisedFrom || '' as 'incoming_qc' | 'inprocess_qc' | 'final_qc' | 'production' | '',
+    material_lot_id: prefillData?.materialLotId || '',
+    production_log_id: prefillData?.productionLogId || '',
   });
 
   useEffect(() => {
     if (open) {
       loadWorkOrders();
+      loadMaterialLots();
       if (prefillData) {
         setFormData(prev => ({
           ...prev,
           work_order_id: prefillData.workOrderId || '',
           issue_description: prefillData.issueDescription || '',
           source_reference: prefillData.sourceReference || '',
+          raised_from: prefillData.raisedFrom || '',
+          material_lot_id: prefillData.materialLotId || '',
+          production_log_id: prefillData.productionLogId || '',
         }));
       }
     }
@@ -70,6 +88,16 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
       .limit(100);
     
     setWorkOrders(data || []);
+  };
+
+  const loadMaterialLots = async () => {
+    const { data } = await supabase
+      .from('inventory_lots')
+      .select('id, lot_id, alloy, heat_no')
+      .order('received_date', { ascending: false })
+      .limit(100);
+    
+    setMaterialLots(data || []);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,6 +128,9 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
         due_date: formData.due_date || null,
         created_by: user?.user?.id,
         status: 'OPEN',
+        raised_from: formData.raised_from || null,
+        material_lot_id: formData.material_lot_id || null,
+        production_log_id: formData.production_log_id || null,
       });
 
       if (error) throw error;
@@ -127,6 +158,9 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
       corrective_action: '',
       disposition: '',
       due_date: '',
+      raised_from: '',
+      material_lot_id: '',
+      production_log_id: '',
     });
   };
 
@@ -197,6 +231,27 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
               </FormField>
 
               <FormField>
+                <Label>Raised From</Label>
+                <Select 
+                  value={formData.raised_from} 
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, raised_from: v as any }))}
+                  disabled={!!prefillData?.raisedFrom}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select source..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="incoming_qc">Incoming QC</SelectItem>
+                    <SelectItem value="inprocess_qc">In-Process QC</SelectItem>
+                    <SelectItem value="final_qc">Final QC</SelectItem>
+                    <SelectItem value="production">Production</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </FormRow>
+
+            <FormRow cols={2}>
+              <FormField>
                 <Label>Work Order</Label>
                 <Select 
                   value={formData.work_order_id} 
@@ -210,6 +265,26 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
                     {workOrders.map(wo => (
                       <SelectItem key={wo.id} value={wo.id}>
                         {wo.display_id || wo.wo_number}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField>
+                <Label>Material Lot</Label>
+                <Select 
+                  value={formData.material_lot_id} 
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, material_lot_id: v }))}
+                  disabled={!!prefillData?.materialLotId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select material lot..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {materialLots.map(lot => (
+                      <SelectItem key={lot.id} value={lot.id}>
+                        {lot.lot_id} - {lot.alloy} {lot.heat_no ? `(${lot.heat_no})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
