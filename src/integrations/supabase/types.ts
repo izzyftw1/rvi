@@ -3460,8 +3460,11 @@ export type Database = {
           created_at: string
           digital_signature: Json | null
           file_upload_url: string | null
+          heat_no: string | null
           id: string
           instrument_id: string | null
+          material_grade: string | null
+          material_lot_id: string | null
           measurements: Json | null
           oes_xrf_file: string | null
           ppap_refs: string[] | null
@@ -3471,6 +3474,7 @@ export type Database = {
           remarks: string | null
           result: Database["public"]["Enums"]["qc_result"]
           step_id: string | null
+          supplier_coa_url: string | null
           tested_on: string | null
           waive_reason: string | null
           wo_id: string
@@ -3481,8 +3485,11 @@ export type Database = {
           created_at?: string
           digital_signature?: Json | null
           file_upload_url?: string | null
+          heat_no?: string | null
           id?: string
           instrument_id?: string | null
+          material_grade?: string | null
+          material_lot_id?: string | null
           measurements?: Json | null
           oes_xrf_file?: string | null
           ppap_refs?: string[] | null
@@ -3492,6 +3499,7 @@ export type Database = {
           remarks?: string | null
           result: Database["public"]["Enums"]["qc_result"]
           step_id?: string | null
+          supplier_coa_url?: string | null
           tested_on?: string | null
           waive_reason?: string | null
           wo_id: string
@@ -3502,8 +3510,11 @@ export type Database = {
           created_at?: string
           digital_signature?: Json | null
           file_upload_url?: string | null
+          heat_no?: string | null
           id?: string
           instrument_id?: string | null
+          material_grade?: string | null
+          material_lot_id?: string | null
           measurements?: Json | null
           oes_xrf_file?: string | null
           ppap_refs?: string[] | null
@@ -3513,6 +3524,7 @@ export type Database = {
           remarks?: string | null
           result?: Database["public"]["Enums"]["qc_result"]
           step_id?: string | null
+          supplier_coa_url?: string | null
           tested_on?: string | null
           waive_reason?: string | null
           wo_id?: string
@@ -3523,6 +3535,13 @@ export type Database = {
             columns: ["instrument_id"]
             isOneToOne: false
             referencedRelation: "measurement_instruments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_records_material_lot_id_fkey"
+            columns: ["material_lot_id"]
+            isOneToOne: false
+            referencedRelation: "material_lots"
             referencedColumns: ["id"]
           },
           {
