@@ -397,56 +397,107 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                       <div
                         key={partner.id}
                         className={cn(
-                          "flex items-center justify-between px-4 py-2 hover:bg-muted/50 cursor-pointer transition-colors",
+                          "px-4 py-3 transition-colors",
                           isWorstPartnerItem && "bg-destructive/5"
                         )}
-                        onClick={() => navigate(`/partners?partner=${partner.id}`)}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
-                            isHighRisk ? "bg-destructive text-destructive-foreground" :
-                            isMediumRisk ? "bg-amber-500 text-white" :
-                            "bg-muted text-muted-foreground"
-                          )}>
-                            {index + 1}
-                          </div>
-                          <div>
-                            <p className={cn(
-                              "text-sm font-medium",
-                              isWorstPartnerItem && "text-destructive"
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                              isHighRisk ? "bg-destructive text-destructive-foreground" :
+                              isMediumRisk ? "bg-amber-500 text-white" :
+                              "bg-muted text-muted-foreground"
                             )}>
-                              {partner.name}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground capitalize">
-                              {partner.process}
-                            </p>
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className={cn(
+                                "text-sm font-medium",
+                                isWorstPartnerItem && "text-destructive"
+                              )}>
+                                {partner.name}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground capitalize">
+                                {partner.process}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-4 text-right">
+                            {partner.overdueMoves > 0 && (
+                              <div className="flex flex-col items-end">
+                                <Badge 
+                                  variant="destructive" 
+                                  className={cn(
+                                    "text-[9px] px-1.5 py-0",
+                                    isHighRisk && "animate-pulse"
+                                  )}
+                                >
+                                  SLA Breach
+                                </Badge>
+                                <span className="text-[10px] text-destructive font-medium mt-0.5">
+                                  Avg {Math.round(partner.avgDaysOverdue)}d Overdue
+                                </span>
+                              </div>
+                            )}
+                            <div>
+                              <p className={cn(
+                                "text-sm font-bold",
+                                partner.overdueMoves > 0 ? "text-amber-600" : "text-foreground"
+                              )}>
+                                {partner.totalPcs.toLocaleString()}
+                              </p>
+                              <p className={cn(
+                                "text-[10px]",
+                                partner.overdueMoves > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"
+                              )}>
+                                {partner.overdueMoves > 0 ? "pcs at Risk" : "pcs pending"}
+                              </p>
+                            </div>
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-4 text-right">
-                          <div>
-                            <p className="text-sm font-medium">{partner.totalPcs.toLocaleString()}</p>
-                            <p className="text-[10px] text-muted-foreground">pcs pending</p>
-                          </div>
+                        {/* Partner CTAs */}
+                        <div className="flex items-center gap-2 pl-9">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/partners?partner=${partner.id}`);
+                            }}
+                          >
+                            <Building2 className="h-3 w-3 mr-1" />
+                            View Partner
+                          </Button>
                           {partner.overdueMoves > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Clock className={cn(
-                                "h-3 w-3",
-                                isHighRisk ? "text-destructive" : "text-amber-500"
-                              )} />
-                              <div>
-                                <p className={cn(
-                                  "text-sm font-medium",
-                                  isHighRisk ? "text-destructive" : "text-amber-600"
-                                )}>
-                                  {Math.round(partner.avgDaysOverdue)}d
-                                </p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {partner.overdueMoves} late
-                                </p>
-                              </div>
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[10px] px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/logistics?filter=overdue&partner=${partner.id}`);
+                              }}
+                            >
+                              <Clock className="h-3 w-3 mr-1" />
+                              View Overdue Jobs
+                            </Button>
+                          )}
+                          {isHighRisk && (
+                            <Badge 
+                              variant="outline" 
+                              className="h-5 text-[9px] border-amber-500 text-amber-600 cursor-pointer hover:bg-amber-500/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Flag only - no logic change
+                              }}
+                            >
+                              <AlertTriangle className="h-2.5 w-2.5 mr-1" />
+                              Hold New Moves
+                            </Badge>
                           )}
                         </div>
                       </div>
