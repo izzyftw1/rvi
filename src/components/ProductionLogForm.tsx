@@ -33,6 +33,8 @@ import { Loader2, Lock, FileText, Wrench, Calculator, Info, Unlock, CalendarIcon
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 import { formatCount, formatPercent } from "@/lib/displayUtils";
 import { cn } from "@/lib/utils";
+import { NCRThresholdPrompt, RejectionExceedance } from "@/components/ncr/NCRThresholdPrompt";
+import { NCRFormDialog } from "@/components/ncr/NCRFormDialog";
 
 // Downtime reasons
 const DOWNTIME_REASONS = [
@@ -271,6 +273,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   // Auto-populated machine from assignment
   const [autoMachine, setAutoMachine] = useState<Machine | null>(null);
   
+  // NCR prompt states
+  const [showNCRPrompt, setShowNCRPrompt] = useState(false);
+  const [showNCRDialog, setShowNCRDialog] = useState(false);
+  const [ncrExceedances, setNcrExceedances] = useState<RejectionExceedance[]>([]);
+  const [pendingLogId, setPendingLogId] = useState<string | null>(null);
+  const [ncrPrefillData, setNcrPrefillData] = useState<any>(null);
+  
   const {
     register,
     handleSubmit,
@@ -417,6 +426,29 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     }));
   };
 
+  // NCR threshold check - returns exceedances above threshold
+  const checkRejectionThresholds = useMemo(() => {
+    const threshold = 3; // Default threshold - can be made configurable
+    const pctThreshold = 0.02; // 2% of production
+    const dynamicThreshold = actualQty > 0 ? Math.max(threshold, Math.ceil(actualQty * pctThreshold)) : threshold;
+    
+    const exceedances: RejectionExceedance[] = [];
+    
+    REJECTION_TYPES.forEach(({ key, label }) => {
+      const count = rejectionValues[key as RejectionKey] || 0;
+      if (count >= dynamicThreshold) {
+        exceedances.push({
+          key,
+          label,
+          count,
+          threshold: dynamicThreshold,
+        });
+      }
+    });
+    
+    return exceedances;
+  }, [rejectionValues, actualQty]);
+
   // Filter people by role
   const supervisors = useMemo(() => 
     people.filter(p => p.role === 'supervisor' && p.is_active), [people]);
@@ -562,7 +594,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         total_rejection_quantity: totalRejectionQty,
       };
       
-      const { error: logError } = await supabase.from("daily_production_logs").insert([insertData]);
+      const { data: insertedLog, error: logError } = await supabase
+        .from("daily_production_logs")
+        .insert([insertData])
+        .select('id')
+        .single();
 
       if (logError) throw logError;
 
@@ -576,23 +612,61 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         });
       }
 
+      // Check for rejection thresholds and prompt for NCR
+      if (checkRejectionThresholds.length > 0 && insertedLog?.id) {
+        setPendingLogId(insertedLog.id);
+        setNcrExceedances(checkRejectionThresholds);
+        setNcrPrefillData({
+          workOrderId: propWorkOrder?.id,
+          machineId: effectiveMachineId,
+          productionLogId: insertedLog.id,
+          raisedFrom: 'production',
+        });
+        setShowNCRPrompt(true);
+      }
+
       toast.success("Production log submitted successfully");
-      reset();
-      setSelectedOperators([]);
-      setDowntimeEntries([]);
-      setSelectedDowntimeReason("");
-      setDowntimeMinutesInput("");
-      setRejectionValues({ ...defaultRejectionValues });
-      setOverrideCycleTime(false);
-      setCycleTimeOverrideValue("");
-      setOverrideMachine(false);
-      setOverrideSetup(false);
-      setSetupOverrideValue("");
+      resetFormState();
     } catch (error: any) {
       toast.error(error.message || "Failed to submit production log");
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetFormState = () => {
+    reset();
+    setSelectedOperators([]);
+    setDowntimeEntries([]);
+    setSelectedDowntimeReason("");
+    setDowntimeMinutesInput("");
+    setRejectionValues({ ...defaultRejectionValues });
+    setOverrideCycleTime(false);
+    setCycleTimeOverrideValue("");
+    setOverrideMachine(false);
+    setOverrideSetup(false);
+    setSetupOverrideValue("");
+  };
+
+  const handleRaiseNCR = (selectedRejections: RejectionExceedance[]) => {
+    const totalAffected = selectedRejections.reduce((sum, r) => sum + r.count, 0);
+    const rejectionLabels = selectedRejections.map(r => r.label).join(', ');
+    
+    setNcrPrefillData((prev: any) => ({
+      ...prev,
+      issueDescription: `High rejection detected: ${rejectionLabels}. Total affected: ${totalAffected} pcs.`,
+      rejectionType: selectedRejections.map(r => r.key).join(','),
+      quantityAffected: totalAffected,
+    }));
+    setShowNCRDialog(true);
+  };
+
+  const handleNCRSuccess = () => {
+    setShowNCRDialog(false);
+    setPendingLogId(null);
+    setNcrExceedances([]);
+    setNcrPrefillData(null);
+    toast.success("NCR created and linked to production log");
   };
 
   if (disabled) {
@@ -1021,6 +1095,27 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
           </Button>
         </form>
       </CardContent>
+
+      {/* NCR Threshold Prompt */}
+      <NCRThresholdPrompt
+        open={showNCRPrompt}
+        onOpenChange={setShowNCRPrompt}
+        exceedances={ncrExceedances}
+        onRaiseNCR={handleRaiseNCR}
+        onSkip={() => {
+          setShowNCRPrompt(false);
+          setPendingLogId(null);
+          setNcrExceedances([]);
+        }}
+      />
+
+      {/* NCR Form Dialog */}
+      <NCRFormDialog
+        open={showNCRDialog}
+        onOpenChange={setShowNCRDialog}
+        onSuccess={handleNCRSuccess}
+        prefillData={ncrPrefillData}
+      />
     </Card>
   );
 }

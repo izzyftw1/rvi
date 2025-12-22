@@ -72,7 +72,8 @@ export default function QualityAnalytics() {
           .from("ncrs")
           .select(`
             id, ncr_number, status, root_cause, raised_from, quantity_affected,
-            created_at, closed_at, work_order_id
+            created_at, closed_at, work_order_id, machine_id, rejection_type, disposition,
+            machines:machine_id(name, machine_id)
           `)
           .gte("created_at", startDate),
         supabase
@@ -252,6 +253,36 @@ export default function QualityAnalytics() {
       sourceCounts[source] = (sourceCounts[source] || 0) + 1;
     });
 
+    // NCR by machine
+    const machineCounts: Record<string, { count: number; scrapQty: number }> = {};
+    ncrs.forEach(n => {
+      const machine = n.machines?.machine_id || n.machines?.name || "Unknown";
+      if (!machineCounts[machine]) machineCounts[machine] = { count: 0, scrapQty: 0 };
+      machineCounts[machine].count++;
+      if (n.disposition === 'SCRAP') machineCounts[machine].scrapQty += n.quantity_affected || 0;
+    });
+
+    // NCR by rejection type
+    const rejectionTypeCounts: Record<string, { count: number; totalQty: number }> = {};
+    ncrs.forEach(n => {
+      if (n.rejection_type) {
+        const types = n.rejection_type.split(',');
+        types.forEach((t: string) => {
+          const type = t.replace('rejection_', '').replace(/_/g, ' ');
+          if (!rejectionTypeCounts[type]) rejectionTypeCounts[type] = { count: 0, totalQty: 0 };
+          rejectionTypeCounts[type].count++;
+          rejectionTypeCounts[type].totalQty += n.quantity_affected || 0;
+        });
+      }
+    });
+
+    // Scrap by disposition
+    const dispositionCounts: Record<string, number> = {};
+    ncrs.forEach(n => {
+      const disp = n.disposition || 'PENDING';
+      dispositionCounts[disp] = (dispositionCounts[disp] || 0) + (n.quantity_affected || 0);
+    });
+
     return {
       ncrPer1000Pcs,
       ncrPerWO,
@@ -261,7 +292,16 @@ export default function QualityAnalytics() {
       avgAgingDays,
       ncrByAge: Object.entries(ageBuckets).map(([range, count]) => ({ range, count })),
       repeatNCRs,
-      ncrBySource: Object.entries(sourceCounts).map(([source, count]) => ({ source, count }))
+      ncrBySource: Object.entries(sourceCounts).map(([source, count]) => ({ source, count })),
+      ncrByMachine: Object.entries(machineCounts)
+        .map(([machine, data]) => ({ machine, ...data }))
+        .sort((a, b) => b.count - a.count),
+      ncrByRejectionType: Object.entries(rejectionTypeCounts)
+        .map(([type, data]) => ({ type, ...data }))
+        .sort((a, b) => b.totalQty - a.totalQty),
+      scrapByDisposition: Object.entries(dispositionCounts)
+        .map(([disposition, qty]) => ({ disposition, qty })),
+      reworkCount: ncrs.filter(n => n.disposition === 'REWORK').length,
     };
   }, [ncrs, productionLogs, workOrders]);
 

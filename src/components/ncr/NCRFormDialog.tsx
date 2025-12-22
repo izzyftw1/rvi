@@ -25,6 +25,10 @@ interface NCRFormDialogProps {
     raisedFrom?: 'incoming_qc' | 'inprocess_qc' | 'final_qc' | 'production';
     materialLotId?: string;
     productionLogId?: string;
+    machineId?: string;
+    operationType?: string;
+    rejectionType?: string;
+    quantityAffected?: number;
   };
 }
 
@@ -50,7 +54,7 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
     ncr_type: 'INTERNAL' as NCRType,
     source_reference: prefillData?.sourceReference || '',
     work_order_id: prefillData?.workOrderId || '',
-    quantity_affected: '',
+    quantity_affected: prefillData?.quantityAffected?.toString() || '',
     unit: 'pcs',
     issue_description: prefillData?.issueDescription || '',
     root_cause: '',
@@ -60,6 +64,8 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
     raised_from: prefillData?.raisedFrom || '' as 'incoming_qc' | 'inprocess_qc' | 'final_qc' | 'production' | '',
     material_lot_id: prefillData?.materialLotId || '',
     production_log_id: prefillData?.productionLogId || '',
+    machine_id: prefillData?.machineId || '',
+    rejection_type: prefillData?.rejectionType || '',
   });
 
   useEffect(() => {
@@ -75,6 +81,9 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
           raised_from: prefillData.raisedFrom || '',
           material_lot_id: prefillData.materialLotId || '',
           production_log_id: prefillData.productionLogId || '',
+          machine_id: prefillData.machineId || '',
+          rejection_type: prefillData.rejectionType || '',
+          quantity_affected: prefillData.quantityAffected?.toString() || '',
         }));
       }
     }
@@ -131,6 +140,8 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
         raised_from: formData.raised_from || null,
         material_lot_id: formData.material_lot_id || null,
         production_log_id: formData.production_log_id || null,
+        machine_id: formData.machine_id || null,
+        rejection_type: formData.rejection_type || null,
       });
 
       if (error) throw error;
@@ -161,6 +172,8 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
       raised_from: '',
       material_lot_id: '',
       production_log_id: '',
+      machine_id: '',
+      rejection_type: '',
     });
   };
 

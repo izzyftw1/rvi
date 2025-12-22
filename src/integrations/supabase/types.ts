@@ -2467,6 +2467,7 @@ export type Database = {
           effectiveness_verified: boolean | null
           id: string
           issue_description: string
+          machine_id: string | null
           material_lot_id: string | null
           ncr_number: string
           ncr_type: Database["public"]["Enums"]["ncr_type"]
@@ -2476,6 +2477,7 @@ export type Database = {
           qc_record_id: string | null
           quantity_affected: number
           raised_from: string | null
+          rejection_type: string | null
           responsible_person: string | null
           root_cause: string | null
           source_reference: string | null
@@ -2504,6 +2506,7 @@ export type Database = {
           effectiveness_verified?: boolean | null
           id?: string
           issue_description: string
+          machine_id?: string | null
           material_lot_id?: string | null
           ncr_number: string
           ncr_type: Database["public"]["Enums"]["ncr_type"]
@@ -2513,6 +2516,7 @@ export type Database = {
           qc_record_id?: string | null
           quantity_affected: number
           raised_from?: string | null
+          rejection_type?: string | null
           responsible_person?: string | null
           root_cause?: string | null
           source_reference?: string | null
@@ -2541,6 +2545,7 @@ export type Database = {
           effectiveness_verified?: boolean | null
           id?: string
           issue_description?: string
+          machine_id?: string | null
           material_lot_id?: string | null
           ncr_number?: string
           ncr_type?: Database["public"]["Enums"]["ncr_type"]
@@ -2550,6 +2555,7 @@ export type Database = {
           qc_record_id?: string | null
           quantity_affected?: number
           raised_from?: string | null
+          rejection_type?: string | null
           responsible_person?: string | null
           root_cause?: string | null
           source_reference?: string | null
@@ -2559,6 +2565,27 @@ export type Database = {
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ncrs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "ncrs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ncrs_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
           {
             foreignKeyName: "ncrs_material_lot_id_fkey"
             columns: ["material_lot_id"]
@@ -6059,6 +6086,10 @@ export type Database = {
           linked_po_ids: string[]
           linked_wo_ids: string[]
         }[]
+      }
+      get_rejection_threshold: {
+        Args: { rejection_type: string; total_production?: number }
+        Returns: number
       }
       get_user_site_id: { Args: { _user_id: string }; Returns: string }
       get_wo_progress: {

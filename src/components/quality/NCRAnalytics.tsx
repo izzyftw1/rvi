@@ -18,6 +18,10 @@ interface NCRMetrics {
   ncrByAge: Array<{ range: string; count: number }>;
   repeatNCRs: Array<{ rootCause: string; count: number }>;
   ncrBySource: Array<{ source: string; count: number }>;
+  ncrByMachine?: Array<{ machine: string; count: number; scrapQty: number }>;
+  ncrByRejectionType?: Array<{ type: string; count: number; totalQty: number }>;
+  scrapByDisposition?: Array<{ disposition: string; qty: number }>;
+  reworkCount?: number;
 }
 
 const COLORS = ["#22c55e", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6"];
@@ -150,7 +154,7 @@ export function NCRAnalytics({ data }: NCRAnalyticsProps) {
       </Card>
 
       {/* NCR by Source */}
-      <Card className="lg:col-span-2">
+      <Card>
         <CardHeader>
           <CardTitle>NCR Distribution by Source</CardTitle>
           <CardDescription>Where NCRs are being raised from</CardDescription>
@@ -162,7 +166,7 @@ export function NCRAnalytics({ data }: NCRAnalyticsProps) {
             </div>
           ) : (
             <div className="flex items-center gap-8">
-              <ResponsiveContainer width="40%" height={200}>
+              <ResponsiveContainer width="50%" height={200}>
                 <PieChart>
                   <Pie
                     data={data.ncrBySource}
@@ -192,6 +196,77 @@ export function NCRAnalytics({ data }: NCRAnalyticsProps) {
                       <span className="text-sm">{item.source}</span>
                     </div>
                     <Badge variant="outline">{item.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* NCR by Machine */}
+      {data.ncrByMachine && data.ncrByMachine.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>NCRs by Machine</CardTitle>
+            <CardDescription>Machine-level quality issues</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={data.ncrByMachine.slice(0, 8)} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis type="number" />
+                <YAxis dataKey="machine" type="category" width={80} className="text-xs" />
+                <Tooltip />
+                <Bar dataKey="count" fill="hsl(var(--destructive))" name="NCRs" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="scrapQty" fill="hsl(var(--muted-foreground))" name="Scrap Qty" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Scrap & Rework by Disposition */}
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-red-500" />
+            Scrap & Rework Tracking
+          </CardTitle>
+          <CardDescription>NCR disposition breakdown for scrap analysis</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {data.scrapByDisposition?.map((item, index) => (
+              <div key={item.disposition} className="p-4 rounded-lg border bg-muted/30 space-y-1">
+                <p className="text-sm text-muted-foreground capitalize">
+                  {item.disposition.replace(/_/g, ' ').toLowerCase()}
+                </p>
+                <p className={cn(
+                  "text-2xl font-bold",
+                  item.disposition === 'SCRAP' ? "text-destructive" : 
+                  item.disposition === 'REWORK' ? "text-amber-600" : "text-foreground"
+                )}>
+                  {item.qty} pcs
+                </p>
+              </div>
+            ))}
+            {data.reworkCount !== undefined && (
+              <div className="p-4 rounded-lg border bg-amber-50 dark:bg-amber-950/30 space-y-1">
+                <p className="text-sm text-muted-foreground">Total Rework Items</p>
+                <p className="text-2xl font-bold text-amber-600">{data.reworkCount}</p>
+              </div>
+            )}
+          </div>
+          
+          {data.ncrByRejectionType && data.ncrByRejectionType.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-sm font-medium mb-3">NCRs by Rejection Type</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                {data.ncrByRejectionType.slice(0, 8).map((item) => (
+                  <div key={item.type} className="flex justify-between items-center p-2 rounded border bg-muted/20">
+                    <span className="text-xs truncate">{item.type}</span>
+                    <Badge variant="destructive" className="text-xs">{item.totalQty}</Badge>
                   </div>
                 ))}
               </div>
