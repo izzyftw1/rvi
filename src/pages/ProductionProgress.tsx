@@ -113,9 +113,21 @@ function categorizeToBuckets(workOrders: WorkOrder[]): Buckets {
     // Otherwise: WO is in progress (not shown in any bucket)
   });
 
-  // Sort each bucket by aging (oldest first)
+  // Sort each bucket by severity (red first, then amber, then green), then by aging (oldest first)
+  const severityOrder = { red: 0, amber: 1, green: 2 };
   Object.keys(buckets).forEach(key => {
-    buckets[key as BucketType].sort((a, b) => b.aging_hours - a.aging_hours);
+    buckets[key as BucketType].sort((a, b) => {
+      const aSeverity = getAgingSeverity(a.aging_hours);
+      const bSeverity = getAgingSeverity(b.aging_hours);
+      
+      // First sort by severity
+      if (severityOrder[aSeverity] !== severityOrder[bSeverity]) {
+        return severityOrder[aSeverity] - severityOrder[bSeverity];
+      }
+      
+      // Within same severity, oldest first
+      return b.aging_hours - a.aging_hours;
+    });
   });
 
   return buckets;
