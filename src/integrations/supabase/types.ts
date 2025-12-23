@@ -450,6 +450,7 @@ export type Database = {
         Row: {
           actual_quantity: number
           actual_runtime_minutes: number
+          batch_id: string | null
           created_at: string
           created_by: string | null
           cycle_time_seconds: number | null
@@ -505,6 +506,7 @@ export type Database = {
         Insert: {
           actual_quantity?: number
           actual_runtime_minutes?: number
+          batch_id?: string | null
           created_at?: string
           created_by?: string | null
           cycle_time_seconds?: number | null
@@ -560,6 +562,7 @@ export type Database = {
         Update: {
           actual_quantity?: number
           actual_runtime_minutes?: number
+          batch_id?: string | null
           created_at?: string
           created_by?: string | null
           cycle_time_seconds?: number | null
@@ -613,6 +616,13 @@ export type Database = {
           wo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "daily_production_logs_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "daily_production_logs_machine_id_fkey"
             columns: ["machine_id"]
@@ -3366,6 +3376,64 @@ export type Database = {
           },
           {
             foreignKeyName: "processing_costs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_batches: {
+        Row: {
+          batch_number: number
+          created_at: string
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          previous_batch_id: string | null
+          started_at: string
+          trigger_reason: string
+          wo_id: string
+        }
+        Insert: {
+          batch_number?: number
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          previous_batch_id?: string | null
+          started_at?: string
+          trigger_reason?: string
+          wo_id: string
+        }
+        Update: {
+          batch_number?: number
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          previous_batch_id?: string | null
+          started_at?: string
+          trigger_reason?: string
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_batches_previous_batch_id_fkey"
+            columns: ["previous_batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_batches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_batches_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
@@ -6410,6 +6478,10 @@ export type Database = {
           linked_po_ids: string[]
           linked_wo_ids: string[]
         }[]
+      }
+      get_or_create_production_batch: {
+        Args: { p_gap_threshold_days?: number; p_wo_id: string }
+        Returns: string
       }
       get_rejection_threshold: {
         Args: { rejection_type: string; total_production?: number }
