@@ -5820,7 +5820,7 @@ export type Database = {
           traceability_frozen: boolean
           updated_at: string
           wo_id: string | null
-          wo_number: string | null
+          wo_number: string
         }
         Insert: {
           actual_cycle_time_hours?: number | null
@@ -5891,7 +5891,7 @@ export type Database = {
           traceability_frozen?: boolean
           updated_at?: string
           wo_id?: string | null
-          wo_number?: string | null
+          wo_number?: string
         }
         Update: {
           actual_cycle_time_hours?: number | null
@@ -5962,7 +5962,7 @@ export type Database = {
           traceability_frozen?: boolean
           updated_at?: string
           wo_id?: string | null
-          wo_number?: string | null
+          wo_number?: string
         }
         Relationships: [
           {
@@ -6390,6 +6390,7 @@ export type Database = {
       generate_ncr_number: { Args: never; Returns: string }
       generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
+      generate_wo_number: { Args: never; Returns: string }
       get_material_links: {
         Args: { _alloy: string; _material_grade: string }
         Returns: {
