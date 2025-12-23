@@ -129,7 +129,12 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
       allowedRoles: ['admin', 'production', 'ops_manager'],
       items: [
         { label: "Work Orders", path: "/work-orders", icon: Search },
-        { label: "Production Log", path: "/production-progress", icon: BarChart3 },
+        { label: "Production Progress", path: "/production-progress", icon: BarChart3 },
+        { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
+        { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Activity },
+        { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
+        { label: "Operator Efficiency", path: "/operator-efficiency", icon: Users },
+        { label: "Setter Efficiency", path: "/setter-efficiency", icon: Wrench },
         { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
         { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
       ]
