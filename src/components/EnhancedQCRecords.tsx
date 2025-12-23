@@ -66,8 +66,9 @@ const isGateComplete = (status: QCStatus): boolean =>
 
 export function EnhancedQCRecords({ qcRecords, workOrder }: EnhancedQCRecordsProps) {
   // === AUTHORITATIVE STATUS RESOLUTION ===
-  // Use qc_material_status and qc_first_piece_status as source of truth
-  const materialStatus = normalizeStatus(workOrder.qc_material_status);
+  // Use unified status - prefer qc_material_status, fallback to qc_raw_material_status
+  const unifiedMaterialStatus = workOrder.qc_material_status || workOrder.qc_raw_material_status || 'pending';
+  const materialStatus = normalizeStatus(unifiedMaterialStatus);
   const firstPieceBaseStatus = normalizeStatus(workOrder.qc_first_piece_status);
   
   // First Piece is BLOCKED if Material QC is not complete

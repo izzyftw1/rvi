@@ -117,9 +117,13 @@ const WorkOrderDetail = () => {
 
   useEffect(() => {
     if (wo) {
-      // QC gates block production if they are pending or failed (but NOT if waived)
-      const materialBlocked = wo.qc_material_status === 'pending' || wo.qc_material_status === 'failed';
-      const firstPieceBlocked = wo.qc_first_piece_status === 'pending' || wo.qc_first_piece_status === 'failed';
+      // Use unified status fields - prefer qc_material_status, fallback to qc_raw_material_status
+      const materialStatus = wo.qc_material_status || wo.qc_raw_material_status || 'pending';
+      const firstPieceStatus = wo.qc_first_piece_status || 'pending';
+      
+      // QC gates block production if they are pending or failed (but NOT if waived or passed)
+      const materialBlocked = materialStatus === 'pending' || materialStatus === 'failed';
+      const firstPieceBlocked = firstPieceStatus === 'pending' || firstPieceStatus === 'failed';
       setQcGatesBlocked(materialBlocked || firstPieceBlocked);
       
       // Production release gate
@@ -618,17 +622,20 @@ const WorkOrderDetail = () => {
     return <div className="flex items-center justify-center min-h-screen">Work Order not found</div>;
   }
 
-  // Determine blockers vs warnings
+  // Determine blockers vs warnings - use unified status (prefer qc_material_status, fallback to qc_raw_material_status)
   const blockers = [];
   const warnings = [];
+  
+  const unifiedMaterialStatus = wo.qc_material_status || wo.qc_raw_material_status || 'pending';
+  const unifiedFirstPieceStatus = wo.qc_first_piece_status || 'pending';
   
   if (productionNotReleased) {
     blockers.push({ type: 'release', targetId: 'production-release-section', label: 'Production Logging Locked', description: 'Unlock production logging before operators can record quantities' });
   }
-  if (wo.qc_material_status === 'failed') {
+  if (unifiedMaterialStatus === 'failed') {
     blockers.push({ type: 'qc', targetId: 'qc-status-section', label: 'Material QC Failed', description: 'Raw material quality check failed - cannot proceed' });
   }
-  if (wo.qc_first_piece_status === 'failed') {
+  if (unifiedFirstPieceStatus === 'failed') {
     blockers.push({ type: 'qc', targetId: 'qc-status-section', label: 'First Piece QC Failed', description: 'First piece inspection failed - cannot proceed' });
   }
 
@@ -650,10 +657,10 @@ const WorkOrderDetail = () => {
   };
   
   // Pending states are warnings, not blockers
-  if (wo.qc_material_status === 'pending') {
+  if (unifiedMaterialStatus === 'pending') {
     warnings.push({ type: 'qc', label: 'Material QC Pending', description: 'Awaiting raw material inspection' });
   }
-  if (wo.qc_first_piece_status === 'pending') {
+  if (unifiedFirstPieceStatus === 'pending') {
     warnings.push({ type: 'qc', label: 'First Piece QC Pending', description: 'Awaiting first piece inspection' });
   }
   
@@ -825,11 +832,11 @@ const WorkOrderDetail = () => {
                   <p className="text-xs text-muted-foreground">Location</p>
                   <Badge variant="outline" className="font-normal">{wo.material_location || 'Factory'}</Badge>
                 </div>
-                {/* QC Gates - Inline compact */}
+                {/* QC Gates - Inline compact - use unified status */}
                 <div className="flex items-center gap-3 ml-auto">
                   {[
-                    { label: 'Material', status: wo.qc_raw_material_status || wo.qc_material_status || 'pending' },
-                    { label: '1st Pc', status: wo.qc_first_piece_status || 'pending' },
+                    { label: 'Material', status: unifiedMaterialStatus },
+                    { label: '1st Pc', status: unifiedFirstPieceStatus },
                     { label: 'Final', status: wo.qc_final_status || 'pending' },
                   ].map((gate, idx) => {
                     const isPassed = gate.status === 'passed' || gate.status === 'waived';
@@ -953,22 +960,22 @@ const WorkOrderDetail = () => {
                   <QCStageCard
                     woId={id || ''}
                     qcType="incoming"
-                    status={wo.qc_raw_material_status || 'pending'}
-                    approvedAt={wo.qc_raw_material_approved_at}
-                    approvedByName={wo.qc_raw_material_approved_by ? qcApprovers[wo.qc_raw_material_approved_by] : undefined}
-                    remarks={wo.qc_raw_material_remarks}
+                    status={unifiedMaterialStatus}
+                    approvedAt={wo.qc_raw_material_approved_at || wo.qc_material_approved_at}
+                    approvedByName={wo.qc_raw_material_approved_by ? qcApprovers[wo.qc_raw_material_approved_by] : (wo.qc_material_approved_by ? qcApprovers[wo.qc_material_approved_by] : undefined)}
+                    remarks={wo.qc_raw_material_remarks || wo.qc_material_remarks}
                     onUpdate={loadWorkOrderData}
                   />
                   
                   <QCStageCard
                     woId={id || ''}
                     qcType="first_piece"
-                    status={wo.qc_first_piece_status || 'pending'}
+                    status={unifiedFirstPieceStatus}
                     approvedAt={wo.qc_first_piece_approved_at}
                     approvedByName={wo.qc_first_piece_approved_by ? qcApprovers[wo.qc_first_piece_approved_by] : undefined}
                     remarks={wo.qc_first_piece_remarks}
                     onUpdate={loadWorkOrderData}
-                    isLocked={wo.qc_raw_material_status !== 'passed' && wo.qc_raw_material_status !== 'waived'}
+                    isLocked={unifiedMaterialStatus !== 'passed' && unifiedMaterialStatus !== 'waived'}
                   />
                   
                   <QCStageCard
