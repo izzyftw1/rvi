@@ -1,5 +1,17 @@
+/**
+ * CNC Dashboard
+ * 
+ * EXECUTION FOCUS ONLY:
+ * - Queues and job assignment
+ * - Oldest job age
+ * - Next action per machine
+ * - Current blockers (from latest production log & QC state)
+ * 
+ * NO historical metrics (utilisation %, efficiency %) - those belong in Machine Utilisation
+ */
+
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -15,7 +27,8 @@ import {
   Pause,
   Zap,
   Settings,
-  Package
+  Package,
+  Info
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -23,7 +36,7 @@ import { differenceInHours, differenceInMinutes, parseISO, formatDistanceToNow }
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
-type ReadinessStatus = 'ready' | 'setup_required' | 'maintenance_due' | 'running' | 'down';
+type ReadinessStatus = 'ready' | 'setup_required' | 'maintenance_due' | 'running' | 'down' | 'qc_blocked';
 type PriorityLevel = 'high' | 'medium' | 'low' | null;
 
 interface MachineData {
@@ -33,18 +46,16 @@ interface MachineData {
   status: string;
   current_wo_id: string | null;
   current_job_start: string | null;
-  last_qc_check_at: string | null;
-  next_qc_check_due: string | null;
-  // Calculated fields
+  // Execution-focused fields
   readiness: ReadinessStatus;
   queueCount: number;
   oldestQueueAge: number; // in hours
   currentWO: any | null;
-  lastMaintenanceDate: string | null;
-  daysSinceLastMaintenance: number | null;
-  flowImpact: string | null; // Flow impact text derived from queued WOs
-  priority: PriorityLevel; // Priority badge level
-  hasOverdueWOs: boolean; // Whether any queued WOs are overdue
+  flowImpact: string | null;
+  priority: PriorityLevel;
+  hasOverdueWOs: boolean;
+  nextAction: string;
+  blockers: string[];
 }
 
 interface EligibleWorkOrder {
@@ -57,25 +68,20 @@ interface EligibleWorkOrder {
   waitingHours: number;
 }
 
-const MAINTENANCE_DUE_DAYS = 30;
-
 // Helper to derive flow impact text from queued work orders' stages
 const deriveFlowImpact = (stages: string[]): string | null => {
   if (stages.length === 0) return null;
   
-  // Count stages to find the primary one
   const stageCounts: Record<string, number> = {};
   stages.forEach(stage => {
     stageCounts[stage] = (stageCounts[stage] || 0) + 1;
   });
   
-  // Find the most common stage
   const primaryStage = Object.entries(stageCounts)
     .sort((a, b) => b[1] - a[1])[0]?.[0];
   
   if (!primaryStage) return null;
   
-  // Map stages to flow impact descriptions
   const stageFlowMap: Record<string, string> = {
     'cutting': 'Blocking Cutting stage',
     'forging': 'Blocking Forging stage',
@@ -84,32 +90,34 @@ const deriveFlowImpact = (stages: string[]): string | null => {
     'qc': 'Feeds QC stage',
     'packing': 'Feeds Packing',
     'dispatch': 'Upstream of Dispatch',
-    'completed': 'Ready for completion'
   };
   
-  return stageFlowMap[primaryStage.toLowerCase()] || `Feeds ${primaryStage}`;
+  return stageFlowMap[primaryStage.toLowerCase()] || null;
 };
 
-// Helper to calculate priority level based on queue metrics
+// Calculate priority based on queue metrics
 const calculatePriority = (
   queueCount: number, 
   oldestQueueAge: number, 
   hasOverdueWOs: boolean
 ): PriorityLevel => {
   if (queueCount === 0) return null;
-  
-  // High priority: overdue WOs, high queue (5+), or very old queue (72h+)
-  if (hasOverdueWOs || queueCount >= 5 || oldestQueueAge >= 72) {
-    return 'high';
-  }
-  
-  // Medium priority: moderate queue (3+) or aging queue (24h+)
-  if (queueCount >= 3 || oldestQueueAge >= 24) {
-    return 'medium';
-  }
-  
-  // Low priority: has queue but manageable
+  if (hasOverdueWOs || queueCount >= 5 || oldestQueueAge >= 72) return 'high';
+  if (queueCount >= 3 || oldestQueueAge >= 24) return 'medium';
   return 'low';
+};
+
+// Determine next action based on state
+const getNextAction = (readiness: ReadinessStatus, queueCount: number): string => {
+  switch (readiness) {
+    case 'ready': return queueCount > 0 ? 'Assign from queue' : 'Assign new work';
+    case 'running': return 'Monitor progress';
+    case 'setup_required': return 'Complete setup';
+    case 'maintenance_due': return 'Clear maintenance';
+    case 'down': return 'Report issue';
+    case 'qc_blocked': return 'Await QC clearance';
+    default: return 'Review status';
+  }
 };
 
 const CNCDashboard = () => {
@@ -127,48 +135,30 @@ const CNCDashboard = () => {
   const loadMachines = useCallback(async () => {
     try {
       setLoading(true);
-
       const today = new Date().toISOString().split('T')[0];
 
       // Get machines
       const { data: machinesData, error: machinesError } = await supabase
         .from("machines")
-        .select(`
-          id,
-          machine_id,
-          name,
-          status,
-          current_wo_id,
-          current_job_start,
-          last_qc_check_at,
-          next_qc_check_due
-        `)
+        .select(`id, machine_id, name, status, current_wo_id, current_job_start, qc_status`)
         .order("machine_id", { ascending: true });
 
       if (machinesError) throw machinesError;
 
       const machineIds = (machinesData || []).map(m => m.id);
 
-      // Get latest production logs for today to determine real running status
+      // Get latest production log for today to determine blockers
       const { data: productionLogs } = await supabase
         .from("daily_production_logs")
-        .select("machine_id, wo_id, log_date, shift, shift_start_time, shift_end_time, total_downtime_minutes, actual_quantity")
+        .select("machine_id, wo_id, downtime_events")
         .in("machine_id", machineIds)
         .eq("log_date", today)
         .order("created_at", { ascending: false });
 
-      // Get maintenance logs for last maintenance dates (completed maintenance only)
-      const { data: maintenanceLogs } = await supabase
-        .from("maintenance_logs")
-        .select("machine_id, end_time, downtime_reason")
-        .in("machine_id", machineIds)
-        .not("end_time", "is", null)
-        .order("end_time", { ascending: false });
-
-      // Get active maintenance (started but not ended = machine is down for maintenance)
+      // Get active maintenance (blocker)
       const { data: activeMaintenanceLogs } = await supabase
         .from("maintenance_logs")
-        .select("machine_id, start_time, downtime_reason")
+        .select("machine_id, downtime_reason")
         .in("machine_id", machineIds)
         .is("end_time", null);
 
@@ -179,12 +169,10 @@ const CNCDashboard = () => {
         .eq("status", "scheduled")
         .order("scheduled_start", { ascending: true });
 
-      // Get current WO details for running machines
+      // Get WO details for current and queued
       const runningMachineWoIds = (machinesData || [])
         .filter(m => m.current_wo_id)
         .map(m => m.current_wo_id);
-
-      // Get all queued WO IDs to fetch their stages
       const queuedWoIds = (queuedAssignments || []).map(a => a.wo_id);
       const allWoIds = [...new Set([...runningMachineWoIds, ...queuedWoIds])];
 
@@ -204,37 +192,25 @@ const CNCDashboard = () => {
       const activeMaintenance = new Map((activeMaintenanceLogs || []).map(log => [log.machine_id, log]));
       const todayLogs = new Map<string, typeof productionLogs[0]>();
       (productionLogs || []).forEach(log => {
-        // Keep only the latest log per machine for today
         if (!todayLogs.has(log.machine_id)) {
           todayLogs.set(log.machine_id, log);
         }
       });
 
-      // Process machines with calculated fields
+      // Process machines
       const enrichedMachines: MachineData[] = (machinesData || []).map(machine => {
-        // Find last completed maintenance
-        const lastMaintenance = (maintenanceLogs || []).find(log => log.machine_id === machine.id);
-        const lastMaintenanceDate = lastMaintenance?.end_time || null;
-        const daysSinceLastMaintenance = lastMaintenanceDate 
-          ? Math.floor(differenceInHours(new Date(), parseISO(lastMaintenanceDate)) / 24)
-          : null; // null = never maintained, not 999
-
-        // Check if machine has active maintenance (down)
         const hasActiveMaintenance = activeMaintenance.has(machine.id);
-        const activeMaintenanceReason = activeMaintenance.get(machine.id)?.downtime_reason;
-
-        // Check today's production log to determine running status
+        const maintenanceReason = activeMaintenance.get(machine.id)?.downtime_reason;
         const todayLog = todayLogs.get(machine.id);
-        const hasActiveProductionLog = !!todayLog && todayLog.wo_id;
 
         // Calculate queue info
         const machineQueue = (queuedAssignments || []).filter(a => a.machine_id === machine.id);
         const queueCount = machineQueue.length;
         const oldestQueueAge = machineQueue.length > 0
-          ? Math.floor(differenceInHours(new Date(), parseISO(machineQueue[0].scheduled_start)))
+          ? Math.max(0, Math.floor(differenceInHours(new Date(), parseISO(machineQueue[0].scheduled_start))))
           : 0;
 
-        // Derive flow impact from queued WOs' stages
+        // Derive flow impact
         const queuedWOsList = machineQueue.map(a => woDetails[a.wo_id]).filter(Boolean);
         const queuedStages = queuedWOsList.map(wo => wo?.current_stage).filter(Boolean);
         const flowImpact = deriveFlowImpact(queuedStages);
@@ -246,51 +222,56 @@ const CNCDashboard = () => {
           return parseISO(wo.due_date) < now;
         });
 
-        // Calculate priority level
-        const priority = calculatePriority(queueCount, oldestQueueAge, hasOverdueWOs);
-
-        // Determine readiness status from REAL data
-        let readiness: ReadinessStatus = 'ready';
+        // Collect blockers from current state
+        const blockers: string[] = [];
         
-        // Priority 1: Active maintenance log = machine is down
-        if (hasActiveMaintenance) {
-          // Check if it's a maintenance reason or a blocking issue
-          const reason = activeMaintenanceReason?.toLowerCase() || '';
-          if (reason.includes('maintenance') || reason.includes('service')) {
-            readiness = 'maintenance_due';
-          } else {
-            readiness = 'down';
+        // Check QC status from machine
+        if (machine.qc_status === 'failed' || machine.qc_status === 'pending') {
+          blockers.push('QC clearance required');
+        }
+
+        // Check active downtime from today's log
+        if (todayLog?.downtime_events && Array.isArray(todayLog.downtime_events)) {
+          const activeDowntime = (todayLog.downtime_events as any[]).find((e: any) => !e.resolved);
+          if (activeDowntime) {
+            blockers.push(`Active: ${activeDowntime.reason || 'Downtime event'}`);
           }
         }
-        // Priority 2: Has active production log today = running
-        else if (hasActiveProductionLog || machine.current_wo_id) {
-          readiness = 'running';
-        }
-        // Priority 3: Machine marked as down/fault
-        else if (machine.status === 'down' || machine.status === 'fault') {
+
+        // Determine readiness status
+        let readiness: ReadinessStatus = 'ready';
+        
+        if (hasActiveMaintenance) {
+          const reason = maintenanceReason?.toLowerCase() || '';
+          readiness = reason.includes('maintenance') || reason.includes('service') 
+            ? 'maintenance_due' 
+            : 'down';
+          blockers.push(maintenanceReason || 'Maintenance in progress');
+        } else if (machine.status === 'down' || machine.status === 'fault') {
           readiness = 'down';
-        }
-        // Priority 4: Overdue for maintenance (only if we have maintenance history)
-        else if (daysSinceLastMaintenance !== null && daysSinceLastMaintenance >= MAINTENANCE_DUE_DAYS) {
-          readiness = 'maintenance_due';
-        }
-        // Priority 5: Has WO assigned but not started = needs setup
-        else if (queueCount > 0 && machine.status !== 'running') {
+          blockers.push('Machine fault');
+        } else if (machine.qc_status === 'failed') {
+          readiness = 'qc_blocked';
+        } else if (machine.current_wo_id) {
+          readiness = 'running';
+        } else if (queueCount > 0 && machine.status !== 'running') {
           readiness = 'setup_required';
         }
-        // Default: Ready for work
+
+        const priority = calculatePriority(queueCount, oldestQueueAge, hasOverdueWOs);
+        const nextAction = getNextAction(readiness, queueCount);
 
         return {
           ...machine,
           readiness,
           queueCount,
-          oldestQueueAge: Math.max(0, oldestQueueAge),
+          oldestQueueAge,
           currentWO: machine.current_wo_id ? woDetails[machine.current_wo_id] : null,
-          lastMaintenanceDate,
-          daysSinceLastMaintenance: daysSinceLastMaintenance ?? null,
           flowImpact,
           priority,
-          hasOverdueWOs
+          hasOverdueWOs,
+          nextAction,
+          blockers,
         };
       });
 
@@ -310,6 +291,7 @@ const CNCDashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "machines" }, () => loadMachines())
       .on("postgres_changes", { event: "*", schema: "public", table: "wo_machine_assignments" }, () => loadMachines())
       .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadMachines())
+      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => loadMachines())
       .subscribe();
 
     const interval = setInterval(loadMachines, 30000);
@@ -326,7 +308,6 @@ const CNCDashboard = () => {
     setLoadingWOs(true);
 
     try {
-      // Get eligible work orders (in production stage, both QC gates passed)
       const { data, error } = await supabase
         .from("work_orders")
         .select("id, display_id, customer, item_code, quantity, due_date, created_at")
@@ -356,7 +337,6 @@ const CNCDashboard = () => {
     if (!selectedMachine) return;
 
     try {
-      // Update machine with current WO
       const { error } = await supabase
         .from("machines")
         .update({ 
@@ -376,14 +356,12 @@ const CNCDashboard = () => {
     }
   };
 
-  // Handler to view queued work orders for a machine
   const handleViewQueue = async (machine: MachineData) => {
     setSelectedMachine(machine);
     setQueueDialogOpen(true);
     setLoadingQueue(true);
 
     try {
-      // Get queued assignments for this machine
       const { data: assignments, error: assignError } = await supabase
         .from("wo_machine_assignments")
         .select("wo_id, scheduled_start")
@@ -398,7 +376,6 @@ const CNCDashboard = () => {
         return;
       }
 
-      // Get work order details
       const woIds = assignments.map(a => a.wo_id);
       const { data: wos, error: woError } = await supabase
         .from("work_orders")
@@ -407,13 +384,9 @@ const CNCDashboard = () => {
 
       if (woError) throw woError;
 
-      // Merge with scheduled times
       const enriched = (wos || []).map(wo => {
         const assignment = assignments.find(a => a.wo_id === wo.id);
-        return {
-          ...wo,
-          scheduledStart: assignment?.scheduled_start
-        };
+        return { ...wo, scheduledStart: assignment?.scheduled_start };
       }).sort((a, b) => {
         if (!a.scheduledStart || !b.scheduledStart) return 0;
         return new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime();
@@ -428,95 +401,53 @@ const CNCDashboard = () => {
     }
   };
 
+  // Summary metrics (execution-focused only)
   const metrics = useMemo(() => {
     const ready = machines.filter(m => m.readiness === 'ready');
     const running = machines.filter(m => m.readiness === 'running');
-    const needsAttention = machines.filter(m => 
-      m.readiness === 'maintenance_due' || m.readiness === 'setup_required' || m.readiness === 'down'
+    const blocked = machines.filter(m => 
+      m.readiness === 'maintenance_due' || m.readiness === 'down' || m.readiness === 'qc_blocked'
     );
     const totalQueued = machines.reduce((sum, m) => sum + m.queueCount, 0);
+    const oldestJobAge = Math.max(...machines.map(m => m.oldestQueueAge), 0);
 
     return {
       readyCount: ready.length,
       runningCount: running.length,
-      needsAttentionCount: needsAttention.length,
+      blockedCount: blocked.length,
       totalQueued,
-      totalMachines: machines.length
+      oldestJobAge,
     };
   }, [machines]);
 
-  // Determine high-impact machines: highest queue (top 20%) or blocking overdue WOs (>48h oldest)
-  const highImpactMachineIds = useMemo(() => {
-    const ids = new Set<string>();
-    
-    // Find machines with highest queue counts (top 20% or at least 3+ queued)
-    const machinesWithQueue = machines.filter(m => m.queueCount > 0);
-    if (machinesWithQueue.length > 0) {
-      const sortedByQueue = [...machinesWithQueue].sort((a, b) => b.queueCount - a.queueCount);
-      const topCount = Math.max(1, Math.ceil(sortedByQueue.length * 0.2));
-      const threshold = sortedByQueue[Math.min(topCount - 1, sortedByQueue.length - 1)]?.queueCount || 3;
-      
-      machinesWithQueue.forEach(m => {
-        if (m.queueCount >= threshold || m.queueCount >= 3) {
-          ids.add(m.id);
-        }
-      });
-    }
-    
-    // Add machines blocking overdue WOs (oldest queue age > 48h)
-    machines.forEach(m => {
-      if (m.oldestQueueAge > 48) {
-        ids.add(m.id);
-      }
-    });
-    
-    return ids;
+  // Sort: Ready first, then setup required, then running, then blocked
+  const sortedMachines = useMemo(() => {
+    const order: Record<ReadinessStatus, number> = { 
+      ready: 0, 
+      setup_required: 1, 
+      running: 2, 
+      qc_blocked: 3, 
+      maintenance_due: 4, 
+      down: 5 
+    };
+    return [...machines].sort((a, b) => order[a.readiness] - order[b.readiness]);
   }, [machines]);
-
-  // Neutral styling for low-impact machines, colored only for high-impact or critical states
-  const getCardStyling = (machine: MachineData) => {
-    const isHighImpact = highImpactMachineIds.has(machine.id);
-    const isDown = machine.readiness === 'down';
-    const isReady = machine.readiness === 'ready';
-    
-    // Always highlight: down machines and ready machines
-    if (isDown) {
-      return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
-    }
-    if (isReady) {
-      return 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800';
-    }
-    
-    // High-impact machines get colored backgrounds
-    if (isHighImpact) {
-      if (machine.readiness === 'running') {
-        return 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800';
-      }
-      if (machine.readiness === 'maintenance_due') {
-        return 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800';
-      }
-      if (machine.readiness === 'setup_required') {
-        return 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800';
-      }
-    }
-    
-    // Low-impact machines get neutral styling
-    return 'bg-muted/20 border-muted';
-  };
 
   const readinessConfig: Record<ReadinessStatus, { label: string; color: string; icon: React.ElementType }> = {
     ready: { label: 'Ready', color: 'text-green-600 dark:text-green-400', icon: CheckCircle2 },
     running: { label: 'Running', color: 'text-blue-600 dark:text-blue-400', icon: Activity },
     setup_required: { label: 'Setup Required', color: 'text-amber-600 dark:text-amber-400', icon: Settings },
-    maintenance_due: { label: 'Maintenance Due', color: 'text-orange-600 dark:text-orange-400', icon: Wrench },
-    down: { label: 'Down', color: 'text-red-600 dark:text-red-400', icon: AlertTriangle }
+    maintenance_due: { label: 'Maintenance', color: 'text-orange-600 dark:text-orange-400', icon: Wrench },
+    down: { label: 'Down', color: 'text-red-600 dark:text-red-400', icon: AlertTriangle },
+    qc_blocked: { label: 'QC Blocked', color: 'text-purple-600 dark:text-purple-400', icon: Pause },
   };
 
-  // Sort machines: Ready first, then running, then others
-  const sortedMachines = useMemo(() => {
-    const order: Record<ReadinessStatus, number> = { ready: 0, running: 1, setup_required: 2, maintenance_due: 3, down: 4 };
-    return [...machines].sort((a, b) => order[a.readiness] - order[b.readiness]);
-  }, [machines]);
+  const getCardStyling = (machine: MachineData) => {
+    if (machine.readiness === 'down') return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
+    if (machine.readiness === 'ready') return 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800';
+    if (machine.priority === 'high') return 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800';
+    return 'bg-muted/20 border-muted';
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -529,11 +460,11 @@ const CNCDashboard = () => {
               CNC Dashboard
             </h1>
             <p className="text-sm text-muted-foreground">
-              Fast job assignment • Real-time machine readiness
+              Execution focus: queues, blockers, next actions
             </p>
           </div>
 
-          {/* Quick Stats */}
+          {/* Quick Stats - Execution Only */}
           <div className="flex flex-wrap gap-2">
             <Badge className="gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200">
               <CheckCircle2 className="h-3 w-3" />
@@ -543,14 +474,40 @@ const CNCDashboard = () => {
               <Activity className="h-3 w-3" />
               {metrics.runningCount} Running
             </Badge>
-            {metrics.needsAttentionCount > 0 && (
+            <Badge className="gap-1 bg-muted text-muted-foreground">
+              <Package className="h-3 w-3" />
+              {metrics.totalQueued} Queued
+            </Badge>
+            {metrics.blockedCount > 0 && (
               <Badge variant="destructive" className="gap-1">
                 <AlertTriangle className="h-3 w-3" />
-                {metrics.needsAttentionCount} Need Attention
+                {metrics.blockedCount} Blocked
               </Badge>
             )}
           </div>
         </div>
+
+        {/* Execution notice */}
+        <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <Info className="h-4 w-4 shrink-0" />
+          <span>
+            Current state + blockers only. For historical analytics (utilisation %, efficiency %), see Production → Machine Utilisation.
+          </span>
+        </div>
+
+        {/* Oldest Job Alert */}
+        {metrics.oldestJobAge > 24 && (
+          <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                <Clock className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  Oldest queued job: {metrics.oldestJobAge}h — consider prioritizing
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Action Hint */}
         {metrics.readyCount > 0 && (
@@ -589,15 +546,13 @@ const CNCDashboard = () => {
                 ? differenceInMinutes(new Date(), parseISO(machine.current_job_start))
                 : 0;
 
-              const isHighImpact = highImpactMachineIds.has(machine.id);
-
               return (
                 <Card 
                   key={machine.id}
                   className={cn(
                     "transition-all border cursor-pointer hover:shadow-md",
                     getCardStyling(machine),
-                    isEligibleForAssignment && "ring-2 ring-green-400/50 border-2"
+                    isEligibleForAssignment && "ring-2 ring-green-400/50"
                   )}
                   onClick={() => handleViewQueue(machine)}
                 >
@@ -605,22 +560,7 @@ const CNCDashboard = () => {
                     {/* Header */}
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg truncate">{machine.name}</h3>
-                          {machine.priority && (
-                            <Badge 
-                              variant="outline" 
-                              className={cn(
-                                "text-[10px] px-1.5 py-0 h-4 shrink-0",
-                                machine.priority === 'high' && "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200",
-                                machine.priority === 'medium' && "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200",
-                                machine.priority === 'low' && "bg-muted text-muted-foreground border-muted"
-                              )}
-                            >
-                              {machine.priority === 'high' ? 'High Impact' : machine.priority === 'medium' ? 'Medium Impact' : 'Low Impact'}
-                            </Badge>
-                          )}
-                        </div>
+                        <h3 className="font-semibold text-lg truncate">{machine.name}</h3>
                         <p className="text-xs text-muted-foreground font-mono">{machine.machine_id}</p>
                       </div>
                       <Icon className={cn("h-5 w-5 shrink-0", config.color)} />
@@ -635,7 +575,10 @@ const CNCDashboard = () => {
                     {machine.readiness === 'running' && machine.currentWO && (
                       <div 
                         className="bg-background/60 rounded p-2 cursor-pointer hover:bg-background/80 transition-colors"
-                        onClick={() => navigate(`/work-orders/${machine.currentWO.id}`)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/work-orders/${machine.currentWO.id}`);
+                        }}
                       >
                         <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                           <span>Running:</span>
@@ -651,35 +594,46 @@ const CNCDashboard = () => {
 
                     {/* Queue Info */}
                     {machine.queueCount > 0 && (
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs p-2 bg-background/40 rounded">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Package className="h-3 w-3" />
-                            Queue
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{machine.queueCount} jobs</span>
-                            {machine.oldestQueueAge > 0 && (
-                              <span className={cn(
-                                "text-[10px]",
-                                machine.oldestQueueAge > 24 && "text-amber-600",
-                                machine.oldestQueueAge > 48 && "text-red-600"
-                              )}>
-                                ({machine.oldestQueueAge}h oldest)
-                              </span>
-                            )}
-                          </div>
+                      <div className="flex items-center justify-between text-xs p-2 bg-background/40 rounded">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <Package className="h-3 w-3" />
+                          Queue
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{machine.queueCount} jobs</span>
+                          {machine.oldestQueueAge > 0 && (
+                            <span className={cn(
+                              "text-[10px]",
+                              machine.oldestQueueAge > 24 && "text-amber-600",
+                              machine.oldestQueueAge > 48 && "text-red-600"
+                            )}>
+                              ({machine.oldestQueueAge}h)
+                            </span>
+                          )}
                         </div>
-                        {/* Flow Impact */}
-                        {machine.flowImpact && (
-                          <p className="text-[10px] text-muted-foreground italic px-2">
-                            {machine.flowImpact}
-                          </p>
-                        )}
                       </div>
                     )}
 
-                    {/* Primary Action Section - Single clear action per state */}
+                    {/* Blockers */}
+                    {machine.blockers.length > 0 && (
+                      <div className="space-y-1">
+                        {machine.blockers.slice(0, 2).map((blocker, idx) => (
+                          <div key={idx} className="flex items-start gap-1 text-xs text-red-600 dark:text-red-400">
+                            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span className="truncate">{blocker}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Next Action */}
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">Next:</span> {machine.nextAction}
+                      </p>
+                    </div>
+
+                    {/* Primary Action Button */}
                     {machine.readiness === 'ready' && (
                       <Button 
                         className="w-full gap-2" 
@@ -695,60 +649,48 @@ const CNCDashboard = () => {
                     )}
 
                     {machine.readiness === 'maintenance_due' && (
-                      <div className="space-y-2">
-                        <Button 
-                          className="w-full gap-2" 
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toast.info("Maintenance clearance workflow coming soon");
-                          }}
-                        >
-                          <Wrench className="h-4 w-4" />
-                          Clear Maintenance
-                        </Button>
-                        <p className="text-[10px] text-muted-foreground text-center">
-                          {machine.lastMaintenanceDate 
-                            ? `Last serviced ${formatDistanceToNow(parseISO(machine.lastMaintenanceDate), { addSuffix: true })}`
-                            : 'No maintenance records'
-                          }
-                        </p>
-                      </div>
+                      <Button 
+                        className="w-full gap-2" 
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast.info("Maintenance clearance workflow coming soon");
+                        }}
+                      >
+                        <Wrench className="h-4 w-4" />
+                        Clear Maintenance
+                      </Button>
                     )}
 
                     {machine.readiness === 'setup_required' && (
-                      <div className="space-y-2">
-                        <Button 
-                          className="w-full gap-2" 
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toast.info("Setup completion workflow coming soon");
-                          }}
-                        >
-                          <Settings className="h-4 w-4" />
-                          Complete Setup
-                        </Button>
-                      </div>
+                      <Button 
+                        className="w-full gap-2" 
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast.info("Setup completion workflow coming soon");
+                        }}
+                      >
+                        <Settings className="h-4 w-4" />
+                        Complete Setup
+                      </Button>
                     )}
 
                     {machine.readiness === 'down' && (
-                      <div className="space-y-2">
-                        <Button 
-                          className="w-full gap-2" 
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toast.info("Machine recovery workflow coming soon");
-                          }}
-                        >
-                          <AlertTriangle className="h-4 w-4" />
-                          Report Issue
-                        </Button>
-                      </div>
+                      <Button 
+                        className="w-full gap-2" 
+                        size="sm"
+                        variant="destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast.info("Machine recovery workflow coming soon");
+                        }}
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Report Issue
+                      </Button>
                     )}
                   </CardContent>
                 </Card>
@@ -826,13 +768,13 @@ const CNCDashboard = () => {
             <DialogHeader>
               <DialogTitle>Queued Work Orders – {selectedMachine?.name}</DialogTitle>
               <DialogDescription>
-                {selectedMachine?.queueCount || 0} work order{(selectedMachine?.queueCount || 0) !== 1 ? 's' : ''} scheduled for this machine
+                {selectedMachine?.queueCount || 0} work order{(selectedMachine?.queueCount || 0) !== 1 ? 's' : ''} scheduled
               </DialogDescription>
             </DialogHeader>
 
             <ScrollArea className="max-h-[400px]">
               {loadingQueue ? (
-                <div className="py-8 text-center text-muted-foreground">Loading queued work orders...</div>
+                <div className="py-8 text-center text-muted-foreground">Loading...</div>
               ) : queuedWOs.length === 0 ? (
                 <div className="py-8 text-center">
                   <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -858,7 +800,9 @@ const CNCDashboard = () => {
                         <div className="flex items-center justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">#{index + 1}</span>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                #{index + 1}
+                              </Badge>
                               <span className="font-mono font-semibold text-sm">{wo.display_id}</span>
                               {isOverdue && (
                                 <Badge variant="destructive" className="text-[10px] px-1.5 py-0">OVERDUE</Badge>
@@ -867,11 +811,6 @@ const CNCDashboard = () => {
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {wo.customer} • {wo.item_code} • {wo.quantity?.toLocaleString()} pcs
                             </p>
-                            {wo.due_date && (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                Due: {new Date(wo.due_date).toLocaleDateString()}
-                              </p>
-                            )}
                           </div>
                           <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                         </div>

@@ -1,3 +1,14 @@
+/**
+ * Machine Status Page
+ * 
+ * REAL-TIME OPERATIONAL STATE ONLY:
+ * - Running / Idle / Blocked / Maintenance states
+ * - Current job info
+ * - Live status updates
+ * 
+ * NO historical metrics - those belong in Production → Machine Utilisation
+ */
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,14 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Calendar, AlertTriangle } from "lucide-react";
+import { Settings, AlertTriangle, Activity, Pause, Wrench, Clock, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, differenceInMinutes } from "date-fns";
-import { GanttScheduler } from "@/components/GanttScheduler";
-import { MachineUtilizationDashboard } from "@/components/MachineUtilizationDashboard";
 import { useSiteContext } from "@/hooks/useSiteContext";
+import { cn } from "@/lib/utils";
+
+type OperationalState = "running" | "idle" | "blocked" | "maintenance" | "down" | "waiting_qc" | "paused";
 
 const MachineStatus = () => {
   const navigate = useNavigate();
@@ -22,7 +33,7 @@ const MachineStatus = () => {
   const [machines, setMachines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
@@ -35,7 +46,7 @@ const MachineStatus = () => {
     if (!currentSite) return;
 
     const channel = supabase
-      .channel("machines-realtime")
+      .channel("machines-realtime-status")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "machines" },
@@ -43,12 +54,16 @@ const MachineStatus = () => {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "wo_machine_assignments" },
+        { event: "*", schema: "public", table: "maintenance_logs" },
         () => loadMachines()
       )
       .subscribe();
 
+    // Refresh every 30 seconds for live status
+    const interval = setInterval(loadMachines, 30000);
+
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [currentSite]);
@@ -58,22 +73,67 @@ const MachineStatus = () => {
     
     try {
       setLoading(true);
+      
+      // Get machines with current state info
       const { data, error } = await supabase
         .from("machines")
         .select(`
           *,
           current_wo:work_orders!machines_current_wo_id_fkey(wo_id, display_id, item_code, quantity, customer),
-          current_operator:profiles!machines_operator_id_fkey(full_name),
-          assignments:wo_machine_assignments!wo_machine_assignments_machine_id_fkey(
-            *,
-            work_order:work_orders(wo_id, display_id, item_code, customer, quantity)
-          )
+          current_operator:profiles!machines_operator_id_fkey(full_name)
         `)
         .eq("site_id", currentSite.id)
         .order("machine_id", { ascending: true });
 
       if (error) throw error;
-      setMachines(data || []);
+
+      // Check for active maintenance (blocks the machine)
+      const machineIds = (data || []).map(m => m.id);
+      const { data: activeMaintenance } = await supabase
+        .from("maintenance_logs")
+        .select("machine_id, start_time, downtime_reason")
+        .in("machine_id", machineIds)
+        .is("end_time", null);
+
+      const maintenanceMap = new Map((activeMaintenance || []).map(m => [m.machine_id, m]));
+
+      // Enrich with operational state
+      const enriched = (data || []).map(machine => {
+        const maintenance = maintenanceMap.get(machine.id);
+        
+        // Determine operational state
+        let operationalState: OperationalState = "idle";
+        let stateReason: string | null = null;
+        
+        if (maintenance) {
+          const reason = maintenance.downtime_reason?.toLowerCase() || "";
+          if (reason.includes("maintenance") || reason.includes("service")) {
+            operationalState = "maintenance";
+            stateReason = maintenance.downtime_reason;
+          } else {
+            operationalState = "blocked";
+            stateReason = maintenance.downtime_reason;
+          }
+        } else if (machine.status === "down" || machine.status === "fault") {
+          operationalState = "down";
+          stateReason = "Machine fault reported";
+        } else if (machine.status === "waiting_qc") {
+          operationalState = "waiting_qc";
+          stateReason = "Awaiting QC approval";
+        } else if (machine.status === "paused") {
+          operationalState = "paused";
+        } else if (machine.current_wo_id || machine.status === "running") {
+          operationalState = "running";
+        }
+
+        return {
+          ...machine,
+          operationalState,
+          stateReason,
+        };
+      });
+
+      setMachines(enriched);
     } catch (error: any) {
       console.error("Error loading machines:", error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -82,60 +142,66 @@ const MachineStatus = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      idle: "bg-gray-400",
-      running: "bg-green-500",
-      waiting_qc: "bg-yellow-500",
-      down: "bg-red-500",
-      maintenance: "bg-orange-500",
-      paused: "bg-blue-400",
+  const getStateConfig = (state: OperationalState) => {
+    const configs: Record<OperationalState, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
+      running: { label: "Running", color: "text-green-600", bgColor: "bg-green-500", icon: Activity },
+      idle: { label: "Idle", color: "text-gray-500", bgColor: "bg-gray-400", icon: Pause },
+      blocked: { label: "Blocked", color: "text-red-600", bgColor: "bg-red-500", icon: AlertTriangle },
+      maintenance: { label: "Maintenance", color: "text-orange-600", bgColor: "bg-orange-500", icon: Wrench },
+      down: { label: "Down", color: "text-red-600", bgColor: "bg-red-600", icon: AlertTriangle },
+      waiting_qc: { label: "Waiting QC", color: "text-yellow-600", bgColor: "bg-yellow-500", icon: Clock },
+      paused: { label: "Paused", color: "text-blue-500", bgColor: "bg-blue-400", icon: Pause },
     };
-    return colors[status] || "bg-gray-400";
+    return configs[state] || configs.idle;
   };
 
-  const getTimeRemaining = (machine: any) => {
-    if (!machine.estimated_completion || machine.status !== "running") {
+  const getTimeRunning = (machine: any) => {
+    if (!machine.current_job_start || machine.operationalState !== "running") {
       return null;
     }
-
-    const now = new Date();
-    const end = new Date(machine.estimated_completion);
-    const mins = differenceInMinutes(end, now);
-
-    if (mins < 0) return "Overdue";
+    const mins = differenceInMinutes(new Date(), new Date(machine.current_job_start));
     if (mins < 60) return `${mins}m`;
     const hours = Math.floor(mins / 60);
     const remainingMins = mins % 60;
     return `${hours}h ${remainingMins}m`;
   };
 
-  const viewSchedule = (machine: any) => {
+  const viewDetail = (machine: any) => {
     setSelectedMachine(machine);
-    setScheduleOpen(true);
+    setDetailOpen(true);
+  };
+
+  // Summary counts
+  const stateCounts = {
+    running: machines.filter(m => m.operationalState === "running").length,
+    idle: machines.filter(m => m.operationalState === "idle").length,
+    blocked: machines.filter(m => m.operationalState === "blocked" || m.operationalState === "down").length,
+    maintenance: machines.filter(m => m.operationalState === "maintenance").length,
+    waiting_qc: machines.filter(m => m.operationalState === "waiting_qc").length,
+    paused: machines.filter(m => m.operationalState === "paused").length,
   };
 
   const filteredMachines =
     filterStatus === "all"
       ? machines
-      : machines.filter((m) => m.status === filterStatus);
+      : machines.filter((m) => m.operationalState === filterStatus);
 
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader
-        title="CNC Machine Status"
-        subtitle="Live status and scheduling for all 35 CNC machines"
+        title="Machine Status"
+        subtitle="Real-time operational state of all CNC machines"
       />
 
       <div className="p-6 space-y-6">
-        <Tabs defaultValue="status" className="w-full">
-          <TabsList>
-            <TabsTrigger value="status">Live Status</TabsTrigger>
-            <TabsTrigger value="gantt">Gantt Scheduler</TabsTrigger>
-            <TabsTrigger value="metrics">Utilization Metrics</TabsTrigger>
-          </TabsList>
+        {/* Real-time notice */}
+        <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <Info className="h-4 w-4 shrink-0" />
+          <span>
+            Live operational states. For historical utilisation analytics, see Production → Machine Utilisation.
+          </span>
+        </div>
 
-          <TabsContent value="status" className="space-y-6 mt-6">
         {/* Filter Bar */}
         <Card>
           <CardContent className="pt-6">
@@ -147,11 +213,12 @@ const MachineStatus = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Machines</SelectItem>
-                    <SelectItem value="idle">Idle</SelectItem>
                     <SelectItem value="running">Running</SelectItem>
-                    <SelectItem value="waiting_qc">Waiting QC</SelectItem>
-                    <SelectItem value="down">Down</SelectItem>
+                    <SelectItem value="idle">Idle</SelectItem>
+                    <SelectItem value="blocked">Blocked</SelectItem>
                     <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="waiting_qc">Waiting QC</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -163,53 +230,41 @@ const MachineStatus = () => {
           </CardContent>
         </Card>
 
-        {/* Summary Stats */}
+        {/* Summary Stats - Operational States Only */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-3xl font-bold text-green-600">
-                {machines.filter((m) => m.status === "running").length}
-              </p>
+              <p className="text-3xl font-bold text-green-600">{stateCounts.running}</p>
               <p className="text-sm text-muted-foreground">Running</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-3xl font-bold text-gray-600">
-                {machines.filter((m) => m.status === "idle").length}
-              </p>
+              <p className="text-3xl font-bold text-gray-600">{stateCounts.idle}</p>
               <p className="text-sm text-muted-foreground">Idle</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-3xl font-bold text-yellow-600">
-                {machines.filter((m) => m.status === "waiting_qc").length}
-              </p>
-              <p className="text-sm text-muted-foreground">Waiting QC</p>
+              <p className="text-3xl font-bold text-red-600">{stateCounts.blocked}</p>
+              <p className="text-sm text-muted-foreground">Blocked/Down</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-3xl font-bold text-red-600">
-                {machines.filter((m) => m.status === "down").length}
-              </p>
-              <p className="text-sm text-muted-foreground">Down</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <p className="text-3xl font-bold text-orange-600">
-                {machines.filter((m) => m.status === "maintenance").length}
-              </p>
+              <p className="text-3xl font-bold text-orange-600">{stateCounts.maintenance}</p>
               <p className="text-sm text-muted-foreground">Maintenance</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-3xl font-bold text-blue-600">
-                {machines.filter((m) => m.status === "paused").length}
-              </p>
+              <p className="text-3xl font-bold text-yellow-600">{stateCounts.waiting_qc}</p>
+              <p className="text-sm text-muted-foreground">Waiting QC</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6 text-center">
+              <p className="text-3xl font-bold text-blue-600">{stateCounts.paused}</p>
               <p className="text-sm text-muted-foreground">Paused</p>
             </CardContent>
           </Card>
@@ -226,27 +281,32 @@ const MachineStatus = () => {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {filteredMachines.map((machine) => (
-              <Card
-                key={machine.id}
-                className="cursor-pointer hover:shadow-lg transition-shadow"
-                onClick={() => viewSchedule(machine)}
-              >
-                <CardHeader className={`${getStatusColor(machine.status)} text-white`}>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg font-bold">
-                      {machine.machine_id}
-                    </CardTitle>
-                    <Badge variant="secondary" className="bg-white text-black">
-                      {machine.status.replace("_", " ").toUpperCase()}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-4 space-y-2">
-                  <p className="text-sm font-medium truncate">{machine.name}</p>
+            {filteredMachines.map((machine) => {
+              const config = getStateConfig(machine.operationalState);
+              const Icon = config.icon;
+              const runTime = getTimeRunning(machine);
+              
+              return (
+                <Card
+                  key={machine.id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => viewDetail(machine)}
+                >
+                  <CardHeader className={cn(config.bgColor, "text-white")}>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg font-bold">
+                        {machine.machine_id}
+                      </CardTitle>
+                      <Badge variant="secondary" className="bg-white/90 text-black">
+                        {config.label}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-2">
+                    <p className="text-sm font-medium truncate">{machine.name}</p>
 
-                  {machine.current_wo && (
-                    <>
+                    {/* Running Job Info */}
+                    {machine.current_wo && (
                       <div className="pt-2 border-t">
                         <p className="text-xs text-muted-foreground">Current Job:</p>
                         <p className="text-sm font-mono truncate">
@@ -256,61 +316,61 @@ const MachineStatus = () => {
                         <p className="text-xs text-muted-foreground truncate">
                           {machine.current_wo.customer}
                         </p>
+                        {runTime && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            Running: {runTime}
+                          </div>
+                        )}
                       </div>
+                    )}
 
+                    {/* Operator */}
+                    {machine.current_operator?.full_name && (
                       <p className="text-xs">
                         <span className="text-muted-foreground">Operator:</span>{" "}
-                        {machine.current_operator?.full_name || "Unassigned"}
+                        {machine.current_operator.full_name}
                       </p>
+                    )}
 
-                      {getTimeRemaining(machine) && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Time left:</span>
-                          <Badge variant="outline" className="text-xs">
-                            {getTimeRemaining(machine)}
-                          </Badge>
-                        </div>
-                      )}
-                    </>
-                  )}
+                    {/* Idle state */}
+                    {machine.operationalState === "idle" && !machine.current_wo && (
+                      <p className="text-xs text-muted-foreground py-4 text-center">
+                        Available for assignment
+                      </p>
+                    )}
 
-                  {!machine.current_wo && machine.status === "idle" && (
-                    <p className="text-xs text-muted-foreground py-4 text-center">
-                      Available for assignment
-                    </p>
-                  )}
+                    {/* Blocked/Down reason */}
+                    {(machine.operationalState === "blocked" || machine.operationalState === "down") && machine.stateReason && (
+                      <div className="flex items-start gap-2 text-red-600 text-xs pt-2">
+                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{machine.stateReason}</span>
+                      </div>
+                    )}
 
-                  {machine.status === "down" && (
-                    <div className="flex items-center gap-2 text-red-600">
-                      <AlertTriangle className="h-4 w-4" />
-                      <p className="text-xs">Machine Down</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    {/* Maintenance reason */}
+                    {machine.operationalState === "maintenance" && machine.stateReason && (
+                      <div className="flex items-start gap-2 text-orange-600 text-xs pt-2">
+                        <Wrench className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{machine.stateReason}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
-        </TabsContent>
-
-        <TabsContent value="gantt" className="mt-6">
-          <GanttScheduler />
-        </TabsContent>
-
-        <TabsContent value="metrics" className="mt-6">
-          <MachineUtilizationDashboard />
-        </TabsContent>
-      </Tabs>
       </div>
 
-      {/* Schedule Dialog */}
-      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      {/* Machine Detail Dialog */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {selectedMachine?.machine_id} - {selectedMachine?.name} Schedule
+              {selectedMachine?.machine_id} - {selectedMachine?.name}
             </DialogTitle>
-            <DialogDescription>View machine status and scheduled jobs</DialogDescription>
+            <DialogDescription>Current operational state</DialogDescription>
           </DialogHeader>
 
           {selectedMachine && (
@@ -321,17 +381,46 @@ const MachineStatus = () => {
                   <CardTitle className="text-sm">Current Status</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center gap-4">
-                    <Badge className={getStatusColor(selectedMachine.status)}>
-                      {selectedMachine.status.replace("_", " ").toUpperCase()}
-                    </Badge>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Badge className={getStateConfig(selectedMachine.operationalState).bgColor}>
+                        {getStateConfig(selectedMachine.operationalState).label}
+                      </Badge>
+                      {selectedMachine.stateReason && (
+                        <span className="text-sm text-muted-foreground">
+                          {selectedMachine.stateReason}
+                        </span>
+                      )}
+                    </div>
+                    
                     {selectedMachine.current_wo && (
-                      <div className="text-sm">
-                        <p className="font-medium">
-                          {selectedMachine.current_wo.display_id || selectedMachine.current_wo.wo_id}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {selectedMachine.current_wo.item_code}
+                      <div className="pt-2 border-t">
+                        <p className="text-sm font-medium mb-1">Current Job:</p>
+                        <div 
+                          className="p-2 rounded bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                          onClick={() => {
+                            setDetailOpen(false);
+                            navigate(`/work-orders/${selectedMachine.current_wo.id}`);
+                          }}
+                        >
+                          <p className="font-mono font-semibold">
+                            {selectedMachine.current_wo.display_id || selectedMachine.current_wo.wo_id}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {selectedMachine.current_wo.item_code} • {selectedMachine.current_wo.quantity?.toLocaleString()} pcs
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {selectedMachine.current_wo.customer}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedMachine.current_operator?.full_name && (
+                      <div className="pt-2 border-t">
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">Current Operator:</span>{" "}
+                          {selectedMachine.current_operator.full_name}
                         </p>
                       </div>
                     )}
@@ -339,71 +428,19 @@ const MachineStatus = () => {
                 </CardContent>
               </Card>
 
-              {/* Schedule Timeline */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Scheduled Jobs</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedMachine.assignments && selectedMachine.assignments.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedMachine.assignments
-                        .filter((a: any) => a.status !== "completed" && a.status !== "cancelled")
-                        .sort((a: any, b: any) =>
-                          new Date(a.scheduled_start).getTime() -
-                          new Date(b.scheduled_start).getTime()
-                        )
-                        .map((assignment: any) => (
-                          <div
-                            key={assignment.id}
-                            className="border rounded-lg p-3 hover:bg-muted/50 cursor-pointer"
-                            onClick={() => navigate(`/work-order/${assignment.wo_id}`)}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium">
-                                  {assignment.work_order?.display_id || assignment.work_order?.wo_id}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {assignment.work_order?.item_code}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {assignment.work_order?.customer}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <Badge
-                                  variant={
-                                    assignment.status === "running"
-                                      ? "default"
-                                      : "secondary"
-                                  }
-                                >
-                                  {assignment.status}
-                                </Badge>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Qty: {assignment.quantity_allocated}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-2 text-xs text-muted-foreground">
-                              <p>
-                                Start: {format(new Date(assignment.scheduled_start), "MMM dd, HH:mm")}
-                              </p>
-                              <p>
-                                End: {format(new Date(assignment.scheduled_end), "MMM dd, HH:mm")}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No scheduled jobs
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+              {/* Quick Actions */}
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    setDetailOpen(false);
+                    navigate("/cnc-dashboard");
+                  }}
+                >
+                  Open CNC Dashboard
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
