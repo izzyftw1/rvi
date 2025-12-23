@@ -31,6 +31,7 @@ import { Factory, ArrowDownUp, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ControlTowerHeader } from "@/components/dashboard/ControlTowerHeader";
 import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
+import { ThresholdAlerts } from "@/components/dashboard/ThresholdAlerts";
 import { InternalFlowPanel } from "@/components/dashboard/InternalFlowPanel";
 import { ExternalFlowPanel } from "@/components/dashboard/ExternalFlowPanel";
 import { ExecutiveRiskBar } from "@/components/dashboard/ExecutiveRiskBar";
@@ -260,6 +261,9 @@ const Index = () => {
           <div className="space-y-4">
             {/* PRIMARY: Actionable Blockers - What needs decision NOW */}
             <ActionableBlockers />
+
+            {/* THRESHOLD ALERTS: Performance issues needing attention */}
+            <ThresholdAlerts />
 
             {/* SECONDARY: Delivery Risk - Upcoming pressure */}
             <DeliveryRiskPanel />
