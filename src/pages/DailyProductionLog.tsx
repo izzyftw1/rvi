@@ -460,6 +460,16 @@ export default function DailyProductionLog() {
   };
 
   const onSubmit = async (data: FormData) => {
+    // Validate WO is required when production quantity > 0
+    if (data.actual_quantity > 0 && !data.wo_id) {
+      toast({
+        title: "Work Order Required",
+        description: "A Work Order must be selected when logging production quantity",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate target override if enabled
     if (enableTargetOverride && !targetOverrideReason.trim()) {
       toast({
@@ -820,9 +830,9 @@ export default function DailyProductionLog() {
                         control={form.control}
                         name="wo_id"
                         render={({ field }) => (
-                          <FormItem>
+                          <FormItem className="sm:col-span-2 lg:col-span-3">
                             <FormLabel>
-                              Work Order {isLockedMode ? '(Locked)' : '(Optional)'}
+                              Work Order {isLockedMode ? '(Locked)' : actualQuantity > 0 ? '(Required)' : '(Optional for setup-only logs)'}
                             </FormLabel>
                             <FormControl>
                               {isLockedMode ? (
@@ -842,15 +852,41 @@ export default function DailyProductionLog() {
                                     quantity: wo.quantity,
                                   }))}
                                   placeholder="Select work order..."
-                                  includeNone={true}
-                                  noneLabel="None"
+                                  includeNone={actualQuantity === 0}
+                                  noneLabel="None (setup/runtime only)"
                                 />
                               )}
                             </FormControl>
+                            {actualQuantity > 0 && !field.value && (
+                              <p className="text-xs text-destructive">Work Order required when logging production</p>
+                            )}
                             <FormMessage />
                           </FormItem>
                         )}
                       />
+
+                      {/* Selected WO Details (read-only) */}
+                      {selectedWO && !isLockedMode && (
+                        <div className="sm:col-span-2 lg:col-span-3 p-3 rounded-lg bg-muted/50 border">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-semibold text-primary">{selectedWO.wo_number}</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Item</p>
+                              <p className="font-medium truncate">{selectedWO.item_code || '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Customer</p>
+                              <p className="font-medium truncate">{selectedWO.customer || '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Ordered Qty</p>
+                              <p className="font-medium">{selectedWO.quantity?.toLocaleString() || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Operator */}
                       <FormField
