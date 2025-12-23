@@ -405,7 +405,7 @@ export default function ProductionProgress() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Production Progress</h1>
           <p className="text-sm text-muted-foreground">
-            What's blocking flow? What must be done next?
+            Historical production summary — the ONLY source for progress and completion metrics
           </p>
         </div>
 
@@ -413,7 +413,7 @@ export default function ProductionProgress() {
         <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
           <Info className="h-4 w-4 shrink-0" />
           <span>
-            All progress metrics derived from Production Log entries. 
+            All progress metrics derived from Production Log entries (single source of truth). 
             <span className="font-mono text-xs ml-2">Progress % = (OK Qty ÷ Ordered) × 100</span>
           </span>
         </div>
