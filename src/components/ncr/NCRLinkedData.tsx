@@ -12,7 +12,9 @@ import {
   Beaker, 
   FileText,
   ExternalLink,
-  Layers
+  Layers,
+  Cpu,
+  User
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -22,6 +24,7 @@ interface NCRLinkedDataProps {
   qcRecordId: string | null;
   materialLotId: string | null;
   productionLogId: string | null;
+  machineId?: string | null;
   raisedFrom: string | null;
 }
 
@@ -52,6 +55,19 @@ interface ProductionLogInfo {
   actual_quantity: number | null;
   ok_quantity: number | null;
   total_rejection_quantity: number | null;
+  operator_id: string | null;
+  machine_id: string | null;
+}
+
+interface MachineInfo {
+  id: string;
+  machine_id: string;
+  name: string;
+}
+
+interface OperatorInfo {
+  id: string;
+  full_name: string;
 }
 
 interface QCRecordInfo {
@@ -68,6 +84,7 @@ export function NCRLinkedData({
   qcRecordId,
   materialLotId,
   productionLogId,
+  machineId,
   raisedFrom
 }: NCRLinkedDataProps) {
   const navigate = useNavigate();
@@ -75,11 +92,13 @@ export function NCRLinkedData({
   const [materialLot, setMaterialLot] = useState<MaterialLotInfo | null>(null);
   const [productionLog, setProductionLog] = useState<ProductionLogInfo | null>(null);
   const [qcRecord, setQCRecord] = useState<QCRecordInfo | null>(null);
+  const [machine, setMachine] = useState<MachineInfo | null>(null);
+  const [operator, setOperator] = useState<OperatorInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadLinkedData();
-  }, [workOrderId, qcRecordId, materialLotId, productionLogId]);
+  }, [workOrderId, qcRecordId, materialLotId, productionLogId, machineId]);
 
   const loadLinkedData = async () => {
     try {
@@ -107,10 +126,40 @@ export function NCRLinkedData({
       if (productionLogId) {
         const { data } = await supabase
           .from('daily_production_logs')
-          .select('id, log_date, plant, shift, setup_number, actual_quantity, ok_quantity, total_rejection_quantity')
+          .select('id, log_date, plant, shift, setup_number, actual_quantity, ok_quantity, total_rejection_quantity, operator_id, machine_id')
           .eq('id', productionLogId)
           .single();
         setProductionLog(data);
+        
+        // Load operator from production log
+        if (data?.operator_id) {
+          const { data: opData } = await supabase
+            .from('people')
+            .select('id, full_name')
+            .eq('id', data.operator_id)
+            .single();
+          setOperator(opData);
+        }
+        
+        // Load machine from production log if not directly set
+        if (data?.machine_id && !machineId) {
+          const { data: machData } = await supabase
+            .from('machines')
+            .select('id, machine_id, name')
+            .eq('id', data.machine_id)
+            .single();
+          setMachine(machData);
+        }
+      }
+
+      // Load machine directly if provided
+      if (machineId) {
+        const { data } = await supabase
+          .from('machines')
+          .select('id, machine_id, name')
+          .eq('id', machineId)
+          .single();
+        setMachine(data);
       }
 
       // Load QC record
@@ -309,7 +358,41 @@ export function NCRLinkedData({
           </div>
         )}
 
-        {!workOrder && !qcRecord && !materialLot && !productionLog && (
+        {/* Machine */}
+        {machine && (
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Cpu className="h-4 w-4 text-muted-foreground" />
+              <Label className="font-medium">Machine</Label>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-muted-foreground">Machine ID:</span>
+                <span className="ml-2 font-medium">{machine.machine_id}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Name:</span>
+                <span className="ml-2">{machine.name}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Operator */}
+        {operator && (
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <Label className="font-medium">Operator</Label>
+            </div>
+            <div className="text-sm">
+              <span className="text-muted-foreground">Name:</span>
+              <span className="ml-2 font-medium">{operator.full_name}</span>
+            </div>
+          </div>
+        )}
+
+        {!workOrder && !qcRecord && !materialLot && !productionLog && !machine && !operator && (
           <div className="text-center py-4 text-muted-foreground">
             <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No linked records found</p>
