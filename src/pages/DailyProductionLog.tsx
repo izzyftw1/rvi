@@ -401,9 +401,12 @@ export default function DailyProductionLog() {
   };
 
   const handleWOChange = (woId: string) => {
-    const wo = workOrders.find((w) => w.id === woId);
+    const nextWOId = woId === "none" ? "" : woId;
+    const wo = nextWOId ? workOrders.find((w) => w.id === nextWOId) : undefined;
+
     setSelectedWO(wo || null);
-    form.setValue("wo_id", woId);
+    form.setValue("wo_id", nextWOId);
+
     // Reset target override when WO changes
     setEnableTargetOverride(false);
     setTargetOverride("");
@@ -779,19 +782,21 @@ export default function DailyProductionLog() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Work Order (Optional)</FormLabel>
-                            <Select onValueChange={handleWOChange} value={field.value}>
+                            <Select onValueChange={handleWOChange} value={field.value || "none"}>
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Select work order" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">None</SelectItem>
-                                {workOrders.map((wo) => (
-                                  <SelectItem key={wo.id} value={wo.id}>
-                                    {wo.display_id} - {wo.item_code}
-                                  </SelectItem>
-                                ))}
+                                <SelectItem value="none">None</SelectItem>
+                                {workOrders
+                                  .filter((wo) => Boolean(wo.id))
+                                  .map((wo) => (
+                                    <SelectItem key={wo.id} value={wo.id}>
+                                      {wo.display_id} - {wo.item_code}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -806,19 +811,24 @@ export default function DailyProductionLog() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Operator</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select
+                              onValueChange={(val) => field.onChange(val === "none" ? "" : val)}
+                              value={field.value || "none"}
+                            >
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Select operator" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">None</SelectItem>
-                                {operators.map((op) => (
-                                  <SelectItem key={op.id} value={op.id}>
-                                    {op.full_name}
-                                  </SelectItem>
-                                ))}
+                                <SelectItem value="none">None</SelectItem>
+                                {operators
+                                  .filter((op) => Boolean(op.id))
+                                  .map((op) => (
+                                    <SelectItem key={op.id} value={op.id}>
+                                      {op.full_name}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -833,19 +843,24 @@ export default function DailyProductionLog() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Setter / Programmer</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select
+                              onValueChange={(val) => field.onChange(val === "none" ? "" : val)}
+                              value={field.value || "none"}
+                            >
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Select programmer" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">None</SelectItem>
-                                {programmers.map((prog) => (
-                                  <SelectItem key={prog.id} value={prog.id}>
-                                    {prog.full_name}
-                                  </SelectItem>
-                                ))}
+                                <SelectItem value="none">None</SelectItem>
+                                {programmers
+                                  .filter((prog) => Boolean(prog.id))
+                                  .map((prog) => (
+                                    <SelectItem key={prog.id} value={prog.id}>
+                                      {prog.full_name}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />
