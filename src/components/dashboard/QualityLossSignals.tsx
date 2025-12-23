@@ -1,4 +1,11 @@
-import { useEffect, useState } from "react";
+/**
+ * Quality Loss Signals Component
+ * 
+ * READ-ONLY dashboard widget showing quality metrics.
+ * Production metrics (Rejection Rate) derived from useProductionLogMetrics.
+ * NCR metrics still fetched directly as they require specialized grouping.
+ */
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +23,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { startOfWeek, format, differenceInDays, parseISO } from "date-fns";
+import { differenceInDays, parseISO, format } from "date-fns";
 import { formatCount, formatDisplayValue, isEmpty } from "@/lib/displayUtils";
+import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
 
 interface QualitySignal {
   label: string;
@@ -40,38 +48,64 @@ interface GoodsInQcHold {
 
 export const QualityLossSignals = () => {
   const navigate = useNavigate();
-  const [signals, setSignals] = useState<QualitySignal[]>([]);
   const [ncrSignals, setNcrSignals] = useState<QualitySignal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ncrLoading, setNcrLoading] = useState(true);
   const [goodsInQcHold, setGoodsInQcHold] = useState<GoodsInQcHold>({ count: 0, totalPcs: 0 });
+  const [firstPieceFailCount, setFirstPieceFailCount] = useState(0);
 
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // SINGLE SOURCE: Production metrics from hook
+  const { metrics, loading: metricsLoading } = useProductionLogMetrics({
+    startDate: today,
+    endDate: today,
+    period: 'today',
+  });
+
+  // Production quality signals - derived from hook
+  const productionSignals = useMemo((): QualitySignal[] => {
+    if (!metrics) return [];
+
+    const rejectionRate = metrics.rejectionRate || 0;
+    const totalRejected = metrics.totalRejections || 0;
+    const totalProduced = metrics.totalOutput + totalRejected;
+    const safeRejectionRate = Number.isFinite(rejectionRate) ? rejectionRate : 0;
+
+    return [
+      {
+        label: 'Rejection Rate',
+        value: `${safeRejectionRate.toFixed(1)}%`,
+        subtext: `${totalRejected} of ${totalProduced} pcs`,
+        icon: TrendingDown,
+        color: safeRejectionRate > 5 ? 'text-destructive' : safeRejectionRate > 2 ? 'text-amber-600' : 'text-emerald-600',
+        bgColor: safeRejectionRate > 5 ? 'bg-destructive/10' : safeRejectionRate > 2 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+        severity: safeRejectionRate > 5 ? 'critical' : safeRejectionRate > 2 ? 'warning' : 'ok',
+        link: '/quality-analytics'
+      },
+      {
+        label: 'First-Piece Fails',
+        value: firstPieceFailCount,
+        subtext: 'today',
+        icon: Target,
+        color: firstPieceFailCount > 3 ? 'text-destructive' : firstPieceFailCount > 0 ? 'text-amber-600' : 'text-emerald-600',
+        bgColor: firstPieceFailCount > 3 ? 'bg-destructive/10' : firstPieceFailCount > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+        severity: firstPieceFailCount > 3 ? 'critical' : firstPieceFailCount > 0 ? 'warning' : 'ok',
+        link: '/quality?tab=first-piece'
+      }
+    ];
+  }, [metrics, firstPieceFailCount]);
+
+  // Load NCR metrics and first-piece fails (still needs direct queries)
   useEffect(() => {
-    const fetchQualityData = async () => {
-      setLoading(true);
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      const weekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      const sevenDaysAgo = new Date(today);
+    const fetchNcrData = async () => {
+      setNcrLoading(true);
+      const todayDate = new Date();
+      const todayStr = todayDate.toISOString().split('T')[0];
+      const sevenDaysAgo = new Date(todayDate);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
       try {
-        // 1. Rejection rate today - from daily_production_logs
-        const { data: prodLogs } = await supabase
-          .from('daily_production_logs')
-          .select('actual_quantity, total_rejection_quantity, ok_quantity')
-          .eq('log_date', todayStr);
-
-        let totalProduced = 0;
-        let totalRejected = 0;
-        if (prodLogs) {
-          prodLogs.forEach(log => {
-            totalProduced += log.actual_quantity || 0;
-            totalRejected += log.total_rejection_quantity || 0;
-          });
-        }
-        const rejectionRate = totalProduced > 0 ? (totalRejected / totalProduced) * 100 : 0;
-
-        // 2. First-piece failures today
+        // First-piece failures today
         const { data: fpFailures } = await supabase
           .from('qc_records')
           .select('id')
@@ -79,12 +113,12 @@ export const QualityLossSignals = () => {
           .eq('result', 'fail')
           .gte('created_at', todayStr);
 
-        const firstPieceFailCount = fpFailures?.length || 0;
+        setFirstPieceFailCount(fpFailures?.length || 0);
 
-        // Fetch all NCR data at once for the new metrics
+        // Fetch all NCR data
         const { data: allNcrs } = await supabase
           .from('ncrs')
-          .select('id, work_order_id, status, created_at, quantity_affected, operation_type, ncr_type');
+          .select('id, work_order_id, status, created_at, quantity_affected, operation_type');
 
         // Get work orders to check for blocking status
         const { data: workOrders } = await supabase
@@ -92,24 +126,19 @@ export const QualityLossSignals = () => {
           .select('id, status, quantity')
           .in('status', ['in_progress', 'qc', 'packing', 'pending']);
 
-        // Fetch material lots on QC hold (Goods In QC Hold) - reuse same source
+        // Fetch material lots on QC hold
         const { data: qcHoldLots } = await supabase
           .from('material_lots')
           .select('id, net_weight')
           .eq('qc_status', 'hold');
 
-        // Calculate Goods In QC Hold metrics
         const holdLotsCount = qcHoldLots?.length || 0;
-        // Approximate pcs from net_weight (each lot represents material for production)
-        // Using a simple estimation - each lot's net_weight roughly corresponds to pcs
         const holdLotsTotalWeight = qcHoldLots?.reduce((sum, lot) => sum + (lot.net_weight || 0), 0) || 0;
         setGoodsInQcHold({ count: holdLotsCount, totalPcs: Math.round(holdLotsTotalWeight) });
 
         const activeWoIds = new Set((workOrders || []).map(wo => wo.id));
 
-        // === NCR Metrics ===
-        
-        // NCRs Blocking Production - Active NCRs linked to in-progress work orders
+        // NCRs Blocking Production
         const ncrsBlockingProduction = (allNcrs || []).filter(ncr => 
           ncr.work_order_id && 
           activeWoIds.has(ncr.work_order_id) &&
@@ -122,7 +151,7 @@ export const QualityLossSignals = () => {
             new Date(ncr.created_at || 0) < new Date(oldest.created_at || 0) ? ncr : oldest
           );
           if (oldestBlocking.created_at) {
-            blockingOldestAge = differenceInDays(today, parseISO(oldestBlocking.created_at));
+            blockingOldestAge = differenceInDays(todayDate, parseISO(oldestBlocking.created_at));
           }
         }
 
@@ -138,16 +167,15 @@ export const QualityLossSignals = () => {
             new Date(ncr.created_at || 0) < new Date(oldest.created_at || 0) ? ncr : oldest
           );
           if (oldestOver7.created_at) {
-            over7DaysOldestAge = differenceInDays(today, parseISO(oldestOver7.created_at));
+            over7DaysOldestAge = differenceInDays(todayDate, parseISO(oldestOver7.created_at));
           }
         }
 
-        // Repeat NCRs (by Work Order or Operation Type)
+        // Repeat NCRs
         const activeNcrs = (allNcrs || []).filter(ncr => 
           ['OPEN', 'ACTION_IN_PROGRESS', 'EFFECTIVENESS_PENDING'].includes(ncr.status || '')
         );
         
-        // Count by work_order_id (items with multiple NCRs)
         const woNcrCount = new Map<string, { count: number; pcs: number }>();
         activeNcrs.forEach(ncr => {
           if (ncr.work_order_id) {
@@ -159,7 +187,6 @@ export const QualityLossSignals = () => {
           }
         });
         
-        // Count by operation_type (process)
         const processNcrCount = new Map<string, { count: number; pcs: number }>();
         activeNcrs.forEach(ncr => {
           if (ncr.operation_type) {
@@ -171,39 +198,12 @@ export const QualityLossSignals = () => {
           }
         });
 
-        // WOs or processes with 2+ NCRs
         const repeatWOs = Array.from(woNcrCount.entries()).filter(([_, v]) => v.count >= 2);
         const repeatProcesses = Array.from(processNcrCount.entries()).filter(([_, v]) => v.count >= 2);
         const repeatCount = repeatWOs.length + repeatProcesses.length;
         const repeatPcs = [...repeatWOs, ...repeatProcesses].reduce((sum, [_, v]) => sum + v.pcs, 0);
 
-        // Build quality signals (production metrics)
-        const safeRejectionRate = Number.isFinite(rejectionRate) ? rejectionRate : 0;
-        
-        const qualitySignals: QualitySignal[] = [
-          {
-            label: 'Rejection Rate',
-            value: `${safeRejectionRate.toFixed(1)}%`,
-            subtext: `${totalRejected} of ${totalProduced} pcs`,
-            icon: TrendingDown,
-            color: safeRejectionRate > 5 ? 'text-destructive' : safeRejectionRate > 2 ? 'text-amber-600' : 'text-emerald-600',
-            bgColor: safeRejectionRate > 5 ? 'bg-destructive/10' : safeRejectionRate > 2 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-            severity: safeRejectionRate > 5 ? 'critical' : safeRejectionRate > 2 ? 'warning' : 'ok',
-            link: '/quality-analytics'
-          },
-          {
-            label: 'First-Piece Fails',
-            value: firstPieceFailCount,
-            subtext: 'today',
-            icon: Target,
-            color: firstPieceFailCount > 3 ? 'text-destructive' : firstPieceFailCount > 0 ? 'text-amber-600' : 'text-emerald-600',
-            bgColor: firstPieceFailCount > 3 ? 'bg-destructive/10' : firstPieceFailCount > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-            severity: firstPieceFailCount > 3 ? 'critical' : firstPieceFailCount > 0 ? 'warning' : 'ok',
-            link: '/quality?tab=first-piece'
-          }
-        ];
-
-        // Build NCR-specific signals
+        // Build NCR signals
         const ncrMetrics: QualitySignal[] = [
           {
             label: 'NCRs Blocking Production',
@@ -243,25 +243,22 @@ export const QualityLossSignals = () => {
           }
         ];
 
-        setSignals(qualitySignals);
         setNcrSignals(ncrMetrics);
       } catch (error) {
-        console.error('Error fetching quality signals:', error);
+        console.error('Error fetching NCR data:', error);
       } finally {
-        setLoading(false);
+        setNcrLoading(false);
       }
     };
 
-    fetchQualityData();
+    fetchNcrData();
 
-    // Set up realtime subscriptions
     const channel = supabase
       .channel('quality-signals-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs' }, () => fetchQualityData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, () => fetchQualityData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, () => fetchQualityData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => fetchQualityData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => fetchQualityData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, () => fetchNcrData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, () => fetchNcrData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => fetchNcrData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => fetchNcrData())
       .subscribe();
 
     return () => {
@@ -269,9 +266,12 @@ export const QualityLossSignals = () => {
     };
   }, []);
 
-  const allSignals = [...signals, ...ncrSignals];
+  const allSignals = [...productionSignals, ...ncrSignals];
   const criticalCount = allSignals.filter(s => s.severity === 'critical').length;
   const warningCount = allSignals.filter(s => s.severity === 'warning').length;
+  const loading = metricsLoading || ncrLoading;
+
+  const hasGoodsInQcHold = goodsInQcHold.count > 0;
 
   const renderSignalCard = (signal: QualitySignal) => {
     const Icon = signal.icon;
@@ -297,7 +297,6 @@ export const QualityLossSignals = () => {
             : signal.value}
         </div>
         
-        {/* Age indicator */}
         {signal.ageIndicator && (
           <div className="flex items-center gap-1 mt-1">
             <Clock className="h-3 w-3 text-muted-foreground" />
@@ -305,7 +304,6 @@ export const QualityLossSignals = () => {
           </div>
         )}
         
-        {/* Impacted pieces */}
         {signal.impactedPcs !== undefined && !isEmpty(signal.impactedPcs) && (
           <div className="flex items-center gap-1 mt-0.5">
             <Package className="h-3 w-3 text-muted-foreground" />
@@ -313,7 +311,6 @@ export const QualityLossSignals = () => {
           </div>
         )}
         
-        {/* Subtext fallback */}
         {signal.subtext && !signal.ageIndicator && !signal.impactedPcs && (
           <p className="text-[10px] text-muted-foreground mt-0.5">
             {signal.subtext}
@@ -322,8 +319,6 @@ export const QualityLossSignals = () => {
       </div>
     );
   };
-
-  const hasGoodsInQcHold = goodsInQcHold.count > 0;
 
   return (
     <Card className={cn(
@@ -352,7 +347,6 @@ export const QualityLossSignals = () => {
             )}
           </CardTitle>
           <div className="flex items-center gap-2">
-            {/* Goods In QC Hold Badge - clickable */}
             {hasGoodsInQcHold && (
               <Badge 
                 className="bg-amber-500 hover:bg-amber-600 text-white cursor-pointer flex items-center gap-1 text-[10px] animate-pulse"
@@ -382,7 +376,7 @@ export const QualityLossSignals = () => {
           <>
             {/* Production Quality Metrics */}
             <div className="grid grid-cols-2 gap-3">
-              {signals.map(renderSignalCard)}
+              {productionSignals.map(renderSignalCard)}
             </div>
 
             {/* NCR-Specific Metrics */}
