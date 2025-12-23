@@ -41,6 +41,7 @@ import {
   Flame,
   Cpu,
   Wrench,
+  Timer,
   type LucideIcon,
 } from "lucide-react";
 
@@ -97,6 +98,7 @@ export const navigationGroups: NavGroup[] = [
       { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
       { label: "Operator Efficiency", path: "/operator-efficiency", icon: Users },
       { label: "Setter Efficiency", path: "/setter-efficiency", icon: Wrench },
+      { label: "Downtime Analytics", path: "/downtime-analytics", icon: Timer },
       { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
       { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
     ]

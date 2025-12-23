@@ -35,27 +35,7 @@ import { formatCount, formatPercent } from "@/lib/displayUtils";
 import { cn } from "@/lib/utils";
 import { NCRThresholdPrompt, RejectionExceedance } from "@/components/ncr/NCRThresholdPrompt";
 import { NCRFormDialog } from "@/components/ncr/NCRFormDialog";
-
-// Downtime reasons
-const DOWNTIME_REASONS = [
-  "Machine Repair",
-  "No Power",
-  "Job Setting",
-  "Quality Problem",
-  "Material Not Available",
-  "Setting Change",
-  "Cleaning",
-  "Operator Training",
-  "Rework",
-  "Tool Change",
-  "No Operator",
-  "Tea Break",
-  "Lunch Break",
-  "Operator Shifted to Other Work",
-  "Other",
-] as const;
-
-type DowntimeReason = typeof DOWNTIME_REASONS[number];
+import { DOWNTIME_REASON_LIST } from "@/config/downtimeConfig";
 
 // Rejection types
 const REJECTION_TYPES = [
@@ -103,7 +83,7 @@ const defaultRejectionValues: RejectionValues = {
 };
 
 interface DowntimeEntry {
-  reason: DowntimeReason;
+  reason: string;
   minutes: number;
 }
 
@@ -268,7 +248,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   
   // Downtime entries state
   const [downtimeEntries, setDowntimeEntries] = useState<DowntimeEntry[]>([]);
-  const [selectedDowntimeReason, setSelectedDowntimeReason] = useState<DowntimeReason | "">("");
+  const [selectedDowntimeReason, setSelectedDowntimeReason] = useState<string>("");
   const [downtimeMinutesInput, setDowntimeMinutesInput] = useState("");
   
   // Rejection quantities state
@@ -1138,13 +1118,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                     <Label className="text-xs">Reason</Label>
                     <Select 
                       value={selectedDowntimeReason} 
-                      onValueChange={(v) => setSelectedDowntimeReason(v as DowntimeReason)}
+                      onValueChange={(v) => setSelectedDowntimeReason(v)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select reason" />
                       </SelectTrigger>
                       <SelectContent>
-                        {DOWNTIME_REASONS.map((reason) => (
+                        {DOWNTIME_REASON_LIST.map((reason) => (
                           <SelectItem key={reason} value={reason}>{reason}</SelectItem>
                         ))}
                       </SelectContent>
