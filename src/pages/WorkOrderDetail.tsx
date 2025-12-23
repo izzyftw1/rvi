@@ -27,7 +27,6 @@ import { ExternalChallanTable } from "@/components/ExternalChallanTable";
 
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
-import { ProductionLogForm } from "@/components/ProductionLogForm";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 import { MaterialQCApproval } from "@/components/MaterialQCApproval";
 import { FirstPieceQCApproval } from "@/components/FirstPieceQCApproval";
@@ -918,8 +917,29 @@ const WorkOrderDetail = () => {
         {/* NCRs */}
         <WorkOrderNCRList workOrderId={wo.id} />
 
-        {/* Production Logging */}
-        <ProductionLogForm workOrder={wo} disabled={qcGatesBlocked || productionNotReleased} />
+        {/* Data Entry Redirect */}
+        <Card className="border-dashed">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Clock className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Log Production Data</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use the Daily Production Log page for all production entries
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/daily-production-log')}
+                disabled={qcGatesBlocked || productionNotReleased}
+              >
+                Open Production Log
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Detailed Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

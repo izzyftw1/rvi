@@ -1,11 +1,16 @@
+/**
+ * EnhancedProductionTab
+ * 
+ * VISIBILITY ONLY - shows production log entries for this work order.
+ * No analytics calculations. Analytics belong in dedicated efficiency pages.
+ */
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Play, Square, TrendingUp, TrendingDown } from "lucide-react";
+import { Info } from "lucide-react";
 import { format } from "date-fns";
-import { toast } from "sonner";
 
 interface ProductionLog {
   id: string;
@@ -95,63 +100,19 @@ export function EnhancedProductionTab({ woId, workOrder }: EnhancedProductionTab
     }
   };
 
-  const calculateMetrics = () => {
-    const totalCompleted = logs.reduce((sum, log) => sum + log.quantity_completed, 0);
-    const totalScrap = logs.reduce((sum, log) => sum + log.quantity_scrap, 0);
-    const completionRate = workOrder.quantity > 0 
-      ? ((totalCompleted - totalScrap) / workOrder.quantity * 100).toFixed(1)
-      : '0';
-    const scrapRate = totalCompleted > 0 
-      ? (totalScrap / totalCompleted * 100).toFixed(1) 
-      : '0';
-    
-    return { totalCompleted, totalScrap, completionRate, scrapRate };
-  };
-
-  const metrics = calculateMetrics();
-
   if (loading) {
     return <div className="p-4">Loading production data...</div>;
   }
 
   return (
     <div className="space-y-4">
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">{metrics.totalCompleted}</div>
-            <p className="text-xs text-muted-foreground">Total Completed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600">{metrics.totalScrap}</div>
-            <p className="text-xs text-muted-foreground">Total Scrap</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold flex items-center gap-2">
-              {metrics.completionRate}%
-              <TrendingUp className="h-4 w-4 text-green-500" />
-            </div>
-            <p className="text-xs text-muted-foreground">Completion Rate</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold flex items-center gap-2">
-              {metrics.scrapRate}%
-              {parseFloat(metrics.scrapRate) > 5 ? (
-                <TrendingDown className="h-4 w-4 text-red-500" />
-              ) : (
-                <TrendingUp className="h-4 w-4 text-green-500" />
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">Scrap Rate</p>
-          </CardContent>
-        </Card>
+      {/* Info Notice */}
+      <div className="bg-muted/50 border rounded-lg p-3 flex items-start gap-2 text-sm text-muted-foreground">
+        <Info className="h-4 w-4 shrink-0 mt-0.5" />
+        <span>
+          This tab shows production log entries for visibility. For analytics (efficiency %, scrap rates), 
+          see the dedicated Operator Efficiency, Machine Utilisation, and Quality Analytics pages.
+        </span>
       </div>
 
       {/* Production Logs */}
