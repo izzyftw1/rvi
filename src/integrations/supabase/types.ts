@@ -5229,6 +5229,7 @@ export type Database = {
       }
       shipments: {
         Row: {
+          batch_id: string | null
           boxes: number | null
           carrier: string | null
           coo_file: string | null
@@ -5246,11 +5247,14 @@ export type Database = {
           ship_date: string
           ship_id: string
           ship_to_address: Json | null
+          shipped_at: string | null
           so_id: string | null
+          status: string | null
           transporter_name: string | null
           wo_id: string | null
         }
         Insert: {
+          batch_id?: string | null
           boxes?: number | null
           carrier?: string | null
           coo_file?: string | null
@@ -5268,11 +5272,14 @@ export type Database = {
           ship_date?: string
           ship_id: string
           ship_to_address?: Json | null
+          shipped_at?: string | null
           so_id?: string | null
+          status?: string | null
           transporter_name?: string | null
           wo_id?: string | null
         }
         Update: {
+          batch_id?: string | null
           boxes?: number | null
           carrier?: string | null
           coo_file?: string | null
@@ -5290,11 +5297,20 @@ export type Database = {
           ship_date?: string
           ship_id?: string
           ship_to_address?: Json | null
+          shipped_at?: string | null
           so_id?: string | null
+          status?: string | null
           transporter_name?: string | null
           wo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "shipments_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "shipments_so_id_fkey"
             columns: ["so_id"]
