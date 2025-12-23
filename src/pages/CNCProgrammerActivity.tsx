@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Clock, Wrench, CheckCircle, BarChart3 } from "lucide-react";
-import { format, differenceInMinutes, startOfMonth, endOfMonth } from "date-fns";
+import { Plus, Clock, Wrench, CheckCircle, Info, AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
+import { format, differenceInMinutes } from "date-fns";
 
 interface Person {
   id: string;
@@ -26,7 +29,7 @@ interface Machine {
 
 interface WorkOrder {
   id: string;
-  wo_number: string;
+  display_id: string;
   item_code: string;
   customer: string;
 }
@@ -48,10 +51,6 @@ interface ActivityLog {
   machine_counter_reading: number | null;
   setup_type: string;
   created_at: string;
-  programmer?: Person;
-  machine?: Machine;
-  work_order?: WorkOrder;
-  qc_approver?: Person;
 }
 
 const CNCProgrammerActivity = () => {
@@ -61,6 +60,7 @@ const CNCProgrammerActivity = () => {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [dateFilter, setDateFilter] = useState(format(new Date(), "yyyy-MM-dd"));
 
@@ -97,7 +97,6 @@ const CNCProgrammerActivity = () => {
         supabase
           .from("people")
           .select("id, full_name, role")
-          .or("role.ilike.%programmer%,role.ilike.%cnc%")
           .order("full_name"),
         supabase
           .from("people")
@@ -107,17 +106,13 @@ const CNCProgrammerActivity = () => {
         supabase.from("machines").select("id, machine_id, name").order("machine_id"),
         supabase
           .from("work_orders")
-          .select("id, wo_number, item_code, customer")
+          .select("id, display_id, item_code, customer")
           .in("status", ["pending", "in_progress"])
-          .order("wo_number", { ascending: false })
+          .order("created_at", { ascending: false })
           .limit(100),
       ]);
 
       if (activitiesRes.error) throw activitiesRes.error;
-      if (programmersRes.error) throw programmersRes.error;
-      if (qcRes.error) throw qcRes.error;
-      if (machinesRes.error) throw machinesRes.error;
-      if (workOrdersRes.error) throw workOrdersRes.error;
 
       setActivities(activitiesRes.data || []);
       setProgrammers(programmersRes.data || []);
@@ -131,6 +126,20 @@ const CNCProgrammerActivity = () => {
     }
   };
 
+  // Auto-populate item code from selected work order
+  useEffect(() => {
+    if (formData.wo_id) {
+      const wo = workOrders.find(w => w.id === formData.wo_id);
+      if (wo) {
+        setFormData(prev => ({
+          ...prev,
+          item_code: wo.item_code || prev.item_code,
+          party_code: wo.customer || prev.party_code,
+        }));
+      }
+    }
+  }, [formData.wo_id, workOrders]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -139,8 +148,18 @@ const CNCProgrammerActivity = () => {
       return;
     }
 
+    setSaving(true);
     try {
-      const insertData: any = {
+      // Auto-calculate setup duration
+      let setupDurationMinutes: number | null = null;
+      if (formData.setup_start_time && formData.setup_end_time) {
+        const start = new Date(formData.setup_start_time);
+        const end = new Date(formData.setup_end_time);
+        setupDurationMinutes = differenceInMinutes(end, start);
+        if (setupDurationMinutes < 0) setupDurationMinutes = 0;
+      }
+
+      const insertData = {
         activity_date: formData.activity_date,
         programmer_id: formData.programmer_id || null,
         machine_id: formData.machine_id || null,
@@ -148,44 +167,17 @@ const CNCProgrammerActivity = () => {
         party_code: formData.party_code || null,
         item_code: formData.item_code || null,
         drawing_number: formData.drawing_number || null,
-        setup_start_time: formData.setup_start_time ? new Date(formData.setup_start_time).toISOString() : null,
-        setup_end_time: formData.setup_end_time ? new Date(formData.setup_end_time).toISOString() : null,
-        first_piece_approval_time: formData.first_piece_approval_time ? new Date(formData.first_piece_approval_time).toISOString() : null,
+        setup_start_time: formData.setup_start_time || null,
+        setup_end_time: formData.setup_end_time || null,
+        setup_duration_minutes: setupDurationMinutes,
+        first_piece_approval_time: formData.first_piece_approval_time || null,
         qc_approver_id: formData.qc_approver_id || null,
         machine_counter_reading: formData.machine_counter_reading ? parseFloat(formData.machine_counter_reading) : null,
         setup_type: formData.setup_type,
       };
 
-      const { data: insertedActivity, error } = await supabase
-        .from("cnc_programmer_activity")
-        .insert(insertData)
-        .select('id')
-        .single();
+      const { error } = await supabase.from("cnc_programmer_activity").insert(insertData);
       if (error) throw error;
-
-      // Also insert into setter_activity_ledger for SetterEfficiency reporting
-      if (insertedActivity?.id) {
-        const setupStartMinutes = formData.setup_start_time ? new Date(formData.setup_start_time) : null;
-        const setupEndMinutes = formData.setup_end_time ? new Date(formData.setup_end_time) : null;
-        const durationMinutes = setupStartMinutes && setupEndMinutes 
-          ? Math.round((setupEndMinutes.getTime() - setupStartMinutes.getTime()) / 60000)
-          : null;
-
-        const ledgerEntry = {
-          work_order_id: formData.wo_id || null,
-          machine_id: formData.machine_id,
-          setter_id: formData.programmer_id,
-          log_date: formData.activity_date,
-          setup_number: `SETUP-${format(new Date(), 'HHmmss')}`,
-          setup_start_time: formData.setup_start_time ? format(new Date(formData.setup_start_time), 'HH:mm:ss') : null,
-          setup_end_time: formData.setup_end_time ? format(new Date(formData.setup_end_time), 'HH:mm:ss') : null,
-          setup_duration_minutes: durationMinutes,
-          is_repeat_setup: formData.setup_type === 'repair',
-          delay_caused_minutes: 0,
-        };
-
-        await supabase.from("setter_activity_ledger").insert([ledgerEntry]);
-      }
 
       toast.success("Activity logged successfully");
       setShowForm(false);
@@ -193,6 +185,8 @@ const CNCProgrammerActivity = () => {
       loadData();
     } catch (error: any) {
       toast.error("Failed to save activity: " + error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -225,38 +219,22 @@ const CNCProgrammerActivity = () => {
     return null;
   }, [formData.setup_start_time, formData.setup_end_time]);
 
-  // Calculate programmer efficiency metrics
-  const efficiencyMetrics = useMemo(() => {
-    const programmerStats: Record<string, { totalSetups: number; totalDuration: number; newSetups: number; repairSetups: number }> = {};
+  // Summary stats
+  const summaryStats = useMemo(() => {
+    const totalSetups = activities.length;
+    const newSetups = activities.filter(a => a.setup_type === "new").length;
+    const repairSetups = activities.filter(a => a.setup_type === "repair").length;
+    const withApproval = activities.filter(a => a.first_piece_approval_time).length;
+    const totalDuration = activities.reduce((sum, a) => sum + (a.setup_duration_minutes || 0), 0);
+    const avgDuration = totalSetups > 0 ? Math.round(totalDuration / totalSetups) : 0;
     
-    activities.forEach((activity) => {
-      if (!activity.programmer_id) return;
-      
-      if (!programmerStats[activity.programmer_id]) {
-        programmerStats[activity.programmer_id] = { totalSetups: 0, totalDuration: 0, newSetups: 0, repairSetups: 0 };
-      }
-      
-      programmerStats[activity.programmer_id].totalSetups++;
-      if (activity.setup_duration_minutes) {
-        programmerStats[activity.programmer_id].totalDuration += activity.setup_duration_minutes;
-      }
-      if (activity.setup_type === "new") {
-        programmerStats[activity.programmer_id].newSetups++;
-      } else {
-        programmerStats[activity.programmer_id].repairSetups++;
-      }
-    });
-
-    return Object.entries(programmerStats).map(([id, stats]) => ({
-      programmer: programmers.find((p) => p.id === id),
-      ...stats,
-      avgDuration: stats.totalSetups > 0 ? Math.round(stats.totalDuration / stats.totalSetups) : 0,
-    }));
-  }, [activities, programmers]);
+    return { totalSetups, newSetups, repairSetups, withApproval, avgDuration };
+  }, [activities]);
 
   const getProgrammerName = (id: string | null) => programmers.find((p) => p.id === id)?.full_name || "-";
-  const getMachineName = (id: string | null) => machines.find((m) => m.id === id)?.name || "-";
+  const getMachineName = (id: string | null) => machines.find((m) => m.id === id)?.machine_id || "-";
   const getQcApproverName = (id: string | null) => qcInspectors.find((p) => p.id === id)?.full_name || "-";
+  const getWorkOrderDisplay = (id: string | null) => workOrders.find((w) => w.id === id)?.display_id || null;
 
   const formatDuration = (minutes: number | null) => {
     if (!minutes) return "-";
@@ -266,51 +244,97 @@ const CNCProgrammerActivity = () => {
   };
 
   return (
-    <PageContainer>
+    <div className="space-y-6">
       <PageHeader
         title="CNC Programmer Activity"
-        description="Track programmer setups, approvals, and efficiency metrics"
-        icon={<Wrench className="h-6 w-6" />}
-        actions={
-          <Button onClick={() => setShowForm(!showForm)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Entry
-          </Button>
-        }
+        description="Track programmer setups, first-piece approvals, and setup efficiency"
       />
 
-      {/* Efficiency Summary Cards */}
-      {efficiencyMetrics.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {efficiencyMetrics.map((metric) => (
-            <Card key={metric.programmer?.id || "unknown"}>
-              <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">
-                {metric.programmer?.full_name || "Unknown"}
-              </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Setups:</span>
-                  <span className="font-medium">{metric.totalSetups}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Avg Duration:</span>
-                  <span className="font-medium">{formatDuration(metric.avgDuration)}</span>
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <Badge variant="outline" className="text-xs">New: {metric.newSetups}</Badge>
-                  <Badge variant="secondary" className="text-xs">Repair: {metric.repairSetups}</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+      {/* Info Banner */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          This data feeds into Setter Efficiency analytics and NCR root cause analysis (setup faults).
+          <br />
+          <span className="text-xs text-muted-foreground">
+            Repair setups are flagged for quality investigation. First-piece approval time is tracked for process control.
+          </span>
+        </AlertDescription>
+      </Alert>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">Total Setups</div>
+            {loading ? <Skeleton className="h-8 w-12" /> : (
+              <div className="text-2xl font-bold">{summaryStats.totalSetups}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">New Setups</div>
+            {loading ? <Skeleton className="h-8 w-12" /> : (
+              <div className="text-2xl font-bold text-green-600">{summaryStats.newSetups}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              Repair Setups
+              {summaryStats.repairSetups > 0 && <AlertTriangle className="h-3 w-3 text-amber-500" />}
+            </div>
+            {loading ? <Skeleton className="h-8 w-12" /> : (
+              <div className={`text-2xl font-bold ${summaryStats.repairSetups > 0 ? 'text-amber-600' : ''}`}>
+                {summaryStats.repairSetups}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">FP Approved</div>
+            {loading ? <Skeleton className="h-8 w-12" /> : (
+              <div className="text-2xl font-bold">{summaryStats.withApproval}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">Avg Duration</div>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <div className="text-2xl font-bold">{formatDuration(summaryStats.avgDuration)}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Action Bar */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="dateFilter" className="text-sm whitespace-nowrap">Date:</Label>
+          <Input
+            id="dateFilter"
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="w-40"
+          />
+          <Button variant="outline" size="icon" onClick={loadData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
-      )}
+        <Button onClick={() => setShowForm(!showForm)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Entry
+        </Button>
+      </div>
 
       {/* Entry Form */}
       {showForm && (
-        <Card className="mb-6">
+        <Card>
           <CardHeader>
             <CardTitle className="text-lg">New Activity Entry</CardTitle>
           </CardHeader>
@@ -328,7 +352,7 @@ const CNCProgrammerActivity = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="programmer_id">CNC Programmer *</Label>
+                  <Label htmlFor="programmer_id">CNC Programmer / Setter *</Label>
                   <Select
                     value={formData.programmer_id}
                     onValueChange={(value) => setFormData({ ...formData, programmer_id: value })}
@@ -368,7 +392,7 @@ const CNCProgrammerActivity = () => {
               {/* Row 2: Work Order, Party Code, Item Code, Drawing */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="wo_id">Work Order (Optional)</Label>
+                  <Label htmlFor="wo_id">Work Order</Label>
                   <Select
                     value={formData.wo_id}
                     onValueChange={(value) => setFormData({ ...formData, wo_id: value })}
@@ -379,7 +403,7 @@ const CNCProgrammerActivity = () => {
                     <SelectContent>
                       {workOrders.map((wo) => (
                         <SelectItem key={wo.id} value={wo.id}>
-                          {wo.wo_number}
+                          {wo.display_id} - {wo.item_code}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -391,7 +415,7 @@ const CNCProgrammerActivity = () => {
                     id="party_code"
                     value={formData.party_code}
                     onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
-                    placeholder="Enter party code"
+                    placeholder="Auto-filled from WO"
                   />
                 </div>
                 <div className="space-y-2">
@@ -400,7 +424,7 @@ const CNCProgrammerActivity = () => {
                     id="item_code"
                     value={formData.item_code}
                     onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
-                    placeholder="Enter item code"
+                    placeholder="Auto-filled from WO"
                   />
                 </div>
                 <div className="space-y-2">
@@ -438,7 +462,7 @@ const CNCProgrammerActivity = () => {
                   <Label>Setup Duration (Auto-calculated)</Label>
                   <div className="flex items-center h-10 px-3 border rounded-md bg-muted">
                     <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                    <span>{calculatedSetupDuration !== null ? formatDuration(calculatedSetupDuration) : "-"}</span>
+                    <span className="font-medium">{calculatedSetupDuration !== null ? formatDuration(calculatedSetupDuration) : "-"}</span>
                   </div>
                 </div>
               </div>
@@ -493,14 +517,25 @@ const CNCProgrammerActivity = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="new">New Setup</SelectItem>
-                      <SelectItem value="repair">Repair Setup</SelectItem>
+                      <SelectItem value="repair">Repair Setup (Fault)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
+              {formData.setup_type === "repair" && (
+                <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800 dark:text-amber-200">
+                    Repair setups indicate a previous setup fault. This will be flagged for NCR root cause analysis.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex gap-2">
-                <Button type="submit">Save Entry</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Saving..." : "Save Entry"}
+                </Button>
                 <Button type="button" variant="outline" onClick={() => { setShowForm(false); resetForm(); }}>
                   Cancel
                 </Button>
@@ -510,27 +545,30 @@ const CNCProgrammerActivity = () => {
         </Card>
       )}
 
-      {/* Filter and Table */}
+      {/* Activity Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Activity Log</CardTitle>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="dateFilter" className="text-sm">Date:</Label>
-            <Input
-              id="dateFilter"
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="w-40"
-            />
-          </div>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wrench className="h-5 w-5" />
+            Activity Log - {format(new Date(dateFilter), "MMMM d, yyyy")}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading...</div>
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
           ) : activities.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No activities logged for {format(new Date(dateFilter), "MMMM d, yyyy")}
+            <div className="text-center py-12">
+              <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="text-sm font-medium mb-1">No activities logged</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                No programmer activity logged for {format(new Date(dateFilter), "MMMM d, yyyy")}
+              </p>
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Log First Entry
+              </Button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -539,51 +577,67 @@ const CNCProgrammerActivity = () => {
                   <TableRow>
                     <TableHead>Programmer</TableHead>
                     <TableHead>Machine</TableHead>
-                    <TableHead>Party Code</TableHead>
+                    <TableHead>Work Order</TableHead>
                     <TableHead>Item Code</TableHead>
-                    <TableHead>Drawing</TableHead>
                     <TableHead>Setup Type</TableHead>
                     <TableHead>Setup Duration</TableHead>
                     <TableHead>FP Approval</TableHead>
                     <TableHead>QC Approver</TableHead>
-                    <TableHead>Counter</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {activities.map((activity) => (
-                    <TableRow key={activity.id}>
-                      <TableCell className="font-medium">{getProgrammerName(activity.programmer_id)}</TableCell>
-                      <TableCell>{getMachineName(activity.machine_id)}</TableCell>
-                      <TableCell>{activity.party_code || "-"}</TableCell>
-                      <TableCell>{activity.item_code || "-"}</TableCell>
-                      <TableCell>{activity.drawing_number || "-"}</TableCell>
-                      <TableCell>
-                        <Badge variant={activity.setup_type === "new" ? "default" : "secondary"}>
-                          {activity.setup_type === "new" ? "New" : "Repair"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{formatDuration(activity.setup_duration_minutes)}</TableCell>
-                      <TableCell>
-                        {activity.first_piece_approval_time ? (
-                          <div className="flex items-center gap-1">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            {format(new Date(activity.first_piece_approval_time), "HH:mm")}
-                          </div>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>{getQcApproverName(activity.qc_approver_id)}</TableCell>
-                      <TableCell>{activity.machine_counter_reading || "-"}</TableCell>
-                    </TableRow>
-                  ))}
+                  {activities.map((activity) => {
+                    const woDisplay = getWorkOrderDisplay(activity.wo_id);
+                    return (
+                      <TableRow key={activity.id}>
+                        <TableCell className="font-medium">{getProgrammerName(activity.programmer_id)}</TableCell>
+                        <TableCell>{getMachineName(activity.machine_id)}</TableCell>
+                        <TableCell>
+                          {activity.wo_id && woDisplay ? (
+                            <Link 
+                              to={`/work-orders/${activity.wo_id}`}
+                              className="text-primary hover:underline flex items-center gap-1"
+                            >
+                              {woDisplay}
+                              <ExternalLink className="h-3 w-3" />
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{activity.item_code || "-"}</TableCell>
+                        <TableCell>
+                          {activity.setup_type === "repair" ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Repair
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">New</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono">{formatDuration(activity.setup_duration_minutes)}</TableCell>
+                        <TableCell>
+                          {activity.first_piece_approval_time ? (
+                            <div className="flex items-center gap-1 text-green-600">
+                              <CheckCircle className="h-4 w-4" />
+                              {format(new Date(activity.first_piece_approval_time), "HH:mm")}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Pending</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{getQcApproverName(activity.qc_approver_id)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
           )}
         </CardContent>
       </Card>
-    </PageContainer>
+    </div>
   );
 };
 
