@@ -339,7 +339,7 @@ const Packing = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Box className="h-5 w-5" />
-                      Build Carton for {wo.wo_id}
+                      Build Carton for {wo.wo_number}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

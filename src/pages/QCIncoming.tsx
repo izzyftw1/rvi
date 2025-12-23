@@ -15,8 +15,7 @@ import { CheckCircle2, Package, Clock, ArrowRight, Inbox, Beaker } from "lucide-
 
 interface WorkOrderQCStatus {
   id: string;
-  wo_id: string;
-  display_id: string;
+  wo_number: string;
   customer: string;
   item_code: string;
   sales_order: string;
@@ -46,7 +45,7 @@ export default function QCIncoming() {
       const { data: wos, error: woError } = await supabase
         .from("work_orders")
         .select(`
-          id, wo_id, display_id, customer, item_code, sales_order,
+          id, wo_number, customer, item_code, sales_order,
           qc_material_status, qc_material_passed, qc_first_piece_status,
           material_size_mm, bom
         `)
@@ -105,8 +104,7 @@ export default function QCIncoming() {
 
           return {
             id: wo.id,
-            wo_id: wo.wo_id,
-            display_id: wo.display_id || wo.wo_id,
+            wo_number: wo.wo_number,
             customer: wo.customer,
             item_code: wo.item_code,
             sales_order: wo.sales_order || "-",
@@ -164,7 +162,7 @@ export default function QCIncoming() {
               className="cursor-pointer hover:bg-muted/50"
               onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
             >
-              <TableCell className="font-medium">{wo.display_id}</TableCell>
+              <TableCell className="font-medium">{wo.wo_number}</TableCell>
               <TableCell>{wo.customer}</TableCell>
               <TableCell>{wo.item_code}</TableCell>
               <TableCell>

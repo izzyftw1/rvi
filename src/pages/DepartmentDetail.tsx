@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 interface WorkOrder {
   id: string;
-  wo_id: string;
+  wo_number: string;
   item_code: string;
   customer: string;
   quantity: number;
@@ -113,7 +113,7 @@ export default function DepartmentDetail() {
           
           return {
             id: wo.id,
-            wo_id: wo.wo_id,
+            wo_number: wo.wo_number,
             item_code: wo.item_code,
             customer: wo.customer,
             quantity: wo.quantity,
@@ -267,7 +267,7 @@ export default function DepartmentDetail() {
                   <TableBody>
                     {workOrders.map((wo) => (
                       <TableRow key={wo.id} className="cursor-pointer hover:bg-muted/50">
-                        <TableCell className="font-medium">{wo.wo_id}</TableCell>
+                        <TableCell className="font-medium">{wo.wo_number}</TableCell>
                         <TableCell>{wo.item_code}</TableCell>
                         <TableCell>{wo.customer}</TableCell>
                         <TableCell>{wo.quantity}</TableCell>

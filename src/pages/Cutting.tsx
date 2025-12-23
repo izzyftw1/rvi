@@ -25,7 +25,7 @@ interface CuttingRecord {
   remarks: string | null;
   status: 'pending' | 'in_progress' | 'completed';
   work_orders: {
-    display_id: string;
+    wo_number: string;
     customer: string;
   };
 }
@@ -62,7 +62,7 @@ export default function Cutting() {
         .from('cutting_records')
         .select(`
           *,
-          work_orders(display_id, customer)
+          work_orders(wo_number, customer)
         `)
         .order('created_at', { ascending: false });
 
@@ -93,7 +93,7 @@ export default function Cutting() {
 
       toast({
         title: "Cutting started",
-        description: `Started cutting for WO ${record.work_orders.display_id}`,
+        description: `Started cutting for WO ${record.work_orders.wo_number}`,
       });
     } catch (error: any) {
       toast({
@@ -201,7 +201,7 @@ export default function Cutting() {
                 <TableBody>
                   {cuttingRecords.map((record) => (
                     <TableRow key={record.id}>
-                      <TableCell className="font-medium">{record.work_orders.display_id}</TableCell>
+                      <TableCell className="font-medium">{record.work_orders.wo_number}</TableCell>
                       <TableCell>{record.work_orders.customer}</TableCell>
                       <TableCell>{record.item_code}</TableCell>
                       <TableCell>{record.qty_required}</TableCell>
@@ -231,7 +231,7 @@ export default function Cutting() {
                               </DialogHeader>
                               <div className="space-y-4 py-4">
                                 <div className="space-y-2">
-                                  <Label>Work Order: {record.work_orders.display_id}</Label>
+                                  <Label>Work Order: {record.work_orders.wo_number}</Label>
                                   <p className="text-sm text-muted-foreground">
                                     Already cut: {record.qty_cut} / {record.qty_required} kg
                                   </p>

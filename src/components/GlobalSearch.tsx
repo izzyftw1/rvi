@@ -101,15 +101,15 @@ export const GlobalSearch = () => {
       if (!hasFilter || filterType === 'wo' || filterType === 'work') {
         const { data: workOrders } = await supabase
           .from('work_orders')
-          .select('id, display_id, customer, item_code, status, current_stage')
-          .or(`display_id.ilike.%${filterQuery}%,customer.ilike.%${filterQuery}%,item_code.ilike.%${filterQuery}%`)
+          .select('id, wo_number, customer, item_code, status, current_stage')
+          .or(`wo_number.ilike.%${filterQuery}%,customer.ilike.%${filterQuery}%,item_code.ilike.%${filterQuery}%`)
           .limit(5);
 
         workOrders?.forEach(wo => {
           allResults.push({
             id: wo.id,
             type: 'work_order',
-            title: wo.display_id,
+            title: wo.wo_number,
             subtitle: `${wo.customer} • ${wo.item_code}`,
             metadata: `${wo.status} • ${wo.current_stage}`
           });

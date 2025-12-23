@@ -1021,7 +1021,7 @@ const WorkOrderDetail = () => {
                 {wo.status === 'completed' && (
                   <FinalQCReportGenerator
                     woId={id || ''}
-                    woNumber={wo.display_id || wo.wo_id}
+                    woNumber={wo.wo_number}
                     customer={wo.customer}
                     itemCode={wo.item_code}
                   />
@@ -1219,7 +1219,7 @@ const WorkOrderDetail = () => {
         open={showAuditModal}
         onOpenChange={setShowAuditModal}
         auditLog={genealogyLog}
-        woId={wo.wo_number || wo.display_id || wo.wo_id}
+        woId={wo.wo_number}
       />
     </div>
   );
