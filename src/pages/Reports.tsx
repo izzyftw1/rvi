@@ -3,9 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Package, Shield, DollarSign, FileText, Activity } from "lucide-react";
+import { TrendingUp, Package, Shield, DollarSign, FileText, Activity } from "lucide-react";
 import TraceabilityReports from "@/components/reports/TraceabilityReports";
-import ProductionReports from "@/components/reports/ProductionReports";
 import QualityReports from "@/components/reports/QualityReports";
 import InventoryReports from "@/components/reports/InventoryReports";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -24,14 +23,10 @@ const Reports = () => {
       <div className="max-w-7xl mx-auto p-4 md:p-8">
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-7 lg:w-auto">
+          <TabsList className="grid w-full grid-cols-6 lg:w-auto">
             <TabsTrigger value="traceability" className="gap-2">
               <Activity className="h-4 w-4" />
               <span className="hidden md:inline">Traceability</span>
-            </TabsTrigger>
-            <TabsTrigger value="production" className="gap-2">
-              <BarChart3 className="h-4 w-4" />
-              <span className="hidden md:inline">Production</span>
             </TabsTrigger>
             <TabsTrigger value="quality" className="gap-2">
               <TrendingUp className="h-4 w-4" />
@@ -57,10 +52,6 @@ const Reports = () => {
 
           <TabsContent value="traceability">
             <TraceabilityReports />
-          </TabsContent>
-
-          <TabsContent value="production">
-            <ProductionReports />
           </TabsContent>
 
           <TabsContent value="quality">
