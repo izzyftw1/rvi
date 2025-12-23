@@ -2,11 +2,11 @@
  * Quality Analytics Page
  * 
  * READ-ONLY HISTORICAL ANALYTICS VIEW
- * All metrics derived exclusively from useProductionLogMetrics hook.
+ * Production metrics from useProductionLogMetrics + NCR counts from database.
  * No local calculations or write actions.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format, subDays } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,17 +15,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { BarChart3, Target, AlertTriangle, TrendingUp, Percent, Clock, Info } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart3, Target, AlertTriangle, TrendingUp, Percent, Clock, Info, FileWarning } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
+import { supabase } from "@/integrations/supabase/client";
 
 const COLORS = ["#22c55e", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+
+interface NCRMetrics {
+  total: number;
+  open: number;
+  closed: number;
+  byType: { type: string; count: number }[];
+  byStatus: { status: string; count: number }[];
+}
 
 export default function QualityAnalytics() {
   const [dateRange, setDateRange] = useState("30");
   const [trendView, setTrendView] = useState<"operator" | "machine" | "rejection">("operator");
+  const [ncrMetrics, setNcrMetrics] = useState<NCRMetrics>({ total: 0, open: 0, closed: 0, byType: [], byStatus: [] });
+  const [ncrLoading, setNcrLoading] = useState(true);
 
   // Calculate date range
   const calculatedRange = useMemo(() => {
@@ -42,6 +53,54 @@ export default function QualityAnalytics() {
     endDate: calculatedRange.end,
     period: 'custom',
   });
+
+  // Fetch NCR metrics
+  useEffect(() => {
+    async function fetchNCRMetrics() {
+      setNcrLoading(true);
+      try {
+        const { data: ncrs, error } = await supabase
+          .from('ncrs')
+          .select('id, status, ncr_type, created_at')
+          .gte('created_at', calculatedRange.start)
+          .lte('created_at', calculatedRange.end + 'T23:59:59');
+
+        if (error) throw error;
+
+        const total = ncrs?.length || 0;
+        const open = ncrs?.filter(n => n.status !== 'CLOSED').length || 0;
+        const closed = ncrs?.filter(n => n.status === 'CLOSED').length || 0;
+
+        // Group by type
+        const typeMap = new Map<string, number>();
+        ncrs?.forEach(n => {
+          const type = n.ncr_type || 'Unknown';
+          typeMap.set(type, (typeMap.get(type) || 0) + 1);
+        });
+        const byType = Array.from(typeMap.entries())
+          .map(([type, count]) => ({ type, count }))
+          .sort((a, b) => b.count - a.count);
+
+        // Group by status
+        const statusMap = new Map<string, number>();
+        ncrs?.forEach(n => {
+          const status = n.status || 'Unknown';
+          statusMap.set(status, (statusMap.get(status) || 0) + 1);
+        });
+        const byStatus = Array.from(statusMap.entries())
+          .map(([status, count]) => ({ status, count }))
+          .sort((a, b) => b.count - a.count);
+
+        setNcrMetrics({ total, open, closed, byType, byStatus });
+      } catch (err) {
+        console.error('Failed to fetch NCR metrics:', err);
+      } finally {
+        setNcrLoading(false);
+      }
+    }
+
+    fetchNCRMetrics();
+  }, [calculatedRange.start, calculatedRange.end]);
 
   // KPIs - derived from hook only
   const kpis = useMemo(() => {
@@ -229,6 +288,45 @@ export default function QualityAnalytics() {
           </Card>
         ))}
       </div>
+
+      {/* NCR Summary Card */}
+      <Card className="mb-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileWarning className="h-5 w-5 text-orange-500" />
+            NCR Summary
+          </CardTitle>
+          <CardDescription>Non-Conformance Reports in selected period</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
+            <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+              <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">
+                {ncrLoading ? '...' : ncrMetrics.total}
+              </p>
+              <p className="text-sm text-muted-foreground">Total NCRs</p>
+            </div>
+            <div className="text-center p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                {ncrLoading ? '...' : ncrMetrics.open}
+              </p>
+              <p className="text-sm text-muted-foreground">Open</p>
+            </div>
+            <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+              <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                {ncrLoading ? '...' : ncrMetrics.closed}
+              </p>
+              <p className="text-sm text-muted-foreground">Closed</p>
+            </div>
+            {ncrMetrics.byType.slice(0, 2).map((t, idx) => (
+              <div key={idx} className="text-center p-4 bg-muted/50 rounded-lg">
+                <p className="text-2xl font-bold">{t.count}</p>
+                <p className="text-xs text-muted-foreground truncate">{t.type}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quality Loss Summary */}
       <Card className="mb-6">
