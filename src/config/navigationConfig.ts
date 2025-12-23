@@ -9,8 +9,13 @@
  * Each nav item defines:
  * - label: Display name in navigation
  * - path: Route path (must match App.tsx route)
- * - iconName: Lucide icon name (kebab-case)
+ * - icon: Lucide icon component
+ * 
+ * DEPRECATION: Pages can be deprecated via src/config/deprecationConfig.ts
+ * Deprecated pages are hidden from navigation but routes remain accessible.
  */
+
+import { isHiddenFromNav } from "./deprecationConfig";
 
 import {
   FileText,
@@ -176,4 +181,15 @@ export const findGroupByPath = (path: string): NavGroup | undefined => {
   return navigationGroups.find(group => 
     group.items.some(item => item.path === path || path.startsWith(item.path + '/'))
   );
+};
+
+/**
+ * Get navigation groups with deprecated items filtered out
+ * Use this in navigation components to hide deprecated pages
+ */
+export const getActiveNavigationGroups = (): NavGroup[] => {
+  return navigationGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => !isHiddenFromNav(item.path))
+  })).filter(group => group.items.length > 0);
 };
