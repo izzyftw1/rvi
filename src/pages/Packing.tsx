@@ -13,6 +13,7 @@ import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-hea
 import { cartonSchema, palletSchema } from "@/lib/validationSchemas";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { BatchSelector } from "@/components/packing/BatchSelector";
 
 const Packing = () => {
   const navigate = useNavigate();
@@ -29,6 +30,8 @@ const Packing = () => {
   const [woId, setWoId] = useState("");
   const [wo, setWo] = useState<any>(null);
   const [materialIssues, setMaterialIssues] = useState<any[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [availableToPackQty, setAvailableToPackQty] = useState(0);
   const [cartonForm, setCartonForm] = useState({
     carton_id: "",
     quantity: "",
@@ -157,6 +160,37 @@ const Packing = () => {
     e.preventDefault();
     if (!wo) return;
 
+    // Validate batch selection
+    if (!selectedBatchId) {
+      toast({
+        variant: "destructive",
+        title: "Batch Required",
+        description: "Please select a production batch before packing.",
+      });
+      return;
+    }
+
+    const qty = parseInt(cartonForm.quantity);
+    
+    // Validate quantity against available
+    if (qty > availableToPackQty) {
+      toast({
+        variant: "destructive",
+        title: "Quantity Exceeded",
+        description: `Cannot pack ${qty} pcs. Only ${availableToPackQty} pcs available from QC-approved balance.`,
+      });
+      return;
+    }
+
+    if (availableToPackQty === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Available Quantity",
+        description: "No QC-approved quantity available for packing in this batch.",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -180,7 +214,8 @@ const Packing = () => {
       const { error } = await supabase.from("cartons").insert({
         carton_id: cartonForm.carton_id,
         wo_id: wo.id,
-        quantity: parseInt(cartonForm.quantity),
+        batch_id: selectedBatchId,
+        quantity: qty,
         net_weight: parseFloat(cartonForm.net_weight),
         gross_weight: parseFloat(cartonForm.gross_weight),
         heat_nos: heatNos,
@@ -191,21 +226,22 @@ const Packing = () => {
 
       toast({
         title: "Carton created",
-        description: `${cartonForm.carton_id} with ${heatNos.length} heat numbers`,
+        description: `${cartonForm.carton_id} with ${qty} pcs from Batch`,
       });
 
       loadHistory();
 
-      // Reset
-      setWoId("");
-      setWo(null);
-      setMaterialIssues([]);
+      // Reset form but keep WO and batch selected
       setCartonForm({
-        carton_id: "",
+        carton_id: `CTN-${woId}-${Date.now().toString().slice(-6)}`,
         quantity: "",
         net_weight: "",
         gross_weight: "",
       });
+      
+      // Refresh available quantity
+      setSelectedBatchId(null);
+      setTimeout(() => setSelectedBatchId(selectedBatchId), 100);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -351,6 +387,16 @@ const Packing = () => {
                         </p>
                       </div>
 
+                      {/* Batch Selection */}
+                      <BatchSelector
+                        woId={wo.id}
+                        selectedBatchId={selectedBatchId}
+                        onBatchSelect={(batchId, availableQty) => {
+                          setSelectedBatchId(batchId);
+                          setAvailableToPackQty(availableQty);
+                        }}
+                      />
+
                       <div className="space-y-2">
                         <Label htmlFor="carton_id">Carton ID</Label>
                         <Input
@@ -363,13 +409,22 @@ const Packing = () => {
 
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="quantity">Quantity (pcs)</Label>
+                          <Label htmlFor="quantity">
+                            Quantity (pcs)
+                            {availableToPackQty > 0 && (
+                              <span className="text-muted-foreground ml-2">
+                                (max: {availableToPackQty})
+                              </span>
+                            )}
+                          </Label>
                           <Input
                             id="quantity"
                             type="number"
+                            max={availableToPackQty}
                             value={cartonForm.quantity}
                             onChange={(e) => setCartonForm({ ...cartonForm, quantity: e.target.value })}
                             required
+                            disabled={!selectedBatchId || availableToPackQty === 0}
                           />
                         </div>
                         <div className="space-y-2">
@@ -401,7 +456,10 @@ const Packing = () => {
                           <Printer className="h-4 w-4 mr-2" />
                           Print Label
                         </Button>
-                        <Button type="submit" disabled={loading}>
+                        <Button 
+                          type="submit" 
+                          disabled={loading || !selectedBatchId || availableToPackQty === 0}
+                        >
                           <Box className="h-4 w-4 mr-2" />
                           Build Carton
                         </Button>
