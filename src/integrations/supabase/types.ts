@@ -3402,7 +3402,9 @@ export type Database = {
           ended_at: string | null
           id: string
           previous_batch_id: string | null
+          produced_qty: number | null
           production_allowed: boolean | null
+          qc_approved_qty: number | null
           qc_final_approved_at: string | null
           qc_final_approved_by: string | null
           qc_final_status: string | null
@@ -3412,6 +3414,8 @@ export type Database = {
           qc_material_approved_at: string | null
           qc_material_approved_by: string | null
           qc_material_status: string | null
+          qc_pending_qty: number | null
+          qc_rejected_qty: number | null
           started_at: string
           trigger_reason: string
           wo_id: string
@@ -3424,7 +3428,9 @@ export type Database = {
           ended_at?: string | null
           id?: string
           previous_batch_id?: string | null
+          produced_qty?: number | null
           production_allowed?: boolean | null
+          qc_approved_qty?: number | null
           qc_final_approved_at?: string | null
           qc_final_approved_by?: string | null
           qc_final_status?: string | null
@@ -3434,6 +3440,8 @@ export type Database = {
           qc_material_approved_at?: string | null
           qc_material_approved_by?: string | null
           qc_material_status?: string | null
+          qc_pending_qty?: number | null
+          qc_rejected_qty?: number | null
           started_at?: string
           trigger_reason?: string
           wo_id: string
@@ -3446,7 +3454,9 @@ export type Database = {
           ended_at?: string | null
           id?: string
           previous_batch_id?: string | null
+          produced_qty?: number | null
           production_allowed?: boolean | null
+          qc_approved_qty?: number | null
           qc_final_approved_at?: string | null
           qc_final_approved_by?: string | null
           qc_final_status?: string | null
@@ -3456,6 +3466,8 @@ export type Database = {
           qc_material_approved_at?: string | null
           qc_material_approved_by?: string | null
           qc_material_status?: string | null
+          qc_pending_qty?: number | null
+          qc_rejected_qty?: number | null
           started_at?: string
           trigger_reason?: string
           wo_id?: string
@@ -3896,6 +3908,7 @@ export type Database = {
           file_upload_url: string | null
           heat_no: string | null
           id: string
+          inspected_quantity: number | null
           instrument_id: string | null
           material_grade: string | null
           material_lot_id: string | null
@@ -3922,6 +3935,7 @@ export type Database = {
           file_upload_url?: string | null
           heat_no?: string | null
           id?: string
+          inspected_quantity?: number | null
           instrument_id?: string | null
           material_grade?: string | null
           material_lot_id?: string | null
@@ -3948,6 +3962,7 @@ export type Database = {
           file_upload_url?: string | null
           heat_no?: string | null
           id?: string
+          inspected_quantity?: number | null
           instrument_id?: string | null
           material_grade?: string | null
           material_lot_id?: string | null
