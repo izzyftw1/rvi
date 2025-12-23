@@ -229,7 +229,7 @@ export function NCRLinkedData({
                 <span className="text-muted-foreground">Result:</span>
                 <Badge 
                   variant="outline"
-                  className={qcRecord.result === 'passed' 
+                  className={qcRecord.result === 'pass' 
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-red-100 text-red-800'
                   }

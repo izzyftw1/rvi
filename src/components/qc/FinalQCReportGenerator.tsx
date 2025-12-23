@@ -389,7 +389,7 @@ export const FinalQCReportGenerator = ({
 
   // Check if all required QC stages are passed or waived
   const allQCPassed = reportData?.qcRecords.every((r: any) => 
-    ['passed', 'waived'].includes(r.result)
+    ['pass', 'waived'].includes(r.result)
   );
 
   return (

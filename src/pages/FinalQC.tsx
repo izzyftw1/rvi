@@ -300,7 +300,7 @@ const FinalQC = () => {
   }
 
   const isReleased = workOrder.quality_released;
-  const allQCPassed = qcRecords.every(r => ['passed', 'waived'].includes(r.result?.toLowerCase() || ''));
+  const allQCPassed = qcRecords.every(r => ['pass', 'waived'].includes(r.result?.toLowerCase() || ''));
   const hasIQC = qcRecords.some(r => r.qc_type === 'incoming');
   const hasFirstPiece = qcRecords.some(r => r.qc_type === 'first_piece');
   const canRelease = allQCPassed && hasIQC && hasFirstPiece && hourlyQCCount > 0 && productionSummary && productionSummary.totalOK > 0;
