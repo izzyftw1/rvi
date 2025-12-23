@@ -152,6 +152,7 @@ export type Database = {
       }
       cartons: {
         Row: {
+          batch_id: string | null
           built_at: string
           built_by: string | null
           carton_id: string
@@ -164,6 +165,7 @@ export type Database = {
           wo_id: string
         }
         Insert: {
+          batch_id?: string | null
           built_at?: string
           built_by?: string | null
           carton_id: string
@@ -176,6 +178,7 @@ export type Database = {
           wo_id: string
         }
         Update: {
+          batch_id?: string | null
           built_at?: string
           built_by?: string | null
           carton_id?: string
@@ -188,6 +191,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cartons_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cartons_wo_id_fkey"
             columns: ["wo_id"]
@@ -6555,6 +6565,14 @@ export type Database = {
       generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
       generate_wo_number: { Args: never; Returns: string }
+      get_batch_packable_qty: {
+        Args: { p_batch_id: string }
+        Returns: {
+          already_packed_qty: number
+          available_to_pack: number
+          qc_approved_qty: number
+        }[]
+      }
       get_current_batch_for_qc: { Args: { p_wo_id: string }; Returns: string }
       get_material_links: {
         Args: { _alloy: string; _material_grade: string }
