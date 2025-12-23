@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { MainLayout } from "@/components/MainLayout";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import WorkOrders from "./pages/WorkOrders";
 import NewWorkOrder from "./pages/NewWorkOrder";
 import WorkOrderDetail from "./pages/WorkOrderDetail";
@@ -85,7 +86,7 @@ const App = () => (
       <Routes>
         {/* Public routes without layout */}
         <Route path="/auth" element={<Auth />} />
-        
+        <Route path="/reset-password" element={<ResetPassword />} />
         {/* All protected routes with MainLayout */}
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="/" element={<Index />} />
