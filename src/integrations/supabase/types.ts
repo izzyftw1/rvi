@@ -1213,6 +1213,7 @@ export type Database = {
       }
       hourly_qc_checks: {
         Row: {
+          batch_id: string | null
           check_datetime: string
           created_at: string
           dimensions: Json
@@ -1235,6 +1236,7 @@ export type Database = {
           wo_id: string
         }
         Insert: {
+          batch_id?: string | null
           check_datetime?: string
           created_at?: string
           dimensions?: Json
@@ -1257,6 +1259,7 @@ export type Database = {
           wo_id: string
         }
         Update: {
+          batch_id?: string | null
           check_datetime?: string
           created_at?: string
           dimensions?: Json
@@ -1279,6 +1282,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "hourly_qc_checks_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "hourly_qc_checks_instrument_id_fkey"
             columns: ["instrument_id"]
@@ -3388,9 +3398,20 @@ export type Database = {
           batch_number: number
           created_at: string
           created_by: string | null
+          dispatch_allowed: boolean | null
           ended_at: string | null
           id: string
           previous_batch_id: string | null
+          production_allowed: boolean | null
+          qc_final_approved_at: string | null
+          qc_final_approved_by: string | null
+          qc_final_status: string | null
+          qc_first_piece_approved_at: string | null
+          qc_first_piece_approved_by: string | null
+          qc_first_piece_status: string | null
+          qc_material_approved_at: string | null
+          qc_material_approved_by: string | null
+          qc_material_status: string | null
           started_at: string
           trigger_reason: string
           wo_id: string
@@ -3399,9 +3420,20 @@ export type Database = {
           batch_number?: number
           created_at?: string
           created_by?: string | null
+          dispatch_allowed?: boolean | null
           ended_at?: string | null
           id?: string
           previous_batch_id?: string | null
+          production_allowed?: boolean | null
+          qc_final_approved_at?: string | null
+          qc_final_approved_by?: string | null
+          qc_final_status?: string | null
+          qc_first_piece_approved_at?: string | null
+          qc_first_piece_approved_by?: string | null
+          qc_first_piece_status?: string | null
+          qc_material_approved_at?: string | null
+          qc_material_approved_by?: string | null
+          qc_material_status?: string | null
           started_at?: string
           trigger_reason?: string
           wo_id: string
@@ -3410,9 +3442,20 @@ export type Database = {
           batch_number?: number
           created_at?: string
           created_by?: string | null
+          dispatch_allowed?: boolean | null
           ended_at?: string | null
           id?: string
           previous_batch_id?: string | null
+          production_allowed?: boolean | null
+          qc_final_approved_at?: string | null
+          qc_final_approved_by?: string | null
+          qc_final_status?: string | null
+          qc_first_piece_approved_at?: string | null
+          qc_first_piece_approved_by?: string | null
+          qc_first_piece_status?: string | null
+          qc_material_approved_at?: string | null
+          qc_material_approved_by?: string | null
+          qc_material_status?: string | null
           started_at?: string
           trigger_reason?: string
           wo_id?: string
@@ -3847,6 +3890,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          batch_id: string | null
           created_at: string
           digital_signature: Json | null
           file_upload_url: string | null
@@ -3872,6 +3916,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          batch_id?: string | null
           created_at?: string
           digital_signature?: Json | null
           file_upload_url?: string | null
@@ -3897,6 +3942,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          batch_id?: string | null
           created_at?: string
           digital_signature?: Json | null
           file_upload_url?: string | null
@@ -3920,6 +3966,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_records_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qc_records_instrument_id_fkey"
             columns: ["instrument_id"]
@@ -6471,6 +6524,7 @@ export type Database = {
       generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
       generate_wo_number: { Args: never; Returns: string }
+      get_current_batch_for_qc: { Args: { p_wo_id: string }; Returns: string }
       get_material_links: {
         Args: { _alloy: string; _material_grade: string }
         Returns: {
