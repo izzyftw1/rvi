@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Scissors, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface CuttingRecord {
   id: string;
@@ -176,9 +177,13 @@ export default function Cutting() {
           </CardHeader>
           <CardContent>
             {cuttingRecords.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No cutting records found
-              </div>
+              <EmptyState
+                icon="production"
+                title="No Cutting Records"
+                description="Cutting records appear here when work orders with cutting requirements are created. Material will be allocated for cutting before machining."
+                hint="Create a work order with cutting in its operation route to see items here."
+                size="md"
+              />
             ) : (
               <Table>
                 <TableHeader>
