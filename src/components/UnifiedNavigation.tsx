@@ -1,21 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  FileText,
-  Truck,
-  Activity,
-  ClipboardCheck,
-  DollarSign,
-  PackageCheck,
-  Users,
-  Box,
-  Boxes,
-  BarChart3,
-  Search,
-  Package,
-  AlertCircle,
-  FileSpreadsheet,
-  Handshake,
   Menu,
   LogOut,
   Settings,
@@ -26,18 +11,7 @@ import {
   Wrench,
   Calendar,
   MoreHorizontal,
-  Gauge,
-  CheckCircle,
-  XCircle,
-  FileCheck,
-  ScrollText,
-  GitBranch,
-  CreditCard,
-  Receipt,
-  Clock,
-  Scissors,
-  Flame,
-  Cpu,
+  Users,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -58,19 +32,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSiteContext } from "@/hooks/useSiteContext";
 import { cn } from "@/lib/utils";
 import rvLogo from "@/assets/rv-logo.jpg";
-
-interface NavItem {
-  label: string;
-  path: string;
-  icon: React.ElementType;
-}
-
-interface NavGroup {
-  title: string;
-  icon: React.ElementType;
-  allowedRoles: string[];
-  items: NavItem[];
-}
+// Import centralized navigation config - SINGLE SOURCE OF TRUTH
+import { navigationGroups, type NavGroup } from "@/config/navigationConfig";
 
 interface UnifiedNavigationProps {
   userRoles: string[];
@@ -114,100 +77,8 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
     navigate("/auth");
   };
 
-  const navGroups: NavGroup[] = [
-    {
-      title: "Sales & Customers",
-      icon: FileText,
-      allowedRoles: ['admin', 'sales'],
-      items: [
-        { label: "Sales Orders", path: "/sales", icon: FileText },
-        { label: "Customers", path: "/customers", icon: Users },
-        { label: "Items", path: "/items", icon: Box },
-      ]
-    },
-    {
-      title: "Procurement",
-      icon: Truck,
-      allowedRoles: ['admin', 'procurement', 'purchase'],
-      items: [
-        { label: "Raw PO", path: "/purchase/raw-po", icon: Truck },
-        { label: "Material Requirements", path: "/material-requirements", icon: Boxes },
-        { label: "Purchase Dashboard", path: "/purchase/dashboard", icon: BarChart3 },
-      ]
-    },
-    {
-      title: "Production",
-      icon: Activity,
-      allowedRoles: ['admin', 'production', 'ops_manager'],
-      items: [
-        { label: "Work Orders", path: "/work-orders", icon: Search },
-        { label: "Production Progress", path: "/production-progress", icon: BarChart3 },
-        { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
-        { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Cpu },
-        { label: "Cutting", path: "/cutting", icon: Scissors },
-        { label: "Forging", path: "/forging", icon: Flame },
-        { label: "Machine Status", path: "/machine-status", icon: Gauge },
-        { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
-        { label: "Operator Efficiency", path: "/operator-efficiency", icon: Users },
-        { label: "Setter Efficiency", path: "/setter-efficiency", icon: Wrench },
-        { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
-        { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
-      ]
-    },
-    {
-      title: "Quality",
-      icon: ClipboardCheck,
-      allowedRoles: ['admin', 'production', 'quality'],
-      items: [
-        { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck },
-        { label: "Incoming QC", path: "/qc/incoming", icon: Box },
-        { label: "Hourly QC", path: "/hourly-qc", icon: Clock },
-        { label: "Final QC", path: "/final-qc", icon: CheckCircle },
-        { label: "NCR Management", path: "/ncr", icon: XCircle },
-        { label: "Traceability", path: "/quality/traceability", icon: GitBranch },
-        { label: "Quality Documents", path: "/quality/documents", icon: FileCheck },
-        { label: "Quality Analytics", path: "/quality/analytics", icon: BarChart3 },
-        { label: "Tolerances", path: "/tolerance-setup", icon: Gauge },
-        { label: "Instruments", path: "/instruments", icon: Wrench },
-      ]
-    },
-    {
-      title: "Finance",
-      icon: DollarSign,
-      allowedRoles: ['admin', 'finance', 'finance_admin', 'finance_user', 'accounts', 'sales'],
-      items: [
-        { label: "Finance Dashboard", path: "/finance/dashboard", icon: DollarSign },
-        { label: "Invoices", path: "/finance/invoices", icon: Receipt },
-        { label: "Payments", path: "/finance/payments", icon: CreditCard },
-        { label: "Aging", path: "/finance/aging", icon: Clock },
-        { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle },
-        { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet },
-        { label: "Settings", path: "/finance/settings", icon: Settings },
-      ]
-    },
-    {
-      title: "Logistics",
-      icon: PackageCheck,
-      allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores', 'packing'],
-      items: [
-        { label: "Goods Inwards", path: "/materials/inwards", icon: Box },
-        { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck },
-        { label: "Packing", path: "/packing", icon: Package },
-        { label: "Dispatch", path: "/dispatch", icon: Truck },
-        { label: "RPO vs Inventory", path: "/reports/rpo-inventory", icon: FileSpreadsheet },
-      ]
-    },
-    {
-      title: "External Processes",
-      icon: Handshake,
-      allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
-      items: [
-        { label: "External Partners", path: "/partners", icon: Handshake },
-        { label: "External Moves", path: "/logistics", icon: Truck },
-        { label: "Partner Performance", path: "/partner-performance", icon: PackageCheck },
-      ]
-    }
-  ];
+  // Use centralized navigation config - imported from @/config/navigationConfig
+  const navGroups = navigationGroups;
 
   const getVisibleGroups = () => {
     if (isAdmin) return navGroups;
