@@ -1,22 +1,38 @@
-import { useState, useEffect, useMemo } from "react";
+/**
+ * Production Progress Page
+ * 
+ * READ-ONLY view deriving all progress data exclusively from Production Logs.
+ * 
+ * Metrics calculated from daily_production_logs:
+ * - Net Completed Qty = Σ ok_quantity
+ * - Scrap Qty = Σ total_rejection_quantity
+ * - Remaining Qty = ordered_quantity - Net Completed
+ * - Progress % = (Net Completed ÷ Ordered Qty) × 100
+ * 
+ * Updates immediately via realtime subscription on daily_production_logs.
+ */
+
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { 
   FlaskConical,
-  ArrowRight,
-  Timer,
   ExternalLink,
   Beaker,
   PlayCircle,
   Truck,
   Clock,
-  User,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Info,
+  Package,
+  AlertTriangle,
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInHours, parseISO, format } from "date-fns";
@@ -35,7 +51,11 @@ interface WorkOrder {
   qc_material_passed: boolean;
   qc_first_piece_passed: boolean;
   external_status?: string;
-  progress_percentage?: number;
+  // Derived from production logs
+  ok_qty: number;
+  scrap_qty: number;
+  remaining_qty: number;
+  progress_pct: number;
 }
 
 type BucketType = 'material_qc' | 'first_piece_qc' | 'ready_not_started' | 'external_processing';
@@ -106,8 +126,8 @@ function categorizeToBuckets(workOrders: WorkOrder[]): Buckets {
       return;
     }
 
-    // 4. Ready but Not Started: all gates passed, 0% progress
-    if ((wo.progress_percentage ?? 0) === 0) {
+    // 4. Ready but Not Started: all gates passed, 0% progress (from production logs)
+    if (wo.progress_pct === 0) {
       buckets.ready_not_started.push(item);
       return;
     }
@@ -122,12 +142,10 @@ function categorizeToBuckets(workOrders: WorkOrder[]): Buckets {
       const aSeverity = getAgingSeverity(a.aging_hours);
       const bSeverity = getAgingSeverity(b.aging_hours);
       
-      // First sort by severity
       if (severityOrder[aSeverity] !== severityOrder[bSeverity]) {
         return severityOrder[aSeverity] - severityOrder[bSeverity];
       }
       
-      // Within same severity, oldest first
       return b.aging_hours - a.aging_hours;
     });
   });
@@ -173,9 +191,9 @@ const bucketConfig: Record<BucketType, {
     icon: PlayCircle, 
     color: 'text-blue-700 dark:text-blue-300',
     bgColor: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
-    description: 'All gates passed, awaiting machine assignment',
+    description: 'All gates passed, awaiting production start',
     isBlocker: true,
-    actionLabel: 'Assign Machine',
+    actionLabel: 'Start Production',
     getActionPath: (woId) => `/work-orders/${woId}?tab=production`,
     owner: 'Production Planning'
   },
@@ -197,27 +215,10 @@ export default function ProductionProgress() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadWorkOrders();
-
-    const channel = supabase
-      .channel("production_control_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadWorkOrders())
-      .subscribe();
-
-    const interval = setInterval(loadWorkOrders, 60000);
-
-    return () => {
-      clearInterval(interval);
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const loadWorkOrders = async () => {
+  const loadWorkOrders = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // 1. Load active work orders
+      const { data: woData, error: woError } = await supabase
         .from("work_orders")
         .select(`
           id,
@@ -236,26 +237,65 @@ export default function ProductionProgress() {
         .in("status", ["in_progress", "pending"])
         .order("due_date", { ascending: true });
 
-      if (error) throw error;
+      if (woError) throw woError;
 
-      const enriched = await Promise.all(
-        (data || []).map(async (wo) => {
-          const { data: progress } = await supabase.rpc("get_wo_progress", { _wo_id: wo.id });
-          
-          const { data: externalMoves } = await supabase
-            .from("wo_external_moves")
-            .select("status")
-            .eq("work_order_id", wo.id)
-            .in("status", ["pending", "in_progress"])
-            .limit(1);
+      if (!woData || woData.length === 0) {
+        setWorkOrders([]);
+        setLoading(false);
+        return;
+      }
 
-          return {
-            ...wo,
-            progress_percentage: progress?.[0]?.progress_percentage ?? 0,
-            external_status: externalMoves?.[0]?.status ?? null
-          };
-        })
-      );
+      const woIds = woData.map(wo => wo.id);
+
+      // 2. Load production logs aggregated by WO - SINGLE SOURCE OF TRUTH
+      const { data: logData, error: logError } = await supabase
+        .from("daily_production_logs")
+        .select("wo_id, ok_quantity, total_rejection_quantity")
+        .in("wo_id", woIds);
+
+      if (logError) throw logError;
+
+      // Aggregate production log data by WO
+      const logAggregates = new Map<string, { ok_qty: number; scrap_qty: number }>();
+      (logData || []).forEach((log: any) => {
+        if (!log.wo_id) return;
+        const existing = logAggregates.get(log.wo_id) || { ok_qty: 0, scrap_qty: 0 };
+        existing.ok_qty += log.ok_quantity ?? 0;
+        existing.scrap_qty += log.total_rejection_quantity ?? 0;
+        logAggregates.set(log.wo_id, existing);
+      });
+
+      // 3. Load external moves status
+      const { data: externalData } = await supabase
+        .from("wo_external_moves")
+        .select("work_order_id, status")
+        .in("work_order_id", woIds)
+        .in("status", ["pending", "in_progress"]);
+
+      const externalStatus = new Map<string, string>();
+      (externalData || []).forEach((m: any) => {
+        externalStatus.set(m.work_order_id, m.status);
+      });
+
+      // 4. Enrich work orders with production log derived metrics
+      const enriched: WorkOrder[] = woData.map((wo) => {
+        const logAggregate = logAggregates.get(wo.id) || { ok_qty: 0, scrap_qty: 0 };
+        const ok_qty = logAggregate.ok_qty;
+        const scrap_qty = logAggregate.scrap_qty;
+        const remaining_qty = Math.max(0, wo.quantity - ok_qty);
+        const progress_pct = wo.quantity > 0 
+          ? Math.min(100, Math.round((ok_qty / wo.quantity) * 100)) 
+          : 0;
+
+        return {
+          ...wo,
+          ok_qty,
+          scrap_qty,
+          remaining_qty,
+          progress_pct,
+          external_status: externalStatus.get(wo.id) || null
+        };
+      });
 
       setWorkOrders(enriched);
     } catch (error: any) {
@@ -263,7 +303,24 @@ export default function ProductionProgress() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadWorkOrders();
+
+    // Real-time subscription - updates immediately when production log is submitted
+    const channel = supabase
+      .channel("production_progress_realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => loadWorkOrders())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadWorkOrders]);
 
   const buckets = useMemo(() => categorizeToBuckets(workOrders), [workOrders]);
 
@@ -304,6 +361,20 @@ export default function ProductionProgress() {
     };
   }, [buckets, totalBlockers]);
 
+  // Summary stats derived from production logs
+  const summaryStats = useMemo(() => {
+    const totalOk = workOrders.reduce((sum, wo) => sum + wo.ok_qty, 0);
+    const totalScrap = workOrders.reduce((sum, wo) => sum + wo.scrap_qty, 0);
+    const totalOrdered = workOrders.reduce((sum, wo) => sum + wo.quantity, 0);
+    const totalRemaining = workOrders.reduce((sum, wo) => sum + wo.remaining_qty, 0);
+    const avgProgress = workOrders.length > 0 
+      ? Math.round(workOrders.reduce((sum, wo) => sum + wo.progress_pct, 0) / workOrders.length)
+      : 0;
+    const inProgress = workOrders.filter(wo => wo.progress_pct > 0 && wo.progress_pct < 100).length;
+    
+    return { totalOk, totalScrap, totalOrdered, totalRemaining, avgProgress, inProgress };
+  }, [workOrders]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -312,7 +383,6 @@ export default function ProductionProgress() {
     );
   }
 
-  // Generate contextual subtitles for buckets
   const getSubtitle = (bucketType: BucketType): string => {
     switch (bucketType) {
       case 'material_qc':
@@ -333,10 +403,79 @@ export default function ProductionProgress() {
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Production Log</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Production Progress</h1>
           <p className="text-sm text-muted-foreground">
             What's blocking flow? What must be done next?
           </p>
+        </div>
+
+        {/* Read-only notice */}
+        <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <Info className="h-4 w-4 shrink-0" />
+          <span>
+            All progress metrics derived from Production Log entries. 
+            <span className="font-mono text-xs ml-2">Progress % = (OK Qty ÷ Ordered) × 100</span>
+          </span>
+        </div>
+
+        {/* Summary Cards - Derived from Production Logs */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <CheckCircle2 className="h-5 w-5 mx-auto text-green-600 mb-1" />
+                <p className="text-xs text-muted-foreground">Net Completed</p>
+                <p className="text-lg font-bold text-green-600">{summaryStats.totalOk.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground">Σ ok_quantity</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <AlertTriangle className="h-5 w-5 mx-auto text-red-600 mb-1" />
+                <p className="text-xs text-muted-foreground">Scrap Qty</p>
+                <p className="text-lg font-bold text-red-600">{summaryStats.totalScrap.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground">Σ rejections</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <Package className="h-5 w-5 mx-auto text-amber-600 mb-1" />
+                <p className="text-xs text-muted-foreground">Remaining</p>
+                <p className="text-lg font-bold text-amber-600">{summaryStats.totalRemaining.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground">Ordered - OK</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <Clock className="h-5 w-5 mx-auto text-blue-600 mb-1" />
+                <p className="text-xs text-muted-foreground">In Progress</p>
+                <p className="text-lg font-bold text-blue-600">{summaryStats.inProgress}</p>
+                <p className="text-[10px] text-muted-foreground">WOs with logs</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <div className="h-5 w-5 mx-auto mb-1 flex items-center justify-center">
+                  <span className="text-sm font-bold text-primary">%</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Avg Progress</p>
+                <p className="text-lg font-bold">{summaryStats.avgProgress}%</p>
+                <Progress value={summaryStats.avgProgress} className="h-1.5 mt-1" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Sticky Flow Health Indicator */}
@@ -447,8 +586,8 @@ function BucketCard({
                   <tr className="text-xs text-muted-foreground border-b">
                     <th className="text-left py-2 px-1 font-medium">WO ID</th>
                     <th className="text-left py-2 px-1 font-medium">Item</th>
-                    <th className="text-right py-2 px-1 font-medium">Qty</th>
-                    <th className="text-left py-2 px-1 font-medium">Blocker</th>
+                    <th className="text-right py-2 px-1 font-medium">OK / Ord</th>
+                    <th className="text-center py-2 px-1 font-medium">Progress</th>
                     <th className="text-center py-2 px-1 font-medium">Age</th>
                     <th className="text-left py-2 px-1 font-medium">Owner</th>
                     <th className="text-right py-2 px-1 font-medium">Action</th>
@@ -476,16 +615,18 @@ function BucketCard({
                             )}
                           </div>
                         </td>
-                        <td className="py-2 px-1 text-muted-foreground max-w-[120px] truncate">
+                        <td className="py-2 px-1 text-muted-foreground max-w-[100px] truncate">
                           {item.wo.item_code}
                         </td>
-                        <td className="py-2 px-1 text-right tabular-nums">
-                          {item.wo.quantity.toLocaleString()}
+                        <td className="py-2 px-1 text-right tabular-nums text-xs">
+                          <span className="text-green-600 font-medium">{item.wo.ok_qty.toLocaleString()}</span>
+                          <span className="text-muted-foreground"> / {item.wo.quantity.toLocaleString()}</span>
                         </td>
                         <td className="py-2 px-1">
-                          <span className={cn("text-xs font-medium", config.color)}>
-                            {config.title.replace('Blocked – ', '').replace('Ready but ', '')}
-                          </span>
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <Progress value={item.wo.progress_pct} className="h-1.5 w-12" />
+                            <span className="text-xs font-medium">{item.wo.progress_pct}%</span>
+                          </div>
                         </td>
                         <td className="py-2 px-1 text-center">
                           <Badge 
@@ -501,18 +642,18 @@ function BucketCard({
                             {formatAgingDisplay(item.aging_hours)}
                           </Badge>
                         </td>
-                        <td className="py-2 px-1 text-xs text-muted-foreground">
-                          {config.owner}
+                        <td className="py-2 px-1">
+                          <span className="text-xs text-muted-foreground">{config.owner}</span>
                         </td>
                         <td className="py-2 px-1 text-right">
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="text-[10px] h-6 px-2 gap-1"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs"
                             onClick={() => navigate(config.getActionPath(item.wo.id))}
                           >
-                            {config.actionLabel}
-                            <ArrowRight className="h-2.5 w-2.5" />
+                            Go
+                            <ExternalLink className="h-3 w-3 ml-1" />
                           </Button>
                         </td>
                       </tr>
@@ -521,25 +662,19 @@ function BucketCard({
                 </tbody>
               </table>
             </div>
-            
-            {/* Show all toggle */}
+
+            {/* Show More / Show Less */}
             {hasMore && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full text-xs text-muted-foreground hover:text-foreground gap-1"
+                className="w-full h-7 text-xs"
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? (
-                  <>
-                    <ChevronUp className="h-3 w-3" />
-                    Show less
-                  </>
+                  <>Show Less <ChevronUp className="h-3 w-3 ml-1" /></>
                 ) : (
-                  <>
-                    <ChevronDown className="h-3 w-3" />
-                    Show all ({items.length})
-                  </>
+                  <>Show {items.length - DEFAULT_VISIBLE_ROWS} More <ChevronDown className="h-3 w-3 ml-1" /></>
                 )}
               </Button>
             )}
