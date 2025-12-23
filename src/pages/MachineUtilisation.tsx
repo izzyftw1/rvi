@@ -399,6 +399,16 @@ export default function MachineUtilisation() {
         </Card>
       </div>
 
+      {/* Formula explanation */}
+      <Card className="bg-muted/30 border-dashed">
+        <CardContent className="py-3">
+          <p className="text-xs font-mono text-muted-foreground">
+            <span className="font-semibold text-foreground">Utilisation %</span> = (Actual Runtime ÷ Expected Runtime) × 100 | 
+            <span className="font-semibold text-foreground ml-2">Expected</span> = Gross Shift Time (from logs or default {formatMinutes(DEFAULT_SHIFT_MINUTES)})
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Utilisation Table */}
       <Card>
         <CardHeader>
@@ -464,6 +474,9 @@ export default function MachineUtilisation() {
                             value={Math.min(data.utilisationPct, 100)} 
                             className="h-2"
                           />
+                          <p className="text-[9px] font-mono text-muted-foreground">
+                            = ({data.actualRuntime} ÷ {data.expectedRuntime}) × 100
+                          </p>
                         </div>
                       </TableCell>
                       <TableCell>
