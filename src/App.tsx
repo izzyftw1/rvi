@@ -70,6 +70,7 @@ import InstrumentManagement from "./pages/InstrumentManagement";
 import DailyProductionLog from "./pages/DailyProductionLog";
 import MachineUtilisation from "./pages/MachineUtilisation";
 import OperatorEfficiency from "./pages/OperatorEfficiency";
+import SetterEfficiency from "./pages/SetterEfficiency";
 import CNCProgrammerActivity from "./pages/CNCProgrammerActivity";
 import FinalQCList from "./pages/FinalQCList";
 import FinalQC from "./pages/FinalQC";
@@ -139,6 +140,7 @@ const App = () => (
           <Route path="/daily-production-log" element={<DailyProductionLog />} />
           <Route path="/machine-utilisation" element={<MachineUtilisation />} />
           <Route path="/operator-efficiency" element={<OperatorEfficiency />} />
+          <Route path="/setter-efficiency" element={<SetterEfficiency />} />
           <Route path="/cnc-programmer-activity" element={<CNCProgrammerActivity />} />
           <Route path="/finance/dashboard" element={<FinanceDashboard />} />
           <Route path="/finance/invoices" element={<Invoices />} />

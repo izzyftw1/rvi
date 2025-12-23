@@ -485,7 +485,11 @@ export type Database = {
           rejection_tool_mark: number | null
           rework_quantity: number
           route_step_id: string | null
+          setter_id: string | null
+          setup_duration_minutes: number | null
+          setup_end_time_actual: string | null
           setup_number: string
+          setup_start_time_actual: string | null
           shift: string
           shift_end_time: string
           shift_start_time: string
@@ -536,7 +540,11 @@ export type Database = {
           rejection_tool_mark?: number | null
           rework_quantity?: number
           route_step_id?: string | null
+          setter_id?: string | null
+          setup_duration_minutes?: number | null
+          setup_end_time_actual?: string | null
           setup_number: string
+          setup_start_time_actual?: string | null
           shift: string
           shift_end_time?: string
           shift_start_time?: string
@@ -587,7 +595,11 @@ export type Database = {
           rejection_tool_mark?: number | null
           rework_quantity?: number
           route_step_id?: string | null
+          setter_id?: string | null
+          setup_duration_minutes?: number | null
+          setup_end_time_actual?: string | null
           setup_number?: string
+          setup_start_time_actual?: string | null
           shift?: string
           shift_end_time?: string
           shift_start_time?: string
@@ -648,6 +660,13 @@ export type Database = {
             columns: ["route_step_id"]
             isOneToOne: false
             referencedRelation: "operation_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_setter_id_fkey"
+            columns: ["setter_id"]
+            isOneToOne: false
+            referencedRelation: "people"
             referencedColumns: ["id"]
           },
           {
@@ -4852,6 +4871,110 @@ export type Database = {
             columns: ["department_id"]
             isOneToOne: false
             referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      setter_activity_ledger: {
+        Row: {
+          created_at: string
+          delay_caused_minutes: number | null
+          id: string
+          is_repeat_setup: boolean | null
+          log_date: string
+          machine_id: string | null
+          production_log_id: string | null
+          remarks: string | null
+          setter_id: string | null
+          setup_duration_minutes: number | null
+          setup_end_time: string | null
+          setup_number: string
+          setup_start_time: string | null
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          delay_caused_minutes?: number | null
+          id?: string
+          is_repeat_setup?: boolean | null
+          log_date: string
+          machine_id?: string | null
+          production_log_id?: string | null
+          remarks?: string | null
+          setter_id?: string | null
+          setup_duration_minutes?: number | null
+          setup_end_time?: string | null
+          setup_number: string
+          setup_start_time?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          delay_caused_minutes?: number | null
+          id?: string
+          is_repeat_setup?: boolean | null
+          log_date?: string
+          machine_id?: string | null
+          production_log_id?: string | null
+          remarks?: string | null
+          setter_id?: string | null
+          setup_duration_minutes?: number | null
+          setup_end_time?: string | null
+          setup_number?: string
+          setup_start_time?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setter_activity_ledger_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_production_log_id_fkey"
+            columns: ["production_log_id"]
+            isOneToOne: false
+            referencedRelation: "daily_production_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_setter_id_fkey"
+            columns: ["setter_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
