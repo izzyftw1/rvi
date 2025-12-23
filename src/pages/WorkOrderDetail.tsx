@@ -39,6 +39,7 @@ import { QCStageCard } from "@/components/qc/QCStageCard";
 import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
 import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
+import { RouteProgressView } from "@/components/routing/RouteProgressView";
 import { WorkOrderNCRList } from "@/components/ncr/WorkOrderNCRList";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -933,7 +934,7 @@ const WorkOrderDetail = () => {
             {activeTab === 'routing' && (
               <div className="space-y-4">
                 <OperationRouteManager workOrderId={id || ""} />
-                <OperationRouteStatus workOrderId={id || ""} />
+                <RouteProgressView workOrderId={id || ""} />
               </div>
             )}
           </TabsContent>

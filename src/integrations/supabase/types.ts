@@ -464,6 +464,7 @@ export type Database = {
           log_date: string
           machine_id: string
           ok_quantity: number | null
+          operation_code: string | null
           operator_id: string | null
           ordered_quantity: number | null
           party_code: string | null
@@ -482,6 +483,7 @@ export type Database = {
           rejection_setting: number | null
           rejection_tool_mark: number | null
           rework_quantity: number
+          route_step_id: string | null
           setup_number: string
           shift: string
           shift_end_time: string
@@ -512,6 +514,7 @@ export type Database = {
           log_date?: string
           machine_id: string
           ok_quantity?: number | null
+          operation_code?: string | null
           operator_id?: string | null
           ordered_quantity?: number | null
           party_code?: string | null
@@ -530,6 +533,7 @@ export type Database = {
           rejection_setting?: number | null
           rejection_tool_mark?: number | null
           rework_quantity?: number
+          route_step_id?: string | null
           setup_number: string
           shift: string
           shift_end_time?: string
@@ -560,6 +564,7 @@ export type Database = {
           log_date?: string
           machine_id?: string
           ok_quantity?: number | null
+          operation_code?: string | null
           operator_id?: string | null
           ordered_quantity?: number | null
           party_code?: string | null
@@ -578,6 +583,7 @@ export type Database = {
           rejection_setting?: number | null
           rejection_tool_mark?: number | null
           rework_quantity?: number
+          route_step_id?: string | null
           setup_number?: string
           shift?: string
           shift_end_time?: string
@@ -625,6 +631,20 @@ export type Database = {
             columns: ["programmer_id"]
             isOneToOne: false
             referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_route_step_id_fkey"
+            columns: ["route_step_id"]
+            isOneToOne: false
+            referencedRelation: "operation_route_progress_vw"
+            referencedColumns: ["route_id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_route_step_id_fkey"
+            columns: ["route_step_id"]
+            isOneToOne: false
+            referencedRelation: "operation_routes"
             referencedColumns: ["id"]
           },
           {
@@ -879,6 +899,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "wo_external_partners"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_route_step_id_fkey"
+            columns: ["route_step_id"]
+            isOneToOne: false
+            referencedRelation: "operation_route_progress_vw"
+            referencedColumns: ["route_id"]
           },
           {
             foreignKeyName: "execution_records_route_step_id_fkey"
@@ -2782,6 +2809,8 @@ export type Database = {
       }
       operation_routes: {
         Row: {
+          completed_at: string | null
+          completed_quantity: number | null
           created_at: string
           created_by: string | null
           id: string
@@ -2790,9 +2819,14 @@ export type Database = {
           operation_type: Database["public"]["Enums"]["operation_type"]
           process_name: string | null
           sequence_number: number
+          started_at: string | null
+          status: string | null
+          target_quantity: number | null
           work_order_id: string
         }
         Insert: {
+          completed_at?: string | null
+          completed_quantity?: number | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -2801,9 +2835,14 @@ export type Database = {
           operation_type: Database["public"]["Enums"]["operation_type"]
           process_name?: string | null
           sequence_number: number
+          started_at?: string | null
+          status?: string | null
+          target_quantity?: number | null
           work_order_id: string
         }
         Update: {
+          completed_at?: string | null
+          completed_quantity?: number | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -2812,6 +2851,9 @@ export type Database = {
           operation_type?: Database["public"]["Enums"]["operation_type"]
           process_name?: string | null
           sequence_number?: number
+          started_at?: string | null
+          status?: string | null
+          target_quantity?: number | null
           work_order_id?: string
         }
         Relationships: [
@@ -5865,6 +5907,45 @@ export type Database = {
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operation_route_progress_vw: {
+        Row: {
+          actual_ok_qty: number | null
+          bottleneck_type: string | null
+          completed_at: string | null
+          is_external: boolean | null
+          is_mandatory: boolean | null
+          last_activity_date: string | null
+          log_count: number | null
+          operation_type: Database["public"]["Enums"]["operation_type"] | null
+          planned_quantity: number | null
+          process_name: string | null
+          progress_pct: number | null
+          route_id: string | null
+          sequence_number: number | null
+          started_at: string | null
+          status: string | null
+          total_downtime_mins: number | null
+          total_rejections: number | null
+          total_runtime_mins: number | null
+          work_order_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_routes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operation_routes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
