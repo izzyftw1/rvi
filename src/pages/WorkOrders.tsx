@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink, TrendingUp, Percent, FileWarning, Activity } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -122,6 +124,61 @@ const KPICard = memo(({
 ));
 KPICard.displayName = "KPICard";
 
+// Helper to get detailed block reason description for tooltip
+const getBlockReasonDetails = (wo: any, blockReasonKey: string | null): { title: string; description: string } => {
+  if (!blockReasonKey) return { title: '', description: '' };
+  
+  switch (blockReasonKey) {
+    case 'qc_pending': {
+      const materialStatus = wo.qc_material_status;
+      const firstPieceStatus = wo.qc_first_piece_status;
+      if (materialStatus === 'failed') return { title: 'QC Block', description: 'Material QC failed - requires re-inspection or rejection' };
+      if (firstPieceStatus === 'failed') return { title: 'QC Block', description: 'First piece QC failed - setup adjustment needed' };
+      if (!materialStatus || materialStatus === 'pending') return { title: 'QC Block', description: 'Material QC pending - awaiting inspection' };
+      if (firstPieceStatus === 'pending') return { title: 'QC Block', description: 'First piece QC pending - awaiting approval' };
+      return { title: 'QC Block', description: 'Quality check pending' };
+    }
+    case 'ncr_open':
+      return { title: 'NCR Block', description: `${wo.open_ncr_count || 1} open NCR(s) - requires resolution before proceeding` };
+    case 'ext_overdue': {
+      const overdueMove = wo.external_moves?.find((m: any) => 
+        m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
+      );
+      const days = overdueMove?.expected_return_date 
+        ? Math.abs(differenceInDays(new Date(), parseISO(overdueMove.expected_return_date)))
+        : 0;
+      return { title: 'External Overdue', description: `Material at external partner is ${days}d overdue` };
+    }
+    case 'not_released':
+      return { title: 'Not Released', description: 'Production logging not yet unlocked' };
+    case 'material_pending':
+      return { title: 'Material Block', description: 'Raw material not yet received or issued' };
+    default:
+      return { title: 'Blocked', description: blockReasonKey };
+  }
+};
+
+// Helper to compute external processing status
+const getExternalStatus = (wo: any): { status: 'none' | 'in' | 'partial' | 'overdue'; label: string; color: string } => {
+  if (!wo.external_moves || wo.external_moves.length === 0) {
+    return { status: 'none', label: '', color: '' };
+  }
+  
+  const activeMoves = wo.external_moves.filter((m: any) => m.status !== 'received_full');
+  if (activeMoves.length === 0) {
+    return { status: 'none', label: '', color: '' };
+  }
+  
+  const hasOverdue = activeMoves.some((m: any) => 
+    m.expected_return_date && isPast(parseISO(m.expected_return_date))
+  );
+  const hasPartial = wo.external_moves.some((m: any) => m.status === 'partial');
+  
+  if (hasOverdue) return { status: 'overdue', label: 'Overdue', color: 'text-destructive bg-destructive/10' };
+  if (hasPartial) return { status: 'partial', label: 'Partial', color: 'text-amber-600 bg-amber-500/10' };
+  return { status: 'in', label: 'In Process', color: 'text-purple-600 bg-purple-500/10' };
+};
+
 // Work Order Card - Stage-dominant design with quick-scan operational indicators
 const WorkOrderRow = memo(({ 
   wo, 
@@ -153,11 +210,23 @@ const WorkOrderRow = memo(({
     return Math.max(0, differenceInDays(new Date(), parseISO(stageDate)));
   }, [wo.stage_entered_at, wo.updated_at, wo.created_at]);
 
+  // Derived operational signals
+  const progressPct = wo.ok_qty && wo.quantity ? Math.min(100, Math.round((wo.ok_qty / wo.quantity) * 100)) : 0;
+  const scrapPct = wo.total_rejection && wo.ok_qty 
+    ? Math.round((wo.total_rejection / (wo.ok_qty + wo.total_rejection)) * 100) 
+    : 0;
+  const openNCRCount = wo.open_ncr_count || 0;
+  const agingDays = wo.last_production_date 
+    ? differenceInDays(new Date(), parseISO(wo.last_production_date))
+    : null;
+  const externalStatus = getExternalStatus(wo);
+
   // Get block reason using shared helper
   const blockReasonKey = getBlockReason(wo);
   const blockReasonLabel = blockReasonKey 
     ? BLOCK_REASONS[blockReasonKey as keyof typeof BLOCK_REASONS]?.label || blockReasonKey 
     : null;
+  const blockDetails = getBlockReasonDetails(wo, blockReasonKey);
 
   // Visual severity logic:
   // - Critical (red): overdue AND blocked
@@ -168,6 +237,9 @@ const WorkOrderRow = memo(({
   const isWarning = (isOverdue && !isBlocked) || (!isOverdue && isBlocked);
   const hasIssue = isCritical || isWarning;
   const isExternal = externalWipTotal > 0;
+  
+  // Human-readable WO code
+  const woCode = wo.wo_number || wo.display_id || `WO-${wo.id?.slice(0, 8)}`;
 
   return (
     <div 
@@ -237,20 +309,33 @@ const WorkOrderRow = memo(({
           {isExternal ? 'EXT' : 'INT'}
         </Badge>
 
-        {/* Primary: PO / Customer */}
+        {/* Primary: WO Code / Customer */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <p className="text-sm font-medium text-foreground truncate">
-              {wo.customer_po || wo.wo_id?.slice(0, 8)}
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold text-foreground truncate">
+              {woCode}
             </p>
-            {/* Block reason badge */}
+            {wo.customer_po && (
+              <span className="text-[10px] text-muted-foreground">({wo.customer_po})</span>
+            )}
+            {/* Block reason badge with tooltip */}
             {blockReasonLabel && (
-              <Badge className={cn(
-                "text-[8px] px-1 py-0 h-3.5 whitespace-nowrap",
-                isCritical ? "bg-destructive/90 hover:bg-destructive" : "bg-amber-500/90 hover:bg-amber-500"
-              )}>
-                {blockReasonLabel}
-              </Badge>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge className={cn(
+                      "text-[8px] px-1 py-0 h-3.5 whitespace-nowrap cursor-help",
+                      isCritical ? "bg-destructive/90 hover:bg-destructive" : "bg-amber-500/90 hover:bg-amber-500"
+                    )}>
+                      {blockReasonLabel}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[200px]">
+                    <p className="font-medium text-xs">{blockDetails.title}</p>
+                    <p className="text-[10px] text-muted-foreground">{blockDetails.description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
             {/* Overdue badge - only show if progressing (amber) */}
             {isOverdue && !isBlocked && (
@@ -265,21 +350,103 @@ const WorkOrderRow = memo(({
               </Badge>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground truncate">{wo.customer}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] text-muted-foreground truncate">{wo.customer}</p>
+            <span className="text-[10px] text-muted-foreground/70">• {wo.item_code}</span>
+          </div>
         </div>
 
-        {/* Secondary: Item & Qty */}
-        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="truncate max-w-[70px] text-[11px]">{wo.item_code}</span>
+        {/* Operational Signals - Progress, Scrap, NCR, External, Aging */}
+        <div className="hidden lg:flex items-center gap-3 text-[10px]">
+          {/* Progress % with mini bar */}
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1 min-w-[60px]">
+                  <Progress value={progressPct} className="h-1.5 w-8" />
+                  <span className={cn(
+                    "font-medium",
+                    progressPct >= 100 ? "text-green-600" : progressPct > 0 ? "text-foreground" : "text-muted-foreground"
+                  )}>
+                    {progressPct}%
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="text-xs">Progress: {wo.ok_qty?.toLocaleString() || 0} / {wo.quantity?.toLocaleString()} pcs OK</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {/* Scrap % */}
+          {scrapPct > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={cn(
+                    "font-medium",
+                    scrapPct > 5 ? "text-destructive" : scrapPct > 2 ? "text-amber-600" : "text-muted-foreground"
+                  )}>
+                    {scrapPct}% scrap
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">Rejections: {wo.total_rejection?.toLocaleString() || 0} pcs</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {/* Open NCR count */}
+          {openNCRCount > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-destructive/50 text-destructive">
+                    <FileWarning className="h-2.5 w-2.5 mr-0.5" />
+                    {openNCRCount} NCR
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">{openNCRCount} open Non-Conformance Report(s)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {/* External processing status */}
+          {externalStatus.status !== 'none' && (
+            <Badge variant="outline" className={cn("text-[9px] px-1 py-0 h-4", externalStatus.color)}>
+              {externalStatus.label}
+            </Badge>
+          )}
+          
+          {/* Aging since last production */}
+          {agingDays !== null && agingDays > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={cn(
+                    "font-medium flex items-center gap-0.5",
+                    agingDays > 7 ? "text-destructive" : agingDays > 3 ? "text-amber-600" : "text-muted-foreground"
+                  )}>
+                    <Activity className="h-2.5 w-2.5" />
+                    {agingDays}d idle
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">Last production entry: {agingDays} day(s) ago</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+
+        {/* Quantity */}
+        <div className="hidden sm:block text-right min-w-[50px]">
           <span className="font-medium text-foreground text-[11px]">{wo.quantity?.toLocaleString()}</span>
+          <p className="text-[9px] text-muted-foreground">pcs</p>
         </div>
-
-        {/* External WIP count if applicable */}
-        {isExternal && (
-          <span className="text-[10px] text-purple-600 font-medium whitespace-nowrap hidden lg:block">
-            {externalWipTotal} out
-          </span>
-        )}
 
         {/* Due Date */}
         <div className="hidden md:block">
@@ -399,22 +566,68 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
 
       const woIds = (workOrders || []).map((wo: any) => wo.id);
       let movesMap: Record<string, any[]> = {};
+      let productionMetrics: Record<string, { ok_qty: number; total_rejection: number; last_date: string | null }> = {};
+      let ncrCounts: Record<string, number> = {};
       
       if (woIds.length > 0) {
-        const { data: moves } = await supabase
+        // Fetch external moves
+        const movesPromise = supabase
           .from("wo_external_moves" as any)
           .select("id, work_order_id, process, qty_sent, status, expected_return_date, challan_no")
           .in("work_order_id", woIds);
         
-        (moves || []).forEach((move: any) => {
+        // Fetch production log aggregates - OK qty, rejections, last log date
+        const productionPromise = supabase
+          .from("daily_production_logs")
+          .select("wo_id, ok_quantity, total_rejection_quantity, log_date")
+          .in("wo_id", woIds);
+        
+        // Fetch open NCR counts
+        const ncrPromise = supabase
+          .from("ncrs" as any)
+          .select("work_order_id")
+          .in("work_order_id", woIds)
+          .eq("status", "open");
+        
+        const [movesResult, productionResult, ncrResult] = await Promise.all([
+          movesPromise,
+          productionPromise,
+          ncrPromise
+        ]);
+        
+        // Process moves
+        (movesResult.data || []).forEach((move: any) => {
           if (!movesMap[move.work_order_id]) movesMap[move.work_order_id] = [];
           movesMap[move.work_order_id].push(move);
+        });
+        
+        // Aggregate production metrics per WO
+        (productionResult.data || []).forEach((log: any) => {
+          if (!productionMetrics[log.wo_id]) {
+            productionMetrics[log.wo_id] = { ok_qty: 0, total_rejection: 0, last_date: null };
+          }
+          productionMetrics[log.wo_id].ok_qty += log.ok_quantity || 0;
+          productionMetrics[log.wo_id].total_rejection += log.total_rejection_quantity || 0;
+          // Track most recent log date
+          if (!productionMetrics[log.wo_id].last_date || log.log_date > productionMetrics[log.wo_id].last_date) {
+            productionMetrics[log.wo_id].last_date = log.log_date;
+          }
+        });
+        
+        // Count NCRs per WO
+        (ncrResult.data || []).forEach((ncr: any) => {
+          ncrCounts[ncr.work_order_id] = (ncrCounts[ncr.work_order_id] || 0) + 1;
         });
       }
 
       const data = (workOrders || []).map((wo: any) => ({
         ...wo,
         external_moves: movesMap[wo.id] || [],
+        ok_qty: productionMetrics[wo.id]?.ok_qty || 0,
+        total_rejection: productionMetrics[wo.id]?.total_rejection || 0,
+        last_production_date: productionMetrics[wo.id]?.last_date || null,
+        open_ncr_count: ncrCounts[wo.id] || 0,
+        has_open_ncr: (ncrCounts[wo.id] || 0) > 0,
       }));
 
       setWorkOrders(data);
