@@ -119,6 +119,8 @@ const productionLogSchema = z.object({
   actual_production_qty: z.coerce.number().min(0, "Must be 0 or greater"),
   qc_supervisor_id: z.string().uuid("Please select QC supervisor").optional(),
   remarks: z.string().max(500, "Remarks must be less than 500 characters").optional(),
+  route_step_id: z.string().uuid("Please select an operation").optional(),
+  operation_code: z.string().optional(),
 });
 
 type ProductionLogFormData = z.infer<typeof productionLogSchema>;
@@ -253,6 +255,10 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const [people, setPeople] = useState<Person[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedOperators, setSelectedOperators] = useState<string[]>([]);
+  
+  // Route steps for operation selection
+  const [routeSteps, setRouteSteps] = useState<Array<{ id: string; sequence_number: number; operation_type: string; process_name: string | null }>>([]);
+  const [selectedRouteStepId, setSelectedRouteStepId] = useState<string>("");
   
   // Downtime entries state
   const [downtimeEntries, setDowntimeEntries] = useState<DowntimeEntry[]>([]);
@@ -462,6 +468,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   useEffect(() => {
     loadPeople();
     loadMachines();
+    loadRouteSteps();
   }, [propWorkOrder]);
 
   const loadPeople = async () => {
@@ -515,6 +522,29 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     }
   };
 
+  const loadRouteSteps = async () => {
+    if (!propWorkOrder?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("operation_routes")
+        .select("id, sequence_number, operation_type, process_name")
+        .eq("work_order_id", propWorkOrder.id)
+        .order("sequence_number");
+      
+      if (error) throw error;
+      setRouteSteps(data || []);
+      
+      // Auto-select the first CNC operation or first route step
+      if (data && data.length > 0) {
+        const cncStep = data.find((r: any) => r.operation_type === 'CNC');
+        setSelectedRouteStepId(cncStep?.id || data[0].id);
+      }
+    } catch (error) {
+      console.error("Error loading route steps:", error);
+    }
+  };
+
   const handleOperatorToggle = (operatorId: string, checked: boolean) => {
     if (checked) {
       setSelectedOperators(prev => [...prev, operatorId]);
@@ -556,6 +586,12 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         return;
       }
       
+      // Derive operation code from selected route step
+      const selectedStep = routeSteps.find(r => r.id === selectedRouteStepId);
+      const operationCode = selectedStep 
+        ? `${selectedStep.operation_type}${selectedStep.sequence_number}` 
+        : 'A';
+      
       const insertData = {
         wo_id: propWorkOrder?.id || null,
         machine_id: effectiveMachineId,
@@ -592,6 +628,8 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         rejection_face_not_ok: rejectionValues.rejection_face_not_ok || 0,
         rejection_material_not_ok: rejectionValues.rejection_material_not_ok || 0,
         total_rejection_quantity: totalRejectionQty,
+        route_step_id: selectedRouteStepId || null,
+        operation_code: operationCode,
       };
       
       const { data: insertedLog, error: logError } = await supabase
@@ -646,6 +684,9 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     setOverrideMachine(false);
     setOverrideSetup(false);
     setSetupOverrideValue("");
+    // Re-select first CNC step after reset
+    const cncStep = routeSteps.find(r => r.operation_type === 'CNC');
+    setSelectedRouteStepId(cncStep?.id || routeSteps[0]?.id || "");
   };
 
   const handleRaiseNCR = (selectedRejections: RejectionExceedance[]) => {
@@ -779,6 +820,28 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 placeholder="e.g., SETUP-001"
                 hint="Auto-generated"
               />
+              {/* Operation Selection */}
+              {routeSteps.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Wrench className="h-3 w-3" />
+                    Operation Step
+                  </Label>
+                  <Select value={selectedRouteStepId} onValueChange={setSelectedRouteStepId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select operation" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {routeSteps.map((step) => (
+                        <SelectItem key={step.id} value={step.id}>
+                          {step.sequence_number}. {step.operation_type}{step.process_name ? ` (${step.process_name})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Links log to route step for progress tracking</p>
+                </div>
+              )}
             </div>
           </div>
 
