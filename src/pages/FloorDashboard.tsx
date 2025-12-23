@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { MachineUtilizationDashboard } from "@/components/MachineUtilizationDashboard";
+import { StageView } from "@/components/dashboard/StageView";
+import { MachinesView } from "@/components/dashboard/MachinesView";
+import { OperatorsView } from "@/components/dashboard/OperatorsView";
 import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
 import { BlockedWorkOrdersTable } from "@/components/dashboard/BlockedWorkOrdersTable";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +21,8 @@ import {
   Zap,
   CheckCircle,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  Layers
 } from "lucide-react";
 import { differenceInHours, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -29,6 +32,8 @@ const FloorDashboard = () => {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [externalMoves, setExternalMoves] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
+  const [productionLogs, setProductionLogs] = useState<any[]>([]);
+  const [operators, setOperators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
 
@@ -36,7 +41,9 @@ const FloorDashboard = () => {
     try {
       setLoading(true);
       
-      const [woResult, machinesResult, externalResult] = await Promise.all([
+      const today = new Date().toISOString().split('T')[0];
+      
+      const [woResult, machinesResult, externalResult, logsResult, operatorsResult] = await Promise.all([
         supabase
           .from("work_orders")
           .select(`
@@ -66,16 +73,44 @@ const FloorDashboard = () => {
         supabase
           .from("wo_external_moves")
           .select("id, work_order_id, process, status, expected_return_date")
-          .eq("status", "sent")
+          .eq("status", "sent"),
+
+        // Fetch today's production logs for live metrics
+        supabase
+          .from("daily_production_logs")
+          .select(`
+            id,
+            wo_id,
+            machine_id,
+            operator_id,
+            log_date,
+            ok_quantity,
+            target_quantity,
+            total_rejection_quantity,
+            actual_runtime_minutes,
+            total_downtime_minutes
+          `)
+          .eq("log_date", today),
+
+        // Fetch operators
+        supabase
+          .from("people")
+          .select("id, full_name, name")
+          .eq("role", "operator")
+          .eq("is_active", true)
       ]);
 
       if (woResult.error) throw woResult.error;
       if (machinesResult.error) throw machinesResult.error;
       if (externalResult.error) throw externalResult.error;
+      if (logsResult.error) throw logsResult.error;
+      if (operatorsResult.error) throw operatorsResult.error;
 
       setWorkOrders(woResult.data || []);
       setMachines(machinesResult.data || []);
       setExternalMoves(externalResult.data || []);
+      setProductionLogs(logsResult.data || []);
+      setOperators(operatorsResult.data || []);
     } catch (error: any) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -99,6 +134,10 @@ const FloorDashboard = () => {
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
@@ -126,6 +165,14 @@ const FloorDashboard = () => {
     const activeMachines = machines.filter(m => m.status === 'running' || m.current_wo_id).length;
     const idleMachines = machines.filter(m => m.status === 'idle' && !m.current_wo_id).length;
 
+    // Live efficiency from today's logs
+    const totalOk = productionLogs.reduce((sum, l) => sum + (l.ok_quantity || 0), 0);
+    const totalTarget = productionLogs.reduce((sum, l) => sum + (l.target_quantity || 0), 0);
+    const liveEfficiency = totalTarget > 0 ? Math.round((totalOk / totalTarget) * 100) : 0;
+
+    // Active operators today
+    const activeOperators = new Set(productionLogs.map(l => l.operator_id).filter(Boolean)).size;
+
     return {
       total,
       materialQcBlocked,
@@ -135,9 +182,11 @@ const FloorDashboard = () => {
       activeMachines,
       idleMachines,
       totalMachines: machines.length,
-      blockedTotal: materialQcBlocked + firstPieceBlocked + externalBlocked
+      blockedTotal: materialQcBlocked + firstPieceBlocked + externalBlocked,
+      liveEfficiency,
+      activeOperators
     };
-  }, [workOrders, externalMoves, machines]);
+  }, [workOrders, externalMoves, machines, productionLogs]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -169,7 +218,7 @@ const FloorDashboard = () => {
           </Button>
         </div>
 
-        {/* Quick Stats Strip - Blocker Focused */}
+        {/* Quick Stats Strip - Action Focused */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
           <Card className={cn(
             "border-l-4",
@@ -234,28 +283,34 @@ const FloorDashboard = () => {
 
           <Card className={cn(
             "border-l-4",
+            blockerStats.liveEfficiency > 0 ? "border-l-primary" : "border-l-muted"
+          )}>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Live Efficiency</span>
+                <TrendingUp className={cn("h-4 w-4", blockerStats.liveEfficiency > 0 ? "text-primary" : "text-muted-foreground/30")} />
+              </div>
+              <p className={cn("text-xl font-bold", blockerStats.liveEfficiency >= 80 && "text-green-600", blockerStats.liveEfficiency < 80 && blockerStats.liveEfficiency > 0 && "text-amber-600")}>
+                {blockerStats.liveEfficiency}%
+              </p>
+              <p className="text-[10px] text-muted-foreground">{blockerStats.activeOperators} operators</p>
+            </CardContent>
+          </Card>
+
+          <Card className={cn(
+            "border-l-4",
             blockerStats.idleMachines > 0 && blockerStats.ready > 0 ? "border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20" : "border-l-muted"
           )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Idle Machines</span>
-                <Factory className={cn("h-4 w-4", blockerStats.idleMachines > 0 ? "text-blue-500" : "text-muted-foreground/30")} />
+                <span className="text-xs text-muted-foreground">Machines</span>
+                <Factory className={cn("h-4 w-4", blockerStats.activeMachines > 0 ? "text-blue-500" : "text-muted-foreground/30")} />
               </div>
-              <p className={cn("text-xl font-bold", blockerStats.idleMachines > 0 && "text-blue-700 dark:text-blue-400")}>
-                {blockerStats.idleMachines} / {blockerStats.totalMachines}
+              <p className="text-xl font-bold">
+                <span className="text-green-600">{blockerStats.activeMachines}</span>
+                <span className="text-muted-foreground text-sm"> / {blockerStats.totalMachines}</span>
               </p>
-              <p className="text-[10px] text-muted-foreground">Action: Assign Work</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-muted">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Total Active</span>
-                <Zap className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="text-xl font-bold">{blockerStats.total}</p>
-              <p className="text-[10px] text-muted-foreground">Work Orders</p>
+              <p className="text-[10px] text-muted-foreground">{blockerStats.idleMachines} idle</p>
             </CardContent>
           </Card>
         </div>
@@ -289,21 +344,12 @@ const FloorDashboard = () => {
           </Card>
         )}
 
-        {/* Main Content */}
-        <Tabs defaultValue="blockers" className="w-full">
+        {/* Main Content - Tabs */}
+        <Tabs defaultValue="stages" className="w-full">
           <TabsList className="grid w-full md:w-auto grid-cols-4">
-            <TabsTrigger value="blockers" className="gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              Blockers
-              {blockerStats.blockedTotal > 0 && (
-                <Badge variant="destructive" className="h-5 text-[10px] px-1.5">
-                  {blockerStats.blockedTotal}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="actions" className="gap-2">
-              <Zap className="h-4 w-4" />
-              Quick Actions
+            <TabsTrigger value="stages" className="gap-2">
+              <Layers className="h-4 w-4" />
+              Stages
             </TabsTrigger>
             <TabsTrigger value="machines" className="gap-2">
               <Factory className="h-4 w-4" />
@@ -313,9 +359,73 @@ const FloorDashboard = () => {
               <Users className="h-4 w-4" />
               Operators
             </TabsTrigger>
+            <TabsTrigger value="blockers" className="gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Blockers
+              {blockerStats.blockedTotal > 0 && (
+                <Badge variant="destructive" className="h-5 text-[10px] px-1.5">
+                  {blockerStats.blockedTotal}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
-          {/* Blockers Tab - Priority */}
+          {/* Stages Tab */}
+          <TabsContent value="stages" className="mt-6">
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8 w-64" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3, 4, 5, 6].map(i => (
+                    <Skeleton key={i} className="h-48" />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <StageView
+                workOrders={workOrders}
+                externalMoves={externalMoves}
+                productionLogs={productionLogs}
+              />
+            )}
+          </TabsContent>
+
+          {/* Machines Tab */}
+          <TabsContent value="machines" className="mt-6">
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8 w-64" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[1, 2, 3, 4, 5, 6].map(i => (
+                    <Skeleton key={i} className="h-32" />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <MachinesView productionLogs={productionLogs} />
+            )}
+          </TabsContent>
+
+          {/* Operators Tab */}
+          <TabsContent value="operators" className="mt-6">
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8 w-64" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                    <Skeleton key={i} className="h-28" />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <OperatorsView
+                productionLogs={productionLogs}
+                operators={operators}
+              />
+            )}
+          </TabsContent>
+
+          {/* Blockers Tab */}
           <TabsContent value="blockers" className="mt-6 space-y-6">
             {loading ? (
               <div className="space-y-4">
@@ -324,10 +434,8 @@ const FloorDashboard = () => {
               </div>
             ) : (
               <>
-                {/* Top Priority Actions */}
                 <ActionableBlockers />
 
-                {/* Full Blocked Orders Table */}
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -350,190 +458,6 @@ const FloorDashboard = () => {
                 </Card>
               </>
             )}
-          </TabsContent>
-
-          {/* Quick Actions Tab */}
-          <TabsContent value="actions" className="mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Material QC Action */}
-              <Card className={cn(
-                "transition-all hover:shadow-md cursor-pointer",
-                blockerStats.materialQcBlocked > 0 && "ring-2 ring-amber-500/50"
-              )} onClick={() => navigate('/qc/incoming')}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className="border-amber-500 text-amber-700">
-                      Quality
-                    </Badge>
-                    {blockerStats.materialQcBlocked > 0 && (
-                      <Badge variant="destructive">{blockerStats.materialQcBlocked} pending</Badge>
-                    )}
-                  </div>
-                  <h3 className="font-semibold mb-1">Approve Material QC</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Inspect and approve incoming materials to unblock production
-                  </p>
-                  <Button size="sm" className="w-full gap-2">
-                    <CheckCircle className="h-4 w-4" />
-                    Open QC Incoming
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* First Piece QC Action */}
-              <Card className={cn(
-                "transition-all hover:shadow-md cursor-pointer",
-                blockerStats.firstPieceBlocked > 0 && "ring-2 ring-orange-500/50"
-              )} onClick={() => navigate('/quality?tab=first-piece')}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className="border-orange-500 text-orange-700">
-                      QC / Production
-                    </Badge>
-                    {blockerStats.firstPieceBlocked > 0 && (
-                      <Badge variant="destructive">{blockerStats.firstPieceBlocked} pending</Badge>
-                    )}
-                  </div>
-                  <h3 className="font-semibold mb-1">Approve First Piece</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Perform first piece inspection to release production
-                  </p>
-                  <Button size="sm" className="w-full gap-2">
-                    <CheckCircle className="h-4 w-4" />
-                    Open First Piece
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Assign Machine Action */}
-              <Card className={cn(
-                "transition-all hover:shadow-md cursor-pointer",
-                blockerStats.idleMachines > 0 && blockerStats.ready > 0 && "ring-2 ring-blue-500/50"
-              )} onClick={() => navigate('/production-progress')}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className="border-blue-500 text-blue-700">
-                      Production Planning
-                    </Badge>
-                    {blockerStats.ready > 0 && (
-                      <Badge className="bg-green-500">{blockerStats.ready} ready</Badge>
-                    )}
-                  </div>
-                  <h3 className="font-semibold mb-1">Assign Machines</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Assign work orders to available machines
-                  </p>
-                  <Button size="sm" className="w-full gap-2">
-                    <Factory className="h-4 w-4" />
-                    Open Production Progress
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* External Status Action */}
-              <Card className={cn(
-                "transition-all hover:shadow-md cursor-pointer",
-                blockerStats.externalBlocked > 0 && "ring-2 ring-purple-500/50"
-              )} onClick={() => navigate('/external-efficiency')}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className="border-purple-500 text-purple-700">
-                      External Ops
-                    </Badge>
-                    {blockerStats.externalBlocked > 0 && (
-                      <Badge variant="secondary">{blockerStats.externalBlocked} at external</Badge>
-                    )}
-                  </div>
-                  <h3 className="font-semibold mb-1">Check External Status</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Track and expedite items at external vendors
-                  </p>
-                  <Button size="sm" variant="outline" className="w-full gap-2">
-                    <Clock className="h-4 w-4" />
-                    View External Jobs
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Issue Material Action */}
-              <Card className="transition-all hover:shadow-md cursor-pointer" 
-                onClick={() => navigate('/material-requirements')}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className="border-green-500 text-green-700">
-                      Procurement
-                    </Badge>
-                  </div>
-                  <h3 className="font-semibold mb-1">Issue Material</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Issue materials to work orders ready for production
-                  </p>
-                  <Button size="sm" variant="outline" className="w-full gap-2">
-                    <Zap className="h-4 w-4" />
-                    Material Requirements
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Maintenance Action */}
-              <Card className="transition-all hover:shadow-md cursor-pointer"
-                onClick={() => navigate('/cnc')}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge variant="outline" className="border-red-500 text-red-700">
-                      Maintenance
-                    </Badge>
-                  </div>
-                  <h3 className="font-semibold mb-1">Call Maintenance</h3>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Report machine issues or schedule maintenance
-                  </p>
-                  <Button size="sm" variant="destructive" className="w-full gap-2">
-                    <AlertTriangle className="h-4 w-4" />
-                    Machine Status
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="machines" className="mt-6">
-            <MachineUtilizationDashboard />
-          </TabsContent>
-
-          <TabsContent value="operators" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Operator Efficiency Tracking
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 space-y-4">
-                  <Users className="h-12 w-12 mx-auto text-muted-foreground/50" />
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      View detailed operator performance metrics from the Operator Production Ledger
-                    </p>
-                    <Button
-                      onClick={() => navigate('/operator-efficiency')}
-                      className="gap-2"
-                    >
-                      <TrendingUp className="h-4 w-4" />
-                      Open Operator Efficiency Report
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </div>
