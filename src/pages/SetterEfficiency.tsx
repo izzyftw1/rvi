@@ -1,40 +1,34 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PageContainer, PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Wrench, Clock, RefreshCw, AlertTriangle, Download, Info, Timer, Repeat, Zap } from "lucide-react";
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays } from "date-fns";
-import { formatCount, formatPercent } from "@/lib/displayUtils";
+import { Wrench, Clock, RefreshCw, Download, Info, Timer, Zap } from "lucide-react";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInDays } from "date-fns";
 import { Link } from "react-router-dom";
 
-interface SetterActivityEntry {
+interface SetupLogEntry {
   id: string;
-  setter_id: string;
-  work_order_id: string | null;
+  setter_id: string | null;
   machine_id: string;
+  wo_id: string | null;
   log_date: string;
   setup_number: string;
-  setup_start_time: string | null;
-  setup_end_time: string | null;
+  setup_start_time_actual: string | null;
+  setup_end_time_actual: string | null;
   setup_duration_minutes: number | null;
-  is_repeat_setup: boolean;
-  delay_caused_minutes: number;
-  created_at: string;
-}
-
-interface Person {
-  id: string;
-  full_name: string;
+  shift: string;
 }
 
 interface Machine {
@@ -49,38 +43,36 @@ interface SetterMetrics {
   totalSetups: number;
   avgSetupTime: number;
   totalSetupTime: number;
-  repeatSetups: number;
-  newSetups: number;
-  totalDelaysCaused: number;
   machines: string[];
   setupsPerDay: number;
+  logIds: string[];
 }
 
-type Period = 'daily' | 'weekly' | 'monthly';
+type Period = "daily" | "weekly" | "monthly";
 
 const SetterEfficiency = () => {
   const [loading, setLoading] = useState(true);
-  const [activities, setActivities] = useState<SetterActivityEntry[]>([]);
-  const [people, setPeople] = useState<Person[]>([]);
+  const [setupLogs, setSetupLogs] = useState<SetupLogEntry[]>([]);
+  const [setterNames, setSetterNames] = useState<Record<string, string>>({});
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [period, setPeriod] = useState<Period>('daily');
+  const [period, setPeriod] = useState<Period>("daily");
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [machineFilter, setMachineFilter] = useState<string>("all");
   const [selectedSetter, setSelectedSetter] = useState<SetterMetrics | null>(null);
-  const [detailLogs, setDetailLogs] = useState<SetterActivityEntry[]>([]);
+  const [detailLogs, setDetailLogs] = useState<SetupLogEntry[]>([]);
 
   // Get date range based on period
   const dateRange = useMemo(() => {
     const baseDate = parseISO(selectedDate);
     switch (period) {
-      case 'daily':
+      case "daily":
         return { start: selectedDate, end: selectedDate };
-      case 'weekly':
+      case "weekly":
         return {
           start: format(startOfWeek(baseDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
           end: format(endOfWeek(baseDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
         };
-      case 'monthly':
+      case "monthly":
         return {
           start: format(startOfMonth(baseDate), "yyyy-MM-dd"),
           end: format(endOfMonth(baseDate), "yyyy-MM-dd"),
@@ -95,31 +87,58 @@ const SetterEfficiency = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Build query
+      // Query daily_production_logs for setup data
       let query = supabase
-        .from("setter_activity_ledger")
-        .select("*")
+        .from("daily_production_logs")
+        .select(`
+          id,
+          setter_id,
+          machine_id,
+          wo_id,
+          log_date,
+          setup_number,
+          setup_start_time_actual,
+          setup_end_time_actual,
+          setup_duration_minutes,
+          shift
+        `)
         .gte("log_date", dateRange.start)
         .lte("log_date", dateRange.end)
-        .order("created_at", { ascending: false });
+        .not("setter_id", "is", null)
+        .order("log_date", { ascending: false });
 
       if (machineFilter !== "all") {
         query = query.eq("machine_id", machineFilter);
       }
 
-      const [activitiesRes, peopleRes, machinesRes] = await Promise.all([
+      const [logsRes, machinesRes] = await Promise.all([
         query,
-        supabase.from("people").select("id, full_name").order("full_name"),
         supabase.from("machines").select("id, machine_id, name").order("machine_id"),
       ]);
 
-      if (activitiesRes.error) throw activitiesRes.error;
-      if (peopleRes.error) throw peopleRes.error;
+      if (logsRes.error) throw logsRes.error;
       if (machinesRes.error) throw machinesRes.error;
 
-      setActivities(activitiesRes.data || []);
-      setPeople(peopleRes.data || []);
+      const logs = logsRes.data || [];
+      setSetupLogs(logs);
       setMachines(machinesRes.data || []);
+
+      // Fetch setter names
+      const setterIds = [...new Set(logs.map((l) => l.setter_id).filter(Boolean))];
+      if (setterIds.length > 0) {
+        const { data: people } = await supabase
+          .from("people")
+          .select("id, full_name")
+          .in("id", setterIds);
+
+        const names: Record<string, string> = {};
+        (people || []).forEach((p) => {
+          names[p.id] = p.full_name || "Unknown";
+        });
+        setSetterNames(names);
+      } else {
+        setSetterNames({});
+      }
     } catch (error: any) {
       toast.error("Failed to load setter efficiency data: " + error.message);
     } finally {
@@ -132,38 +151,29 @@ const SetterEfficiency = () => {
     const metricsMap = new Map<string, SetterMetrics>();
     const dayCount = Math.max(1, differenceInDays(parseISO(dateRange.end), parseISO(dateRange.start)) + 1);
 
-    activities.forEach((activity) => {
-      if (!activity.setter_id) return;
+    setupLogs.forEach((log) => {
+      if (!log.setter_id) return;
 
-      const setterId = activity.setter_id;
-      const setter = people.find((p) => p.id === setterId);
-      const machine = machines.find((m) => m.id === activity.machine_id);
+      const setterId = log.setter_id;
+      const machine = machines.find((m) => m.id === log.machine_id);
 
       if (!metricsMap.has(setterId)) {
         metricsMap.set(setterId, {
           setterId,
-          setterName: setter?.full_name || "Unknown",
+          setterName: setterNames[setterId] || "Unknown",
           totalSetups: 0,
           avgSetupTime: 0,
           totalSetupTime: 0,
-          repeatSetups: 0,
-          newSetups: 0,
-          totalDelaysCaused: 0,
           machines: [],
           setupsPerDay: 0,
+          logIds: [],
         });
       }
 
       const metrics = metricsMap.get(setterId)!;
       metrics.totalSetups++;
-      metrics.totalSetupTime += activity.setup_duration_minutes || 0;
-      metrics.totalDelaysCaused += activity.delay_caused_minutes || 0;
-
-      if (activity.is_repeat_setup) {
-        metrics.repeatSetups++;
-      } else {
-        metrics.newSetups++;
-      }
+      metrics.totalSetupTime += log.setup_duration_minutes || 0;
+      metrics.logIds.push(log.id);
 
       if (machine && !metrics.machines.includes(machine.machine_id)) {
         metrics.machines.push(machine.machine_id);
@@ -172,31 +182,34 @@ const SetterEfficiency = () => {
 
     // Calculate averages
     metricsMap.forEach((metrics) => {
-      metrics.avgSetupTime = metrics.totalSetups > 0 
-        ? Math.round(metrics.totalSetupTime / metrics.totalSetups) 
-        : 0;
+      metrics.avgSetupTime =
+        metrics.totalSetups > 0 ? Math.round(metrics.totalSetupTime / metrics.totalSetups) : 0;
       metrics.setupsPerDay = Math.round((metrics.totalSetups / dayCount) * 10) / 10;
     });
 
     return Array.from(metricsMap.values()).sort((a, b) => b.totalSetups - a.totalSetups);
-  }, [activities, people, machines, dateRange]);
+  }, [setupLogs, setterNames, machines, dateRange]);
 
   // Summary stats
   const summaryStats = useMemo(() => {
     const totalSetups = setterMetrics.reduce((sum, m) => sum + m.totalSetups, 0);
     const totalTime = setterMetrics.reduce((sum, m) => sum + m.totalSetupTime, 0);
-    const totalRepeats = setterMetrics.reduce((sum, m) => sum + m.repeatSetups, 0);
-    const totalDelays = setterMetrics.reduce((sum, m) => sum + m.totalDelaysCaused, 0);
     const avgSetupTime = totalSetups > 0 ? Math.round(totalTime / totalSetups) : 0;
-    const repeatRate = totalSetups > 0 ? Math.round((totalRepeats / totalSetups) * 100) : 0;
+    const dayCount = Math.max(1, differenceInDays(parseISO(dateRange.end), parseISO(dateRange.start)) + 1);
+    const setupsPerDay = Math.round((totalSetups / dayCount) * 10) / 10;
 
-    return { totalSetups, avgSetupTime, totalRepeats, repeatRate, totalDelays, setterCount: setterMetrics.length };
-  }, [setterMetrics]);
+    return {
+      totalSetups,
+      avgSetupTime,
+      totalSetupTime: totalTime,
+      setupsPerDay,
+      setterCount: setterMetrics.length,
+    };
+  }, [setterMetrics, dateRange]);
 
   const handleSetterClick = (metrics: SetterMetrics) => {
     setSelectedSetter(metrics);
-    // Filter activities for this setter
-    const logs = activities.filter((a) => a.setter_id === metrics.setterId);
+    const logs = setupLogs.filter((l) => l.setter_id === metrics.setterId);
     setDetailLogs(logs);
   };
 
@@ -221,14 +234,19 @@ const SetterEfficiency = () => {
       return;
     }
 
-    const headers = ["Setter Name", "Total Setups", "Avg Setup Time (min)", "Repeat Setups", "New Setups", "Delays Caused (min)", "Machines", "Setups/Day"];
+    const headers = [
+      "Setter Name",
+      "Total Setups",
+      "Avg Setup Time (min)",
+      "Total Setup Time (min)",
+      "Machines",
+      "Setups/Day",
+    ];
     const rows = setterMetrics.map((m) => [
       m.setterName,
       m.totalSetups,
       m.avgSetupTime,
-      m.repeatSetups,
-      m.newSetups,
-      m.totalDelaysCaused,
+      m.totalSetupTime,
       m.machines.join(", "),
       m.setupsPerDay,
     ]);
@@ -245,47 +263,37 @@ const SetterEfficiency = () => {
   };
 
   return (
-    <PageContainer>
+    <div className="space-y-6">
       <PageHeader
         title="Setter Efficiency"
-        description="Track setup times, repeated setups, and delays caused by setters/programmers"
-        icon={<Wrench className="h-6 w-6" />}
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={loadData} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <Button variant="outline" onClick={exportCSV}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </div>
-        }
+        description="Historical analytics derived from Daily Production Logs - Setup performance only"
       />
 
       {/* Info Banner */}
-      <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border text-sm mb-6">
-        <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-        <div className="text-muted-foreground">
-          <p>Setter activity is tracked separately from production efficiency. This data does NOT affect operator or machine efficiency metrics.</p>
-          <p className="mt-1">
-            <Link to="/cnc-programmer-activity" className="text-primary hover:underline font-medium">
-              Log setter activity here →
-            </Link>
-          </p>
-        </div>
-      </div>
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          All metrics derived from Production Log setup fields. This is a read-only historical analytics view.
+          <br />
+          <span className="text-xs text-muted-foreground">
+            Setup data is separate from Operator Efficiency (production output) and Machine Utilisation.
+          </span>
+        </AlertDescription>
+      </Alert>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Wrench className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Setters</span>
             </div>
-            <div className="text-2xl font-bold">{summaryStats.setterCount}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <div className="text-2xl font-bold">{summaryStats.setterCount}</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -294,7 +302,11 @@ const SetterEfficiency = () => {
               <Timer className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Total Setups</span>
             </div>
-            <div className="text-2xl font-bold">{summaryStats.totalSetups}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <div className="text-2xl font-bold">{summaryStats.totalSetups}</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -303,32 +315,26 @@ const SetterEfficiency = () => {
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Avg Setup Time</span>
             </div>
-            <div className={`text-2xl font-bold ${getSetupTimeColor(summaryStats.avgSetupTime)}`}>
-              {formatDuration(summaryStats.avgSetupTime)}
-            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className={`text-2xl font-bold ${getSetupTimeColor(summaryStats.avgSetupTime)}`}>
+                {formatDuration(summaryStats.avgSetupTime)}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
-              <Repeat className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Repeat Setups</span>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Total Setup Time</span>
             </div>
-            <div className="text-2xl font-bold">
-              {summaryStats.totalRepeats}
-              <span className="text-sm font-normal text-muted-foreground ml-1">
-                ({summaryStats.repeatRate}%)
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <span className="text-xs text-muted-foreground">Delays Caused</span>
-            </div>
-            <div className="text-2xl font-bold">{formatDuration(summaryStats.totalDelays)}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">{formatDuration(summaryStats.totalSetupTime)}</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -337,18 +343,18 @@ const SetterEfficiency = () => {
               <Zap className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Setups/Day</span>
             </div>
-            <div className="text-2xl font-bold">
-              {setterMetrics.length > 0 
-                ? Math.round(setterMetrics.reduce((sum, m) => sum + m.setupsPerDay, 0) * 10) / 10 
-                : 0}
-            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <div className="text-2xl font-bold">{summaryStats.setupsPerDay}</div>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
+      <Card>
+        <CardContent className="pt-4">
           <div className="flex flex-wrap gap-4 items-end">
             {/* Period Toggle */}
             <div className="space-y-2">
@@ -391,9 +397,17 @@ const SetterEfficiency = () => {
               </Select>
             </div>
 
-            {/* Date Range Display */}
-            <div className="ml-auto text-sm text-muted-foreground">
-              Showing: {format(parseISO(dateRange.start), "MMM d")} - {format(parseISO(dateRange.end), "MMM d, yyyy")}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {format(parseISO(dateRange.start), "MMM d")} -{" "}
+                {format(parseISO(dateRange.end), "MMM d, yyyy")}
+              </span>
+              <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportCSV}>
+                <Download className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -402,24 +416,31 @@ const SetterEfficiency = () => {
       {/* Setter Table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Setter Performance</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wrench className="h-5 w-5" />
+            Setter Performance
+          </CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent>
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading...</div>
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
           ) : setterMetrics.length === 0 ? (
-            <div className="p-8 text-center">
+            <div className="text-center py-12">
               <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
               <h3 className="text-sm font-medium mb-1">No setter activity recorded</h3>
               <p className="text-sm text-muted-foreground mb-1">
-                <span className="font-medium">Why:</span> No setup activity logged for this period.
+                <span className="font-medium">Why:</span> No production logs with setters assigned for this period.
               </p>
               <p className="text-sm text-muted-foreground mb-4">
-                <span className="font-medium">How to populate:</span> Log setter/programmer activity when performing machine setups.
+                <span className="font-medium">How to populate:</span> Assign setters and log setup times in Daily Production Log.
               </p>
               <Button asChild variant="default" className="gap-2">
-                <Link to="/cnc-programmer-activity">
-                  Log Setter Activity
+                <Link to="/daily-production-log">
+                  Log Production
                   <Zap className="h-4 w-4" />
                 </Link>
               </Button>
@@ -431,9 +452,7 @@ const SetterEfficiency = () => {
                   <TableHead>Setter Name</TableHead>
                   <TableHead className="text-center">Total Setups</TableHead>
                   <TableHead className="text-center">Avg Setup Time</TableHead>
-                  <TableHead className="text-center">Repeat Setups</TableHead>
-                  <TableHead className="text-center">New Setups</TableHead>
-                  <TableHead className="text-center">Delays Caused</TableHead>
+                  <TableHead className="text-center">Total Setup Time</TableHead>
                   <TableHead>Machines</TableHead>
                   <TableHead className="text-center">Setups/Day</TableHead>
                 </TableRow>
@@ -454,21 +473,7 @@ const SetterEfficiency = () => {
                         {formatDuration(metrics.avgSetupTime)}
                       </span>
                     </TableCell>
-                    <TableCell className="text-center">
-                      {metrics.repeatSetups > 0 ? (
-                        <Badge variant="destructive">{metrics.repeatSetups}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">0</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">{metrics.newSetups}</TableCell>
-                    <TableCell className="text-center">
-                      {metrics.totalDelaysCaused > 0 ? (
-                        <span className="text-amber-600 font-medium">{formatDuration(metrics.totalDelaysCaused)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
+                    <TableCell className="text-center">{formatDuration(metrics.totalSetupTime)}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {metrics.machines.slice(0, 3).map((m) => (
@@ -498,7 +503,8 @@ const SetterEfficiency = () => {
           <SheetHeader>
             <SheetTitle>{selectedSetter?.setterName}</SheetTitle>
             <SheetDescription>
-              Setup activity details for {format(parseISO(dateRange.start), "MMM d")} - {format(parseISO(dateRange.end), "MMM d, yyyy")}
+              Setup activity for {format(parseISO(dateRange.start), "MMM d")} -{" "}
+              {format(parseISO(dateRange.end), "MMM d, yyyy")}
             </SheetDescription>
           </SheetHeader>
 
@@ -522,32 +528,23 @@ const SetterEfficiency = () => {
                 </Card>
                 <Card>
                   <CardContent className="p-3">
-                    <div className="text-xs text-muted-foreground mb-1">Repeat Setups</div>
-                    <div className="text-xl font-bold">
-                      {selectedSetter.repeatSetups}
-                      <span className="text-sm font-normal text-muted-foreground ml-1">
-                        ({selectedSetter.totalSetups > 0 
-                          ? Math.round((selectedSetter.repeatSetups / selectedSetter.totalSetups) * 100) 
-                          : 0}%)
-                      </span>
-                    </div>
+                    <div className="text-xs text-muted-foreground mb-1">Total Time</div>
+                    <div className="text-xl font-bold">{formatDuration(selectedSetter.totalSetupTime)}</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-3">
-                    <div className="text-xs text-muted-foreground mb-1">Delays Caused</div>
-                    <div className="text-xl font-bold text-amber-600">
-                      {formatDuration(selectedSetter.totalDelaysCaused)}
-                    </div>
+                    <div className="text-xs text-muted-foreground mb-1">Setups/Day</div>
+                    <div className="text-xl font-bold">{selectedSetter.setupsPerDay}</div>
                   </CardContent>
                 </Card>
               </div>
 
               <Separator />
 
-              {/* Activity Logs */}
+              {/* Setup Logs */}
               <div>
-                <h4 className="font-medium mb-3">Setup Logs</h4>
+                <h4 className="font-medium mb-3">Setup Logs ({detailLogs.length})</h4>
                 {detailLogs.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No logs found.</p>
                 ) : (
@@ -558,35 +555,26 @@ const SetterEfficiency = () => {
                           <div>
                             <div className="text-sm font-medium">{log.setup_number}</div>
                             <div className="text-xs text-muted-foreground">
-                              {format(parseISO(log.log_date), "MMM d, yyyy")} • {getMachineName(log.machine_id)}
+                              {format(parseISO(log.log_date), "MMM d, yyyy")} • {getMachineName(log.machine_id)} • {log.shift}
                             </div>
                           </div>
-                          {log.is_repeat_setup && (
-                            <Badge variant="destructive" className="text-xs">
-                              <Repeat className="h-3 w-3 mr-1" />
-                              Repeat
-                            </Badge>
-                          )}
+                          <Badge variant="outline" className="text-xs">
+                            {formatDuration(log.setup_duration_minutes)}
+                          </Badge>
                         </div>
                         <div className="flex gap-4 text-sm">
                           <div>
                             <span className="text-muted-foreground">Start:</span>{" "}
-                            {log.setup_start_time || "—"}
+                            {log.setup_start_time_actual || "—"}
                           </div>
                           <div>
                             <span className="text-muted-foreground">End:</span>{" "}
-                            {log.setup_end_time || "—"}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Duration:</span>{" "}
-                            <span className={getSetupTimeColor(log.setup_duration_minutes || 0)}>
-                              {formatDuration(log.setup_duration_minutes)}
-                            </span>
+                            {log.setup_end_time_actual || "—"}
                           </div>
                         </div>
-                        {log.work_order_id && (
-                          <Link 
-                            to={`/work-orders/${log.work_order_id}`} 
+                        {log.wo_id && (
+                          <Link
+                            to={`/work-orders/${log.wo_id}`}
                             className="text-xs text-primary hover:underline mt-2 inline-block"
                           >
                             View Work Order →
@@ -601,7 +589,7 @@ const SetterEfficiency = () => {
           )}
         </SheetContent>
       </Sheet>
-    </PageContainer>
+    </div>
   );
 };
 
