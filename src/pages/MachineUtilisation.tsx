@@ -1,12 +1,24 @@
+/**
+ * Machine Utilisation Review Page
+ * 
+ * READ-ONLY metrics derived from the shared useProductionLogMetrics hook.
+ * Allows supervisors to review and document reasons for low utilisation.
+ * 
+ * FORMULAS (from shared hook):
+ * - Expected Runtime = Shift End - Shift Start (or default 690 min)
+ * - Actual Runtime = from production logs
+ * - Utilisation % = (Actual Runtime ÷ Expected Runtime) × 100
+ */
+
 import { useState, useEffect, useMemo } from "react";
 import { format, subDays } from "date-fns";
-import { CalendarIcon, Settings, AlertTriangle, CheckCircle2, Clock, Percent, Activity } from "lucide-react";
+import { CalendarIcon, Settings, AlertTriangle, CheckCircle2, Clock, Percent, Activity, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -33,30 +45,21 @@ import {
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 
-interface Machine {
+interface MachineReview {
   id: string;
-  name: string;
-  machine_id: string;
-}
-
-interface ProductionLogSummary {
-  machine_id: string;
-  total_shift_minutes: number;
-  total_runtime_minutes: number;
+  reason: string | null;
+  action_taken: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
 }
 
 interface MachineUtilisationData {
-  machine: Machine;
+  machineId: string;
+  machineName: string;
   expectedRuntime: number;
   actualRuntime: number;
   utilisationPct: number;
-  review?: {
-    id: string;
-    reason: string | null;
-    action_taken: string | null;
-    reviewed_by: string | null;
-    reviewed_at: string | null;
-  };
+  review?: MachineReview;
   needsReview: boolean;
 }
 
@@ -66,20 +69,17 @@ const DEFAULT_SHIFT_MINUTES = 690;
 // Helper to format minutes as hours:minutes
 function formatMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+  const mins = Math.round(minutes % 60);
   return `${hours}h ${mins}m`;
 }
 
 export default function MachineUtilisation() {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [reviewDate, setReviewDate] = useState<Date>(subDays(new Date(), 1)); // Yesterday
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [logSummaries, setLogSummaries] = useState<ProductionLogSummary[]>([]);
-  const [reviews, setReviews] = useState<Record<string, MachineUtilisationData["review"]>>({});
+  const [reviewDate, setReviewDate] = useState<Date>(subDays(new Date(), 1));
   const [threshold, setThreshold] = useState<number>(80);
   const [showSettings, setShowSettings] = useState(false);
+  const [reviews, setReviews] = useState<Record<string, MachineReview>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   // Review dialog state
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
@@ -87,34 +87,32 @@ export default function MachineUtilisation() {
   const [reviewReason, setReviewReason] = useState("");
   const [reviewAction, setReviewAction] = useState("");
 
-  // Calculate utilisation data for each machine
-  const utilisationData = useMemo<MachineUtilisationData[]>(() => {
-    return machines.map((machine) => {
-      // Find production logs for this machine
-      const logSummary = logSummaries.find((s) => s.machine_id === machine.id);
-      
-      // Expected runtime from shift duration (if logs exist, use their shift times, otherwise default)
-      const expectedRuntime = logSummary?.total_shift_minutes || DEFAULT_SHIFT_MINUTES;
-      const actualRuntime = logSummary?.total_runtime_minutes || 0;
-      
-      // Calculate utilisation percentage
-      const utilisationPct = expectedRuntime > 0 
-        ? Math.round((actualRuntime / expectedRuntime) * 100 * 100) / 100
-        : 0;
+  // Single source of truth: useProductionLogMetrics
+  const { metrics, loading } = useProductionLogMetrics({
+    startDate: format(reviewDate, "yyyy-MM-dd"),
+    endDate: format(reviewDate, "yyyy-MM-dd"),
+    period: "custom",
+  });
 
-      const review = reviews[machine.id];
-      const needsReview = utilisationPct < threshold && !review?.reason;
+  // Convert shared metrics to utilisation view format
+  const utilisationData = useMemo<MachineUtilisationData[]>(() => {
+    if (!metrics) return [];
+    
+    return metrics.machineMetrics.map((m) => {
+      const review = reviews[m.machineId];
+      const needsReview = m.utilizationPercent < threshold && !review?.reason;
 
       return {
-        machine,
-        expectedRuntime,
-        actualRuntime,
-        utilisationPct,
+        machineId: m.machineId,
+        machineName: m.machineName,
+        expectedRuntime: m.expectedRuntime,
+        actualRuntime: m.totalRuntime,
+        utilisationPct: m.utilizationPercent,
         review,
         needsReview,
       };
-    });
-  }, [machines, logSummaries, reviews, threshold]);
+    }).sort((a, b) => a.utilisationPct - b.utilisationPct); // Sort by lowest utilisation first
+  }, [metrics, reviews, threshold]);
 
   // Summary statistics
   const summary = useMemo(() => {
@@ -127,61 +125,20 @@ export default function MachineUtilisation() {
     return { total, belowThreshold, needingReview, avgUtilisation };
   }, [utilisationData, threshold]);
 
+  // Load reviews for the selected date
   useEffect(() => {
-    loadData();
+    loadReviews();
   }, [reviewDate]);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadReviews = async () => {
     try {
       const dateStr = format(reviewDate, "yyyy-MM-dd");
-
-      // Load all machines
-      const { data: machinesData } = await supabase
-        .from("machines")
-        .select("id, name, machine_id")
-        .order("machine_id");
-      setMachines(machinesData || []);
-
-      // Load production logs for the review date and aggregate by machine
-      const { data: logsData } = await supabase
-        .from("daily_production_logs")
-        .select("machine_id, shift_start_time, shift_end_time, actual_runtime_minutes")
-        .eq("log_date", dateStr);
-
-      // Aggregate logs by machine
-      const summaryMap: Record<string, ProductionLogSummary> = {};
-      (logsData || []).forEach((log: any) => {
-        if (!summaryMap[log.machine_id]) {
-          summaryMap[log.machine_id] = {
-            machine_id: log.machine_id,
-            total_shift_minutes: 0,
-            total_runtime_minutes: 0,
-          };
-        }
-        
-        // Calculate shift duration from times if available
-        if (log.shift_start_time && log.shift_end_time) {
-          const [startH, startM] = log.shift_start_time.split(":").map(Number);
-          const [endH, endM] = log.shift_end_time.split(":").map(Number);
-          let shiftMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-          if (shiftMinutes < 0) shiftMinutes += 24 * 60; // Handle overnight
-          summaryMap[log.machine_id].total_shift_minutes += shiftMinutes;
-        } else {
-          summaryMap[log.machine_id].total_shift_minutes += DEFAULT_SHIFT_MINUTES;
-        }
-        
-        summaryMap[log.machine_id].total_runtime_minutes += log.actual_runtime_minutes || 0;
-      });
-      setLogSummaries(Object.values(summaryMap));
-
-      // Load existing reviews for the date
       const { data: reviewsData } = await supabase
         .from("machine_utilisation_reviews")
         .select("id, machine_id, reason, action_taken, reviewed_by, reviewed_at")
         .eq("review_date", dateStr);
 
-      const reviewsMap: Record<string, MachineUtilisationData["review"]> = {};
+      const reviewsMap: Record<string, MachineReview> = {};
       (reviewsData || []).forEach((r: any) => {
         reviewsMap[r.machine_id] = {
           id: r.id,
@@ -193,14 +150,7 @@ export default function MachineUtilisation() {
       });
       setReviews(reviewsMap);
     } catch (error: any) {
-      console.error("Error loading data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load utilisation data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      console.error("Error loading reviews:", error);
     }
   };
 
@@ -229,7 +179,7 @@ export default function MachineUtilisation() {
       const dateStr = format(reviewDate, "yyyy-MM-dd");
 
       const reviewData = {
-        machine_id: selectedMachine.machine.id,
+        machine_id: selectedMachine.machineId,
         review_date: dateStr,
         expected_runtime_minutes: selectedMachine.expectedRuntime,
         actual_runtime_minutes: selectedMachine.actualRuntime,
@@ -241,14 +191,12 @@ export default function MachineUtilisation() {
       };
 
       if (selectedMachine.review?.id) {
-        // Update existing
         const { error } = await supabase
           .from("machine_utilisation_reviews")
           .update(reviewData)
           .eq("id", selectedMachine.review.id);
         if (error) throw error;
       } else {
-        // Insert new
         const { error } = await supabase
           .from("machine_utilisation_reviews")
           .insert(reviewData);
@@ -261,7 +209,7 @@ export default function MachineUtilisation() {
       });
 
       setReviewDialogOpen(false);
-      loadData();
+      loadReviews();
     } catch (error: any) {
       console.error("Error saving review:", error);
       toast({
@@ -281,19 +229,18 @@ export default function MachineUtilisation() {
     return "text-red-600 dark:text-red-400";
   };
 
-  const getProgressColor = (pct: number) => {
-    if (pct >= 90) return "bg-green-500";
-    if (pct >= threshold) return "bg-blue-500";
-    if (pct >= 50) return "bg-amber-500";
-    return "bg-red-500";
-  };
-
   return (
     <div className="container mx-auto p-4 space-y-6">
       <PageHeader
         title="Machine Utilisation Review"
         description="Review daily machine utilisation and document reasons for low performance"
       />
+
+      {/* Read-only notice */}
+      <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <Info className="h-4 w-4 shrink-0" />
+        <span>All metrics derived from Production Log entries via shared calculation engine. Reviews can be added but metrics cannot be overridden.</span>
+      </div>
 
       {/* Controls */}
       <Card>
@@ -427,7 +374,7 @@ export default function MachineUtilisation() {
           ) : utilisationData.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No machines found.</p>
+              <p>No machine data for this date.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -445,17 +392,11 @@ export default function MachineUtilisation() {
                 </TableHeader>
                 <TableBody>
                   {utilisationData.map((data) => (
-                    <TableRow key={data.machine.id} className={data.needsReview ? "bg-red-50 dark:bg-red-950/20" : ""}>
+                    <TableRow key={data.machineId} className={data.needsReview ? "bg-red-50 dark:bg-red-950/20" : ""}>
                       <TableCell>
-                        <div>
-                          <span className="font-mono text-sm font-medium">
-                            {data.machine.machine_id}
-                          </span>
-                          <br />
-                          <span className="text-muted-foreground text-xs">
-                            {data.machine.name}
-                          </span>
-                        </div>
+                        <span className="font-mono text-sm font-medium">
+                          {data.machineName}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
                         {formatMinutes(data.expectedRuntime)}
@@ -474,50 +415,34 @@ export default function MachineUtilisation() {
                             value={Math.min(data.utilisationPct, 100)} 
                             className="h-2"
                           />
-                          <p className="text-[9px] font-mono text-muted-foreground">
-                            = ({data.actualRuntime} ÷ {data.expectedRuntime}) × 100
-                          </p>
                         </div>
                       </TableCell>
                       <TableCell>
                         {data.utilisationPct >= threshold ? (
-                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                          <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                             OK
                           </Badge>
                         ) : data.review?.reason ? (
-                          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
                             Reviewed
                           </Badge>
                         ) : (
                           <Badge variant="destructive">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
                             Needs Review
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="max-w-[200px]">
-                        {data.review?.reason ? (
-                          <span className="text-sm text-muted-foreground truncate block">
-                            {data.review.reason}
-                          </span>
-                        ) : data.utilisationPct < threshold ? (
-                          <span className="text-sm text-red-500 italic">Required</span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        )}
+                      <TableCell className="max-w-[200px] truncate">
+                        {data.review?.reason || "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {data.utilisationPct < threshold && (
-                          <Button
-                            size="sm"
-                            variant={data.review?.reason ? "outline" : "default"}
-                            onClick={() => openReviewDialog(data)}
-                          >
-                            {data.review?.reason ? "Edit" : "Review"}
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant={data.needsReview ? "default" : "ghost"}
+                          onClick={() => openReviewDialog(data)}
+                        >
+                          {data.review?.reason ? "Edit" : "Review"}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -530,26 +455,26 @@ export default function MachineUtilisation() {
 
       {/* Review Dialog */}
       <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Review Low Utilisation - {selectedMachine?.machine.machine_id}
+              Review Utilisation - {selectedMachine?.machineName}
             </DialogTitle>
           </DialogHeader>
           
           {selectedMachine && (
             <div className="space-y-4">
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
-                <div className="text-center">
+              <div className="grid grid-cols-3 gap-4 text-center p-4 bg-muted/50 rounded-lg">
+                <div>
                   <p className="text-xs text-muted-foreground">Expected</p>
                   <p className="font-mono font-medium">{formatMinutes(selectedMachine.expectedRuntime)}</p>
                 </div>
-                <div className="text-center">
+                <div>
                   <p className="text-xs text-muted-foreground">Actual</p>
                   <p className="font-mono font-medium">{formatMinutes(selectedMachine.actualRuntime)}</p>
                 </div>
-                <div className="text-center">
+                <div>
                   <p className="text-xs text-muted-foreground">Utilisation</p>
                   <p className={cn("font-bold", getUtilisationColor(selectedMachine.utilisationPct))}>
                     {selectedMachine.utilisationPct}%
@@ -562,7 +487,7 @@ export default function MachineUtilisation() {
                 <Label htmlFor="reason">Reason for Low Utilisation *</Label>
                 <Textarea
                   id="reason"
-                  placeholder="Explain why utilisation was below threshold..."
+                  placeholder="e.g., No job scheduled, Tool change, Maintenance..."
                   value={reviewReason}
                   onChange={(e) => setReviewReason(e.target.value)}
                   rows={3}
@@ -571,13 +496,13 @@ export default function MachineUtilisation() {
 
               {/* Action Taken */}
               <div className="space-y-2">
-                <Label htmlFor="action">Action Taken</Label>
+                <Label htmlFor="action">Action Taken (Optional)</Label>
                 <Textarea
                   id="action"
-                  placeholder="What actions were taken or planned..."
+                  placeholder="e.g., Rescheduled jobs, Requested maintenance..."
                   value={reviewAction}
                   onChange={(e) => setReviewAction(e.target.value)}
-                  rows={3}
+                  rows={2}
                 />
               </div>
             </div>
@@ -596,30 +521,27 @@ export default function MachineUtilisation() {
 
       {/* Settings Dialog */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Utilisation Settings</DialogTitle>
           </DialogHeader>
-          
           <div className="space-y-6 py-4">
             <div className="space-y-4">
               <Label>Utilisation Threshold: {threshold}%</Label>
               <Slider
                 value={[threshold]}
-                onValueChange={([val]) => setThreshold(val)}
+                onValueChange={(v) => setThreshold(v[0])}
                 min={50}
-                max={100}
+                max={95}
                 step={5}
-                className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                Machines with utilisation below this threshold will require a review with reason and action.
+                Machines below this threshold will be flagged for review.
               </p>
             </div>
           </div>
-
           <DialogFooter>
-            <Button onClick={() => setShowSettings(false)}>Close</Button>
+            <Button onClick={() => setShowSettings(false)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

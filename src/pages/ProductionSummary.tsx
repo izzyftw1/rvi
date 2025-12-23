@@ -1,12 +1,21 @@
-import { useState, useEffect, useMemo } from "react";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
-import { CalendarIcon, Target, TrendingUp, Users, Cpu, Truck, AlertTriangle, Filter, BarChart3 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+/**
+ * Production Summary Dashboard
+ * 
+ * READ-ONLY decision dashboard consuming metrics from the shared useProductionLogMetrics hook.
+ * NO local calculations - all metrics derived from production logs.
+ * 
+ * Displays: Output vs Target, Scrap %, Operator Efficiency, Machine Utilization, External Delays
+ * Filters: Date, Process, Customer
+ */
+
+import { useState, useMemo } from "react";
+import { format, subDays } from "date-fns";
+import { CalendarIcon, Target, TrendingUp, Users, Cpu, Truck, AlertTriangle, Filter, BarChart3, Info } from "lucide-react";
+import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -20,7 +29,6 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -30,263 +38,69 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-interface ProductionLog {
-  id: string;
-  machine_id: string;
-  wo_id: string | null;
-  actual_quantity: number;
-  target_quantity: number | null;
-  ok_quantity: number | null;
-  total_rejection_quantity: number | null;
-  actual_runtime_minutes: number;
-  efficiency_percentage: number | null;
-  party_code: string | null;
-  operation_code: string | null;
-  machines: { name: string; machine_id: string } | null;
-  work_orders: { display_id: string; customer: string | null } | null;
-  operator: { full_name: string } | null;
-}
-
-interface ExternalMove {
-  id: string;
-  work_order_id: string;
-  process: string;
-  status: string;
-  dispatch_date: string;
-  expected_return_date: string | null;
-  returned_date: string | null;
-  quantity_sent: number;
-  quantity_returned: number | null;
-  work_orders: { display_id: string; customer: string | null } | null;
-  partner: { name: string } | null;
-}
-
-interface OperatorSummary {
-  operatorId: string;
-  operatorName: string;
-  totalActual: number;
-  totalTarget: number;
-  efficiencyPct: number;
-}
-
-interface MachineSummary {
-  machineId: string;
-  machineName: string;
-  machineCode: string;
-  totalRuntime: number;
-  expectedRuntime: number;
-  utilizationPct: number;
-}
-
 // Helper to format minutes
 function formatMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+  const mins = Math.round(minutes % 60);
   return `${hours}h ${mins}m`;
 }
 
-// Default shift duration
-const DEFAULT_SHIFT_MINUTES = 690;
-
 export default function ProductionSummary() {
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date>(subDays(new Date(), 1));
   const [selectedProcess, setSelectedProcess] = useState<string>("all");
   const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
-  
-  const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
-  const [externalMoves, setExternalMoves] = useState<ExternalMove[]>([]);
-  const [customers, setCustomers] = useState<string[]>([]);
-  const [processes, setProcesses] = useState<string[]>([]);
 
-  // Filter production logs
-  const filteredLogs = useMemo(() => {
-    return productionLogs.filter(log => {
-      if (selectedProcess !== "all" && log.operation_code !== selectedProcess) return false;
-      if (selectedCustomer !== "all" && log.party_code !== selectedCustomer) return false;
-      return true;
-    });
-  }, [productionLogs, selectedProcess, selectedCustomer]);
+  // Single source of truth: useProductionLogMetrics
+  const { metrics, loading, error } = useProductionLogMetrics({
+    startDate: format(selectedDate, "yyyy-MM-dd"),
+    endDate: format(selectedDate, "yyyy-MM-dd"),
+    period: "custom",
+    processFilter: selectedProcess,
+    customerFilter: selectedCustomer,
+  });
 
-  // Filter external moves
-  const filteredExternal = useMemo(() => {
-    return externalMoves.filter(move => {
-      if (selectedCustomer !== "all" && move.work_orders?.customer !== selectedCustomer) return false;
-      if (selectedProcess !== "all" && move.process !== selectedProcess) return false;
-      return true;
-    });
-  }, [externalMoves, selectedProcess, selectedCustomer]);
-
-  // Calculate Output vs Target summary
+  // Derived values from shared hook
   const outputSummary = useMemo(() => {
-    const totalActual = filteredLogs.reduce((sum, log) => sum + (log.actual_quantity || 0), 0);
-    const totalTarget = filteredLogs.reduce((sum, log) => sum + (log.target_quantity || 0), 0);
-    const totalOk = filteredLogs.reduce((sum, log) => sum + (log.ok_quantity || 0), 0);
-    const totalRejected = filteredLogs.reduce((sum, log) => sum + (log.total_rejection_quantity || 0), 0);
-    const achievementPct = totalTarget > 0 ? Math.round((totalActual / totalTarget) * 100) : 0;
-    
-    return { totalActual, totalTarget, totalOk, totalRejected, achievementPct };
-  }, [filteredLogs]);
-
-  // Calculate Scrap %
-  const scrapSummary = useMemo(() => {
-    const totalProduced = outputSummary.totalActual;
-    const totalRejected = outputSummary.totalRejected;
-    const scrapPct = totalProduced > 0 ? Math.round((totalRejected / totalProduced) * 100 * 100) / 100 : 0;
-    const okPct = 100 - scrapPct;
-    
-    return { totalRejected, scrapPct, okPct, totalProduced };
-  }, [outputSummary]);
-
-  // Calculate Operator Efficiency
-  const operatorSummary = useMemo<OperatorSummary[]>(() => {
-    const operatorMap = new Map<string, { name: string; actual: number; target: number }>();
-    
-    filteredLogs.forEach(log => {
-      if (!log.operator) return;
-      const existing = operatorMap.get(log.operator.full_name) || { name: log.operator.full_name, actual: 0, target: 0 };
-      existing.actual += log.actual_quantity || 0;
-      existing.target += log.target_quantity || 0;
-      operatorMap.set(log.operator.full_name, existing);
-    });
-
-    return Array.from(operatorMap.entries()).map(([name, data]) => ({
-      operatorId: name,
-      operatorName: data.name,
-      totalActual: data.actual,
-      totalTarget: data.target,
-      efficiencyPct: data.target > 0 ? Math.round((data.actual / data.target) * 100) : 0,
-    })).sort((a, b) => b.efficiencyPct - a.efficiencyPct);
-  }, [filteredLogs]);
-
-  // Calculate Machine Utilization
-  const machineSummary = useMemo<MachineSummary[]>(() => {
-    const machineMap = new Map<string, { name: string; code: string; runtime: number; count: number }>();
-    
-    filteredLogs.forEach(log => {
-      if (!log.machines) return;
-      const key = log.machines.machine_id;
-      const existing = machineMap.get(key) || { name: log.machines.name, code: log.machines.machine_id, runtime: 0, count: 0 };
-      existing.runtime += log.actual_runtime_minutes || 0;
-      existing.count += 1;
-      machineMap.set(key, existing);
-    });
-
-    return Array.from(machineMap.entries()).map(([code, data]) => ({
-      machineId: code,
-      machineName: data.name,
-      machineCode: data.code,
-      totalRuntime: data.runtime,
-      expectedRuntime: DEFAULT_SHIFT_MINUTES * data.count, // Expected based on shifts logged
-      utilizationPct: data.count > 0 ? Math.round((data.runtime / (DEFAULT_SHIFT_MINUTES * data.count)) * 100) : 0,
-    })).sort((a, b) => b.utilizationPct - a.utilizationPct);
-  }, [filteredLogs]);
-
-  // Calculate External Delays
-  const externalDelaySummary = useMemo(() => {
-    const today = new Date();
-    const overdue = filteredExternal.filter(move => {
-      if (move.status === 'returned') return false;
-      if (!move.expected_return_date) return false;
-      return new Date(move.expected_return_date) < today;
-    });
-    
-    const pending = filteredExternal.filter(move => move.status === 'sent');
-    const totalSent = filteredExternal.reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
-    const totalReturned = filteredExternal.reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
-    
-    return { 
-      overdueCount: overdue.length, 
-      pendingCount: pending.length, 
-      overdueItems: overdue,
-      totalSent,
-      totalReturned,
+    if (!metrics) return { totalActual: 0, totalTarget: 0, totalOk: 0, totalRejected: 0, achievementPct: 0 };
+    const achievementPct = metrics.totalTarget > 0 
+      ? Math.round((metrics.totalOutput / metrics.totalTarget) * 100) 
+      : 0;
+    return {
+      totalActual: metrics.totalOutput,
+      totalTarget: metrics.totalTarget,
+      totalOk: metrics.totalOutput - metrics.totalRejections,
+      totalRejected: metrics.totalRejections,
+      achievementPct,
     };
-  }, [filteredExternal]);
+  }, [metrics]);
 
-  // Overall averages
+  const scrapSummary = useMemo(() => {
+    if (!metrics) return { totalRejected: 0, scrapPct: 0, okPct: 100, totalProduced: 0 };
+    const totalProduced = metrics.totalOutput + metrics.totalRejections;
+    const scrapPct = totalProduced > 0 
+      ? Math.round((metrics.totalRejections / totalProduced) * 100 * 100) / 100 
+      : 0;
+    return {
+      totalRejected: metrics.totalRejections,
+      scrapPct,
+      okPct: 100 - scrapPct,
+      totalProduced,
+    };
+  }, [metrics]);
+
   const avgOperatorEfficiency = useMemo(() => {
-    if (operatorSummary.length === 0) return 0;
-    return Math.round(operatorSummary.reduce((sum, op) => sum + op.efficiencyPct, 0) / operatorSummary.length);
-  }, [operatorSummary]);
+    if (!metrics || metrics.operatorMetrics.length === 0) return 0;
+    return Math.round(
+      metrics.operatorMetrics.reduce((sum, op) => sum + op.efficiencyPercent, 0) / metrics.operatorMetrics.length
+    );
+  }, [metrics]);
 
   const avgMachineUtilization = useMemo(() => {
-    if (machineSummary.length === 0) return 0;
-    return Math.round(machineSummary.reduce((sum, m) => sum + m.utilizationPct, 0) / machineSummary.length);
-  }, [machineSummary]);
-
-  useEffect(() => {
-    loadData();
-  }, [selectedDate]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const dateStr = format(selectedDate, "yyyy-MM-dd");
-
-      // Load production logs
-      const { data: logsData, error: logsError } = await supabase
-        .from("daily_production_logs")
-        .select(`
-          id,
-          machine_id,
-          wo_id,
-          actual_quantity,
-          target_quantity,
-          ok_quantity,
-          total_rejection_quantity,
-          actual_runtime_minutes,
-          efficiency_percentage,
-          party_code,
-          operation_code,
-          machines:machine_id(name, machine_id),
-          work_orders:wo_id(display_id, customer),
-          operator:operator_id(full_name)
-        `)
-        .eq("log_date", dateStr);
-
-      if (logsError) throw logsError;
-      setProductionLogs((logsData as unknown as ProductionLog[]) || []);
-
-      // Extract unique customers and processes
-      const uniqueCustomers = [...new Set(logsData?.map(l => l.party_code).filter(Boolean) || [])];
-      const uniqueProcesses = [...new Set(logsData?.map(l => l.operation_code).filter(Boolean) || [])];
-      setCustomers(uniqueCustomers as string[]);
-      setProcesses(uniqueProcesses as string[]);
-
-      // Load external moves active on this date
-      const { data: externalData, error: externalError } = await supabase
-        .from("wo_external_moves")
-        .select(`
-          id,
-          work_order_id,
-          process,
-          status,
-          dispatch_date,
-          expected_return_date,
-          returned_date,
-          quantity_sent,
-          quantity_returned,
-          work_orders:work_order_id(display_id, customer),
-          partner:partner_id(name)
-        `)
-        .or(`dispatch_date.eq.${dateStr},and(dispatch_date.lte.${dateStr},or(returned_date.is.null,returned_date.gte.${dateStr}))`);
-
-      if (externalError) throw externalError;
-      setExternalMoves((externalData as unknown as ExternalMove[]) || []);
-
-    } catch (error: any) {
-      console.error("Error loading data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load production summary",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!metrics || metrics.machineMetrics.length === 0) return 0;
+    return Math.round(
+      metrics.machineMetrics.reduce((sum, m) => sum + m.utilizationPercent, 0) / metrics.machineMetrics.length
+    );
+  }, [metrics]);
 
   const getEfficiencyColor = (pct: number) => {
     if (pct >= 100) return "text-green-600 dark:text-green-400";
@@ -294,11 +108,18 @@ export default function ProductionSummary() {
     return "text-red-600 dark:text-red-400";
   };
 
-  const getProgressColor = (pct: number) => {
-    if (pct >= 100) return "bg-green-500";
-    if (pct >= 80) return "bg-amber-500";
-    return "bg-red-500";
-  };
+  if (error) {
+    return (
+      <div className="p-6">
+        <PageHeader title="Production Summary" description="Error loading data" />
+        <Card className="mt-4">
+          <CardContent className="pt-6">
+            <p className="text-destructive">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -306,6 +127,12 @@ export default function ProductionSummary() {
         title="Production Summary"
         description="Read-only decision dashboard: Output, Scrap, Efficiency, Utilization, External Delays"
       />
+
+      {/* Read-only notice */}
+      <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <Info className="h-4 w-4 shrink-0" />
+        <span>All metrics derived from Production Log entries via shared calculation engine. No local overrides.</span>
+      </div>
 
       {/* Filters */}
       <Card>
@@ -341,7 +168,7 @@ export default function ProductionSummary() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Processes</SelectItem>
-                {processes.map(p => (
+                {metrics?.availableProcesses.map(p => (
                   <SelectItem key={p} value={p}>{p}</SelectItem>
                 ))}
               </SelectContent>
@@ -354,7 +181,7 @@ export default function ProductionSummary() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Customers</SelectItem>
-                {customers.map(c => (
+                {metrics?.availableCustomers.map(c => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
@@ -362,9 +189,20 @@ export default function ProductionSummary() {
 
             {/* Log count */}
             <Badge variant="secondary" className="ml-auto">
-              {filteredLogs.length} log entries
+              {metrics?.logCount || 0} log entries
             </Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Formula explanation */}
+      <Card className="bg-muted/30 border-dashed">
+        <CardContent className="py-3">
+          <p className="text-xs font-mono text-muted-foreground">
+            <span className="font-semibold text-foreground">Efficiency %</span> = (Actual ÷ Target) × 100 | 
+            <span className="font-semibold text-foreground ml-2">Scrap %</span> = (Rejected ÷ Produced) × 100 | 
+            <span className="font-semibold text-foreground ml-2">Utilisation %</span> = (Runtime ÷ Expected) × 100
+          </p>
         </CardContent>
       </Card>
 
@@ -444,7 +282,7 @@ export default function ProductionSummary() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Avg of {operatorSummary.length} operators
+                  Avg of {metrics?.operatorMetrics.length || 0} operators
                 </p>
                 <Progress value={Math.min(avgOperatorEfficiency, 100)} className="h-2 mt-2" />
                 <p className="text-[10px] font-mono text-muted-foreground mt-1">
@@ -468,7 +306,7 @@ export default function ProductionSummary() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Avg of {machineSummary.length} machines
+                  Avg of {metrics?.machineMetrics.length || 0} machines
                 </p>
                 <Progress value={Math.min(avgMachineUtilization, 100)} className="h-2 mt-2" />
                 <p className="text-[10px] font-mono text-muted-foreground mt-1">
@@ -482,23 +320,24 @@ export default function ProductionSummary() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Truck className="h-4 w-4" />
-                  External Status
+                  External Delays
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  <span className={externalDelaySummary.overdueCount > 0 ? "text-red-600" : "text-green-600"}>
-                    {externalDelaySummary.overdueCount}
+                  <span className={metrics?.externalDelays.overdueCount ? "text-red-600" : "text-green-600"}>
+                    {metrics?.externalDelays.overdueCount || 0}
                   </span>
                   <span className="text-sm font-normal text-muted-foreground ml-1">overdue</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {externalDelaySummary.pendingCount} pending | {externalDelaySummary.totalSent.toLocaleString()} sent
+                  {metrics?.externalDelays.pendingCount || 0} pending returns
                 </p>
-                <div className="flex gap-2 mt-2">
-                  {externalDelaySummary.overdueCount > 0 && (
-                    <Badge variant="destructive" className="text-xs">Action Required</Badge>
-                  )}
+                <div className="text-xs mt-2">
+                  <span className="text-muted-foreground">Sent: </span>
+                  <span className="font-medium">{(metrics?.externalDelays.totalSent || 0).toLocaleString()}</span>
+                  <span className="text-muted-foreground ml-2">Returned: </span>
+                  <span className="font-medium">{(metrics?.externalDelays.totalReturned || 0).toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
@@ -509,14 +348,13 @@ export default function ProductionSummary() {
             {/* Operator Breakdown */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  Operator Performance
+                  Operator Breakdown
                 </CardTitle>
-                <CardDescription>Efficiency = (Actual ÷ Target) × 100</CardDescription>
               </CardHeader>
               <CardContent>
-                {operatorSummary.length === 0 ? (
+                {metrics?.operatorMetrics.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">No operator data</p>
                 ) : (
                   <Table>
@@ -529,14 +367,14 @@ export default function ProductionSummary() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {operatorSummary.slice(0, 10).map((op) => (
+                      {metrics?.operatorMetrics.slice(0, 10).map((op) => (
                         <TableRow key={op.operatorId}>
                           <TableCell className="font-medium">{op.operatorName}</TableCell>
                           <TableCell className="text-right">{op.totalActual.toLocaleString()}</TableCell>
                           <TableCell className="text-right">{op.totalTarget.toLocaleString()}</TableCell>
                           <TableCell className="text-right">
-                            <span className={cn("font-bold", getEfficiencyColor(op.efficiencyPct))}>
-                              {op.efficiencyPct}%
+                            <span className={cn("font-bold", getEfficiencyColor(op.efficiencyPercent))}>
+                              {op.efficiencyPercent}%
                             </span>
                           </TableCell>
                         </TableRow>
@@ -550,14 +388,13 @@ export default function ProductionSummary() {
             {/* Machine Breakdown */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Cpu className="h-4 w-4" />
-                  Machine Utilization
+                  Machine Breakdown
                 </CardTitle>
-                <CardDescription>Utilization = (Runtime ÷ Expected) × 100</CardDescription>
               </CardHeader>
               <CardContent>
-                {machineSummary.length === 0 ? (
+                {metrics?.machineMetrics.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">No machine data</p>
                 ) : (
                   <Table>
@@ -566,20 +403,18 @@ export default function ProductionSummary() {
                         <TableHead>Machine</TableHead>
                         <TableHead className="text-right">Runtime</TableHead>
                         <TableHead className="text-right">Expected</TableHead>
-                        <TableHead className="text-right">Util %</TableHead>
+                        <TableHead className="text-right">Utilization</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {machineSummary.slice(0, 10).map((m) => (
+                      {metrics?.machineMetrics.slice(0, 10).map((m) => (
                         <TableRow key={m.machineId}>
-                          <TableCell>
-                            <span className="font-mono text-sm">{m.machineCode}</span>
-                          </TableCell>
-                          <TableCell className="text-right">{formatMinutes(m.totalRuntime)}</TableCell>
-                          <TableCell className="text-right">{formatMinutes(m.expectedRuntime)}</TableCell>
+                          <TableCell className="font-medium">{m.machineName}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{formatMinutes(m.totalRuntime)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{formatMinutes(m.expectedRuntime)}</TableCell>
                           <TableCell className="text-right">
-                            <span className={cn("font-bold", getEfficiencyColor(m.utilizationPct))}>
-                              {m.utilizationPct}%
+                            <span className={cn("font-bold", getEfficiencyColor(m.utilizationPercent))}>
+                              {m.utilizationPercent}%
                             </span>
                           </TableCell>
                         </TableRow>
@@ -590,52 +425,6 @@ export default function ProductionSummary() {
               </CardContent>
             </Card>
           </div>
-
-          {/* External Delays Detail */}
-          {externalDelaySummary.overdueCount > 0 && (
-            <Card className="border-red-200 dark:border-red-800">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2 text-red-600 dark:text-red-400">
-                  <AlertTriangle className="h-4 w-4" />
-                  Overdue External Returns
-                </CardTitle>
-                <CardDescription>Items past expected return date - immediate follow-up required</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Work Order</TableHead>
-                      <TableHead>Process</TableHead>
-                      <TableHead>Partner</TableHead>
-                      <TableHead className="text-right">Qty Sent</TableHead>
-                      <TableHead>Expected</TableHead>
-                      <TableHead>Days Overdue</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {externalDelaySummary.overdueItems.map((move) => {
-                      const daysOverdue = move.expected_return_date
-                        ? Math.floor((new Date().getTime() - new Date(move.expected_return_date).getTime()) / (1000 * 60 * 60 * 24))
-                        : 0;
-                      return (
-                        <TableRow key={move.id} className="bg-red-50 dark:bg-red-950/20">
-                          <TableCell className="font-mono">{move.work_orders?.display_id || "-"}</TableCell>
-                          <TableCell>{move.process}</TableCell>
-                          <TableCell>{move.partner?.name || "-"}</TableCell>
-                          <TableCell className="text-right">{move.quantity_sent?.toLocaleString()}</TableCell>
-                          <TableCell>{move.expected_return_date ? format(new Date(move.expected_return_date), "dd MMM") : "-"}</TableCell>
-                          <TableCell>
-                            <Badge variant="destructive">{daysOverdue}d overdue</Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
         </>
       )}
     </div>
