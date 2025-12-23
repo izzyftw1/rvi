@@ -89,7 +89,8 @@ export const navigationGroups: NavGroup[] = [
     allowedRoles: ['admin', 'production', 'ops_manager'],
     items: [
       { label: "Work Orders", path: "/work-orders", icon: Search },
-      { label: "Production Progress", path: "/production-progress", icon: BarChart3 },
+      { label: "Production Summary", path: "/production-summary", icon: BarChart3 },
+      { label: "Production Progress", path: "/production-progress", icon: Activity },
       { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
       { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Cpu },
       { label: "Cutting", path: "/cutting", icon: Scissors },
