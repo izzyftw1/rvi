@@ -285,17 +285,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   // Auto-populated machine from assignment
   const [autoMachine, setAutoMachine] = useState<Machine | null>(null);
   
-  // Setter activity tracking (separate from production metrics)
-  const [selectedSetterId, setSelectedSetterId] = useState<string>("");
-  const [setupStartTime, setSetupStartTime] = useState<string>("");
-  const [setupEndTime, setSetupEndTime] = useState<string>("");
-  
-  // Calculate setup duration from times
-  const setupDurationMinutes = useMemo(() => {
-    if (!setupStartTime || !setupEndTime) return 0;
-    return calculateDuration(setupStartTime, setupEndTime);
-  }, [setupStartTime, setupEndTime]);
-  
   // NCR prompt states
   const [showNCRPrompt, setShowNCRPrompt] = useState(false);
   const [showNCRDialog, setShowNCRDialog] = useState(false);
@@ -717,30 +706,8 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         }
       }
       
-      // Insert setter activity ledger entry (separate from production metrics)
-      if (insertedLog?.id && selectedSetterId) {
-        const setterEntry = {
-          production_log_id: insertedLog.id,
-          work_order_id: propWorkOrder?.id || null,
-          machine_id: effectiveMachineId,
-          setter_id: selectedSetterId,
-          log_date: logDateStr,
-          setup_number: effectiveSetupNo || 'SETUP-001',
-          setup_start_time: setupStartTime || null,
-          setup_end_time: setupEndTime || null,
-          setup_duration_minutes: setupDurationMinutes || null,
-          is_repeat_setup: false,
-          delay_caused_minutes: 0,
-        };
-        
-        const { error: setterError } = await supabase
-          .from("setter_activity_ledger")
-          .insert([setterEntry]);
-        
-        if (setterError) {
-          console.error("Error inserting setter ledger:", setterError);
-        }
-      }
+
+
 
       if (data.actual_production_qty > 0 && propWorkOrder?.id) {
         await createExecutionRecord({
@@ -786,10 +753,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     setOverrideMachine(false);
     setOverrideSetup(false);
     setSetupOverrideValue("");
-    // Reset setter activity fields
-    setSelectedSetterId("");
-    setSetupStartTime("");
-    setSetupEndTime("");
     // Re-select first CNC step after reset
     const cncStep = routeSteps.find(r => r.operation_type === 'CNC');
     setSelectedRouteStepId(cncStep?.id || routeSteps[0]?.id || "");
@@ -1063,8 +1026,8 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
 
               {/* Setter */}
               <div className="space-y-2">
-                <Label>Setter / Programmer</Label>
-                <Select onValueChange={(v) => setSelectedSetterId(v)} value={selectedSetterId}>
+                <Label>Setter</Label>
+                <Select onValueChange={(v) => setValue("setter_id", v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select setter" />
                   </SelectTrigger>
@@ -1074,34 +1037,6 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              
-              {/* Setup Start Time (for setter activity) */}
-              <div className="space-y-2">
-                <Label>Setup Start Time</Label>
-                <Input 
-                  type="time" 
-                  value={setupStartTime} 
-                  onChange={(e) => setSetupStartTime(e.target.value)}
-                  placeholder="HH:MM"
-                />
-                <p className="text-xs text-muted-foreground">For setter efficiency tracking</p>
-              </div>
-              
-              {/* Setup End Time (for setter activity) */}
-              <div className="space-y-2">
-                <Label>Setup End Time</Label>
-                <Input 
-                  type="time" 
-                  value={setupEndTime} 
-                  onChange={(e) => setSetupEndTime(e.target.value)}
-                  placeholder="HH:MM"
-                />
-                {setupDurationMinutes > 0 && (
-                  <Badge variant="outline" className="text-xs">
-                    Duration: {setupDurationMinutes} min
-                  </Badge>
-                )}
               </div>
 
               {/* QC Supervisor */}

@@ -267,9 +267,14 @@ const SetterEfficiency = () => {
       {/* Info Banner */}
       <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50 border text-sm mb-6">
         <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-        <p className="text-muted-foreground">
-          Setter activity is tracked separately from production efficiency. This data does NOT affect operator or machine efficiency metrics.
-        </p>
+        <div className="text-muted-foreground">
+          <p>Setter activity is tracked separately from production efficiency. This data does NOT affect operator or machine efficiency metrics.</p>
+          <p className="mt-1">
+            <Link to="/cnc-programmer-activity" className="text-primary hover:underline font-medium">
+              Log setter activity here →
+            </Link>
+          </p>
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -404,7 +409,10 @@ const SetterEfficiency = () => {
             <div className="p-8 text-center text-muted-foreground">Loading...</div>
           ) : setterMetrics.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              No setter activity recorded for this period. Setup data is captured via the Production Log form.
+              <p>No setter activity recorded for this period.</p>
+              <Link to="/cnc-programmer-activity" className="text-primary hover:underline mt-2 inline-block">
+                Log setter activity →
+              </Link>
             </div>
           ) : (
             <Table>
