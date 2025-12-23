@@ -236,14 +236,8 @@ const SetterEfficiency = () => {
 
     setSaving(true);
     try {
-      let setupDurationMinutes: number | null = null;
-      if (formData.setup_start_time && formData.setup_end_time) {
-        const start = new Date(formData.setup_start_time);
-        const end = new Date(formData.setup_end_time);
-        setupDurationMinutes = differenceInMinutes(end, start);
-        if (setupDurationMinutes < 0) setupDurationMinutes = 0;
-      }
-
+      // NOTE: setup_duration_minutes is a GENERATED column - do NOT insert it directly
+      // It is auto-computed from setup_start_time and setup_end_time
       const insertData = {
         activity_date: formData.activity_date,
         programmer_id: formData.programmer_id || null,
@@ -254,7 +248,7 @@ const SetterEfficiency = () => {
         drawing_number: formData.drawing_number || null,
         setup_start_time: formData.setup_start_time || null,
         setup_end_time: formData.setup_end_time || null,
-        setup_duration_minutes: setupDurationMinutes,
+        // setup_duration_minutes is auto-generated - omit from insert
         first_piece_approval_time: formData.first_piece_approval_time || null,
         qc_approver_id: formData.qc_approver_id || null,
         machine_counter_reading: formData.machine_counter_reading ? parseFloat(formData.machine_counter_reading) : null,
