@@ -9,12 +9,21 @@
  * - Scrap/rejection trends (from total_rejection_quantity + breakdown fields)
  * - Downtime Pareto (from downtime_events + total_downtime_minutes)
  * - Machine utilisation (from actual_runtime_minutes)
+ * - Operator efficiency (aggregated from production logs)
  * 
  * NO MANUAL OVERRIDES: All data reflects what was logged.
  * Dashboards using this hook are read-only analytics views.
+ * 
+ * FORMULAS:
+ * - Gross Time = shift_end_time - shift_start_time
+ * - Actual Runtime = Gross Time - total_downtime_minutes
+ * - Target Qty = (Runtime × 60) ÷ cycle_time
+ * - Efficiency % = (Actual Qty ÷ Target Qty) × 100
+ * - Scrap % = (Rejections ÷ Total Produced) × 100
+ * - Utilisation % = (Actual Runtime ÷ Expected Runtime) × 100
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
@@ -44,10 +53,24 @@ export interface MachineMetrics {
   machineName: string;
   totalRuntime: number;
   totalDowntime: number;
+  expectedRuntime: number;
   totalOutput: number;
   totalRejections: number;
   utilizationPercent: number;
   avgEfficiency: number;
+  logCount: number;
+}
+
+export interface OperatorMetrics {
+  operatorId: string;
+  operatorName: string;
+  totalRuntime: number;
+  totalActual: number;
+  totalTarget: number;
+  totalOk: number;
+  totalRejections: number;
+  efficiencyPercent: number;
+  scrapPercent: number;
   logCount: number;
 }
 
@@ -63,6 +86,13 @@ export interface DowntimeBreakdown {
   percent: number;
 }
 
+export interface ExternalDelayMetrics {
+  overdueCount: number;
+  pendingCount: number;
+  totalSent: number;
+  totalReturned: number;
+}
+
 export interface ProductionLogMetrics {
   // Summary KPIs
   totalOutput: number;
@@ -72,6 +102,7 @@ export interface ProductionLogMetrics {
   rejectionRate: number;
   totalDowntimeMinutes: number;
   totalRuntimeMinutes: number;
+  expectedRuntimeMinutes: number;
   utilizationPercent: number;
   logCount: number;
   
@@ -79,8 +110,14 @@ export interface ProductionLogMetrics {
   dailyMetrics: DailyMetrics[];
   shiftMetrics: ShiftMetrics[];
   machineMetrics: MachineMetrics[];
+  operatorMetrics: OperatorMetrics[];
   rejectionBreakdown: RejectionBreakdown[];
   downtimePareto: DowntimeBreakdown[];
+  externalDelays: ExternalDelayMetrics;
+  
+  // Filter lists (for UI dropdowns)
+  availableProcesses: string[];
+  availableCustomers: string[];
 }
 
 const REJECTION_FIELDS = [
@@ -96,15 +133,42 @@ const REJECTION_FIELDS = [
   { field: 'rejection_tool_mark', label: 'Tool Mark' },
 ];
 
-interface UseProductionLogMetricsOptions {
+// Default shift duration in minutes (11.5 hours = 690 minutes)
+const DEFAULT_SHIFT_MINUTES = 690;
+
+export interface UseProductionLogMetricsOptions {
   startDate?: string;
   endDate?: string;
   siteId?: string;
   machineId?: string;
   operatorId?: string;
   woId?: string;
+  processFilter?: string;
+  customerFilter?: string;
   period?: 'today' | 'week' | 'month' | 'custom';
 }
+
+const emptyMetrics: ProductionLogMetrics = {
+  totalOutput: 0,
+  totalTarget: 0,
+  overallEfficiency: 0,
+  totalRejections: 0,
+  rejectionRate: 0,
+  totalDowntimeMinutes: 0,
+  totalRuntimeMinutes: 0,
+  expectedRuntimeMinutes: 0,
+  utilizationPercent: 0,
+  logCount: 0,
+  dailyMetrics: [],
+  shiftMetrics: [],
+  machineMetrics: [],
+  operatorMetrics: [],
+  rejectionBreakdown: [],
+  downtimePareto: [],
+  externalDelays: { overdueCount: 0, pendingCount: 0, totalSent: 0, totalReturned: 0 },
+  availableProcesses: [],
+  availableCustomers: [],
+};
 
 export function useProductionLogMetrics(options: UseProductionLogMetricsOptions = {}) {
   const [metrics, setMetrics] = useState<ProductionLogMetrics | null>(null);
@@ -112,7 +176,7 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
   const [error, setError] = useState<string | null>(null);
 
   // Compute date range based on period
-  const getDateRange = useCallback(() => {
+  const dateRange = useMemo(() => {
     const today = new Date();
     
     switch (options.period) {
@@ -143,7 +207,7 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
     setError(null);
     
     try {
-      const { start, end } = getDateRange();
+      const { start, end } = dateRange;
       
       // Build query
       let query = supabase
@@ -161,8 +225,12 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
           total_rejection_quantity,
           actual_runtime_minutes,
           total_downtime_minutes,
+          shift_start_time,
+          shift_end_time,
           efficiency_percentage,
           downtime_events,
+          party_code,
+          operation_code,
           rejection_dent,
           rejection_dimension,
           rejection_face_not_ok,
@@ -173,7 +241,8 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
           rejection_scratch,
           rejection_setting,
           rejection_tool_mark,
-          machines:machine_id(machine_id, name)
+          machines:machine_id(machine_id, name),
+          operator:operator_id(full_name)
         `)
         .gte('log_date', start)
         .lte('log_date', end)
@@ -194,21 +263,28 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
       if (queryError) throw queryError;
       
       if (!logs || logs.length === 0) {
+        setMetrics(emptyMetrics);
+        return;
+      }
+
+      // Extract available filters before filtering
+      const allProcesses = [...new Set(logs.map((l: any) => l.operation_code).filter(Boolean))] as string[];
+      const allCustomers = [...new Set(logs.map((l: any) => l.party_code).filter(Boolean))] as string[];
+
+      // Apply process/customer filters
+      let filteredLogs = logs;
+      if (options.processFilter && options.processFilter !== 'all') {
+        filteredLogs = filteredLogs.filter((l: any) => l.operation_code === options.processFilter);
+      }
+      if (options.customerFilter && options.customerFilter !== 'all') {
+        filteredLogs = filteredLogs.filter((l: any) => l.party_code === options.customerFilter);
+      }
+
+      if (filteredLogs.length === 0) {
         setMetrics({
-          totalOutput: 0,
-          totalTarget: 0,
-          overallEfficiency: 0,
-          totalRejections: 0,
-          rejectionRate: 0,
-          totalDowntimeMinutes: 0,
-          totalRuntimeMinutes: 0,
-          utilizationPercent: 0,
-          logCount: 0,
-          dailyMetrics: [],
-          shiftMetrics: [],
-          machineMetrics: [],
-          rejectionBreakdown: [],
-          downtimePareto: [],
+          ...emptyMetrics,
+          availableProcesses: allProcesses,
+          availableCustomers: allCustomers,
         });
         return;
       }
@@ -219,6 +295,7 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
       let totalRejections = 0;
       let totalDowntime = 0;
       let totalRuntime = 0;
+      let totalExpectedRuntime = 0;
       let efficiencySum = 0;
       let efficiencyCount = 0;
 
@@ -226,10 +303,11 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
       const dailyMap = new Map<string, DailyMetrics>();
       const shiftMap = new Map<string, ShiftMetrics>();
       const machineMap = new Map<string, MachineMetrics>();
+      const operatorMap = new Map<string, OperatorMetrics>();
       const rejectionCounts: Record<string, number> = {};
       const downtimeCounts: Record<string, number> = {};
 
-      logs.forEach((log: any) => {
+      filteredLogs.forEach((log: any) => {
         const output = log.ok_quantity ?? log.actual_quantity ?? 0;
         const target = log.target_quantity ?? 0;
         const rejections = log.total_rejection_quantity ?? 0;
@@ -237,11 +315,22 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
         const downtime = log.total_downtime_minutes ?? 0;
         const efficiency = log.efficiency_percentage ?? 0;
         
+        // Calculate expected runtime from shift times or use default
+        let expectedRuntime = DEFAULT_SHIFT_MINUTES;
+        if (log.shift_start_time && log.shift_end_time) {
+          const [startH, startM] = log.shift_start_time.split(':').map(Number);
+          const [endH, endM] = log.shift_end_time.split(':').map(Number);
+          let shiftMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+          if (shiftMinutes < 0) shiftMinutes += 24 * 60; // Handle overnight
+          expectedRuntime = shiftMinutes;
+        }
+        
         totalOutput += output;
         totalTarget += target;
         totalRejections += rejections;
         totalDowntime += downtime;
         totalRuntime += runtime;
+        totalExpectedRuntime += expectedRuntime;
         
         if (efficiency > 0) {
           efficiencySum += efficiency;
@@ -304,6 +393,7 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
             machineName: machineInfo ? `${machineInfo.machine_id} - ${machineInfo.name}` : machineId,
             totalRuntime: 0,
             totalDowntime: 0,
+            expectedRuntime: 0,
             totalOutput: 0,
             totalRejections: 0,
             utilizationPercent: 0,
@@ -314,11 +404,39 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
         const machine = machineMap.get(machineId)!;
         machine.totalRuntime += runtime;
         machine.totalDowntime += downtime;
+        machine.expectedRuntime += expectedRuntime;
         machine.totalOutput += output;
         machine.totalRejections += rejections;
         machine.logCount++;
         if (efficiency > 0) {
           machine.avgEfficiency = ((machine.avgEfficiency * (machine.logCount - 1)) + efficiency) / machine.logCount;
+        }
+
+        // Operator aggregation
+        const operatorId = log.operator_id;
+        if (operatorId) {
+          if (!operatorMap.has(operatorId)) {
+            const operatorInfo = log.operator as any;
+            operatorMap.set(operatorId, {
+              operatorId,
+              operatorName: operatorInfo?.full_name || 'Unknown',
+              totalRuntime: 0,
+              totalActual: 0,
+              totalTarget: 0,
+              totalOk: 0,
+              totalRejections: 0,
+              efficiencyPercent: 0,
+              scrapPercent: 0,
+              logCount: 0,
+            });
+          }
+          const operator = operatorMap.get(operatorId)!;
+          operator.totalRuntime += runtime;
+          operator.totalActual += log.actual_quantity ?? 0;
+          operator.totalTarget += target;
+          operator.totalOk += log.ok_quantity ?? 0;
+          operator.totalRejections += rejections;
+          operator.logCount++;
         }
 
         // Rejection breakdown
@@ -339,16 +457,13 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
         }
       });
 
-      // Calculate derived metrics
+      // Calculate derived metrics using standard formulas
       const overallEfficiency = efficiencyCount > 0 ? efficiencySum / efficiencyCount : 0;
       const rejectionRate = totalOutput + totalRejections > 0 
         ? (totalRejections / (totalOutput + totalRejections)) * 100 
         : 0;
-      
-      // Calculate utilization (8 hour shift = 480 minutes per log)
-      const expectedRuntime = logs.length * 480;
-      const utilizationPercent = expectedRuntime > 0 
-        ? (totalRuntime / expectedRuntime) * 100 
+      const utilizationPercent = totalExpectedRuntime > 0 
+        ? (totalRuntime / totalExpectedRuntime) * 100 
         : 0;
 
       // Finalize daily metrics
@@ -362,10 +477,21 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
       // Finalize machine metrics with utilization
       const machineMetrics = Array.from(machineMap.values()).map(m => ({
         ...m,
-        utilizationPercent: m.logCount > 0 
-          ? (m.totalRuntime / (m.logCount * 480)) * 100 
+        utilizationPercent: m.expectedRuntime > 0 
+          ? Math.round((m.totalRuntime / m.expectedRuntime) * 100 * 100) / 100
           : 0,
       }));
+
+      // Finalize operator metrics with efficiency and scrap
+      const operatorMetrics = Array.from(operatorMap.values()).map(op => ({
+        ...op,
+        efficiencyPercent: op.totalTarget > 0
+          ? Math.round((op.totalActual / op.totalTarget) * 100 * 10) / 10
+          : 0,
+        scrapPercent: op.totalActual > 0
+          ? Math.round((op.totalRejections / op.totalActual) * 100 * 10) / 10
+          : 0,
+      })).sort((a, b) => b.efficiencyPercent - a.efficiencyPercent);
 
       // Create rejection breakdown sorted by count
       const rejectionBreakdown: RejectionBreakdown[] = Object.entries(rejectionCounts)
@@ -385,6 +511,29 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
         }))
         .sort((a, b) => b.minutes - a.minutes);
 
+      // Load external delays if we have a date range
+      let externalDelays: ExternalDelayMetrics = { overdueCount: 0, pendingCount: 0, totalSent: 0, totalReturned: 0 };
+      try {
+        const { data: externalData } = await supabase
+          .from('wo_external_moves')
+          .select('status, quantity_sent, quantity_returned, expected_return_date')
+          .or(`dispatch_date.gte.${start},and(dispatch_date.lte.${end},or(returned_date.is.null,returned_date.gte.${start}))`);
+
+        if (externalData) {
+          const today = new Date();
+          externalDelays = {
+            overdueCount: externalData.filter(m => 
+              m.status !== 'returned' && m.expected_return_date && new Date(m.expected_return_date) < today
+            ).length,
+            pendingCount: externalData.filter(m => m.status === 'sent').length,
+            totalSent: externalData.reduce((sum, m) => sum + (m.quantity_sent || 0), 0),
+            totalReturned: externalData.reduce((sum, m) => sum + (m.quantity_returned || 0), 0),
+          };
+        }
+      } catch (e) {
+        console.warn('Could not load external delays:', e);
+      }
+
       setMetrics({
         totalOutput,
         totalTarget,
@@ -393,13 +542,18 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
         rejectionRate: Math.round(rejectionRate * 10) / 10,
         totalDowntimeMinutes: totalDowntime,
         totalRuntimeMinutes: totalRuntime,
-        utilizationPercent: Math.min(Math.round(utilizationPercent), 100),
-        logCount: logs.length,
+        expectedRuntimeMinutes: totalExpectedRuntime,
+        utilizationPercent: Math.min(Math.round(utilizationPercent * 10) / 10, 100),
+        logCount: filteredLogs.length,
         dailyMetrics,
         shiftMetrics: Array.from(shiftMap.values()),
         machineMetrics: machineMetrics.sort((a, b) => b.totalOutput - a.totalOutput),
+        operatorMetrics,
         rejectionBreakdown,
         downtimePareto,
+        externalDelays,
+        availableProcesses: allProcesses,
+        availableCustomers: allCustomers,
       });
       
     } catch (err: any) {
@@ -408,7 +562,7 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
     } finally {
       setLoading(false);
     }
-  }, [getDateRange, options.machineId, options.operatorId, options.woId]);
+  }, [dateRange, options.machineId, options.operatorId, options.woId, options.processFilter, options.customerFilter]);
 
   useEffect(() => {
     loadMetrics();
@@ -419,5 +573,6 @@ export function useProductionLogMetrics(options: UseProductionLogMetricsOptions 
     loading,
     error,
     refresh: loadMetrics,
+    dateRange,
   };
 }
