@@ -356,12 +356,14 @@ export default function QualityDocuments() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12 text-muted-foreground">
-                  <Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg mb-2">Certificate Management Coming Soon</p>
-                  <p className="text-sm">
-                    This section will display Material Test Certificates (MTCs), 
-                    compliance documents, and calibration certificates.
+                <div className="text-center py-12">
+                  <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-lg font-medium mb-2">Certificate Management</p>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    <span className="font-medium">What goes here:</span> Material Test Certificates (MTCs), compliance documents, and calibration certificates.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium">How to populate:</span> Upload certificates when receiving materials via GRN, or attach to work orders.
                   </p>
                 </div>
               </CardContent>

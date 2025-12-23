@@ -382,11 +382,17 @@ export default function Dispatch() {
               <h2 className="text-lg font-semibold">Recent Shipments</h2>
               {shipments.length === 0 ? (
                 <Card>
-                  <CardContent className="py-12 text-center space-y-2">
-                    <p className="text-lg font-medium">No Shipments Yet</p>
-                    <p className="text-sm text-muted-foreground">
-                      Shipments will appear here when pallets are dispatched
-                    </p>
+                  <CardContent className="py-12 text-center space-y-3">
+                    <Truck className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                    <div>
+                      <p className="text-lg font-medium">No Shipments Yet</p>
+                      <p className="text-sm text-muted-foreground mb-1">
+                        <span className="font-medium">Why:</span> No pallets have been dispatched to customers.
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">How to populate:</span> Complete packing for a work order, then dispatch the pallet.
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
               ) : (

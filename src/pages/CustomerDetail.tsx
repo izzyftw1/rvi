@@ -458,9 +458,16 @@ export default function CustomerDetail() {
               </CardHeader>
               <CardContent>
                 {activities.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No activity yet
-                  </p>
+                  <div className="text-center py-8">
+                    <Clock className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+                    <p className="text-sm font-medium mb-1">No activity yet</p>
+                    <p className="text-sm text-muted-foreground mb-1">
+                      <span className="font-medium">Why:</span> No orders or invoices linked to this customer.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium">How to populate:</span> Create a sales order for this customer.
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     {activities.map((activity, idx) => {

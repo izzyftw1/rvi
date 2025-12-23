@@ -16,19 +16,22 @@ import {
   Calendar,
   DollarSign,
   BarChart3,
+  ArrowRight,
+  Wrench,
   LucideIcon
 } from "lucide-react";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * EMPTY STATE COMPONENT - Consistent empty state messaging
+ * EMPTY STATE COMPONENT - Actionable empty state messaging
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Use this component when a page or section has no data to display.
- * Always explain:
+ * ALWAYS explain:
  * 1. WHY the page is empty (context)
- * 2. WHAT will populate it (trigger condition)
- * 3. Optional: Suggested next action
+ * 2. WHAT action creates data (trigger condition)
+ * 3. HOW to take that action (button or link)
+ * 
+ * NO passive "No data" messages - every empty state must guide user action.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -48,6 +51,8 @@ export const EMPTY_STATE_ICONS = {
   calendar: Calendar,
   finance: DollarSign,
   reports: BarChart3,
+  operators: Users,
+  machines: Wrench,
   default: Inbox,
 } as const;
 
@@ -60,11 +65,16 @@ interface EmptyStateProps {
   description: string;
   /** Icon type from presets, or a custom LucideIcon */
   icon?: EmptyStateIconType | LucideIcon;
-  /** Optional action button */
+  /** Optional action button - the KEY to making empty states actionable */
   action?: {
     label: string;
     onClick: () => void;
     variant?: "default" | "outline" | "secondary";
+  };
+  /** Optional secondary action */
+  secondaryAction?: {
+    label: string;
+    onClick: () => void;
   };
   /** Additional hint text below the description */
   hint?: string;
@@ -79,6 +89,7 @@ export const EmptyState = ({
   description,
   icon = "default",
   action,
+  secondaryAction,
   hint,
   size = "md",
   className,
@@ -138,15 +149,29 @@ export const EmptyState = ({
         </p>
       )}
 
-      {action && (
-        <Button
-          variant={action.variant || "default"}
-          size={size === "sm" ? "sm" : "default"}
-          onClick={action.onClick}
-          className="mt-4"
-        >
-          {action.label}
-        </Button>
+      {(action || secondaryAction) && (
+        <div className="flex items-center gap-3 mt-4">
+          {action && (
+            <Button
+              variant={action.variant || "default"}
+              size={size === "sm" ? "sm" : "default"}
+              onClick={action.onClick}
+              className="gap-2"
+            >
+              {action.label}
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          )}
+          {secondaryAction && (
+            <Button
+              variant="ghost"
+              size={size === "sm" ? "sm" : "default"}
+              onClick={secondaryAction.onClick}
+            >
+              {secondaryAction.label}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

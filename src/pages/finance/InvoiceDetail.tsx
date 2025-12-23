@@ -276,9 +276,15 @@ export default function InvoiceDetail() {
               </CardHeader>
               <CardContent>
                 {timeline.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Calendar className="h-12 w-12 mx-auto mb-4" />
-                    <p>No activity recorded yet</p>
+                  <div className="text-center py-12">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                    <p className="font-medium mb-1">No activity recorded</p>
+                    <p className="text-sm text-muted-foreground mb-1">
+                      <span className="font-medium">Why:</span> No follow-ups or payments logged for this invoice.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium">How to populate:</span> Record a payment or log a follow-up action.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-6">

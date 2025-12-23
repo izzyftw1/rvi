@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Trash2, Package, ArrowRight } from "lucide-react";
 
 
 export default function Purchase() {
@@ -325,11 +325,21 @@ export default function Purchase() {
         <h2 className="text-xl font-semibold mb-4">All Purchase Orders</h2>
         {purchaseOrders.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center space-y-2">
-              <p className="text-lg font-medium">No Purchase Orders Yet</p>
-              <p className="text-sm text-muted-foreground">
-                Purchase orders will appear here when created
-              </p>
+            <CardContent className="py-12 text-center space-y-3">
+              <Package className="h-12 w-12 mx-auto text-muted-foreground/50" />
+              <div>
+                <p className="text-lg font-medium">No Purchase Orders Yet</p>
+                <p className="text-sm text-muted-foreground mb-1">
+                  <span className="font-medium">Why:</span> No raw material purchases have been created.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium">How to populate:</span> Create a purchase order using the form above, or from Material Requirements.
+                </p>
+              </div>
+              <Button onClick={() => navigate('/material-requirements')} className="gap-2">
+                View Material Requirements
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
         ) : (
