@@ -134,10 +134,28 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         // Don't fail the operation
       }
 
-      // Update work order to reduce qty_external_wip
+      // Update the wo_external_moves record with received quantity
+      const newQtyReturned = (move.quantity_returned || 0) + qty;
+      const moveStatus = newQtyReturned >= (move.quantity_sent || 0) ? 'received' : 'partial';
+      
+      const { error: moveUpdateError } = await supabase
+        .from("wo_external_moves")
+        .update({
+          quantity_returned: newQtyReturned,
+          returned_date: moveStatus === 'received' ? new Date().toISOString().split('T')[0] : null,
+          status: moveStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", move.id);
+
+      if (moveUpdateError) {
+        console.error("Failed to update external move:", moveUpdateError);
+      }
+
+      // Update work order to reduce qty_external_wip and update progress
       const { data: woData, error: woFetchError } = await supabase
         .from("work_orders")
-        .select("qty_external_wip, current_stage, external_process_type")
+        .select("qty_external_wip, current_stage, external_process_type, quantity")
         .eq("id", move.work_order_id)
         .single();
 

@@ -98,12 +98,13 @@ const ExternalProcessingDetail = () => {
           quantity_sent,
           quantity_returned,
           status,
+          challan_no,
           work_orders!work_order_id(
             id,
             display_id,
-            wo_number,
             item_code,
-            customer
+            customer,
+            quantity
           ),
           external_partners!partner_id(name)
         `)
@@ -114,13 +115,22 @@ const ExternalProcessingDetail = () => {
 
       const jobsList: ExternalJob[] = (movesData || []).map((move: any) => {
         const pending = (move.quantity_sent || 0) - (move.quantity_returned || 0);
-        const isOverdue = !move.returned_date && move.expected_return_date < today;
+        const isComplete = move.status === 'received' || pending <= 0;
+        const isOverdue = !isComplete && move.expected_return_date && move.expected_return_date < today;
         const delayDays = isOverdue 
           ? Math.floor((new Date().getTime() - new Date(move.expected_return_date).getTime()) / (1000 * 60 * 60 * 24))
           : 0;
 
+        // Calculate turnaround if completed
+        let turnaroundDays = 0;
+        if (isComplete && move.dispatch_date && move.returned_date) {
+          turnaroundDays = Math.floor(
+            (new Date(move.returned_date).getTime() - new Date(move.dispatch_date).getTime()) / (1000 * 60 * 60 * 24)
+          );
+        }
+
         let status = 'In Progress';
-        if (move.returned_date || pending <= 0) {
+        if (isComplete) {
           status = 'Received';
         } else if (isOverdue) {
           status = 'Overdue';
@@ -128,10 +138,14 @@ const ExternalProcessingDetail = () => {
           status = 'Pending';
         }
 
+        // Calculate WO progress percentage
+        const woQty = move.work_orders?.quantity || 0;
+        const progressPct = woQty > 0 ? Math.round((move.quantity_returned || 0) / woQty * 100) : 0;
+
         return {
           id: move.id,
           wo_id: move.work_orders?.id || '',
-          wo_display_id: move.work_orders?.display_id || move.work_orders?.wo_number || 'N/A',
+          wo_display_id: move.work_orders?.display_id || 'N/A',
           item_code: move.work_orders?.item_code || 'N/A',
           customer: move.work_orders?.customer || 'N/A',
           partner_name: move.external_partners?.name || 'Unknown',
