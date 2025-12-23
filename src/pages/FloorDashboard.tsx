@@ -471,7 +471,7 @@ const FloorDashboard = () => {
                   <Users className="h-12 w-12 mx-auto text-muted-foreground/50" />
                   <div>
                     <p className="text-sm text-muted-foreground mb-3">
-                      View detailed operator performance metrics derived from Production Logs
+                      View detailed operator performance metrics from the Operator Production Ledger
                     </p>
                     <button
                       onClick={() => navigate('/operator-efficiency')}
@@ -483,7 +483,7 @@ const FloorDashboard = () => {
                     </button>
                   </div>
                   <p className="text-[10px] text-muted-foreground italic">
-                    All metrics are read-only and derived from daily production log entries
+                    All metrics are read-only and derived from production logs via the operator ledger
                   </p>
                 </div>
               </CardContent>

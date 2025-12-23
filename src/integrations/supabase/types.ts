@@ -466,6 +466,7 @@ export type Database = {
           ok_quantity: number | null
           operation_code: string | null
           operator_id: string | null
+          operators: Json | null
           ordered_quantity: number | null
           party_code: string | null
           plant: string
@@ -516,6 +517,7 @@ export type Database = {
           ok_quantity?: number | null
           operation_code?: string | null
           operator_id?: string | null
+          operators?: Json | null
           ordered_quantity?: number | null
           party_code?: string | null
           plant: string
@@ -566,6 +568,7 @@ export type Database = {
           ok_quantity?: number | null
           operation_code?: string | null
           operator_id?: string | null
+          operators?: Json | null
           ordered_quantity?: number | null
           party_code?: string | null
           plant?: string
@@ -2930,6 +2933,110 @@ export type Database = {
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operator_production_ledger: {
+        Row: {
+          actual_qty: number
+          created_at: string
+          efficiency_pct: number | null
+          id: string
+          log_date: string
+          machine_id: string | null
+          minutes_share: number
+          ok_qty: number
+          operator_id: string
+          production_log_id: string
+          rejection_qty: number
+          runtime_minutes: number
+          target_qty: number
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          actual_qty?: number
+          created_at?: string
+          efficiency_pct?: number | null
+          id?: string
+          log_date: string
+          machine_id?: string | null
+          minutes_share?: number
+          ok_qty?: number
+          operator_id: string
+          production_log_id: string
+          rejection_qty?: number
+          runtime_minutes?: number
+          target_qty?: number
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          actual_qty?: number
+          created_at?: string
+          efficiency_pct?: number | null
+          id?: string
+          log_date?: string
+          machine_id?: string | null
+          minutes_share?: number
+          ok_qty?: number
+          operator_id?: string
+          production_log_id?: string
+          rejection_qty?: number
+          runtime_minutes?: number
+          target_qty?: number
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_production_ledger_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_vw"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "v_machine_daily"
+            referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_production_log_id_fkey"
+            columns: ["production_log_id"]
+            isOneToOne: false
+            referencedRelation: "daily_production_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]

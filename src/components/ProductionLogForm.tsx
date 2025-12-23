@@ -112,7 +112,6 @@ const productionLogSchema = z.object({
   shift: z.enum(['day', 'night'], { required_error: "Shift is required" }),
   supervisor_id: z.string().uuid("Please select a supervisor").optional(),
   setter_id: z.string().uuid("Please select a setter").optional(),
-  operator_ids: z.array(z.string().uuid()).optional(),
   operator_company: z.enum(['RVI', 'CONTRACTOR'], { required_error: "Please select company" }),
   machine_start_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:MM)"),
   machine_end_time: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:MM)"),
@@ -124,6 +123,13 @@ const productionLogSchema = z.object({
 });
 
 type ProductionLogFormData = z.infer<typeof productionLogSchema>;
+
+// Operator with minutes share for multi-operator support
+interface OperatorEntry {
+  operator_id: string;
+  operator_name: string;
+  minutes_share: number; // percentage 0-100
+}
 
 interface Person {
   id: string;
@@ -564,6 +570,12 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       return;
     }
 
+    // Validate at least one operator is selected
+    if (selectedOperators.length === 0) {
+      toast.error("At least one operator is required.");
+      return;
+    }
+
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -586,16 +598,32 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         return;
       }
       
+      // Build operators JSONB array with equal split
+      const minutesPerOperator = selectedOperators.length > 0 
+        ? Math.round(100 / selectedOperators.length * 100) / 100 
+        : 100;
+      
+      const operatorsData: OperatorEntry[] = selectedOperators.map(opId => {
+        const op = operators.find(o => o.id === opId);
+        return {
+          operator_id: opId,
+          operator_name: op?.full_name || 'Unknown',
+          minutes_share: minutesPerOperator,
+        };
+      });
+      
       // Derive operation code from selected route step
       const selectedStep = routeSteps.find(r => r.id === selectedRouteStepId);
       const operationCode = selectedStep 
         ? `${selectedStep.operation_type}${selectedStep.sequence_number}` 
         : 'A';
       
+      const logDateStr = format(data.log_date, "yyyy-MM-dd");
+      
       const insertData = {
         wo_id: propWorkOrder?.id || null,
         machine_id: effectiveMachineId,
-        log_date: format(data.log_date, "yyyy-MM-dd"),
+        log_date: logDateStr,
         shift: String(data.shift),
         plant: 'MAIN',
         setup_number: effectiveSetupNo || 'SETUP-001',
@@ -609,6 +637,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         ok_quantity: okPcs,
         efficiency_percentage: efficiency,
         operator_id: selectedOperators.length > 0 ? selectedOperators[0] : null,
+        operators: JSON.parse(JSON.stringify(operatorsData)) as Json, // Store all operators
         party_code: partyCode !== "—" ? partyCode : null,
         product_description: productDescription !== "—" ? productDescription : null,
         drawing_number: drawingNumber !== "—" ? drawingNumber : null,
@@ -639,6 +668,43 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
         .single();
 
       if (logError) throw logError;
+
+      // Insert operator ledger entries for each operator
+      if (insertedLog?.id && selectedOperators.length > 0) {
+        const ledgerEntries = selectedOperators.map(opId => {
+          const sharePercent = minutesPerOperator;
+          const runtimeShare = Math.round(actualRuntimeMinutes * (sharePercent / 100));
+          const targetShare = Math.round(targetQuantity * (sharePercent / 100));
+          const actualShare = Math.round(data.actual_production_qty * (sharePercent / 100));
+          const okShare = Math.round(okPcs * (sharePercent / 100));
+          const rejectionShare = Math.round(totalRejectionQty * (sharePercent / 100));
+          const efficiencyShare = targetShare > 0 ? Math.round((actualShare / targetShare) * 100) : 0;
+          
+          return {
+            production_log_id: insertedLog.id,
+            operator_id: opId,
+            work_order_id: propWorkOrder?.id || null,
+            machine_id: effectiveMachineId,
+            log_date: logDateStr,
+            runtime_minutes: runtimeShare,
+            target_qty: targetShare,
+            actual_qty: actualShare,
+            ok_qty: okShare,
+            rejection_qty: rejectionShare,
+            efficiency_pct: efficiencyShare,
+            minutes_share: sharePercent,
+          };
+        });
+        
+        const { error: ledgerError } = await supabase
+          .from("operator_production_ledger")
+          .insert(ledgerEntries);
+        
+        if (ledgerError) {
+          console.error("Error inserting operator ledger:", ledgerError);
+          // Don't fail the whole operation, just log it
+        }
+      }
 
       if (data.actual_production_qty > 0 && propWorkOrder?.id) {
         await createExecutionRecord({
@@ -1006,12 +1072,25 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                 {errors.actual_production_qty && <p className="text-sm text-destructive">{errors.actual_production_qty.message}</p>}
               </div>
 
-              {/* Operator(s) Selection */}
+              {/* Operator(s) Selection - REQUIRED */}
               <div className="space-y-2 md:col-span-3">
-                <Label>Operator(s)</Label>
-                <div className="flex flex-wrap gap-2 p-3 rounded-md border bg-background min-h-[60px]">
+                <div className="flex items-center gap-2">
+                  <Label>Operator(s) *</Label>
+                  {selectedOperators.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedOperators.length} selected
+                    </Badge>
+                  )}
+                </div>
+                <div className={cn(
+                  "flex flex-wrap gap-2 p-3 rounded-md border bg-background min-h-[60px]",
+                  selectedOperators.length === 0 && "border-destructive/50"
+                )}>
                   {operators.length === 0 ? (
-                    <span className="text-sm text-muted-foreground">No operators available</span>
+                    <div className="text-sm text-muted-foreground">
+                      <span>No operators available. </span>
+                      <span className="text-primary">Please add operators in Admin → People.</span>
+                    </div>
                   ) : (
                     operators.map((op) => (
                       <label 
@@ -1033,7 +1112,9 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                     ))
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">Select all operators who worked on this log</p>
+                <p className="text-xs text-muted-foreground">
+                  At least one operator is required. Runtime will be split evenly among selected operators.
+                </p>
               </div>
 
               {/* Structured Downtime Section */}

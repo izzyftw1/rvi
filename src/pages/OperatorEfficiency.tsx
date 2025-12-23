@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { CalendarIcon, Users, TrendingUp, Clock, Target, XCircle, Download, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -30,23 +30,11 @@ interface OperatorEfficiencyData {
   machineName: string;
   totalRuntimeMinutes: number;
   totalActualQuantity: number;
+  totalOkQuantity: number;
   totalRejectionQuantity: number;
   totalTargetQuantity: number;
   efficiencyPercentage: number;
   logCount: number;
-}
-
-interface ProductionLogRow {
-  id: string;
-  operator_id: string | null;
-  machine_id: string;
-  actual_runtime_minutes: number | null;
-  actual_quantity: number | null;
-  total_rejection_quantity: number | null;
-  target_quantity: number | null;
-  efficiency_percentage: number | null;
-  operator: { full_name: string } | null;
-  machines: { name: string; machine_id: string } | null;
 }
 
 type PeriodFilter = "daily" | "weekly" | "monthly";
@@ -96,11 +84,12 @@ export default function OperatorEfficiency() {
     const totalMachines = new Set(efficiencyData.map(d => d.machineId)).size;
     const totalRuntime = efficiencyData.reduce((sum, d) => sum + d.totalRuntimeMinutes, 0);
     const totalActual = efficiencyData.reduce((sum, d) => sum + d.totalActualQuantity, 0);
+    const totalOk = efficiencyData.reduce((sum, d) => sum + d.totalOkQuantity, 0);
     const totalRejection = efficiencyData.reduce((sum, d) => sum + d.totalRejectionQuantity, 0);
     const avgEfficiency = efficiencyData.length > 0
       ? Math.round(efficiencyData.reduce((sum, d) => sum + d.efficiencyPercentage, 0) / efficiencyData.length)
       : 0;
-    return { totalOperators, totalMachines, totalRuntime, totalActual, totalRejection, avgEfficiency };
+    return { totalOperators, totalMachines, totalRuntime, totalActual, totalOk, totalRejection, avgEfficiency };
   }, [efficiencyData]);
 
   useEffect(() => {
@@ -110,53 +99,56 @@ export default function OperatorEfficiency() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load production logs for the date range with operator and machine details
-      const { data: logsData, error } = await supabase
-        .from("daily_production_logs")
+      // Load from operator_production_ledger - the single source of truth
+      const { data: ledgerData, error } = await supabase
+        .from("operator_production_ledger")
         .select(`
           id,
           operator_id,
           machine_id,
-          actual_runtime_minutes,
-          actual_quantity,
-          total_rejection_quantity,
-          target_quantity,
-          efficiency_percentage,
-          ok_quantity,
+          runtime_minutes,
+          actual_qty,
+          ok_qty,
+          rejection_qty,
+          target_qty,
+          efficiency_pct,
           operator:operator_id(full_name),
-          machines:machine_id(name, machine_id)
+          machine:machine_id(name, machine_id)
         `)
         .gte("log_date", dateRange.start)
-        .lte("log_date", dateRange.end)
-        .not("operator_id", "is", null);
+        .lte("log_date", dateRange.end);
 
       if (error) throw error;
 
       // Aggregate data by operator + machine combination
       const aggregatedMap = new Map<string, OperatorEfficiencyData>();
 
-      (logsData as unknown as ProductionLogRow[] || []).forEach((log) => {
-        if (!log.operator_id) return;
+      (ledgerData || []).forEach((entry: any) => {
+        if (!entry.operator_id) return;
 
-        const key = `${log.operator_id}-${log.machine_id}`;
+        const key = `${entry.operator_id}-${entry.machine_id}`;
         const existing = aggregatedMap.get(key);
 
         if (existing) {
-          existing.totalRuntimeMinutes += log.actual_runtime_minutes || 0;
-          existing.totalActualQuantity += log.actual_quantity || 0;
-          existing.totalRejectionQuantity += log.total_rejection_quantity || 0;
-          existing.totalTargetQuantity += log.target_quantity || 0;
+          existing.totalRuntimeMinutes += entry.runtime_minutes || 0;
+          existing.totalActualQuantity += entry.actual_qty || 0;
+          existing.totalOkQuantity += entry.ok_qty || 0;
+          existing.totalRejectionQuantity += entry.rejection_qty || 0;
+          existing.totalTargetQuantity += entry.target_qty || 0;
           existing.logCount++;
         } else {
           aggregatedMap.set(key, {
-            operatorId: log.operator_id,
-            operatorName: log.operator?.full_name || "Unknown",
-            machineId: log.machine_id,
-            machineName: log.machines?.machine_id ? `${log.machines.machine_id} - ${log.machines.name}` : "Unknown",
-            totalRuntimeMinutes: log.actual_runtime_minutes || 0,
-            totalActualQuantity: log.actual_quantity || 0,
-            totalRejectionQuantity: log.total_rejection_quantity || 0,
-            totalTargetQuantity: log.target_quantity || 0,
+            operatorId: entry.operator_id,
+            operatorName: entry.operator?.full_name || "Unknown",
+            machineId: entry.machine_id,
+            machineName: entry.machine?.machine_id 
+              ? `${entry.machine.machine_id} - ${entry.machine.name}` 
+              : "Unknown",
+            totalRuntimeMinutes: entry.runtime_minutes || 0,
+            totalActualQuantity: entry.actual_qty || 0,
+            totalOkQuantity: entry.ok_qty || 0,
+            totalRejectionQuantity: entry.rejection_qty || 0,
+            totalTargetQuantity: entry.target_qty || 0,
             efficiencyPercentage: 0,
             logCount: 1,
           });
@@ -202,12 +194,13 @@ export default function OperatorEfficiency() {
   };
 
   const exportCSV = () => {
-    const headers = ["Operator", "Machine", "Runtime", "Actual Qty", "Rejection Qty", "Target Qty", "Efficiency %"];
+    const headers = ["Operator", "Machine", "Runtime", "Actual Qty", "OK Qty", "Rejection Qty", "Target Qty", "Efficiency %"];
     const rows = efficiencyData.map((d) => [
       d.operatorName,
       d.machineName,
       formatMinutes(d.totalRuntimeMinutes),
       d.totalActualQuantity,
+      d.totalOkQuantity,
       d.totalRejectionQuantity,
       d.totalTargetQuantity,
       d.efficiencyPercentage.toFixed(2),
@@ -228,13 +221,13 @@ export default function OperatorEfficiency() {
     <div className="container mx-auto p-4 space-y-6">
       <PageHeader
         title="Operator Efficiency"
-        description="Read-only analytics derived from Daily Production Logs — no manual overrides"
+        description="Analytics derived from Operator Production Ledger — single source of truth"
       />
 
       {/* Read-only notice */}
       <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
         <Info className="h-4 w-4 shrink-0" />
-        <span>All metrics on this page are calculated from production log entries. Data cannot be manually edited.</span>
+        <span>All metrics are calculated from production log entries. Data cannot be manually edited.</span>
       </div>
 
       {/* Controls */}
@@ -286,7 +279,7 @@ export default function OperatorEfficiency() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-3">
@@ -330,6 +323,20 @@ export default function OperatorEfficiency() {
               <div>
                 <p className="text-xs text-muted-foreground">Total Actual</p>
                 <p className="text-xl font-bold">{summary.totalActual.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="h-6 w-6 text-blue-500" />
+              <div>
+                <p className="text-xs text-muted-foreground">Total OK</p>
+                <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                  {summary.totalOk.toLocaleString()}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -383,7 +390,7 @@ export default function OperatorEfficiency() {
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No production logs found for this period.</p>
-              <p className="text-sm">Data is derived from Daily Production Logs.</p>
+              <p className="text-sm">Data is derived from Production Logs via the Operator Ledger.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -394,7 +401,8 @@ export default function OperatorEfficiency() {
                     <TableHead>Machine</TableHead>
                     <TableHead className="text-right">Runtime</TableHead>
                     <TableHead className="text-right">Actual Qty</TableHead>
-                    <TableHead className="text-right">Rejection Qty</TableHead>
+                    <TableHead className="text-right">OK Qty</TableHead>
+                    <TableHead className="text-right">Rejection</TableHead>
                     <TableHead className="w-[200px]">Efficiency</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -410,6 +418,9 @@ export default function OperatorEfficiency() {
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {data.totalActualQuantity.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right text-green-600 dark:text-green-400">
+                        {data.totalOkQuantity.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
                         {data.totalRejectionQuantity > 0 ? (
@@ -442,9 +453,12 @@ export default function OperatorEfficiency() {
                               {data.logCount} log{data.logCount !== 1 ? "s" : ""}
                             </Badge>
                           </div>
-                          <Progress
-                            value={Math.min(data.efficiencyPercentage, 100)}
-                            className="h-2"
+                          <Progress 
+                            value={Math.min(data.efficiencyPercentage, 150)} 
+                            className={cn(
+                              "h-2",
+                              `[&>div]:${getProgressColor(data.efficiencyPercentage)}`
+                            )}
                           />
                         </div>
                       </TableCell>
