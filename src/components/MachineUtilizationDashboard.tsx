@@ -150,7 +150,13 @@ export const MachineUtilizationDashboard = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-4">
+      {/* Read-only indicator */}
+      <div className="text-[10px] text-muted-foreground italic text-right">
+        Metrics derived from Production Logs (read-only)
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Overall Utilization */}
       <Card>
         <CardHeader>
@@ -389,6 +395,7 @@ export const MachineUtilizationDashboard = () => {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };

@@ -122,31 +122,31 @@ export default function MachineRuntime() {
   const loadRuntimeData = async () => {
     setLoading(true);
     try {
-      // Get machine daily metrics
-      let metricsQuery = supabase
-        .from("machine_daily_metrics")
-        .select("*")
-        .eq("site_id", selectedSite)
-        .gte("date", startDate)
-        .lte("date", endDate);
+      // Get machines for this site
+      const { data: siteMachines, error: machinesError } = await supabase
+        .from("machines")
+        .select("id, machine_id, name")
+        .eq("site_id", selectedSite);
+      
+      if (machinesError) throw machinesError;
 
-      if (selectedMachines.length > 0) {
-        metricsQuery = metricsQuery.in("machine_id", selectedMachines);
-      }
+      const machineIds = selectedMachines.length > 0 
+        ? selectedMachines 
+        : (siteMachines || []).map((m: Machine) => m.id);
 
-      const { data: metrics, error: metricsError } = await metricsQuery;
-      if (metricsError) throw metricsError;
+      // Build machine name lookup
+      const machineNameMap: Record<string, string> = {};
+      (siteMachines || []).forEach((m: Machine) => {
+        machineNameMap[m.id] = `${m.machine_id} - ${m.name}`;
+      });
 
-      // Get production logs for downtime breakdown and actions
+      // Get production logs - SINGLE SOURCE OF TRUTH
       let logsQuery = supabase
-        .from("production_logs")
-        .select("machine_id, run_state, downtime_minutes, actions_taken, machines(machine_id, name)")
-        .gte("log_timestamp", startDate)
-        .lte("log_timestamp", endDate + "T23:59:59");
-
-      if (selectedMachines.length > 0) {
-        logsQuery = logsQuery.in("machine_id", selectedMachines);
-      }
+        .from("daily_production_logs")
+        .select("machine_id, actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity, downtime_events")
+        .in("machine_id", machineIds)
+        .gte("log_date", startDate)
+        .lte("log_date", endDate);
 
       const { data: logs, error: logsError } = await logsQuery;
       if (logsError) throw logsError;
@@ -154,86 +154,79 @@ export default function MachineRuntime() {
       // Group metrics by machine
       const machineMap = new Map<string, RuntimeData>();
 
-      metrics?.forEach((metric) => {
-        const existing = machineMap.get(metric.machine_id);
+      (logs || []).forEach((log: any) => {
+        const existing = machineMap.get(log.machine_id);
+        
+        // Parse downtime events JSON for breakdown
+        let downtimeBreakdown = { maintenance: 0, material_wait: 0, setup: 0, stopped: 0 };
+        if (log.downtime_events && Array.isArray(log.downtime_events)) {
+          log.downtime_events.forEach((event: any) => {
+            const duration = event.duration_minutes || 0;
+            const reason = (event.reason || '').toLowerCase();
+            if (reason.includes('maintenance') || reason.includes('repair')) {
+              downtimeBreakdown.maintenance += duration;
+            } else if (reason.includes('material') || reason.includes('wait')) {
+              downtimeBreakdown.material_wait += duration;
+            } else if (reason.includes('setup') || reason.includes('changeover')) {
+              downtimeBreakdown.setup += duration;
+            } else {
+              downtimeBreakdown.stopped += duration;
+            }
+          });
+        }
+
         if (existing) {
-          existing.planned_minutes += metric.planned_minutes || 0;
-          existing.actual_run_minutes += metric.actual_run_minutes || 0;
-          existing.downtime_minutes += metric.downtime_minutes || 0;
-          existing.target_qty += metric.target_qty || 0;
-          existing.qty_ok += metric.qty_ok || 0;
-          existing.qty_scrap += metric.qty_scrap || 0;
+          existing.actual_run_minutes += log.actual_runtime_minutes || 0;
+          existing.downtime_minutes += log.total_downtime_minutes || 0;
+          existing.target_qty += log.target_quantity || 0;
+          existing.qty_ok += log.ok_quantity || 0;
+          existing.qty_scrap += log.total_rejection_quantity || 0;
+          existing.planned_minutes += (log.actual_runtime_minutes || 0) + (log.total_downtime_minutes || 0);
+          existing.downtime_breakdown.maintenance += downtimeBreakdown.maintenance;
+          existing.downtime_breakdown.material_wait += downtimeBreakdown.material_wait;
+          existing.downtime_breakdown.setup += downtimeBreakdown.setup;
+          existing.downtime_breakdown.stopped += downtimeBreakdown.stopped;
         } else {
-          machineMap.set(metric.machine_id, {
-            machine_id: metric.machine_id,
-            machine_name: "",
-            planned_minutes: metric.planned_minutes || 0,
-            actual_run_minutes: metric.actual_run_minutes || 0,
-            downtime_minutes: metric.downtime_minutes || 0,
-            target_qty: metric.target_qty || 0,
-            qty_ok: metric.qty_ok || 0,
-            qty_scrap: metric.qty_scrap || 0,
+          const plannedMins = (log.actual_runtime_minutes || 0) + (log.total_downtime_minutes || 0);
+          machineMap.set(log.machine_id, {
+            machine_id: log.machine_id,
+            machine_name: machineNameMap[log.machine_id] || "Unknown",
+            planned_minutes: plannedMins,
+            actual_run_minutes: log.actual_runtime_minutes || 0,
+            downtime_minutes: log.total_downtime_minutes || 0,
+            target_qty: log.target_quantity || 0,
+            qty_ok: log.ok_quantity || 0,
+            qty_scrap: log.total_rejection_quantity || 0,
             availability_pct: 0,
             performance_pct: 0,
             quality_pct: 0,
             oee_pct: 0,
-            downtime_breakdown: {
-              maintenance: 0,
-              material_wait: 0,
-              setup: 0,
-              stopped: 0,
-            },
+            downtime_breakdown: downtimeBreakdown,
             actions_taken: [],
           });
-        }
-      });
-
-      // Add downtime breakdown and actions from logs
-      logs?.forEach((log: any) => {
-        const machineData = machineMap.get(log.machine_id);
-        if (machineData) {
-          // Set machine name from logs if not set
-          if (!machineData.machine_name && log.machines) {
-            machineData.machine_name = `${log.machines.machine_id} - ${log.machines.name}`;
-          }
-
-          // Breakdown downtime by reason
-          if (log.run_state === 'maintenance') {
-            machineData.downtime_breakdown.maintenance += log.downtime_minutes || 0;
-          } else if (log.run_state === 'material_wait') {
-            machineData.downtime_breakdown.material_wait += log.downtime_minutes || 0;
-          } else if (log.run_state === 'setup') {
-            machineData.downtime_breakdown.setup += log.downtime_minutes || 0;
-          } else if (log.run_state === 'stopped') {
-            machineData.downtime_breakdown.stopped += log.downtime_minutes || 0;
-          }
-
-          // Collect actions taken
-          if (log.actions_taken) {
-            machineData.actions_taken.push(log.actions_taken);
-          }
         }
       });
 
       // Calculate percentages
       const runtimeArray = Array.from(machineMap.values()).map(data => {
         const availability = data.planned_minutes > 0
-          ? ((data.planned_minutes - data.downtime_minutes) / data.planned_minutes) * 100
+          ? (data.actual_run_minutes / data.planned_minutes) * 100
           : 0;
+        const totalProduced = data.qty_ok + data.qty_scrap;
         const performance = data.target_qty > 0
-          ? (data.qty_ok / data.target_qty) * 100
+          ? Math.min((totalProduced / data.target_qty) * 100, 150) // Cap at 150%
           : 0;
-        const quality = data.qty_ok > 0
-          ? ((data.qty_ok - data.qty_scrap) / data.qty_ok) * 100
+        const quality = totalProduced > 0
+          ? (data.qty_ok / totalProduced) * 100
           : 0;
         const oee = (availability * performance * quality) / 10000;
 
         return {
           ...data,
-          availability_pct: availability,
-          performance_pct: performance,
-          quality_pct: quality,
-          oee_pct: oee,
+          availability_pct: Math.round(availability * 10) / 10,
+          performance_pct: Math.round(performance * 10) / 10,
+          quality_pct: Math.round(quality * 10) / 10,
+          oee_pct: Math.round(oee * 10) / 10,
         };
       });
 
@@ -247,10 +240,10 @@ export default function MachineRuntime() {
         const avgOEE = runtimeArray.reduce((sum, d) => sum + d.oee_pct, 0) / runtimeArray.length;
 
         setKpis({
-          avgAvailability,
-          avgPerformance,
-          avgQuality,
-          avgOEE,
+          avgAvailability: Math.round(avgAvailability * 10) / 10,
+          avgPerformance: Math.round(avgPerformance * 10) / 10,
+          avgQuality: Math.round(avgQuality * 10) / 10,
+          avgOEE: Math.round(avgOEE * 10) / 10,
         });
       } else {
         setKpis({ avgAvailability: 0, avgPerformance: 0, avgQuality: 0, avgOEE: 0 });
