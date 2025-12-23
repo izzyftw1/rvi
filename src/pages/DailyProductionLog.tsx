@@ -50,6 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { WorkOrderSelect } from "@/components/ui/work-order-select";
 
 // Downtime reasons matching Excel sheet
 const DOWNTIME_REASONS = [
@@ -133,7 +134,7 @@ interface Machine {
 
 interface WorkOrder {
   id: string;
-  display_id: string;
+  wo_number: string;
   customer: string | null;
   item_code: string | null;
   revision: string | null;
@@ -168,7 +169,7 @@ interface ProductionLog {
   rework_quantity: number | null;
   efficiency_percentage: number | null;
   machines: { name: string; machine_id: string } | null;
-  work_orders: { display_id: string } | null;
+  work_orders: { wo_number: string } | null;
   operator: { full_name: string } | null;
   programmer: { full_name: string } | null;
 }
@@ -345,7 +346,7 @@ export default function DailyProductionLog() {
           total_rejection_quantity,
           ok_quantity,
           machines:machine_id(name, machine_id),
-          work_orders:wo_id(display_id),
+          work_orders:wo_id(wo_number),
           operator:operator_id(full_name),
           programmer:programmer_id(full_name)
         `)
@@ -365,9 +366,9 @@ export default function DailyProductionLog() {
       // Load active work orders
       const { data: woData } = await supabase
         .from("work_orders")
-        .select("id, display_id, customer, item_code, revision, material_size_mm, quantity, cycle_time_seconds")
+        .select("id, wo_number, customer, item_code, revision, material_size_mm, quantity, cycle_time_seconds")
         .in("status", ["pending", "in_progress", "qc", "packing"])
-        .order("display_id", { ascending: false })
+        .order("wo_number", { ascending: false })
         .limit(100);
       setWorkOrders(woData || []);
 
@@ -546,7 +547,7 @@ export default function DailyProductionLog() {
     return (
       log.machines?.name?.toLowerCase().includes(search) ||
       log.machines?.machine_id?.toLowerCase().includes(search) ||
-      log.work_orders?.display_id?.toLowerCase().includes(search) ||
+      log.work_orders?.wo_number?.toLowerCase().includes(search) ||
       log.party_code?.toLowerCase().includes(search) ||
       log.product_description?.toLowerCase().includes(search) ||
       log.setup_number?.toLowerCase().includes(search)
@@ -782,23 +783,22 @@ export default function DailyProductionLog() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Work Order (Optional)</FormLabel>
-                            <Select onValueChange={handleWOChange} value={field.value || "none"}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select work order" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                {workOrders
-                                  .filter((wo) => Boolean(wo.id))
-                                  .map((wo) => (
-                                    <SelectItem key={wo.id} value={wo.id}>
-                                      {wo.display_id} - {wo.item_code}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
+                            <FormControl>
+                              <WorkOrderSelect
+                                value={field.value}
+                                onValueChange={handleWOChange}
+                                workOrders={workOrders.filter((wo) => Boolean(wo.id)).map(wo => ({
+                                  id: wo.id,
+                                  wo_number: wo.wo_number,
+                                  item_code: wo.item_code,
+                                  customer: wo.customer,
+                                  quantity: wo.quantity,
+                                }))}
+                                placeholder="Select work order..."
+                                includeNone={true}
+                                noneLabel="None"
+                              />
+                            </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -1320,7 +1320,7 @@ export default function DailyProductionLog() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {log.work_orders?.display_id || "-"}
+                        {log.work_orders?.wo_number || "-"}
                       </TableCell>
                       <TableCell>
                         {log.actual_runtime_minutes ? (

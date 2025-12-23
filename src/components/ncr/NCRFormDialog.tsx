@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { WorkOrderSelect } from '@/components/ui/work-order-select';
 import { toast } from 'sonner';
 import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from '@/components/ui/form-layout';
 import { Database } from '@/integrations/supabase/types';
@@ -35,7 +36,9 @@ interface NCRFormDialogProps {
 interface WorkOrder {
   id: string;
   wo_number: string;
-  display_id: string;
+  item_code: string | null;
+  customer: string | null;
+  quantity: number | null;
 }
 
 interface MaterialLot {
@@ -92,7 +95,7 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
   const loadWorkOrders = async () => {
     const { data } = await supabase
       .from('work_orders')
-      .select('id, wo_number, display_id')
+      .select('id, wo_number, item_code, customer, quantity')
       .order('created_at', { ascending: false })
       .limit(100);
     
@@ -266,22 +269,15 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
             <FormRow cols={2}>
               <FormField>
                 <Label>Work Order</Label>
-                <Select 
-                  value={formData.work_order_id} 
-                  onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
+                <WorkOrderSelect
+                  value={formData.work_order_id}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v === 'none' ? '' : v }))}
+                  workOrders={workOrders}
+                  placeholder="Select work order..."
                   disabled={!!prefillData?.workOrderId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select work order" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workOrders.map(wo => (
-                      <SelectItem key={wo.id} value={wo.id}>
-                        {wo.display_id || wo.wo_number}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  includeNone={true}
+                  noneLabel="No Work Order"
+                />
               </FormField>
 
               <FormField>

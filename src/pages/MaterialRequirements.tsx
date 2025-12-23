@@ -32,9 +32,11 @@ interface MaterialRequirement {
     id: string;
   }>;
   linked_work_orders: Array<{
-    wo_id: string;
+    wo_number: string;
     id: string;
     item_code: string;
+    customer: string | null;
+    quantity: number | null;
   }>;
   procurement_status: "none" | "draft" | "pending_approval" | "approved" | "part_received";
   rpo_no?: string | null;
@@ -140,7 +142,7 @@ export default function MaterialRequirements() {
       // Fetch WOs that haven't started production (goods_in stage only)
       const { data: workOrders, error: woError } = await supabase
         .from("work_orders")
-        .select("id, wo_id, item_code, quantity, gross_weight_per_pc, net_weight_per_pc, material_size_mm, sales_order, current_stage, financial_snapshot")
+        .select("id, wo_number, item_code, quantity, gross_weight_per_pc, net_weight_per_pc, material_size_mm, sales_order, current_stage, financial_snapshot, customer")
         .eq("current_stage", "goods_in");
 
       if (woError) throw woError;
@@ -222,9 +224,11 @@ export default function MaterialRequirements() {
         req.total_net_weight_kg += (wo.quantity * (wo.net_weight_per_pc || 0)) / 1000;
 
         req.linked_work_orders.push({
-          wo_id: wo.wo_id,
+          wo_number: wo.wo_number,
           id: wo.id,
-          item_code: wo.item_code
+          item_code: wo.item_code,
+          customer: wo.customer,
+          quantity: wo.quantity
         });
 
         // Find related SO
@@ -340,7 +344,7 @@ export default function MaterialRequirements() {
       "Inventory Net (kg)": req.inventory_net_kg.toFixed(2),
       "Surplus/Deficit (kg)": req.surplus_deficit_kg.toFixed(2),
       "Linked Sales Orders": req.linked_sales_orders.map(so => so.so_id).join(", "),
-      "Linked Work Orders": req.linked_work_orders.map(wo => wo.wo_id).join(", "),
+      "Linked Work Orders": req.linked_work_orders.map(wo => wo.wo_number).join(", "),
       "Last GI Reference": req.last_gi_reference || "N/A",
       "Last GI Date": req.last_gi_date || "N/A",
       "Procurement Status": req.procurement_status,
@@ -369,7 +373,7 @@ export default function MaterialRequirements() {
       `${req.total_gross_weight_kg.toFixed(2)} kg (${req.total_pcs} pcs)`,
       `${req.inventory_gross_kg.toFixed(2)} kg`,
       `${req.surplus_deficit_kg >= 0 ? '+' : ''}${req.surplus_deficit_kg.toFixed(2)} kg`,
-      req.linked_work_orders.map(wo => wo.wo_id).join(", "),
+      req.linked_work_orders.map(wo => wo.wo_number).join(", "),
       req.procurement_status,
       req.rpo_no || "N/A"
     ]);
@@ -629,7 +633,7 @@ export default function MaterialRequirements() {
                         <div className="flex flex-wrap gap-1">
                           {req.linked_work_orders.map((wo) => (
                             <Badge key={wo.id} variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => navigate(`/work-order/${wo.id}`)}>
-                              {wo.wo_id}
+                              {wo.wo_number}
                             </Badge>
                           ))}
                         </div>

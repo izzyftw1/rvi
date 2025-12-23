@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { WorkOrderSelect, WorkOrderOption } from "@/components/ui/work-order-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ interface RPOModalProps {
   onClose: () => void;
   materialSize: string;
   deficitKg: number;
-  linkedWorkOrders: Array<{ wo_id: string; id: string; item_code: string }>;
+  linkedWorkOrders: WorkOrderOption[];
   linkedSalesOrders: Array<{ so_id: string; id: string }>;
   onSuccess: () => void;
 }
@@ -85,10 +86,15 @@ export function RPOModal({
   };
 
   const handleWOChange = (woId: string) => {
+    if (woId === 'none') {
+      setSelectedWO("");
+      setItemCode("");
+      return;
+    }
     setSelectedWO(woId);
     const wo = linkedWorkOrders.find(w => w.id === woId);
     if (wo) {
-      setItemCode(wo.item_code);
+      setItemCode(wo.item_code || "");
     }
   };
 
@@ -254,18 +260,12 @@ export function RPOModal({
           {/* Work Order */}
           <div>
             <Label>Work Order *</Label>
-            <Select value={selectedWO} onValueChange={handleWOChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Work Order" />
-              </SelectTrigger>
-              <SelectContent>
-                {linkedWorkOrders.map(wo => (
-                  <SelectItem key={wo.id} value={wo.id}>
-                    {wo.wo_id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <WorkOrderSelect
+              value={selectedWO}
+              onValueChange={handleWOChange}
+              workOrders={linkedWorkOrders}
+              placeholder="Select Work Order"
+            />
           </div>
 
           {/* Sales Order (Read-only) */}
