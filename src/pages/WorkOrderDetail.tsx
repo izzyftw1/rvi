@@ -809,15 +809,11 @@ const WorkOrderDetail = () => {
         {/* ═══════════════════════════════════════════════════════════════════
             PRODUCTION PROGRESS - Primary operational snapshot
         ═══════════════════════════════════════════════════════════════════ */}
-        {woProgress && (
+        {wo && (
           <section className="space-y-3">
             <WOProgressCard
               woId={id!}
-              targetQuantity={woProgress.target_quantity}
-              completedQuantity={woProgress.total_completed}
-              scrapQuantity={woProgress.total_scrap}
-              progressPercentage={woProgress.progress_percentage}
-              remainingQuantity={woProgress.remaining_quantity}
+              orderedQuantity={wo.quantity || 0}
             />
           </section>
         )}
