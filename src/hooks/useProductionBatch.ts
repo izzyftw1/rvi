@@ -1,13 +1,20 @@
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Hook to get or create a production batch for a work order.
+ * Production Batch Management
  * 
  * Production batches are created automatically when:
  * - First production log for a WO (initial batch)
  * - Production resumes after a partial dispatch (post_dispatch)
  * - Production restarts after a gap (gap_restart, default 7 days)
+ * 
+ * Each batch has its own QC gates:
+ * - Material QC
+ * - First Piece QC
+ * - Final QC
  */
+
+export type BatchQCStatus = 'pending' | 'passed' | 'failed' | 'waived';
 
 export interface ProductionBatch {
   id: string;
@@ -18,6 +25,18 @@ export interface ProductionBatch {
   started_at: string;
   ended_at: string | null;
   created_at: string;
+  // Batch-level QC status
+  qc_material_status: BatchQCStatus;
+  qc_material_approved_by: string | null;
+  qc_material_approved_at: string | null;
+  qc_first_piece_status: BatchQCStatus;
+  qc_first_piece_approved_by: string | null;
+  qc_first_piece_approved_at: string | null;
+  qc_final_status: BatchQCStatus;
+  qc_final_approved_by: string | null;
+  qc_final_approved_at: string | null;
+  production_allowed: boolean;
+  dispatch_allowed: boolean;
 }
 
 /**
@@ -69,7 +88,7 @@ export async function getWorkOrderBatches(woId: string): Promise<ProductionBatch
     return [];
   }
   
-  return (data as ProductionBatch[]) || [];
+  return (data as unknown as ProductionBatch[]) || [];
 }
 
 /**
@@ -92,5 +111,80 @@ export async function getCurrentBatch(woId: string): Promise<ProductionBatch | n
     return null;
   }
   
-  return data as ProductionBatch | null;
+  return data as unknown as ProductionBatch | null;
+}
+
+/**
+ * Gets the current batch for QC operations using the database function.
+ */
+export async function getCurrentBatchForQC(woId: string): Promise<string | null> {
+  if (!woId) return null;
+  
+  try {
+    const { data, error } = await supabase.rpc('get_current_batch_for_qc', {
+      p_wo_id: woId
+    });
+    
+    if (error) {
+      console.error('Error getting batch for QC:', error);
+      return null;
+    }
+    
+    return data as string;
+  } catch (err) {
+    console.error('Failed to get batch for QC:', err);
+    return null;
+  }
+}
+
+/**
+ * Checks if production is allowed for a batch (material + first piece QC passed).
+ */
+export function isBatchProductionAllowed(batch: ProductionBatch | null): boolean {
+  if (!batch) return false;
+  return batch.production_allowed || (
+    ['passed', 'waived'].includes(batch.qc_material_status) &&
+    ['passed', 'waived'].includes(batch.qc_first_piece_status)
+  );
+}
+
+/**
+ * Checks if dispatch is allowed for a batch (all QC gates passed).
+ */
+export function isBatchDispatchAllowed(batch: ProductionBatch | null): boolean {
+  if (!batch) return false;
+  return batch.dispatch_allowed || (
+    ['passed', 'waived'].includes(batch.qc_material_status) &&
+    ['passed', 'waived'].includes(batch.qc_first_piece_status) &&
+    ['passed', 'waived'].includes(batch.qc_final_status)
+  );
+}
+
+/**
+ * Gets batch QC summary for display.
+ */
+export function getBatchQCSummary(batch: ProductionBatch | null): {
+  material: BatchQCStatus;
+  firstPiece: BatchQCStatus;
+  final: BatchQCStatus;
+  productionAllowed: boolean;
+  dispatchAllowed: boolean;
+} {
+  if (!batch) {
+    return {
+      material: 'pending',
+      firstPiece: 'pending',
+      final: 'pending',
+      productionAllowed: false,
+      dispatchAllowed: false
+    };
+  }
+  
+  return {
+    material: batch.qc_material_status,
+    firstPiece: batch.qc_first_piece_status,
+    final: batch.qc_final_status,
+    productionAllowed: isBatchProductionAllowed(batch),
+    dispatchAllowed: isBatchDispatchAllowed(batch)
+  };
 }
