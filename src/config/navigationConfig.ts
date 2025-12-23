@@ -88,20 +88,21 @@ export const navigationGroups: NavGroup[] = [
     icon: Activity,
     allowedRoles: ['admin', 'production', 'ops_manager'],
     items: [
+      // === Entry Points (Data Sources) ===
       { label: "Work Orders", path: "/work-orders", icon: Search },
-      { label: "Production Summary", path: "/production-summary", icon: BarChart3 },
-      { label: "Production Progress", path: "/production-progress", icon: Activity },
       { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
       { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Cpu },
       { label: "Cutting", path: "/cutting", icon: Scissors },
       { label: "Forging", path: "/forging", icon: Flame },
-      { label: "Machine Status", path: "/machine-status", icon: Gauge },
-      { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
+      // === Dashboards (Read-Only Views) ===
+      { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
+      { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
+      { label: "Production Progress", path: "/production-progress", icon: Activity },
+      // === Analytics (Derived from Production Log) ===
+      { label: "Machine Utilisation", path: "/machine-utilisation", icon: Gauge },
       { label: "Operator Efficiency", path: "/operator-efficiency", icon: Users },
       { label: "Setter Efficiency", path: "/setter-efficiency", icon: Wrench },
       { label: "Downtime Analytics", path: "/downtime-analytics", icon: Timer },
-      { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
-      { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
     ]
   },
   {
