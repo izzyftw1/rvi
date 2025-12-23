@@ -152,6 +152,7 @@ export const navigationGroups: NavGroup[] = [
     allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
     items: [
       { label: "External Partners", path: "/partners", icon: Handshake },
+      { label: "External Efficiency", path: "/external-efficiency", icon: BarChart3 },
       { label: "External Moves", path: "/logistics", icon: Truck },
       { label: "Partner Performance", path: "/partner-performance", icon: PackageCheck },
     ]

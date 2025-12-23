@@ -82,7 +82,7 @@ import QualityTraceability from "./pages/QualityTraceability";
 import QualityDocuments from "./pages/QualityDocuments";
 import QualityAnalytics from "./pages/QualityAnalytics";
 import DowntimeAnalytics from "./pages/DowntimeAnalytics";
-
+import ExternalEfficiency from "./pages/ExternalEfficiency";
 
 const App = () => (
   <>
@@ -162,6 +162,7 @@ const App = () => (
           <Route path="/logistics-dashboard" element={<LogisticsDashboard />} />
           <Route path="/partners" element={<Partners />} />
           <Route path="/partner-performance" element={<PartnerPerformance />} />
+          <Route path="/external-efficiency" element={<ExternalEfficiency />} />
           <Route path="/external-processing/:processName" element={<ExternalProcessingDetail />} />
           <Route path="/ncr" element={<NCRManagement />} />
           <Route path="/ncr/:id" element={<NCRDetail />} />
