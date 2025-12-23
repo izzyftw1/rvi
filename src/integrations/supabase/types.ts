@@ -5754,6 +5754,7 @@ export type Database = {
         Row: {
           actual_cycle_time_hours: number | null
           bom: Json | null
+          completion_pct: number | null
           created_at: string
           current_stage: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
@@ -5805,7 +5806,10 @@ export type Database = {
           qc_raw_material_remarks: string | null
           qc_raw_material_status: string | null
           qc_status: string | null
+          qty_completed: number
           qty_external_wip: number | null
+          qty_rejected: number
+          qty_remaining: number | null
           quality_released: boolean
           quality_released_at: string | null
           quality_released_by: string | null
@@ -5825,6 +5829,7 @@ export type Database = {
         Insert: {
           actual_cycle_time_hours?: number | null
           bom?: Json | null
+          completion_pct?: number | null
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer: string
@@ -5876,7 +5881,10 @@ export type Database = {
           qc_raw_material_remarks?: string | null
           qc_raw_material_status?: string | null
           qc_status?: string | null
+          qty_completed?: number
           qty_external_wip?: number | null
+          qty_rejected?: number
+          qty_remaining?: number | null
           quality_released?: boolean
           quality_released_at?: string | null
           quality_released_by?: string | null
@@ -5896,6 +5904,7 @@ export type Database = {
         Update: {
           actual_cycle_time_hours?: number | null
           bom?: Json | null
+          completion_pct?: number | null
           created_at?: string
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string
@@ -5947,7 +5956,10 @@ export type Database = {
           qc_raw_material_remarks?: string | null
           qc_raw_material_status?: string | null
           qc_status?: string | null
+          qty_completed?: number
           qty_external_wip?: number | null
+          qty_rejected?: number
+          qty_remaining?: number | null
           quality_released?: boolean
           quality_released_at?: string | null
           quality_released_by?: string | null

@@ -13,19 +13,19 @@ import {
 
 interface WOProgressCardProps {
   woId: string;
-  orderedQuantity: number; // From work order
+  orderedQuantity: number;
 }
 
 interface ProgressData {
-  totalProduced: number;      // Sum of ok_quantity from all logs
-  totalScrap: number;         // Sum of total_rejection_quantity from all logs
-  netCompleted: number;       // totalProduced (ok_quantity is already net of rejections)
-  remaining: number;          // orderedQuantity - netCompleted
-  progressPercent: number;    // (netCompleted / orderedQuantity) * 100
-  completedToday: number;     // Today's ok_quantity
-  scrapToday: number;         // Today's rejections
-  avgRatePerHour: number;     // Average production rate
-  lastUpdated: string | null; // Last log timestamp
+  totalProduced: number;      // qty_completed from work_orders (synced from logs)
+  totalScrap: number;         // qty_rejected from work_orders (synced from logs)
+  netCompleted: number;       // Same as totalProduced (ok_quantity)
+  remaining: number;          // qty_remaining from work_orders (generated column)
+  progressPercent: number;    // completion_pct from work_orders (generated column)
+  completedToday: number;     // Today's ok_quantity from logs
+  scrapToday: number;         // Today's rejections from logs
+  avgRatePerHour: number;     // Average production rate from logs
+  lastUpdated: string | null;
 }
 
 export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
@@ -47,56 +47,52 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Get ALL production logs for this work order
-      const { data: allLogs, error } = await supabase
+      // Get cached progress from work_orders (single source of truth)
+      const { data: wo, error: woError } = await supabase
+        .from('work_orders')
+        .select('qty_completed, qty_rejected, qty_remaining, completion_pct, updated_at')
+        .eq('id', woId)
+        .single();
+
+      if (woError) throw woError;
+
+      // Get today's stats and avg rate from logs (for display only)
+      const { data: todayLogs } = await supabase
         .from('daily_production_logs')
-        .select(`
-          log_date,
-          ok_quantity,
-          actual_quantity,
-          total_rejection_quantity,
-          actual_runtime_minutes,
-          created_at
-        `)
+        .select('ok_quantity, total_rejection_quantity, actual_runtime_minutes, created_at')
         .eq('wo_id', woId)
-        .order('created_at', { ascending: false });
+        .eq('log_date', today);
 
-      if (error) throw error;
+      const { data: allLogs } = await supabase
+        .from('daily_production_logs')
+        .select('ok_quantity, actual_runtime_minutes, created_at')
+        .eq('wo_id', woId)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      // Calculate totals from production logs
-      // ok_quantity = pieces that passed (actual - rejections)
-      // total_rejection_quantity = scrap
-      const totalProduced = allLogs?.reduce((sum, log) => sum + (log.ok_quantity || 0), 0) || 0;
-      const totalScrap = allLogs?.reduce((sum, log) => sum + (log.total_rejection_quantity || 0), 0) || 0;
-      
-      // Net completed is the ok_quantity (already excludes rejections)
-      const netCompleted = totalProduced;
-      const remaining = Math.max(0, orderedQuantity - netCompleted);
-      const progressPercent = orderedQuantity > 0 ? (netCompleted / orderedQuantity) * 100 : 0;
+      const completedToday = todayLogs?.reduce((sum, log) => sum + (log.ok_quantity || 0), 0) || 0;
+      const scrapToday = todayLogs?.reduce((sum, log) => sum + (log.total_rejection_quantity || 0), 0) || 0;
 
-      // Today's stats
-      const todayLogs = allLogs?.filter(log => log.log_date === today) || [];
-      const completedToday = todayLogs.reduce((sum, log) => sum + (log.ok_quantity || 0), 0);
-      const scrapToday = todayLogs.reduce((sum, log) => sum + (log.total_rejection_quantity || 0), 0);
+      // Calculate avg rate from all logs
+      const { data: runtimeData } = await supabase
+        .from('daily_production_logs')
+        .select('actual_runtime_minutes')
+        .eq('wo_id', woId);
 
-      // Calculate average rate per hour
-      const totalRuntimeMinutes = allLogs?.reduce((sum, log) => sum + (log.actual_runtime_minutes || 0), 0) || 0;
+      const totalRuntimeMinutes = runtimeData?.reduce((sum, log) => sum + (log.actual_runtime_minutes || 0), 0) || 0;
       const totalRuntimeHours = totalRuntimeMinutes / 60;
-      const avgRatePerHour = totalRuntimeHours > 0 ? totalProduced / totalRuntimeHours : 0;
-
-      // Last updated timestamp
-      const lastUpdated = allLogs?.[0]?.created_at || null;
+      const avgRatePerHour = totalRuntimeHours > 0 ? (wo?.qty_completed || 0) / totalRuntimeHours : 0;
 
       setProgress({
-        totalProduced,
-        totalScrap,
-        netCompleted,
-        remaining,
-        progressPercent: Math.min(100, progressPercent), // Cap at 100%
+        totalProduced: wo?.qty_completed || 0,
+        totalScrap: wo?.qty_rejected || 0,
+        netCompleted: wo?.qty_completed || 0,
+        remaining: wo?.qty_remaining || orderedQuantity,
+        progressPercent: Math.min(100, wo?.completion_pct || 0),
         completedToday,
         scrapToday,
         avgRatePerHour,
-        lastUpdated
+        lastUpdated: allLogs?.[0]?.created_at || wo?.updated_at || null
       });
     } catch (error) {
       console.error('Error loading production progress:', error);
@@ -108,19 +104,18 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
   useEffect(() => {
     loadProgress();
 
-    // Real-time subscription for production log changes
+    // Real-time subscription for work_orders changes (triggered by production log sync)
     const channel = supabase
       .channel(`wo_progress_realtime_${woId}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
-          table: 'daily_production_logs',
-          filter: `wo_id=eq.${woId}`
+          table: 'work_orders',
+          filter: `id=eq.${woId}`
         },
         () => {
-          // Reload progress when any production log changes
           loadProgress();
         }
       )
@@ -282,7 +277,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
         {/* Summary Footer */}
         <div className="pt-2 border-t flex justify-between items-center">
           <span className="text-sm text-muted-foreground">
-            Net Completed = OK Pieces (Scrap Deducted)
+            Synced from Production Logs
           </span>
           <span className="text-lg font-semibold">
             {progress.netCompleted.toLocaleString()} / {orderedQuantity.toLocaleString()}

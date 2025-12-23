@@ -67,7 +67,7 @@ const WorkOrderDetail = () => {
   const [showStageDialog, setShowStageDialog] = useState(false);
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
   const [machineAssignments, setMachineAssignments] = useState<any[]>([]);
-  const [woProgress, setWoProgress] = useState<any>(null);
+  // woProgress removed - WOProgressCard now reads from cached work_orders fields
   const [woOEE, setWoOEE] = useState<any>(null);
   const [qcGatesBlocked, setQcGatesBlocked] = useState(false);
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
@@ -290,13 +290,8 @@ const WorkOrderDetail = () => {
 
       setMachineAssignments(assignmentsData || []);
 
-      // Load production progress
-      if (id) {
-        const { data: progressData } = await supabase.rpc("get_wo_progress", {
-          _wo_id: id,
-        });
-        setWoProgress(progressData?.[0] || null);
-      }
+      // Progress is now handled by WOProgressCard reading cached work_orders fields
+      // (qty_completed, qty_rejected, qty_remaining, completion_pct)
 
       // Load OEE for assigned machines
       if (assignmentsData && assignmentsData.length > 0) {
