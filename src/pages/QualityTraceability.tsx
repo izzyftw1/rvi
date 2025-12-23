@@ -556,7 +556,13 @@ export default function QualityTraceability() {
                   </CardHeader>
                   <CardContent>
                     {traceData.materials.length === 0 ? (
-                      <p className="text-muted-foreground text-center py-4">No materials issued yet</p>
+                      <div className="text-center py-6">
+                        <Package className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+                        <p className="text-sm font-medium mb-1">No materials issued yet</p>
+                        <p className="text-sm text-muted-foreground">
+                          <span className="font-medium">How to populate:</span> Issue materials to this work order from the Material Requirements page.
+                        </p>
+                      </div>
                     ) : (
                       <div className="space-y-4">
                         {traceData.materials.map((mat, idx) => {

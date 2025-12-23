@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Settings } from "lucide-react";
 import { toast } from "sonner";
 
 import React from "react";
@@ -416,9 +417,16 @@ const ToleranceSetup = () => {
               })}
               
               {tolerances.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No tolerances defined yet. Create one using the form above.
-                </p>
+                <div className="text-center py-8">
+                  <Settings className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+                  <p className="text-sm font-medium mb-1">No tolerances defined yet</p>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    <span className="font-medium">Why:</span> Dimensional tolerances must be set up for QC checks.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium">How to populate:</span> Enter an item code above and add dimensions with min/max tolerances.
+                  </p>
+                </div>
               )}
             </div>
           </CardContent>

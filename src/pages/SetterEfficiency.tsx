@@ -408,11 +408,21 @@ const SetterEfficiency = () => {
           {loading ? (
             <div className="p-8 text-center text-muted-foreground">Loading...</div>
           ) : setterMetrics.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <p>No setter activity recorded for this period.</p>
-              <Link to="/cnc-programmer-activity" className="text-primary hover:underline mt-2 inline-block">
-                Log setter activity →
-              </Link>
+            <div className="p-8 text-center">
+              <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="text-sm font-medium mb-1">No setter activity recorded</h3>
+              <p className="text-sm text-muted-foreground mb-1">
+                <span className="font-medium">Why:</span> No setup activity logged for this period.
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                <span className="font-medium">How to populate:</span> Log setter/programmer activity when performing machine setups.
+              </p>
+              <Button asChild variant="default" className="gap-2">
+                <Link to="/cnc-programmer-activity">
+                  Log Setter Activity
+                  <Zap className="h-4 w-4" />
+                </Link>
+              </Button>
             </div>
           ) : (
             <Table>

@@ -573,10 +573,23 @@ export default function OperatorEfficiency() {
               ))}
             </div>
           ) : efficiencyData.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No production logs found for this period.</p>
-              <p className="text-sm">Data is derived from Production Logs via the Operator Ledger.</p>
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="text-sm font-medium mb-1">No operator efficiency data yet</h3>
+              <p className="text-sm text-muted-foreground mb-1">
+                <span className="font-medium">Why:</span> No production logs with operators assigned for this period.
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                <span className="font-medium">How to populate:</span> Log production with operators assigned to machines.
+              </p>
+              <Button 
+                variant="default" 
+                onClick={() => navigate('/daily-production-log')}
+                className="gap-2"
+              >
+                Log Production
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           ) : (
             <div className="overflow-x-auto">

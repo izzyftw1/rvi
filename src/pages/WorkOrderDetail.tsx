@@ -12,7 +12,7 @@ import { MachineAssignmentDialog } from "@/components/MachineAssignmentDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Edit, Download, ArrowLeft, Cpu, Flag, AlertTriangle, FlaskConical, CheckSquare, Scissors, Hammer, Send, Package } from "lucide-react";
 
 import { EnhancedProductionTab } from "@/components/EnhancedProductionTab";
 import { EnhancedStageHistory } from "@/components/EnhancedStageHistory";
@@ -1042,9 +1042,13 @@ const WorkOrderDetail = () => {
                   </CardHeader>
                   <CardContent>
                     {materialIssues.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">
-                        No materials issued yet
-                      </p>
+                      <div className="text-center py-8">
+                        <Package className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+                        <p className="text-sm font-medium mb-1">No materials issued yet</p>
+                        <p className="text-sm text-muted-foreground">
+                          <span className="font-medium">How to populate:</span> Issue material from the Material Requirements page.
+                        </p>
+                      </div>
                     ) : (
                       <div className="space-y-3">
                         {materialIssues.map((issue: any) => (
