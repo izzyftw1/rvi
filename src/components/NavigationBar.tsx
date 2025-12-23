@@ -72,6 +72,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
       "/cnc-programmer-activity": "/cnc-programmer-activity",
       "/machine-utilisation": "/machine-utilisation",
       "/operator-efficiency": "/operator-efficiency",
+      "/setter-efficiency": "/setter-efficiency",
       "/cnc-dashboard": "/cnc-dashboard",
       "/floor-dashboard": "/floor-dashboard",
       
@@ -154,6 +155,7 @@ export const NavigationBar = ({ userRoles }: NavigationBarProps) => {
         { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Activity },
         { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
         { label: "Operator Efficiency", path: "/operator-efficiency", icon: Activity },
+        { label: "Setter Efficiency", path: "/setter-efficiency", icon: Activity },
         { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
         { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
       ]
