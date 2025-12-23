@@ -1,3 +1,7 @@
+/**
+ * IMPORTANT: When adding new routes, also update src/config/navigationConfig.ts
+ * to make them accessible in the navigation menu!
+ */
 import { Toaster } from "@/components/ui/toaster";
 import PartnerPerformance from "@/pages/PartnerPerformance";
 import { Toaster as Sonner } from "@/components/ui/sonner";
