@@ -1,14 +1,13 @@
 /**
  * ThresholdAlerts Component
  * 
- * Displays threshold-based production alerts:
+ * Displays threshold-based production alerts using shared metrics source:
  * - Operator efficiency below target
  * - Machine utilisation below target
  * - Repeated NCRs by operator or setup
  * 
- * Data sourced from:
- * - daily_production_logs (efficiency, utilisation)
- * - ncrs table (repeat NCRs)
+ * SINGLE SOURCE: useProductionLogMetrics for efficiency/utilisation
+ * ncrs table for NCR repeat detection
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -25,15 +24,15 @@ import {
   Cpu, 
   RepeatIcon,
   ArrowRight,
-  Settings2,
   ChevronDown,
   ChevronUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, subDays } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
 
-// Configurable thresholds (could be moved to settings table)
+// Configurable thresholds
 const THRESHOLDS = {
   operatorEfficiencyMin: 70, // % - alert if below
   machineUtilisationMin: 60, // % - alert if below
@@ -55,17 +54,82 @@ interface ThresholdAlert {
 
 export const ThresholdAlerts = () => {
   const navigate = useNavigate();
-  const [alerts, setAlerts] = useState<ThresholdAlert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ncrAlerts, setNcrAlerts] = useState<ThresholdAlert[]>([]);
+  const [ncrLoading, setNcrLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
 
+  // Calculate date range for lookback
+  const dateRange = useMemo(() => {
+    const today = new Date();
+    return {
+      start: format(subDays(today, THRESHOLDS.lookbackDays), 'yyyy-MM-dd'),
+      end: format(today, 'yyyy-MM-dd'),
+    };
+  }, []);
+
+  // SINGLE SOURCE: useProductionLogMetrics
+  const { metrics, loading: metricsLoading } = useProductionLogMetrics({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+    period: 'custom',
+  });
+
+  // Derive efficiency and utilisation alerts from the hook
+  const productionAlerts = useMemo(() => {
+    if (!metrics) return [];
+    
+    const alerts: ThresholdAlert[] = [];
+
+    // 1. Operator Efficiency Alerts - from hook's operatorMetrics
+    metrics.operatorMetrics?.forEach(op => {
+      if (op.logCount >= 3 && op.totalTarget > 0) {
+        const efficiency = Math.round((op.totalOk / op.totalTarget) * 100);
+        if (efficiency < THRESHOLDS.operatorEfficiencyMin) {
+          alerts.push({
+            id: `op_eff_${op.operatorId}`,
+            type: 'operator_efficiency',
+            severity: efficiency < THRESHOLDS.operatorEfficiencyMin - 15 ? 'critical' : 'warning',
+            entity: op.operatorName,
+            entityId: op.operatorId,
+            value: efficiency,
+            threshold: THRESHOLDS.operatorEfficiencyMin,
+            detail: `${efficiency}% efficiency (${THRESHOLDS.lookbackDays}d avg)`,
+            route: '/operator-efficiency',
+          });
+        }
+      }
+    });
+
+    // 2. Machine Utilisation Alerts - from hook's machineMetrics
+    metrics.machineMetrics?.forEach(m => {
+      if (m.logCount >= 3 && m.expectedRuntime > 0) {
+        const utilisation = Math.round((m.totalRuntime / m.expectedRuntime) * 100);
+        if (utilisation < THRESHOLDS.machineUtilisationMin) {
+          alerts.push({
+            id: `mach_util_${m.machineId}`,
+            type: 'machine_utilisation',
+            severity: utilisation < THRESHOLDS.machineUtilisationMin - 20 ? 'critical' : 'warning',
+            entity: m.machineName,
+            entityId: m.machineId,
+            value: utilisation,
+            threshold: THRESHOLDS.machineUtilisationMin,
+            detail: `${utilisation}% utilisation (${THRESHOLDS.lookbackDays}d avg)`,
+            route: '/machine-utilisation',
+          });
+        }
+      }
+    });
+
+    return alerts;
+  }, [metrics]);
+
+  // Load NCR repeat alerts (still needs direct query for NCR grouping)
   useEffect(() => {
-    loadAlerts();
+    loadNcrAlerts();
 
     const channel = supabase
-      .channel('threshold-alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs' }, loadAlerts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, loadAlerts)
+      .channel('threshold-ncr-alerts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, loadNcrAlerts)
       .subscribe();
 
     return () => {
@@ -73,137 +137,20 @@ export const ThresholdAlerts = () => {
     };
   }, []);
 
-  const loadAlerts = async () => {
+  const loadNcrAlerts = async () => {
     try {
-      setLoading(true);
-      const today = new Date();
-      const lookbackStart = format(subDays(today, THRESHOLDS.lookbackDays), 'yyyy-MM-dd');
-      const todayStr = format(today, 'yyyy-MM-dd');
+      setNcrLoading(true);
+      const lookbackStart = format(subDays(new Date(), THRESHOLDS.lookbackDays), 'yyyy-MM-dd');
+      const alerts: ThresholdAlert[] = [];
 
-      const newAlerts: ThresholdAlert[] = [];
-
-      // 1. Operator Efficiency Alerts
-      const { data: operatorLogs } = await supabase
-        .from('daily_production_logs')
-        .select(`
-          operator_id,
-          efficiency_percentage,
-          ok_quantity,
-          target_quantity,
-          operator:operator_id(full_name)
-        `)
-        .gte('log_date', lookbackStart)
-        .lte('log_date', todayStr)
-        .not('operator_id', 'is', null);
-
-      if (operatorLogs) {
-        // Aggregate by operator
-        const operatorAgg = new Map<string, { name: string; totalOk: number; totalTarget: number; logCount: number }>();
-        operatorLogs.forEach((log: any) => {
-          const opId = log.operator_id;
-          const opName = (log.operator as any)?.full_name || 'Unknown';
-          const current = operatorAgg.get(opId) || { name: opName, totalOk: 0, totalTarget: 0, logCount: 0 };
-          operatorAgg.set(opId, {
-            name: opName,
-            totalOk: current.totalOk + (log.ok_quantity || 0),
-            totalTarget: current.totalTarget + (log.target_quantity || 0),
-            logCount: current.logCount + 1,
-          });
-        });
-
-        operatorAgg.forEach((data, opId) => {
-          if (data.totalTarget > 0 && data.logCount >= 3) { // Need at least 3 logs for significance
-            const efficiency = Math.round((data.totalOk / data.totalTarget) * 100);
-            if (efficiency < THRESHOLDS.operatorEfficiencyMin) {
-              newAlerts.push({
-                id: `op_eff_${opId}`,
-                type: 'operator_efficiency',
-                severity: efficiency < THRESHOLDS.operatorEfficiencyMin - 15 ? 'critical' : 'warning',
-                entity: data.name,
-                entityId: opId,
-                value: efficiency,
-                threshold: THRESHOLDS.operatorEfficiencyMin,
-                detail: `${efficiency}% efficiency (${THRESHOLDS.lookbackDays}d avg)`,
-                route: '/operator-efficiency',
-              });
-            }
-          }
-        });
-      }
-
-      // 2. Machine Utilisation Alerts
-      const { data: machineLogs } = await supabase
-        .from('daily_production_logs')
-        .select(`
-          machine_id,
-          actual_runtime_minutes,
-          shift_start_time,
-          shift_end_time,
-          machines:machine_id(machine_id, name)
-        `)
-        .gte('log_date', lookbackStart)
-        .lte('log_date', todayStr);
-
-      if (machineLogs) {
-        // Default shift duration = 690 minutes (11.5 hours)
-        const DEFAULT_SHIFT = 690;
-
-        const machineAgg = new Map<string, { name: string; totalRuntime: number; totalExpected: number; logCount: number }>();
-        machineLogs.forEach((log: any) => {
-          const mId = log.machine_id;
-          const machineInfo = log.machines as any;
-          const mName = machineInfo ? `${machineInfo.machine_id}` : 'Unknown';
-          
-          let expectedRuntime = DEFAULT_SHIFT;
-          if (log.shift_start_time && log.shift_end_time) {
-            const [startH, startM] = log.shift_start_time.split(':').map(Number);
-            const [endH, endM] = log.shift_end_time.split(':').map(Number);
-            let shiftMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-            if (shiftMinutes < 0) shiftMinutes += 24 * 60;
-            expectedRuntime = shiftMinutes;
-          }
-
-          const current = machineAgg.get(mId) || { name: mName, totalRuntime: 0, totalExpected: 0, logCount: 0 };
-          machineAgg.set(mId, {
-            name: mName,
-            totalRuntime: current.totalRuntime + (log.actual_runtime_minutes || 0),
-            totalExpected: current.totalExpected + expectedRuntime,
-            logCount: current.logCount + 1,
-          });
-        });
-
-        machineAgg.forEach((data, mId) => {
-          if (data.totalExpected > 0 && data.logCount >= 3) {
-            const utilisation = Math.round((data.totalRuntime / data.totalExpected) * 100);
-            if (utilisation < THRESHOLDS.machineUtilisationMin) {
-              newAlerts.push({
-                id: `mach_util_${mId}`,
-                type: 'machine_utilisation',
-                severity: utilisation < THRESHOLDS.machineUtilisationMin - 20 ? 'critical' : 'warning',
-                entity: data.name,
-                entityId: mId,
-                value: utilisation,
-                threshold: THRESHOLDS.machineUtilisationMin,
-                detail: `${utilisation}% utilisation (${THRESHOLDS.lookbackDays}d avg)`,
-                route: '/machine-utilisation',
-              });
-            }
-          }
-        });
-      }
-
-      // 3. Repeat NCRs (by operator or setup)
+      // Repeat NCRs (by operator or setup)
       const { data: ncrs } = await supabase
         .from('ncrs')
         .select(`
           id,
           ncr_number,
-          work_order_id,
           responsible_person,
-          created_at,
-          status,
-          operation_type,
-          production_log_id
+          operation_type
         `)
         .gte('created_at', `${lookbackStart}T00:00:00Z`)
         .in('status', ['OPEN', 'ACTION_IN_PROGRESS', 'EFFECTIVENESS_PENDING']);
@@ -236,7 +183,7 @@ export const ThresholdAlerts = () => {
 
         ncrByOperator.forEach((data, opId) => {
           if (data.count >= THRESHOLDS.repeatNcrThreshold) {
-            newAlerts.push({
+            alerts.push({
               id: `repeat_ncr_op_${opId}`,
               type: 'repeat_ncr',
               severity: data.count >= 4 ? 'critical' : 'warning',
@@ -251,20 +198,17 @@ export const ThresholdAlerts = () => {
         });
 
         // Group by operation_type (setup/process)
-        const ncrByOperation = new Map<string, { count: number; ncrNumbers: string[] }>();
+        const ncrByOperation = new Map<string, { count: number }>();
         ncrs.forEach((ncr: any) => {
           if (ncr.operation_type) {
-            const current = ncrByOperation.get(ncr.operation_type) || { count: 0, ncrNumbers: [] };
-            ncrByOperation.set(ncr.operation_type, {
-              count: current.count + 1,
-              ncrNumbers: [...current.ncrNumbers, ncr.ncr_number],
-            });
+            const current = ncrByOperation.get(ncr.operation_type) || { count: 0 };
+            ncrByOperation.set(ncr.operation_type, { count: current.count + 1 });
           }
         });
 
         ncrByOperation.forEach((data, opType) => {
           if (data.count >= THRESHOLDS.repeatNcrThreshold) {
-            newAlerts.push({
+            alerts.push({
               id: `repeat_ncr_setup_${opType}`,
               type: 'repeat_ncr',
               severity: data.count >= 4 ? 'critical' : 'warning',
@@ -279,25 +223,32 @@ export const ThresholdAlerts = () => {
         });
       }
 
-      // Sort by severity (critical first), then by value distance from threshold
-      newAlerts.sort((a, b) => {
-        if (a.severity !== b.severity) {
-          return a.severity === 'critical' ? -1 : 1;
-        }
-        // For efficiency/utilisation, lower is worse; for NCRs, higher is worse
-        if (a.type === 'repeat_ncr') {
-          return b.value - a.value;
-        }
-        return a.value - b.value;
-      });
-
-      setAlerts(newAlerts);
+      setNcrAlerts(alerts);
     } catch (error) {
-      console.error('Error loading threshold alerts:', error);
+      console.error('Error loading NCR alerts:', error);
     } finally {
-      setLoading(false);
+      setNcrLoading(false);
     }
   };
+
+  // Combine all alerts
+  const alerts = useMemo(() => {
+    const all = [...productionAlerts, ...ncrAlerts];
+    
+    // Sort by severity (critical first), then by value distance from threshold
+    all.sort((a, b) => {
+      if (a.severity !== b.severity) {
+        return a.severity === 'critical' ? -1 : 1;
+      }
+      // For efficiency/utilisation, lower is worse; for NCRs, higher is worse
+      if (a.type === 'repeat_ncr') {
+        return b.value - a.value;
+      }
+      return a.value - b.value;
+    });
+
+    return all;
+  }, [productionAlerts, ncrAlerts]);
 
   const getAlertIcon = (type: string) => {
     switch (type) {
@@ -319,6 +270,7 @@ export const ThresholdAlerts = () => {
 
   const criticalCount = alerts.filter(a => a.severity === 'critical').length;
   const warningCount = alerts.filter(a => a.severity === 'warning').length;
+  const loading = metricsLoading || ncrLoading;
 
   if (loading) {
     return (
@@ -335,7 +287,7 @@ export const ThresholdAlerts = () => {
   }
 
   if (alerts.length === 0) {
-    return null; // Don't show card if no alerts
+    return null;
   }
 
   return (
@@ -365,7 +317,7 @@ export const ThresholdAlerts = () => {
               </CardTitle>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground">
-                  {THRESHOLDS.lookbackDays}d lookback
+                  {THRESHOLDS.lookbackDays}d • via Production Logs
                 </span>
                 {expanded ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
