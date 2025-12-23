@@ -41,7 +41,7 @@ interface MachineData {
   oldestQueueAge: number; // in hours
   currentWO: any | null;
   lastMaintenanceDate: string | null;
-  daysSinceLastMaintenance: number;
+  daysSinceLastMaintenance: number | null;
   flowImpact: string | null; // Flow impact text derived from queued WOs
   priority: PriorityLevel; // Priority badge level
   hasOverdueWOs: boolean; // Whether any queued WOs are overdue
@@ -128,6 +128,8 @@ const CNCDashboard = () => {
     try {
       setLoading(true);
 
+      const today = new Date().toISOString().split('T')[0];
+
       // Get machines
       const { data: machinesData, error: machinesError } = await supabase
         .from("machines")
@@ -145,12 +147,30 @@ const CNCDashboard = () => {
 
       if (machinesError) throw machinesError;
 
-      // Get maintenance logs for last maintenance dates
+      const machineIds = (machinesData || []).map(m => m.id);
+
+      // Get latest production logs for today to determine real running status
+      const { data: productionLogs } = await supabase
+        .from("daily_production_logs")
+        .select("machine_id, wo_id, log_date, shift, shift_start_time, shift_end_time, total_downtime_minutes, actual_quantity")
+        .in("machine_id", machineIds)
+        .eq("log_date", today)
+        .order("created_at", { ascending: false });
+
+      // Get maintenance logs for last maintenance dates (completed maintenance only)
       const { data: maintenanceLogs } = await supabase
         .from("maintenance_logs")
-        .select("machine_id, end_time")
+        .select("machine_id, end_time, downtime_reason")
+        .in("machine_id", machineIds)
         .not("end_time", "is", null)
         .order("end_time", { ascending: false });
+
+      // Get active maintenance (started but not ended = machine is down for maintenance)
+      const { data: activeMaintenanceLogs } = await supabase
+        .from("maintenance_logs")
+        .select("machine_id, start_time, downtime_reason")
+        .in("machine_id", machineIds)
+        .is("end_time", null);
 
       // Get queued assignments
       const { data: queuedAssignments } = await supabase
@@ -180,14 +200,32 @@ const CNCDashboard = () => {
         }
       }
 
+      // Create lookup maps
+      const activeMaintenance = new Map((activeMaintenanceLogs || []).map(log => [log.machine_id, log]));
+      const todayLogs = new Map<string, typeof productionLogs[0]>();
+      (productionLogs || []).forEach(log => {
+        // Keep only the latest log per machine for today
+        if (!todayLogs.has(log.machine_id)) {
+          todayLogs.set(log.machine_id, log);
+        }
+      });
+
       // Process machines with calculated fields
       const enrichedMachines: MachineData[] = (machinesData || []).map(machine => {
-        // Find last maintenance
+        // Find last completed maintenance
         const lastMaintenance = (maintenanceLogs || []).find(log => log.machine_id === machine.id);
         const lastMaintenanceDate = lastMaintenance?.end_time || null;
         const daysSinceLastMaintenance = lastMaintenanceDate 
           ? Math.floor(differenceInHours(new Date(), parseISO(lastMaintenanceDate)) / 24)
-          : 999;
+          : null; // null = never maintained, not 999
+
+        // Check if machine has active maintenance (down)
+        const hasActiveMaintenance = activeMaintenance.has(machine.id);
+        const activeMaintenanceReason = activeMaintenance.get(machine.id)?.downtime_reason;
+
+        // Check today's production log to determine running status
+        const todayLog = todayLogs.get(machine.id);
+        const hasActiveProductionLog = !!todayLog && todayLog.wo_id;
 
         // Calculate queue info
         const machineQueue = (queuedAssignments || []).filter(a => a.machine_id === machine.id);
@@ -197,13 +235,13 @@ const CNCDashboard = () => {
           : 0;
 
         // Derive flow impact from queued WOs' stages
-        const queuedWOs = machineQueue.map(a => woDetails[a.wo_id]).filter(Boolean);
-        const queuedStages = queuedWOs.map(wo => wo?.current_stage).filter(Boolean);
+        const queuedWOsList = machineQueue.map(a => woDetails[a.wo_id]).filter(Boolean);
+        const queuedStages = queuedWOsList.map(wo => wo?.current_stage).filter(Boolean);
         const flowImpact = deriveFlowImpact(queuedStages);
 
         // Check for overdue WOs
         const now = new Date();
-        const hasOverdueWOs = queuedWOs.some(wo => {
+        const hasOverdueWOs = queuedWOsList.some(wo => {
           if (!wo?.due_date) return false;
           return parseISO(wo.due_date) < now;
         });
@@ -211,17 +249,36 @@ const CNCDashboard = () => {
         // Calculate priority level
         const priority = calculatePriority(queueCount, oldestQueueAge, hasOverdueWOs);
 
-        // Determine readiness status
+        // Determine readiness status from REAL data
         let readiness: ReadinessStatus = 'ready';
-        if (machine.status === 'running' || machine.current_wo_id) {
+        
+        // Priority 1: Active maintenance log = machine is down
+        if (hasActiveMaintenance) {
+          // Check if it's a maintenance reason or a blocking issue
+          const reason = activeMaintenanceReason?.toLowerCase() || '';
+          if (reason.includes('maintenance') || reason.includes('service')) {
+            readiness = 'maintenance_due';
+          } else {
+            readiness = 'down';
+          }
+        }
+        // Priority 2: Has active production log today = running
+        else if (hasActiveProductionLog || machine.current_wo_id) {
           readiness = 'running';
-        } else if (machine.status === 'down' || machine.status === 'fault') {
+        }
+        // Priority 3: Machine marked as down/fault
+        else if (machine.status === 'down' || machine.status === 'fault') {
           readiness = 'down';
-        } else if (daysSinceLastMaintenance >= MAINTENANCE_DUE_DAYS) {
+        }
+        // Priority 4: Overdue for maintenance (only if we have maintenance history)
+        else if (daysSinceLastMaintenance !== null && daysSinceLastMaintenance >= MAINTENANCE_DUE_DAYS) {
           readiness = 'maintenance_due';
-        } else if (machine.status === 'setup') {
+        }
+        // Priority 5: Has WO assigned but not started = needs setup
+        else if (queueCount > 0 && machine.status !== 'running') {
           readiness = 'setup_required';
         }
+        // Default: Ready for work
 
         return {
           ...machine,
@@ -230,7 +287,7 @@ const CNCDashboard = () => {
           oldestQueueAge: Math.max(0, oldestQueueAge),
           currentWO: machine.current_wo_id ? woDetails[machine.current_wo_id] : null,
           lastMaintenanceDate,
-          daysSinceLastMaintenance,
+          daysSinceLastMaintenance: daysSinceLastMaintenance ?? null,
           flowImpact,
           priority,
           hasOverdueWOs
@@ -652,7 +709,10 @@ const CNCDashboard = () => {
                           Clear Maintenance
                         </Button>
                         <p className="text-[10px] text-muted-foreground text-center">
-                          Last serviced {machine.daysSinceLastMaintenance}d ago
+                          {machine.lastMaintenanceDate 
+                            ? `Last serviced ${formatDistanceToNow(parseISO(machine.lastMaintenanceDate), { addSuffix: true })}`
+                            : 'No maintenance records'
+                          }
                         </p>
                       </div>
                     )}
