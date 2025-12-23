@@ -33,7 +33,8 @@ import { useSiteContext } from "@/hooks/useSiteContext";
 import { cn } from "@/lib/utils";
 import rvLogo from "@/assets/rv-logo.jpg";
 // Import centralized navigation config - SINGLE SOURCE OF TRUTH
-import { navigationGroups, type NavGroup } from "@/config/navigationConfig";
+// Uses getActiveNavigationGroups to filter out deprecated pages
+import { getActiveNavigationGroups, type NavGroup } from "@/config/navigationConfig";
 
 interface UnifiedNavigationProps {
   userRoles: string[];
@@ -77,8 +78,8 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
     navigate("/auth");
   };
 
-  // Use centralized navigation config - imported from @/config/navigationConfig
-  const navGroups = navigationGroups;
+  // Use centralized navigation config - filters out deprecated pages automatically
+  const navGroups = getActiveNavigationGroups();
 
   const getVisibleGroups = () => {
     if (isAdmin) return navGroups;

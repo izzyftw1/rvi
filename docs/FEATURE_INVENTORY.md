@@ -512,9 +512,39 @@ NCRs → NCR Management
 
 ---
 
+## DEPRECATION STATUS
+
+| Page | Path | Status | Deprecated Date | Replaced By |
+|------|------|--------|-----------------|-------------|
+| Daily Production Log | `/daily-production-log` | Active | - | - |
+| CNC Programmer Activity | `/cnc-programmer-activity` | Active | - | - |
+| Cutting | `/cutting` | Active | - | - |
+| Forging | `/forging` | Active | - | - |
+| Floor Dashboard | `/floor-dashboard` | Active | - | - |
+| CNC Dashboard | `/cnc-dashboard` | Active | - | - |
+| Production Progress | `/production-progress` | Active | - | - |
+| Machine Utilisation | `/machine-utilisation` | Active | - | - |
+| Operator Efficiency | `/operator-efficiency` | Active | - | - |
+| Setter Efficiency | `/setter-efficiency` | Active | - | - |
+| Downtime Analytics | `/downtime-analytics` | Active | - | - |
+| Quality Dashboard | `/quality` | Active | - | - |
+| Incoming QC | `/qc/incoming` | Active | - | - |
+| Hourly QC | `/hourly-qc` | Active | - | - |
+| Final QC | `/final-qc` | Active | - | - |
+| NCR Management | `/ncr` | Active | - | - |
+| Quality Traceability | `/quality/traceability` | Active | - | - |
+| Quality Documents | `/quality/documents` | Active | - | - |
+| Quality Analytics | `/quality/analytics` | Active | - | - |
+| Tolerances | `/tolerance-setup` | Active | - | - |
+| Instruments | `/instruments` | Active | - | - |
+
+> **Note**: Update this table when deprecating pages. See `src/config/deprecationConfig.ts` for the authoritative deprecation status and `docs/DEPRECATION_GUIDE.md` for the full workflow.
+
+---
+
 ## CONFIRMATION CHECKLIST
 
-Before removing any page, verify:
+Before marking a page as deprecated, verify:
 
 - [ ] All data views exist elsewhere
 - [ ] All user actions can be performed elsewhere
@@ -522,3 +552,11 @@ Before removing any page, verify:
 - [ ] Real-time subscriptions are maintained
 - [ ] Navigation links are updated
 - [ ] Empty states reference correct new locations
+
+After deprecation:
+
+- [ ] Page is hidden from navigation automatically
+- [ ] Route remains accessible for verification
+- [ ] Deprecation notice banner appears on page
+- [ ] deprecationConfig.ts status set to 'deprecated'
+- [ ] FEATURE_INVENTORY.md table updated
