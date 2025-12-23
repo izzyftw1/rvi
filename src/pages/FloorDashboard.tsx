@@ -10,6 +10,7 @@ import { MachinesView } from "@/components/dashboard/MachinesView";
 import { OperatorsView } from "@/components/dashboard/OperatorsView";
 import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
 import { BlockedWorkOrdersTable } from "@/components/dashboard/BlockedWorkOrdersTable";
+import { NCRBlockerAlert } from "@/components/ncr/NCRBlockerAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Factory, 
@@ -434,6 +435,9 @@ const FloorDashboard = () => {
               </div>
             ) : (
               <>
+                {/* Open NCRs as blockers */}
+                <NCRBlockerAlert />
+
                 <ActionableBlockers />
 
                 <Card>

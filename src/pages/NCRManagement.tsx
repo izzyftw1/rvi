@@ -21,6 +21,10 @@ interface NCR {
   ncr_type: 'INTERNAL' | 'CUSTOMER' | 'SUPPLIER';
   source_reference: string | null;
   work_order_id: string | null;
+  production_log_id: string | null;
+  machine_id: string | null;
+  rejection_type: string | null;
+  raised_from: string | null;
   quantity_affected: number;
   unit: string;
   issue_description: string;
@@ -28,7 +32,15 @@ interface NCR {
   status: 'OPEN' | 'ACTION_IN_PROGRESS' | 'EFFECTIVENESS_PENDING' | 'CLOSED';
   due_date: string | null;
   created_at: string;
-  work_orders?: { wo_number: string; display_id: string } | null;
+  work_orders?: { wo_number: string; display_id: string; item_code: string } | null;
+  machines?: { machine_id: string; name: string } | null;
+  daily_production_logs?: { 
+    log_date: string; 
+    setup_number: string; 
+    shift: string;
+    operator_id: string | null;
+    people?: { full_name: string } | null;
+  } | null;
 }
 
 const STATUS_CONFIG = {
@@ -60,16 +72,48 @@ export default function NCRManagement() {
   const loadNCRs = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // First fetch NCRs with basic relations
+      const { data: ncrData, error } = await supabase
         .from('ncrs')
         .select(`
           *,
-          work_orders (wo_number, display_id)
+          work_orders (wo_number, display_id, item_code),
+          machines (machine_id, name)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setNcrs(data || []);
+
+      // Enrich with production log data (operator info)
+      const enrichedData = await Promise.all((ncrData || []).map(async (ncr) => {
+        if (ncr.production_log_id) {
+          const { data: logData } = await supabase
+            .from('daily_production_logs')
+            .select('log_date, setup_number, shift, operator_id')
+            .eq('id', ncr.production_log_id)
+            .single();
+          
+          if (logData?.operator_id) {
+            const { data: personData } = await supabase
+              .from('people')
+              .select('full_name')
+              .eq('id', logData.operator_id)
+              .single();
+            
+            return {
+              ...ncr,
+              daily_production_logs: {
+                ...logData,
+                people: personData
+              }
+            };
+          }
+          return { ...ncr, daily_production_logs: logData };
+        }
+        return { ...ncr, daily_production_logs: null };
+      }));
+
+      setNcrs(enrichedData as NCR[]);
     } catch (error) {
       console.error('Error loading NCRs:', error);
       toast.error('Failed to load NCRs');
@@ -199,23 +243,23 @@ export default function NCRManagement() {
                   <TableHead>NCR #</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Work Order</TableHead>
+                  <TableHead>Machine / Operator</TableHead>
                   <TableHead>Issue</TableHead>
                   <TableHead>Qty</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Due Date</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : filteredNCRs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-0">
+                    <TableCell colSpan={9} className="py-0">
                       <EmptyState
                         icon="alerts"
                         title={searchTerm || statusFilter !== 'all' || typeFilter !== 'all'
@@ -236,6 +280,8 @@ export default function NCRManagement() {
                     const statusConfig = STATUS_CONFIG[ncr.status];
                     const typeConfig = TYPE_CONFIG[ncr.ncr_type];
                     const StatusIcon = statusConfig.icon;
+                    const log = ncr.daily_production_logs;
+                    const operatorName = log?.people?.full_name;
                     
                     return (
                       <TableRow 
@@ -243,18 +289,55 @@ export default function NCRManagement() {
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => navigate(`/ncr/${ncr.id}`)}
                       >
-                        <TableCell className="font-medium">{ncr.ncr_number}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex flex-col">
+                            <span>{ncr.ncr_number}</span>
+                            {ncr.raised_from && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {ncr.raised_from.replace('_', ' ')}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge className={typeConfig.color}>{typeConfig.label}</Badge>
                         </TableCell>
                         <TableCell>
-                          {ncr.work_orders?.display_id || ncr.work_orders?.wo_number || '-'}
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {ncr.issue_description}
+                          <div className="flex flex-col">
+                            <span>{ncr.work_orders?.display_id || ncr.work_orders?.wo_number || '-'}</span>
+                            {ncr.work_orders?.item_code && (
+                              <span className="text-[10px] text-muted-foreground">{ncr.work_orders.item_code}</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
-                          {ncr.quantity_affected} {ncr.unit}
+                          <div className="flex flex-col text-sm">
+                            {ncr.machines ? (
+                              <span className="font-medium">{ncr.machines.machine_id}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                            {operatorName && (
+                              <span className="text-[10px] text-muted-foreground">{operatorName}</span>
+                            )}
+                            {log?.setup_number && (
+                              <span className="text-[10px] text-muted-foreground">Setup: {log.setup_number}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <div className="flex flex-col">
+                            <span className="truncate">{ncr.issue_description}</span>
+                            {ncr.rejection_type && (
+                              <Badge variant="outline" className="text-[10px] w-fit mt-0.5">
+                                {ncr.rejection_type.replace('rejection_', '').replace('_', ' ')}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-destructive font-medium">{ncr.quantity_affected}</span>
+                          <span className="text-muted-foreground text-xs ml-1">{ncr.unit}</span>
                         </TableCell>
                         <TableCell>
                           <Badge className={statusConfig.color}>
@@ -263,10 +346,7 @@ export default function NCRManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {ncr.due_date ? format(new Date(ncr.due_date), 'dd MMM yyyy') : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {format(new Date(ncr.created_at), 'dd MMM yyyy')}
+                          {format(new Date(ncr.created_at), 'dd MMM')}
                         </TableCell>
                       </TableRow>
                     );

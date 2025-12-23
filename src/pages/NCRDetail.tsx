@@ -358,6 +358,7 @@ export default function NCRDetail() {
               qcRecordId={ncr.qc_record_id}
               materialLotId={ncr.material_lot_id}
               productionLogId={ncr.production_log_id}
+              machineId={(ncr as any).machine_id}
               raisedFrom={ncr.raised_from}
             />
           </div>
