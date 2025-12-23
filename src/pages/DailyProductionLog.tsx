@@ -543,9 +543,16 @@ export default function DailyProductionLog() {
         insertData.target_override_by = userData.user?.id;
       }
 
-      // Add optional fields
+      // Add optional fields and get/create batch
       if (data.wo_id) {
         insertData.wo_id = data.wo_id;
+        
+        // Get or create production batch for this work order
+        const { getOrCreateBatch } = await import('@/hooks/useProductionBatch');
+        const batchId = await getOrCreateBatch(data.wo_id);
+        if (batchId) {
+          insertData.batch_id = batchId;
+        }
       }
       if (data.operator_id) {
         insertData.operator_id = data.operator_id;

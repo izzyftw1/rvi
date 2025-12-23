@@ -600,8 +600,16 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       
       const logDateStr = format(data.log_date, "yyyy-MM-dd");
       
+      // Get or create production batch for this work order
+      let batchId: string | null = null;
+      if (propWorkOrder?.id) {
+        const { getOrCreateBatch } = await import('@/hooks/useProductionBatch');
+        batchId = await getOrCreateBatch(propWorkOrder.id);
+      }
+      
       const insertData = {
         wo_id: propWorkOrder?.id || null,
+        batch_id: batchId,
         machine_id: effectiveMachineId,
         log_date: logDateStr,
         shift: String(data.shift),
