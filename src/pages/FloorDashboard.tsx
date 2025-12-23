@@ -10,6 +10,7 @@ import { MachinesView } from "@/components/dashboard/MachinesView";
 import { OperatorsView } from "@/components/dashboard/OperatorsView";
 import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
 import { BlockedWorkOrdersTable } from "@/components/dashboard/BlockedWorkOrdersTable";
+import { ThresholdAlerts } from "@/components/dashboard/ThresholdAlerts";
 import { NCRBlockerAlert } from "@/components/ncr/NCRBlockerAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -413,6 +414,9 @@ const FloorDashboard = () => {
               <>
                 {/* Open NCRs as blockers */}
                 <NCRBlockerAlert />
+
+                {/* Threshold-based Performance Alerts */}
+                <ThresholdAlerts />
 
                 <ActionableBlockers />
 
