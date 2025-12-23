@@ -26,6 +26,18 @@ import {
   Wrench,
   Calendar,
   MoreHorizontal,
+  Gauge,
+  CheckCircle,
+  XCircle,
+  FileCheck,
+  ScrollText,
+  GitBranch,
+  CreditCard,
+  Receipt,
+  Clock,
+  Scissors,
+  Flame,
+  Cpu,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -131,7 +143,10 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
         { label: "Work Orders", path: "/work-orders", icon: Search },
         { label: "Production Progress", path: "/production-progress", icon: BarChart3 },
         { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
-        { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Activity },
+        { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Cpu },
+        { label: "Cutting", path: "/cutting", icon: Scissors },
+        { label: "Forging", path: "/forging", icon: Flame },
+        { label: "Machine Status", path: "/machine-status", icon: Gauge },
         { label: "Machine Utilisation", path: "/machine-utilisation", icon: Activity },
         { label: "Operator Efficiency", path: "/operator-efficiency", icon: Users },
         { label: "Setter Efficiency", path: "/setter-efficiency", icon: Wrench },
@@ -145,8 +160,15 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
       allowedRoles: ['admin', 'production', 'quality'],
       items: [
         { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck },
-        { label: "Incoming QC", path: "/qc/incoming", icon: ClipboardCheck },
-        { label: "Hourly QC (Active Machines)", path: "/hourly-qc", icon: ClipboardCheck },
+        { label: "Incoming QC", path: "/qc/incoming", icon: Box },
+        { label: "Hourly QC", path: "/hourly-qc", icon: Clock },
+        { label: "Final QC", path: "/final-qc", icon: CheckCircle },
+        { label: "NCR Management", path: "/ncr", icon: XCircle },
+        { label: "Traceability", path: "/quality/traceability", icon: GitBranch },
+        { label: "Quality Documents", path: "/quality/documents", icon: FileCheck },
+        { label: "Quality Analytics", path: "/quality/analytics", icon: BarChart3 },
+        { label: "Tolerances", path: "/tolerance-setup", icon: Gauge },
+        { label: "Instruments", path: "/instruments", icon: Wrench },
       ]
     },
     {
@@ -155,8 +177,12 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
       allowedRoles: ['admin', 'finance', 'finance_admin', 'finance_user', 'accounts', 'sales'],
       items: [
         { label: "Finance Dashboard", path: "/finance/dashboard", icon: DollarSign },
+        { label: "Invoices", path: "/finance/invoices", icon: Receipt },
+        { label: "Payments", path: "/finance/payments", icon: CreditCard },
+        { label: "Aging", path: "/finance/aging", icon: Clock },
         { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle },
         { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet },
+        { label: "Settings", path: "/finance/settings", icon: Settings },
       ]
     },
     {
