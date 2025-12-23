@@ -50,29 +50,17 @@ interface StageData {
 const STAGE_CONFIG = [
   { key: 'goods_in', label: 'Goods In', icon: Package, capacity: 50, route: '/work-orders?stage=goods_in', woStage: 'goods_in' },
   { key: 'cutting', label: 'Cutting', icon: Scissors, capacity: 20, route: '/work-orders?stage=cutting_queue', woStage: 'cutting_queue' },
-  { key: 'forging', label: 'Forging', icon: Hammer, capacity: 15, route: '/work-orders?type=external&stage=forging', woStage: null },
   { key: 'production', label: 'Production', icon: Factory, capacity: 30, route: '/work-orders?stage=production', woStage: 'production' },
-  { key: 'external', label: 'External', icon: Truck, capacity: 25, route: '/work-orders?type=external', woStage: null },
+  { key: 'external', label: 'External Processes', icon: Truck, capacity: 50, route: '/work-orders?type=external', woStage: null },
   { key: 'final_qc', label: 'Final QC', icon: CheckCircle, capacity: 20, route: '/work-orders?stage=qc', woStage: 'qc' },
 ];
 
 export const StageView = ({ workOrders, externalMoves, productionLogs }: StageViewProps) => {
   const navigate = useNavigate();
 
-  // Build maps of WO ids at external by process
-  const externalWoMaps = useMemo(() => {
-    const forgingWoIds = new Set<string>();
-    const otherExternalWoIds = new Set<string>();
-    
-    externalMoves.filter(m => m.status === 'sent').forEach(m => {
-      if (m.process?.toLowerCase() === 'forging') {
-        forgingWoIds.add(m.work_order_id);
-      } else {
-        otherExternalWoIds.add(m.work_order_id);
-      }
-    });
-    
-    return { forgingWoIds, otherExternalWoIds };
+  // Build set of all WO ids at external (any process)
+  const externalWoIds = useMemo(() => {
+    return new Set(externalMoves.filter(m => m.status === 'sent').map(m => m.work_order_id));
   }, [externalMoves]);
 
   // Aggregate production log data per work order
@@ -92,17 +80,12 @@ export const StageView = ({ workOrders, externalMoves, productionLogs }: StageVi
     return STAGE_CONFIG.map(config => {
       // Find WOs at this stage
       let stageWos = workOrders.filter(wo => {
-        if (config.key === 'forging') {
-          // Only WOs at forging external process
-          return externalWoMaps.forgingWoIds.has(wo.id);
-        }
         if (config.key === 'external') {
-          // Other external processes (not forging)
-          return externalWoMaps.otherExternalWoIds.has(wo.id);
+          // All external processes consolidated
+          return externalWoIds.has(wo.id);
         }
-        // Internal stages - use woStage for matching, exclude any external WOs
-        const isAtExternal = externalWoMaps.forgingWoIds.has(wo.id) || externalWoMaps.otherExternalWoIds.has(wo.id);
-        return wo.current_stage === config.woStage && !isAtExternal;
+        // Internal stages - use woStage for matching, exclude external WOs
+        return wo.current_stage === config.woStage && !externalWoIds.has(wo.id);
       });
 
       const queue = stageWos.length;
@@ -167,7 +150,7 @@ export const StageView = ({ workOrders, externalMoves, productionLogs }: StageVi
         route: config.route,
       };
     });
-  }, [workOrders, externalWoMaps, productionByWo]);
+  }, [workOrders, externalWoIds, productionByWo]);
 
   const totalQueue = stages.reduce((sum, s) => sum + s.queue, 0);
   const totalBlocked = stages.reduce((sum, s) => sum + s.blocked, 0);
