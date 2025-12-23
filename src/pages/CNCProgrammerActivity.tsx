@@ -156,8 +156,36 @@ const CNCProgrammerActivity = () => {
         setup_type: formData.setup_type,
       };
 
-      const { error } = await supabase.from("cnc_programmer_activity").insert(insertData);
+      const { data: insertedActivity, error } = await supabase
+        .from("cnc_programmer_activity")
+        .insert(insertData)
+        .select('id')
+        .single();
       if (error) throw error;
+
+      // Also insert into setter_activity_ledger for SetterEfficiency reporting
+      if (insertedActivity?.id) {
+        const setupStartMinutes = formData.setup_start_time ? new Date(formData.setup_start_time) : null;
+        const setupEndMinutes = formData.setup_end_time ? new Date(formData.setup_end_time) : null;
+        const durationMinutes = setupStartMinutes && setupEndMinutes 
+          ? Math.round((setupEndMinutes.getTime() - setupStartMinutes.getTime()) / 60000)
+          : null;
+
+        const ledgerEntry = {
+          work_order_id: formData.wo_id || null,
+          machine_id: formData.machine_id,
+          setter_id: formData.programmer_id,
+          log_date: formData.activity_date,
+          setup_number: `SETUP-${format(new Date(), 'HHmmss')}`,
+          setup_start_time: formData.setup_start_time ? format(new Date(formData.setup_start_time), 'HH:mm:ss') : null,
+          setup_end_time: formData.setup_end_time ? format(new Date(formData.setup_end_time), 'HH:mm:ss') : null,
+          setup_duration_minutes: durationMinutes,
+          is_repeat_setup: formData.setup_type === 'repair',
+          delay_caused_minutes: 0,
+        };
+
+        await supabase.from("setter_activity_ledger").insert([ledgerEntry]);
+      }
 
       toast.success("Activity logged successfully");
       setShowForm(false);
