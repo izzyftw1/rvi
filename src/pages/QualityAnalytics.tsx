@@ -1,35 +1,43 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { format, subDays, startOfWeek, startOfMonth, differenceInMinutes, differenceInDays } from "date-fns";
+import { format, subDays, differenceInMinutes, differenceInDays } from "date-fns";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3, Target, AlertTriangle, TrendingUp, Percent, Clock } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { BarChart3, Target, AlertTriangle, TrendingUp, Percent, Clock, User, Wrench, Settings, Truck } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from "recharts";
+import { cn } from "@/lib/utils";
 
 import { QualityKPICards } from "@/components/quality/QualityKPICards";
-import { RejectionAnalytics } from "@/components/quality/RejectionAnalytics";
 import { NCRAnalytics } from "@/components/quality/NCRAnalytics";
-import { QualityTrendCharts } from "@/components/quality/QualityTrendCharts";
 import { QualityLossIndicators } from "@/components/quality/QualityLossIndicators";
 import { IPQCComplianceCard } from "@/components/quality/IPQCComplianceCard";
 import { SupplierDefectCard } from "@/components/quality/SupplierDefectCard";
 import { FirstPieceMetrics } from "@/components/quality/FirstPieceMetrics";
-import { QCFailuresAnalytics } from "@/components/quality/QCFailuresAnalytics";
+
+const COLORS = ["#22c55e", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 
 export default function QualityAnalytics() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState("30");
+  const [trendView, setTrendView] = useState<"operator" | "machine" | "setup" | "partner">("operator");
   
-  // Raw data from database
+  // Raw data from database - directly from production logs and NCRs
   const [productionLogs, setProductionLogs] = useState<any[]>([]);
-  const [qcRecords, setQcRecords] = useState<any[]>([]);
   const [ncrs, setNcrs] = useState<any[]>([]);
   const [hourlyChecks, setHourlyChecks] = useState<any[]>([]);
   const [materialLots, setMaterialLots] = useState<any[]>([]);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [fpApprovals, setFpApprovals] = useState<any[]>([]);
+  const [externalMoves, setExternalMoves] = useState<any[]>([]);
+  const [machines, setMachines] = useState<any[]>([]);
+  const [operators, setOperators] = useState<any[]>([]);
+  const [partners, setPartners] = useState<any[]>([]);
 
   useEffect(() => {
     loadAllData();
@@ -41,16 +49,20 @@ export default function QualityAnalytics() {
       const days = parseInt(dateRange);
       const startDate = format(subDays(new Date(), days), "yyyy-MM-dd");
 
-      // Parallel fetches for all data
+      // Parallel fetches - direct from production logs and NCRs
       const [
         { data: prodLogs },
-        { data: qcRecs },
         { data: ncrData },
         { data: hourlyData },
         { data: matLots },
         { data: woData },
-        { data: fpData }
+        { data: fpData },
+        { data: extMoves },
+        { data: machineData },
+        { data: operatorData },
+        { data: partnerData }
       ] = await Promise.all([
+        // Production logs with all rejection fields and relationships
         supabase
           .from("daily_production_logs")
           .select(`
@@ -58,32 +70,21 @@ export default function QualityAnalytics() {
             actual_quantity, ok_quantity, total_rejection_quantity, rework_quantity,
             rejection_dimension, rejection_setting, rejection_scratch, rejection_dent,
             rejection_tool_mark, rejection_forging_mark, rejection_material_not_ok, rejection_lining,
-            rejection_face_not_ok, rejection_previous_setup_fault,
-            machines:machine_id(name, machine_id),
-            operator:operator_id(full_name),
-            programmer:programmer_id(full_name),
-            setter:setter_id(full_name),
-            work_order:wo_id(display_id, customer)
+            rejection_face_not_ok, rejection_previous_setup_fault, setup_number
           `)
           .gte("log_date", startDate),
-        supabase
-          .from("qc_records")
-          .select("id, result, qc_type, wo_id, created_at")
-          .gte("created_at", startDate),
+        // NCRs - directly from NCR Management
         supabase
           .from("ncrs")
           .select(`
             id, ncr_number, status, root_cause, raised_from, quantity_affected,
             created_at, closed_at, work_order_id, machine_id, rejection_type, disposition,
-            machines:machine_id(name, machine_id)
+            production_log_id, operator_id, issue_description
           `)
           .gte("created_at", startDate),
         supabase
           .from("hourly_qc_checks")
-          .select(`
-            id, wo_id, machine_id, check_datetime, status, created_at,
-            machines:machine_id(name, machine_id)
-          `)
+          .select(`id, wo_id, machine_id, check_datetime, status, created_at`)
           .gte("check_datetime", startDate),
         supabase
           .from("material_lots")
@@ -95,22 +96,28 @@ export default function QualityAnalytics() {
           .gte("created_at", startDate),
         supabase
           .from("cnc_programmer_activity")
-          .select(`
-            id, machine_id, programmer_id, setup_start_time, first_piece_approval_time,
-            setup_type, activity_date,
-            machines:machine_id(name, machine_id),
-            programmer:programmer_id(full_name)
-          `)
-          .gte("activity_date", startDate)
+          .select(`id, machine_id, programmer_id, setup_start_time, first_piece_approval_time, setup_type, activity_date`)
+          .gte("activity_date", startDate),
+        // External moves for partner defect tracking
+        supabase
+          .from("wo_external_moves")
+          .select(`id, work_order_id, partner_id, quantity_sent, quantity_returned, process, status, returned_date, dispatch_date`)
+          .gte("dispatch_date", startDate),
+        supabase.from("machines").select("id, name, machine_id"),
+        supabase.from("people").select("id, full_name"),
+        supabase.from("external_partners").select("id, name, process_type")
       ]);
 
       setProductionLogs(prodLogs || []);
-      setQcRecords(qcRecs || []);
       setNcrs(ncrData || []);
       setHourlyChecks(hourlyData || []);
       setMaterialLots(matLots || []);
       setWorkOrders(woData || []);
       setFpApprovals(fpData || []);
+      setExternalMoves(extMoves || []);
+      setMachines(machineData || []);
+      setOperators(operatorData || []);
+      setPartners(partnerData || []);
 
     } catch (error: any) {
       console.error("Error loading analytics:", error);
@@ -120,7 +127,12 @@ export default function QualityAnalytics() {
     }
   };
 
-  // Calculate KPIs
+  // Helper to get names from IDs
+  const getMachineName = (id: string) => machines.find(m => m.id === id)?.name || machines.find(m => m.id === id)?.machine_id || "Unknown";
+  const getOperatorName = (id: string) => operators.find(o => o.id === id)?.full_name || "Unknown";
+  const getPartnerName = (id: string) => partners.find(p => p.id === id)?.name || "Unknown";
+
+  // Calculate KPIs directly from production logs
   const kpis = useMemo(() => {
     const totalProduced = productionLogs.reduce((sum, l) => sum + (l.actual_quantity || 0), 0);
     const totalOK = productionLogs.reduce((sum, l) => sum + (l.ok_quantity || 0), 0);
@@ -131,86 +143,154 @@ export default function QualityAnalytics() {
     const rejectionRate = totalProduced > 0 ? (totalRejected / totalProduced) * 100 : 0;
     const reworkRatio = totalProduced > 0 ? (totalRework / totalProduced) * 100 : 0;
     
-    const totalInspections = qcRecords.length;
-    const passedInspections = qcRecords.filter(r => r.result === "pass").length;
-    const passRate = totalInspections > 0 ? (passedInspections / totalInspections) * 100 : 0;
-    
     const openNCRs = ncrs.filter(n => n.status !== "closed").length;
     const ncrPer1000Pcs = totalProduced > 0 ? (ncrs.length / totalProduced) * 1000 : 0;
-    const ncrPerWO = workOrders.length > 0 ? ncrs.length / workOrders.length : 0;
     
-    // IPQC Compliance
-    const ipqcChecks = hourlyChecks.length;
-    
-    // Supplier defect rate
-    const totalLots = materialLots.length;
-    const failedLots = materialLots.filter(l => l.qc_status === "fail" || l.qc_status === "rejected").length;
-    const supplierDefectRate = totalLots > 0 ? (failedLots / totalLots) * 100 : 0;
+    // IPQC Pass Rate from hourly checks
+    const passedChecks = hourlyChecks.filter(c => c.status === "pass").length;
+    const ipqcPassRate = hourlyChecks.length > 0 ? (passedChecks / hourlyChecks.length) * 100 : 100;
 
     return [
       { label: "First Pass Yield", value: fpy.toFixed(1), unit: "%", status: (fpy >= 95 ? "good" : fpy >= 85 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <Target className="h-4 w-4" /> },
       { label: "Rejection Rate", value: rejectionRate.toFixed(2), unit: "%", status: (rejectionRate <= 2 ? "good" : rejectionRate <= 5 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <AlertTriangle className="h-4 w-4" /> },
-      { label: "QC Pass Rate", value: passRate.toFixed(1), unit: "%", status: (passRate >= 95 ? "good" : passRate >= 85 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <TrendingUp className="h-4 w-4" /> },
+      { label: "IPQC Pass Rate", value: ipqcPassRate.toFixed(1), unit: "%", status: (ipqcPassRate >= 95 ? "good" : ipqcPassRate >= 85 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <TrendingUp className="h-4 w-4" /> },
       { label: "NCR Rate", value: ncrPer1000Pcs.toFixed(2), unit: "/1K pcs", status: (ncrPer1000Pcs <= 1 ? "good" : ncrPer1000Pcs <= 5 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <AlertTriangle className="h-4 w-4" /> },
       { label: "Open NCRs", value: openNCRs, status: (openNCRs === 0 ? "good" : openNCRs <= 5 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <Clock className="h-4 w-4" /> },
       { label: "Rework Ratio", value: reworkRatio.toFixed(2), unit: "%", status: (reworkRatio <= 3 ? "good" : reworkRatio <= 8 ? "warning" : "critical") as "good" | "warning" | "critical", icon: <Percent className="h-4 w-4" /> },
     ];
-  }, [productionLogs, qcRecords, ncrs, workOrders, hourlyChecks, materialLots]);
+  }, [productionLogs, ncrs, hourlyChecks]);
 
-  // Rejection analytics by dimension
-  const rejectionData = useMemo(() => {
-    const byMachine: Record<string, { name: string; produced: number; rejections: number }> = {};
-    const byOperator: Record<string, { name: string; produced: number; rejections: number }> = {};
-    const byProgrammer: Record<string, { name: string; produced: number; rejections: number }> = {};
-    const byWorkOrder: Record<string, { name: string; produced: number; rejections: number }> = {};
-
+  // Defect trends by Operator - directly from production logs
+  const operatorTrends = useMemo(() => {
+    const byOperator: Record<string, { id: string; name: string; produced: number; rejected: number; rework: number; ncrCount: number }> = {};
+    
     productionLogs.forEach(log => {
-      const machineName = (log.machines as any)?.name || "Unknown";
-      const operatorName = (log.operator as any)?.full_name || "Unknown";
-      const programmerName = (log.programmer as any)?.full_name || "Unknown";
-      const woName = (log.work_order as any)?.display_id || "Unknown";
-
-      if (!byMachine[machineName]) byMachine[machineName] = { name: machineName, produced: 0, rejections: 0 };
-      byMachine[machineName].produced += log.actual_quantity || 0;
-      byMachine[machineName].rejections += log.total_rejection_quantity || 0;
-
-      if (!byOperator[operatorName]) byOperator[operatorName] = { name: operatorName, produced: 0, rejections: 0 };
-      byOperator[operatorName].produced += log.actual_quantity || 0;
-      byOperator[operatorName].rejections += log.total_rejection_quantity || 0;
-
-      if (!byProgrammer[programmerName]) byProgrammer[programmerName] = { name: programmerName, produced: 0, rejections: 0 };
-      byProgrammer[programmerName].produced += log.actual_quantity || 0;
-      byProgrammer[programmerName].rejections += log.total_rejection_quantity || 0;
-
-      if (!byWorkOrder[woName]) byWorkOrder[woName] = { name: woName, produced: 0, rejections: 0 };
-      byWorkOrder[woName].produced += log.actual_quantity || 0;
-      byWorkOrder[woName].rejections += log.total_rejection_quantity || 0;
+      const opId = log.operator_id || "unknown";
+      if (!byOperator[opId]) {
+        byOperator[opId] = { id: opId, name: getOperatorName(opId), produced: 0, rejected: 0, rework: 0, ncrCount: 0 };
+      }
+      byOperator[opId].produced += log.actual_quantity || 0;
+      byOperator[opId].rejected += log.total_rejection_quantity || 0;
+      byOperator[opId].rework += log.rework_quantity || 0;
     });
 
-    const toArray = (obj: Record<string, { name: string; produced: number; rejections: number }>) =>
-      Object.values(obj)
-        .map(item => ({
-          ...item,
-          rate: item.produced > 0 ? (item.rejections / item.produced) * 100 : 0
-        }))
-        .filter(item => item.rejections > 0)
-        .sort((a, b) => b.rejections - a.rejections);
+    // Add NCR counts by operator
+    ncrs.forEach(ncr => {
+      const opId = ncr.operator_id || "unknown";
+      if (byOperator[opId]) {
+        byOperator[opId].ncrCount++;
+      }
+    });
 
-    return {
-      byMachine: toArray(byMachine),
-      byOperator: toArray(byOperator),
-      byProgrammer: toArray(byProgrammer),
-      byWorkOrder: toArray(byWorkOrder)
-    };
-  }, [productionLogs]);
+    return Object.values(byOperator)
+      .filter(o => o.produced > 0)
+      .map(o => ({
+        ...o,
+        rejectionRate: o.produced > 0 ? (o.rejected / o.produced) * 100 : 0
+      }))
+      .sort((a, b) => b.rejected - a.rejected)
+      .slice(0, 10);
+  }, [productionLogs, ncrs, operators]);
 
-  // NCR Analytics
+  // Defect trends by Machine - directly from production logs
+  const machineTrends = useMemo(() => {
+    const byMachine: Record<string, { id: string; name: string; produced: number; rejected: number; rework: number; ncrCount: number }> = {};
+    
+    productionLogs.forEach(log => {
+      const machId = log.machine_id || "unknown";
+      if (!byMachine[machId]) {
+        byMachine[machId] = { id: machId, name: getMachineName(machId), produced: 0, rejected: 0, rework: 0, ncrCount: 0 };
+      }
+      byMachine[machId].produced += log.actual_quantity || 0;
+      byMachine[machId].rejected += log.total_rejection_quantity || 0;
+      byMachine[machId].rework += log.rework_quantity || 0;
+    });
+
+    // Add NCR counts by machine
+    ncrs.forEach(ncr => {
+      const machId = ncr.machine_id || "unknown";
+      if (byMachine[machId]) {
+        byMachine[machId].ncrCount++;
+      }
+    });
+
+    return Object.values(byMachine)
+      .filter(m => m.produced > 0)
+      .map(m => ({
+        ...m,
+        rejectionRate: m.produced > 0 ? (m.rejected / m.produced) * 100 : 0
+      }))
+      .sort((a, b) => b.rejected - a.rejected)
+      .slice(0, 10);
+  }, [productionLogs, ncrs, machines]);
+
+  // Defect trends by Setup (Setter) - directly from production logs
+  const setupTrends = useMemo(() => {
+    const bySetter: Record<string, { id: string; name: string; setups: number; produced: number; rejected: number; settingFaults: number }> = {};
+    
+    productionLogs.forEach(log => {
+      const setterId = log.setter_id || log.programmer_id || "unknown";
+      if (!bySetter[setterId]) {
+        bySetter[setterId] = { id: setterId, name: getOperatorName(setterId), setups: 0, produced: 0, rejected: 0, settingFaults: 0 };
+      }
+      // Count unique setups
+      bySetter[setterId].setups++;
+      bySetter[setterId].produced += log.actual_quantity || 0;
+      bySetter[setterId].rejected += log.total_rejection_quantity || 0;
+      // Track setting-related faults
+      bySetter[setterId].settingFaults += (log.rejection_setting || 0) + (log.rejection_previous_setup_fault || 0);
+    });
+
+    return Object.values(bySetter)
+      .filter(s => s.setups > 0)
+      .map(s => ({
+        ...s,
+        faultRate: s.produced > 0 ? (s.settingFaults / s.produced) * 100 : 0
+      }))
+      .sort((a, b) => b.settingFaults - a.settingFaults)
+      .slice(0, 10);
+  }, [productionLogs, operators]);
+
+  // Defect trends by External Partner - from external moves with quality issues
+  const partnerTrends = useMemo(() => {
+    const byPartner: Record<string, { id: string; name: string; sent: number; returned: number; shortfall: number; ncrCount: number }> = {};
+    
+    externalMoves.forEach(move => {
+      const partnerId = move.partner_id || "unknown";
+      if (!byPartner[partnerId]) {
+        byPartner[partnerId] = { id: partnerId, name: getPartnerName(partnerId), sent: 0, returned: 0, shortfall: 0, ncrCount: 0 };
+      }
+      byPartner[partnerId].sent += move.quantity_sent || 0;
+      byPartner[partnerId].returned += move.quantity_returned || 0;
+      // Shortfall = sent - returned (quality/quantity issues)
+      if (move.status === 'received') {
+        byPartner[partnerId].shortfall += Math.max(0, (move.quantity_sent || 0) - (move.quantity_returned || 0));
+      }
+    });
+
+    // Count NCRs raised from external processing
+    ncrs.filter(n => n.raised_from === 'external' || n.raised_from === 'external_processing').forEach(ncr => {
+      // Try to link to partner (would need production log to WO to external move mapping)
+      // For now, count all external NCRs
+    });
+
+    return Object.values(byPartner)
+      .filter(p => p.sent > 0)
+      .map(p => ({
+        ...p,
+        defectRate: p.sent > 0 ? (p.shortfall / p.sent) * 100 : 0
+      }))
+      .sort((a, b) => b.shortfall - a.shortfall)
+      .slice(0, 10);
+  }, [externalMoves, ncrs, partners]);
+
+  // NCR Analytics - directly from NCR table
   const ncrMetrics = useMemo(() => {
     const totalProduced = productionLogs.reduce((sum, l) => sum + (l.actual_quantity || 0), 0);
     const ncrPer1000Pcs = totalProduced > 0 ? (ncrs.length / totalProduced) * 1000 : 0;
     const ncrPerWO = workOrders.length > 0 ? ncrs.length / workOrders.length : 0;
     
-    // Repeat NCR analysis (same root cause within 90 days)
+    // Repeat NCR analysis
     const rootCauseCounts: Record<string, number> = {};
     ncrs.forEach(n => {
       const rc = n.root_cause || "Unspecified";
@@ -258,7 +338,7 @@ export default function QualityAnalytics() {
     // NCR by machine
     const machineCounts: Record<string, { count: number; scrapQty: number }> = {};
     ncrs.forEach(n => {
-      const machine = n.machines?.machine_id || n.machines?.name || "Unknown";
+      const machine = getMachineName(n.machine_id || "");
       if (!machineCounts[machine]) machineCounts[machine] = { count: 0, scrapQty: 0 };
       machineCounts[machine].count++;
       if (n.disposition === 'SCRAP') machineCounts[machine].scrapQty += n.quantity_affected || 0;
@@ -270,7 +350,7 @@ export default function QualityAnalytics() {
       if (n.rejection_type) {
         const types = n.rejection_type.split(',');
         types.forEach((t: string) => {
-          const type = t.replace('rejection_', '').replace(/_/g, ' ');
+          const type = t.replace('rejection_', '').replace(/_/g, ' ').trim();
           if (!rejectionTypeCounts[type]) rejectionTypeCounts[type] = { count: 0, totalQty: 0 };
           rejectionTypeCounts[type].count++;
           rejectionTypeCounts[type].totalQty += n.quantity_affected || 0;
@@ -305,84 +385,21 @@ export default function QualityAnalytics() {
         .map(([disposition, qty]) => ({ disposition, qty })),
       reworkCount: ncrs.filter(n => n.disposition === 'REWORK').length,
     };
-  }, [ncrs, productionLogs, workOrders]);
+  }, [ncrs, productionLogs, workOrders, machines]);
 
-  // Trend data
-  const trendData = useMemo(() => {
-    const dailyData: Record<string, { date: string; produced: number; ok: number; rejected: number; rework: number; passed: number; failed: number }> = {};
-    
-    productionLogs.forEach(log => {
-      const date = format(new Date(log.log_date), "MMM dd");
-      if (!dailyData[date]) {
-        dailyData[date] = { date, produced: 0, ok: 0, rejected: 0, rework: 0, passed: 0, failed: 0 };
-      }
-      dailyData[date].produced += log.actual_quantity || 0;
-      dailyData[date].ok += log.ok_quantity || 0;
-      dailyData[date].rejected += log.total_rejection_quantity || 0;
-      dailyData[date].rework += log.rework_quantity || 0;
-    });
-
-    qcRecords.forEach(qc => {
-      const date = format(new Date(qc.created_at), "MMM dd");
-      if (!dailyData[date]) {
-        dailyData[date] = { date, produced: 0, ok: 0, rejected: 0, rework: 0, passed: 0, failed: 0 };
-      }
-      if (qc.result === "pass") dailyData[date].passed++;
-      if (qc.result === "fail") dailyData[date].failed++;
-    });
-
-    const dailyTrend = Object.values(dailyData)
-      .map(d => ({
-        date: d.date,
-        passRate: (d.passed + d.failed) > 0 ? (d.passed / (d.passed + d.failed)) * 100 : 0,
-        fpy: d.produced > 0 ? (d.ok / d.produced) * 100 : 0,
-        rejectionRate: d.produced > 0 ? (d.rejected / d.produced) * 100 : 0,
-        scrap: d.rejected,
-        rework: d.rework
-      }))
-      .slice(-14);
-
-    // Weekly aggregation
-    const weeklyData: Record<string, typeof dailyData[string]> = {};
-    Object.entries(dailyData).forEach(([_, data]) => {
-      const weekStart = format(startOfWeek(new Date()), "MMM dd");
-      if (!weeklyData[weekStart]) {
-        weeklyData[weekStart] = { date: weekStart, produced: 0, ok: 0, rejected: 0, rework: 0, passed: 0, failed: 0 };
-      }
-      weeklyData[weekStart].produced += data.produced;
-      weeklyData[weekStart].ok += data.ok;
-      weeklyData[weekStart].rejected += data.rejected;
-      weeklyData[weekStart].rework += data.rework;
-      weeklyData[weekStart].passed += data.passed;
-      weeklyData[weekStart].failed += data.failed;
-    });
-
-    const weeklyTrend = Object.values(weeklyData).map(d => ({
-      date: d.date,
-      passRate: (d.passed + d.failed) > 0 ? (d.passed / (d.passed + d.failed)) * 100 : 0,
-      fpy: d.produced > 0 ? (d.ok / d.produced) * 100 : 0,
-      rejectionRate: d.produced > 0 ? (d.rejected / d.produced) * 100 : 0,
-      scrap: d.rejected,
-      rework: d.rework
-    }));
-
-    return { dailyTrend, weeklyTrend, monthlyTrend: weeklyTrend };
-  }, [productionLogs, qcRecords]);
-
-  // Quality loss indicators
+  // Quality loss indicators - directly from production logs
   const lossData = useMemo(() => {
     const totalProduced = productionLogs.reduce((sum, l) => sum + (l.actual_quantity || 0), 0);
     const totalScrap = productionLogs.reduce((sum, l) => sum + (l.total_rejection_quantity || 0), 0);
     const totalRework = productionLogs.reduce((sum, l) => sum + (l.rework_quantity || 0), 0);
     
-    // NCR-linked scrap (sum of quantity_affected from NCRs)
     const ncrLinkedScrap = ncrs.reduce((sum, n) => sum + (n.quantity_affected || 0), 0);
     
     const scrapPercentage = totalProduced > 0 ? (totalScrap / totalProduced) * 100 : 0;
     const reworkRatio = totalProduced > 0 ? (totalRework / totalProduced) * 100 : 0;
     const ncrScrapPercentage = totalScrap > 0 ? (ncrLinkedScrap / totalScrap) * 100 : 0;
 
-    // Scrap by reason
+    // Scrap by reason - directly from production logs rejection fields
     const scrapReasons: Record<string, number> = {
       "Dimension": 0, "Setting": 0, "Scratch": 0, "Dent": 0,
       "Tool Mark": 0, "Forging Mark": 0, "Material": 0, "Lining": 0,
@@ -412,16 +429,13 @@ export default function QualityAnalytics() {
   // IPQC Compliance
   const ipqcData = useMemo(() => {
     const checksCompleted = hourlyChecks.length;
-    // Estimate required checks: 1 per hour per active machine per shift
-    // For simplicity, assume required = completed * 1.1 (would need actual scheduling data)
     const checksRequired = Math.max(checksCompleted, Math.ceil(checksCompleted * 1.1));
     const complianceRate = checksRequired > 0 ? (checksCompleted / checksRequired) * 100 : 100;
     const missedChecks = checksRequired - checksCompleted;
 
-    // Avg time between checks per machine
     const checksByMachine: Record<string, { machine: string; times: Date[]; completed: number }> = {};
     hourlyChecks.forEach(check => {
-      const machine = (check.machines as any)?.name || "Unknown";
+      const machine = getMachineName(check.machine_id || "");
       if (!checksByMachine[machine]) {
         checksByMachine[machine] = { machine, times: [], completed: 0 };
       }
@@ -444,11 +458,11 @@ export default function QualityAnalytics() {
       machine: m.machine,
       completed: m.completed,
       required: Math.ceil(m.completed * 1.1),
-      rate: 100 // Simplified
+      rate: 100
     }));
 
     return { checksCompleted, checksRequired, complianceRate, avgTimeBetweenChecks, missedChecks, checksByMachine: checksByMachineArr };
-  }, [hourlyChecks]);
+  }, [hourlyChecks, machines]);
 
   // Supplier defect data
   const supplierData = useMemo(() => {
@@ -486,26 +500,23 @@ export default function QualityAnalytics() {
     const firstPieceRight = workOrders.filter(wo => wo.qc_first_piece_passed === true).length;
     const fprRate = workOrders.length > 0 ? (firstPieceRight / workOrders.length) * 100 : 0;
 
-    // Avg approval time
     let totalMins = 0;
     withApprovalTime.forEach(f => {
       totalMins += differenceInMinutes(new Date(f.first_piece_approval_time), new Date(f.setup_start_time));
     });
     const avgApprovalTime = withApprovalTime.length > 0 ? totalMins / withApprovalTime.length : 0;
 
-    // By machine
     const byMachine: Record<string, { machine: string; total: number; passed: number }> = {};
     fpApprovals.forEach(f => {
-      const machine = (f.machines as any)?.name || "Unknown";
+      const machine = getMachineName(f.machine_id || "");
       if (!byMachine[machine]) byMachine[machine] = { machine, total: 0, passed: 0 };
       byMachine[machine].total++;
       if (f.first_piece_approval_time) byMachine[machine].passed++;
     });
 
-    // By programmer
     const byProgrammer: Record<string, { programmer: string; total: number; passed: number }> = {};
     fpApprovals.forEach(f => {
-      const programmer = (f.programmer as any)?.full_name || "Unknown";
+      const programmer = getOperatorName(f.programmer_id || "");
       if (!byProgrammer[programmer]) byProgrammer[programmer] = { programmer, total: 0, passed: 0 };
       byProgrammer[programmer].total++;
       if (f.first_piece_approval_time) byProgrammer[programmer].passed++;
@@ -519,7 +530,18 @@ export default function QualityAnalytics() {
       byMachine: Object.values(byMachine).map(m => ({ ...m, rate: m.total > 0 ? (m.passed / m.total) * 100 : 0 })),
       byProgrammer: Object.values(byProgrammer).map(p => ({ ...p, rate: p.total > 0 ? (p.passed / p.total) * 100 : 0 }))
     };
-  }, [fpApprovals, workOrders]);
+  }, [fpApprovals, workOrders, machines, operators]);
+
+  // Get current trend data based on selected view
+  const currentTrendData = useMemo(() => {
+    switch (trendView) {
+      case "operator": return operatorTrends;
+      case "machine": return machineTrends;
+      case "setup": return setupTrends;
+      case "partner": return partnerTrends;
+      default: return operatorTrends;
+    }
+  }, [trendView, operatorTrends, machineTrends, setupTrends, partnerTrends]);
 
   if (loading) {
     return (
@@ -545,7 +567,7 @@ export default function QualityAnalytics() {
           <div className="flex items-center justify-between">
             <PageHeader
               title="Quality Analytics"
-              description="Advanced quality KPIs, trends, and accountability metrics"
+              description="Defect trends from Production Logs & NCR Management"
               icon={<BarChart3 className="h-6 w-6" />}
             />
             <Select value={dateRange} onValueChange={setDateRange}>
@@ -567,23 +589,131 @@ export default function QualityAnalytics() {
           {/* Quality Loss Indicators */}
           <QualityLossIndicators data={lossData} />
 
-          {/* Trend Charts */}
-          <QualityTrendCharts 
-            dailyTrend={trendData.dailyTrend}
-            weeklyTrend={trendData.weeklyTrend}
-            monthlyTrend={trendData.monthlyTrend}
-          />
+          {/* Defect Trends by Dimension */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    Defect Trends
+                  </CardTitle>
+                  <CardDescription>
+                    Rejections and NCRs from Production Logs by dimension
+                  </CardDescription>
+                </div>
+                <Tabs value={trendView} onValueChange={(v) => setTrendView(v as any)}>
+                  <TabsList>
+                    <TabsTrigger value="operator" className="flex items-center gap-1">
+                      <User className="h-3 w-3" /> Operator
+                    </TabsTrigger>
+                    <TabsTrigger value="machine" className="flex items-center gap-1">
+                      <Wrench className="h-3 w-3" /> Machine
+                    </TabsTrigger>
+                    <TabsTrigger value="setup" className="flex items-center gap-1">
+                      <Settings className="h-3 w-3" /> Setup
+                    </TabsTrigger>
+                    <TabsTrigger value="partner" className="flex items-center gap-1">
+                      <Truck className="h-3 w-3" /> Partner
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {currentTrendData.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No data available for selected period
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Bar Chart */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">
+                      {trendView === "operator" && "Rejections by Operator"}
+                      {trendView === "machine" && "Rejections by Machine"}
+                      {trendView === "setup" && "Setting Faults by Setter"}
+                      {trendView === "partner" && "Shortfall by Partner"}
+                    </h4>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={currentTrendData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis type="number" />
+                        <YAxis 
+                          dataKey="name" 
+                          type="category" 
+                          width={100} 
+                          className="text-xs"
+                          tickFormatter={(v) => v.length > 12 ? v.slice(0, 12) + "..." : v}
+                        />
+                        <Tooltip />
+                        <Bar 
+                          dataKey={trendView === "setup" ? "settingFaults" : trendView === "partner" ? "shortfall" : "rejected"} 
+                          fill="hsl(var(--destructive))" 
+                          name={trendView === "setup" ? "Setting Faults" : trendView === "partner" ? "Shortfall" : "Rejected"}
+                          radius={[0, 4, 4, 0]} 
+                        />
+                        {trendView !== "setup" && trendView !== "partner" && (
+                          <Bar dataKey="rework" fill="hsl(var(--warning))" name="Rework" radius={[0, 4, 4, 0]} />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
 
-          {/* QC Failures Analytics - New comprehensive view */}
-          <QCFailuresAnalytics 
-            hourlyChecks={hourlyChecks}
-            productionLogs={productionLogs}
-          />
+                  {/* Data Table */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">Details</h4>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left p-2 font-medium">
+                              {trendView === "operator" && "Operator"}
+                              {trendView === "machine" && "Machine"}
+                              {trendView === "setup" && "Setter"}
+                              {trendView === "partner" && "Partner"}
+                            </th>
+                            <th className="text-right p-2 font-medium">
+                              {trendView === "partner" ? "Sent" : "Produced"}
+                            </th>
+                            <th className="text-right p-2 font-medium">
+                              {trendView === "setup" ? "Faults" : trendView === "partner" ? "Shortfall" : "Rejected"}
+                            </th>
+                            <th className="text-right p-2 font-medium">Rate</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentTrendData.slice(0, 8).map((item: any, i) => (
+                            <tr key={i} className="border-t">
+                              <td className="p-2 truncate max-w-[120px]">{item.name}</td>
+                              <td className="p-2 text-right text-muted-foreground">
+                                {(trendView === "partner" ? item.sent : item.produced)?.toLocaleString()}
+                              </td>
+                              <td className="p-2 text-right">
+                                <span className="text-destructive font-medium">
+                                  {(trendView === "setup" ? item.settingFaults : trendView === "partner" ? item.shortfall : item.rejected)?.toLocaleString()}
+                                </span>
+                              </td>
+                              <td className="p-2 text-right">
+                                <Badge variant={
+                                  (trendView === "setup" ? item.faultRate : trendView === "partner" ? item.defectRate : item.rejectionRate) <= 2 ? "secondary" :
+                                  (trendView === "setup" ? item.faultRate : trendView === "partner" ? item.defectRate : item.rejectionRate) <= 5 ? "outline" : "destructive"
+                                }>
+                                  {(trendView === "setup" ? item.faultRate : trendView === "partner" ? item.defectRate : item.rejectionRate)?.toFixed(2)}%
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Rejection Analysis by Dimension */}
-          <RejectionAnalytics data={rejectionData} />
-
-          {/* NCR Analytics */}
+          {/* NCR Analytics - Directly from NCR Management */}
           <NCRAnalytics data={ncrMetrics} />
 
           {/* IPQC & First Piece Row */}
