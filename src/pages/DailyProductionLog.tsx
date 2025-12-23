@@ -141,6 +141,7 @@ interface WorkOrder {
   material_size_mm: string | null;
   quantity: number | null;
   cycle_time_seconds: number | null;
+  qty_completed: number | null;
 }
 
 interface Person {
@@ -229,6 +230,8 @@ export default function DailyProductionLog() {
   const [filterDate, setFilterDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [preselectedWoLoaded, setPreselectedWoLoaded] = useState(false);
+  const [showOverproductionWarning, setShowOverproductionWarning] = useState(false);
+  const [cumulativeProduction, setCumulativeProduction] = useState(0);
   
   // Downtime events state
   const [downtimeEvents, setDowntimeEvents] = useState<DowntimeEvent[]>([]);
@@ -385,7 +388,7 @@ export default function DailyProductionLog() {
       // Load active work orders
       const { data: woData } = await supabase
         .from("work_orders")
-        .select("id, wo_number, customer, item_code, revision, material_size_mm, quantity, cycle_time_seconds")
+        .select("id, wo_number, customer, item_code, revision, material_size_mm, quantity, cycle_time_seconds, qty_completed")
         .in("status", ["pending", "in_progress", "qc", "packing"])
         .order("wo_number", { ascending: false })
         .limit(100);
@@ -420,7 +423,7 @@ export default function DailyProductionLog() {
     }
   };
 
-  const handleWOChange = (woId: string) => {
+  const handleWOChange = async (woId: string) => {
     const nextWOId = woId === "none" ? "" : woId;
     const wo = nextWOId ? workOrders.find((w) => w.id === nextWOId) : undefined;
 
@@ -431,7 +434,34 @@ export default function DailyProductionLog() {
     setEnableTargetOverride(false);
     setTargetOverride("");
     setTargetOverrideReason("");
+    
+    // Check for overproduction warning
+    if (wo) {
+      const currentCompleted = wo.qty_completed || 0;
+      setCumulativeProduction(currentCompleted);
+      checkOverproduction(currentCompleted, actualQuantity, wo.quantity);
+    } else {
+      setShowOverproductionWarning(false);
+      setCumulativeProduction(0);
+    }
   };
+  
+  // Check if cumulative production exceeds ordered qty
+  const checkOverproduction = (currentCompleted: number, newQty: number, orderedQty: number | null) => {
+    if (!orderedQty || orderedQty <= 0) {
+      setShowOverproductionWarning(false);
+      return;
+    }
+    const totalAfterSubmit = currentCompleted + newQty;
+    setShowOverproductionWarning(totalAfterSubmit > orderedQty);
+  };
+  
+  // Effect to check overproduction when actual_quantity changes
+  useEffect(() => {
+    if (selectedWO) {
+      checkOverproduction(cumulativeProduction, actualQuantity, selectedWO.quantity);
+    }
+  }, [actualQuantity, selectedWO, cumulativeProduction]);
 
   const addDowntimeEvent = () => {
     const duration = parseInt(newDowntimeDuration, 10);
@@ -534,9 +564,11 @@ export default function DailyProductionLog() {
         insertData.cycle_time_seconds = selectedWO.cycle_time_seconds;
       }
 
-      const { error } = await supabase
+      const { data: logData, error } = await supabase
         .from("daily_production_logs")
-        .insert(insertData);
+        .insert(insertData)
+        .select('id')
+        .single();
 
       if (error) {
         if (error.code === "23505") {
@@ -549,6 +581,53 @@ export default function DailyProductionLog() {
           throw error;
         }
         return;
+      }
+
+      // Log audit trail entries for overrides
+      if (logData && userData.user?.id) {
+        const auditEntries = [];
+        
+        // Log target override if applied
+        if (enableTargetOverride && targetOverride) {
+          auditEntries.push({
+            user_id: userData.user.id,
+            action_type: 'target_override',
+            module: 'production_log',
+            entity_type: 'daily_production_logs',
+            entity_id: logData.id,
+            action_details: {
+              original_target: calculatedTargetQuantity,
+              override_target: parseInt(targetOverride, 10),
+              reason: targetOverrideReason,
+            },
+          });
+        }
+        
+        // Log overproduction warning if applicable
+        if (showOverproductionWarning && selectedWO) {
+          const totalAfterSubmit = (selectedWO.qty_completed || 0) + data.actual_quantity;
+          auditEntries.push({
+            user_id: userData.user.id,
+            action_type: 'overproduction_warning_acknowledged',
+            module: 'production_log',
+            entity_type: 'daily_production_logs',
+            entity_id: logData.id,
+            action_details: {
+              wo_id: selectedWO.id,
+              wo_number: selectedWO.wo_number,
+              ordered_qty: selectedWO.quantity,
+              qty_before: selectedWO.qty_completed || 0,
+              qty_logged: data.actual_quantity,
+              total_after: totalAfterSubmit,
+              excess_qty: totalAfterSubmit - (selectedWO.quantity || 0),
+            },
+          });
+        }
+        
+        // Insert audit entries if any
+        if (auditEntries.length > 0) {
+          await supabase.from("user_audit_log").insert(auditEntries);
+        }
       }
 
       toast({
@@ -871,7 +950,7 @@ export default function DailyProductionLog() {
                           <div className="flex items-center gap-2 mb-2">
                             <span className="font-semibold text-primary">{selectedWO.wo_number}</span>
                           </div>
-                          <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div className="grid grid-cols-4 gap-4 text-sm">
                             <div>
                               <p className="text-xs text-muted-foreground">Item</p>
                               <p className="font-medium truncate">{selectedWO.item_code || '-'}</p>
@@ -884,6 +963,28 @@ export default function DailyProductionLog() {
                               <p className="text-xs text-muted-foreground">Ordered Qty</p>
                               <p className="font-medium">{selectedWO.quantity?.toLocaleString() || '-'}</p>
                             </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Completed</p>
+                              <p className="font-medium">{(selectedWO.qty_completed || 0).toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Overproduction Warning */}
+                      {showOverproductionWarning && selectedWO && (
+                        <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-3 p-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700">
+                          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                              Overproduction Warning
+                            </p>
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                              This entry will result in cumulative production of {((selectedWO.qty_completed || 0) + actualQuantity).toLocaleString()} pcs, 
+                              exceeding the ordered quantity of {(selectedWO.quantity || 0).toLocaleString()} pcs 
+                              by {((selectedWO.qty_completed || 0) + actualQuantity - (selectedWO.quantity || 0)).toLocaleString()} pcs.
+                              Submitting will log this override in the audit trail.
+                            </p>
                           </div>
                         </div>
                       )}
