@@ -1,25 +1,38 @@
 /**
- * Machine Utilisation Review Page
+ * Machine Utilisation Analytics Page
  * 
- * READ-ONLY metrics derived from the shared useProductionLogMetrics hook.
- * Allows supervisors to review and document reasons for low utilisation.
+ * HISTORICAL ANALYTICS ONLY - No real-time states.
+ * All data derived from Production Logs via useProductionLogMetrics.
  * 
- * FORMULAS (from shared hook):
- * - Expected Runtime = Shift End - Shift Start (or default 690 min)
- * - Actual Runtime = from production logs
- * - Utilisation % = (Actual Runtime ÷ Expected Runtime) × 100
+ * Views:
+ * - Daily / Weekly / Monthly utilisation trends
+ * - Downtime breakdown by reason (Pareto)
+ * - Scrap contribution by machine
  */
 
-import { useState, useEffect, useMemo } from "react";
-import { format, subDays } from "date-fns";
-import { CalendarIcon, Settings, AlertTriangle, CheckCircle2, Clock, Percent, Activity, Info } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { useState, useMemo } from "react";
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths } from "date-fns";
+import { CalendarIcon, Activity, Clock, AlertTriangle, Trash2, BarChart3, TrendingUp, Info } from "lucide-react";
 import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
+import { CATEGORY_COLORS, getCategoryForReason, DOWNTIME_CATEGORIES, type DowntimeCategory } from "@/config/downtimeConfig";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -28,43 +41,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  ComposedChart,
+  Area,
+} from "recharts";
 
-interface MachineReview {
-  id: string;
-  reason: string | null;
-  action_taken: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-}
-
-interface MachineUtilisationData {
-  machineId: string;
-  machineName: string;
-  expectedRuntime: number;
-  actualRuntime: number;
-  utilisationPct: number;
-  review?: MachineReview;
-  needsReview: boolean;
-}
-
-// Default shift duration in minutes (11.5 hours = 690 minutes)
-const DEFAULT_SHIFT_MINUTES = 690;
+type PeriodType = "daily" | "weekly" | "monthly";
 
 // Helper to format minutes as hours:minutes
 function formatMinutes(minutes: number): string {
@@ -74,231 +69,224 @@ function formatMinutes(minutes: number): string {
 }
 
 export default function MachineUtilisation() {
-  const { toast } = useToast();
-  const [reviewDate, setReviewDate] = useState<Date>(subDays(new Date(), 1));
-  const [threshold, setThreshold] = useState<number>(80);
-  const [showSettings, setShowSettings] = useState(false);
-  const [reviews, setReviews] = useState<Record<string, MachineReview>>({});
-  const [submitting, setSubmitting] = useState(false);
+  const [period, setPeriod] = useState<PeriodType>("daily");
+  const [selectedDate, setSelectedDate] = useState<Date>(subDays(new Date(), 1));
+  const [machineFilter, setMachineFilter] = useState<string>("all");
 
-  // Review dialog state
-  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
-  const [selectedMachine, setSelectedMachine] = useState<MachineUtilisationData | null>(null);
-  const [reviewReason, setReviewReason] = useState("");
-  const [reviewAction, setReviewAction] = useState("");
+  // Calculate date range based on period
+  const dateRange = useMemo(() => {
+    switch (period) {
+      case "daily":
+        // Last 7 days
+        return {
+          start: format(subDays(selectedDate, 6), "yyyy-MM-dd"),
+          end: format(selectedDate, "yyyy-MM-dd"),
+        };
+      case "weekly":
+        // Last 4 weeks
+        return {
+          start: format(subWeeks(startOfWeek(selectedDate, { weekStartsOn: 1 }), 3), "yyyy-MM-dd"),
+          end: format(endOfWeek(selectedDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+        };
+      case "monthly":
+        // Last 3 months
+        return {
+          start: format(subMonths(startOfMonth(selectedDate), 2), "yyyy-MM-dd"),
+          end: format(endOfMonth(selectedDate), "yyyy-MM-dd"),
+        };
+    }
+  }, [period, selectedDate]);
 
   // Single source of truth: useProductionLogMetrics
   const { metrics, loading } = useProductionLogMetrics({
-    startDate: format(reviewDate, "yyyy-MM-dd"),
-    endDate: format(reviewDate, "yyyy-MM-dd"),
+    startDate: dateRange.start,
+    endDate: dateRange.end,
     period: "custom",
+    machineId: machineFilter !== "all" ? machineFilter : undefined,
   });
 
-  // Convert shared metrics to utilisation view format
-  const utilisationData = useMemo<MachineUtilisationData[]>(() => {
+  // Available machines for filter dropdown
+  const availableMachines = useMemo(() => {
     if (!metrics) return [];
+    return metrics.machineMetrics.map((m) => ({
+      id: m.machineId,
+      name: m.machineName,
+    }));
+  }, [metrics]);
+
+  // Aggregate downtime by category for Pareto
+  const downtimeByCategory = useMemo(() => {
+    if (!metrics?.downtimePareto) return [];
     
-    return metrics.machineMetrics.map((m) => {
-      const review = reviews[m.machineId];
-      const needsReview = m.utilizationPercent < threshold && !review?.reason;
+    const categoryTotals = new Map<DowntimeCategory, number>();
+    
+    metrics.downtimePareto.forEach((d) => {
+      const category = getCategoryForReason(d.reason);
+      categoryTotals.set(category, (categoryTotals.get(category) || 0) + d.minutes);
+    });
 
+    return DOWNTIME_CATEGORIES
+      .map((cat) => ({
+        category: cat,
+        minutes: categoryTotals.get(cat) || 0,
+        hours: Math.round((categoryTotals.get(cat) || 0) / 60 * 10) / 10,
+        color: CATEGORY_COLORS[cat],
+      }))
+      .filter((c) => c.minutes > 0)
+      .sort((a, b) => b.minutes - a.minutes);
+  }, [metrics]);
+
+  // Scrap contribution by machine
+  const scrapByMachine = useMemo(() => {
+    if (!metrics?.machineMetrics) return [];
+    
+    return metrics.machineMetrics
+      .filter((m) => m.totalRejections > 0)
+      .map((m) => ({
+        name: m.machineName.split(' - ')[0], // Short name
+        fullName: m.machineName,
+        scrap: m.totalRejections,
+        output: m.totalOutput,
+        scrapPercent: m.totalOutput + m.totalRejections > 0
+          ? Math.round((m.totalRejections / (m.totalOutput + m.totalRejections)) * 100 * 10) / 10
+          : 0,
+      }))
+      .sort((a, b) => b.scrap - a.scrap);
+  }, [metrics]);
+
+  // Utilisation trend data
+  const utilisationTrend = useMemo(() => {
+    if (!metrics?.dailyMetrics) return [];
+    
+    return metrics.dailyMetrics.map((d) => {
+      const expectedRuntime = 690; // Default shift minutes per day
+      const utilizationPct = expectedRuntime > 0 
+        ? Math.round((d.totalRuntimeMinutes / expectedRuntime) * 100)
+        : 0;
+      
       return {
-        machineId: m.machineId,
-        machineName: m.machineName,
-        expectedRuntime: m.expectedRuntime,
-        actualRuntime: m.totalRuntime,
-        utilisationPct: m.utilizationPercent,
-        review,
-        needsReview,
+        date: format(new Date(d.date), "MMM dd"),
+        fullDate: d.date,
+        runtime: Math.round(d.totalRuntimeMinutes),
+        downtime: Math.round(d.totalDowntimeMinutes),
+        utilization: Math.min(utilizationPct, 100),
+        efficiency: Math.round(d.avgEfficiency),
       };
-    }).sort((a, b) => a.utilisationPct - b.utilisationPct); // Sort by lowest utilisation first
-  }, [metrics, reviews, threshold]);
+    });
+  }, [metrics]);
 
-  // Summary statistics
-  const summary = useMemo(() => {
-    const total = utilisationData.length;
-    const belowThreshold = utilisationData.filter((d) => d.utilisationPct < threshold).length;
-    const needingReview = utilisationData.filter((d) => d.needsReview).length;
-    const avgUtilisation = total > 0
-      ? Math.round(utilisationData.reduce((sum, d) => sum + d.utilisationPct, 0) / total)
-      : 0;
-    return { total, belowThreshold, needingReview, avgUtilisation };
-  }, [utilisationData, threshold]);
-
-  // Load reviews for the selected date
-  useEffect(() => {
-    loadReviews();
-  }, [reviewDate]);
-
-  const loadReviews = async () => {
-    try {
-      const dateStr = format(reviewDate, "yyyy-MM-dd");
-      const { data: reviewsData } = await supabase
-        .from("machine_utilisation_reviews")
-        .select("id, machine_id, reason, action_taken, reviewed_by, reviewed_at")
-        .eq("review_date", dateStr);
-
-      const reviewsMap: Record<string, MachineReview> = {};
-      (reviewsData || []).forEach((r: any) => {
-        reviewsMap[r.machine_id] = {
-          id: r.id,
-          reason: r.reason,
-          action_taken: r.action_taken,
-          reviewed_by: r.reviewed_by,
-          reviewed_at: r.reviewed_at,
-        };
-      });
-      setReviews(reviewsMap);
-    } catch (error: any) {
-      console.error("Error loading reviews:", error);
-    }
-  };
-
-  const openReviewDialog = (data: MachineUtilisationData) => {
-    setSelectedMachine(data);
-    setReviewReason(data.review?.reason || "");
-    setReviewAction(data.review?.action_taken || "");
-    setReviewDialogOpen(true);
-  };
-
-  const handleSubmitReview = async () => {
-    if (!selectedMachine) return;
-
-    if (!reviewReason.trim()) {
-      toast({
-        title: "Reason Required",
-        description: "Please provide a reason for low utilisation",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      const dateStr = format(reviewDate, "yyyy-MM-dd");
-
-      const reviewData = {
-        machine_id: selectedMachine.machineId,
-        review_date: dateStr,
-        expected_runtime_minutes: selectedMachine.expectedRuntime,
-        actual_runtime_minutes: selectedMachine.actualRuntime,
-        utilisation_percentage: selectedMachine.utilisationPct,
-        reason: reviewReason.trim(),
-        action_taken: reviewAction.trim() || null,
-        reviewed_by: userData.user?.id,
-        reviewed_at: new Date().toISOString(),
-      };
-
-      if (selectedMachine.review?.id) {
-        const { error } = await supabase
-          .from("machine_utilisation_reviews")
-          .update(reviewData)
-          .eq("id", selectedMachine.review.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("machine_utilisation_reviews")
-          .insert(reviewData);
-        if (error) throw error;
-      }
-
-      toast({
-        title: "Success",
-        description: "Utilisation review saved",
-      });
-
-      setReviewDialogOpen(false);
-      loadReviews();
-    } catch (error: any) {
-      console.error("Error saving review:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save review",
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // Machine utilisation breakdown
+  const machineUtilisation = useMemo(() => {
+    if (!metrics?.machineMetrics) return [];
+    
+    return metrics.machineMetrics
+      .map((m) => ({
+        name: m.machineName.split(' - ')[0],
+        fullName: m.machineName,
+        runtime: m.totalRuntime,
+        expected: m.expectedRuntime,
+        utilization: m.utilizationPercent,
+        downtime: m.totalDowntime,
+        efficiency: m.avgEfficiency,
+      }))
+      .sort((a, b) => b.utilization - a.utilization);
+  }, [metrics]);
 
   const getUtilisationColor = (pct: number) => {
-    if (pct >= 90) return "text-green-600 dark:text-green-400";
-    if (pct >= threshold) return "text-blue-600 dark:text-blue-400";
+    if (pct >= 85) return "text-green-600 dark:text-green-400";
+    if (pct >= 70) return "text-blue-600 dark:text-blue-400";
     if (pct >= 50) return "text-amber-600 dark:text-amber-400";
     return "text-red-600 dark:text-red-400";
+  };
+
+  const getProgressColor = (pct: number) => {
+    if (pct >= 85) return "bg-green-500";
+    if (pct >= 70) return "bg-blue-500";
+    if (pct >= 50) return "bg-amber-500";
+    return "bg-red-500";
   };
 
   return (
     <div className="container mx-auto p-4 space-y-6">
       <PageHeader
-        title="Machine Utilisation Review"
-        description="Review daily machine utilisation and document reasons for low performance"
+        title="Machine Utilisation Analytics"
+        description="Historical analysis of machine utilisation, downtime, and scrap contribution"
       />
 
       {/* Read-only notice */}
       <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
         <Info className="h-4 w-4 shrink-0" />
-        <span>All metrics derived from Production Log entries via shared calculation engine. Reviews can be added but metrics cannot be overridden.</span>
+        <span>
+          All metrics derived from Production Log entries. This is a historical analytics view — no real-time states displayed.
+        </span>
       </div>
 
-      {/* Controls */}
+      {/* Period Controls */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            <div className="flex flex-wrap gap-4 items-center">
+              {/* Period Tabs */}
+              <Tabs value={period} onValueChange={(v) => setPeriod(v as PeriodType)}>
+                <TabsList>
+                  <TabsTrigger value="daily">Daily</TabsTrigger>
+                  <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                  <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
               {/* Date Picker */}
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[200px] justify-start text-left font-normal",
-                      !reviewDate && "text-muted-foreground"
-                    )}
-                  >
+                  <Button variant="outline" className={cn("w-[180px] justify-start text-left font-normal")}>
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {reviewDate ? format(reviewDate, "PPP") : "Pick a date"}
+                    {format(selectedDate, "PPP")}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={reviewDate}
-                    onSelect={(date) => date && setReviewDate(date)}
+                    selected={selectedDate}
+                    onSelect={(date) => date && setSelectedDate(date)}
                     disabled={(date) => date > new Date()}
                     initialFocus
                   />
                 </PopoverContent>
               </Popover>
 
-              {/* Threshold Display */}
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Threshold:</span>
-                <Badge variant="secondary" className="font-mono">
-                  {threshold}%
-                </Badge>
-              </div>
+              {/* Machine Filter */}
+              <Select value={machineFilter} onValueChange={setMachineFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All Machines" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Machines</SelectItem>
+                  {availableMachines.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name.split(' - ')[0]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <Button variant="outline" onClick={() => setShowSettings(true)}>
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
+            <Badge variant="secondary" className="text-xs">
+              {dateRange.start} → {dateRange.end}
+            </Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* Summary Cards */}
+      {/* Summary KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-3">
-              <Activity className="h-8 w-8 text-muted-foreground" />
+              <Activity className="h-8 w-8 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Avg Utilisation</p>
-                <p className={cn("text-2xl font-bold", getUtilisationColor(summary.avgUtilisation))}>
-                  {summary.avgUtilisation}%
+                <p className={cn("text-2xl font-bold", getUtilisationColor(metrics?.utilizationPercent || 0))}>
+                  {loading ? "—" : `${Math.round(metrics?.utilizationPercent || 0)}%`}
                 </p>
               </div>
             </div>
@@ -310,8 +298,10 @@ export default function MachineUtilisation() {
             <div className="flex items-center gap-3">
               <Clock className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-sm text-muted-foreground">Total Machines</p>
-                <p className="text-2xl font-bold">{summary.total}</p>
+                <p className="text-sm text-muted-foreground">Total Runtime</p>
+                <p className="text-2xl font-bold">
+                  {loading ? "—" : formatMinutes(metrics?.totalRuntimeMinutes || 0)}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -322,9 +312,9 @@ export default function MachineUtilisation() {
             <div className="flex items-center gap-3">
               <AlertTriangle className="h-8 w-8 text-amber-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Below Threshold</p>
+                <p className="text-sm text-muted-foreground">Total Downtime</p>
                 <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                  {summary.belowThreshold}
+                  {loading ? "—" : formatMinutes(metrics?.totalDowntimeMinutes || 0)}
                 </p>
               </div>
             </div>
@@ -334,11 +324,11 @@ export default function MachineUtilisation() {
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-8 w-8 text-red-500" />
+              <Trash2 className="h-8 w-8 text-red-500" />
               <div>
-                <p className="text-sm text-muted-foreground">Needs Review</p>
+                <p className="text-sm text-muted-foreground">Total Scrap</p>
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {summary.needingReview}
+                  {loading ? "—" : `${metrics?.totalRejections?.toLocaleString() || 0} pcs`}
                 </p>
               </div>
             </div>
@@ -346,205 +336,310 @@ export default function MachineUtilisation() {
         </Card>
       </div>
 
-      {/* Formula explanation */}
-      <Card className="bg-muted/30 border-dashed">
-        <CardContent className="py-3">
-          <p className="text-xs font-mono text-muted-foreground">
-            <span className="font-semibold text-foreground">Utilisation %</span> = (Actual Runtime ÷ Expected Runtime) × 100 | 
-            <span className="font-semibold text-foreground ml-2">Expected</span> = Gross Shift Time (from logs or default {formatMinutes(DEFAULT_SHIFT_MINUTES)})
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Utilisation Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Percent className="h-5 w-5" />
-            Machine Utilisation for {format(reviewDate, "PPP")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : utilisationData.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No machine data for this date.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Machine</TableHead>
-                    <TableHead className="text-right">Expected</TableHead>
-                    <TableHead className="text-right">Actual</TableHead>
-                    <TableHead className="w-[200px]">Utilisation</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {utilisationData.map((data) => (
-                    <TableRow key={data.machineId} className={data.needsReview ? "bg-red-50 dark:bg-red-950/20" : ""}>
-                      <TableCell>
-                        <span className="font-mono text-sm font-medium">
-                          {data.machineName}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatMinutes(data.expectedRuntime)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatMinutes(data.actualRuntime)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className={cn("font-bold", getUtilisationColor(data.utilisationPct))}>
-                              {data.utilisationPct}%
-                            </span>
-                          </div>
-                          <Progress 
-                            value={Math.min(data.utilisationPct, 100)} 
-                            className="h-2"
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {data.utilisationPct >= threshold ? (
-                          <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                            OK
-                          </Badge>
-                        ) : data.review?.reason ? (
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                            Reviewed
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive">
-                            Needs Review
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {data.review?.reason || "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant={data.needsReview ? "default" : "ghost"}
-                          onClick={() => openReviewDialog(data)}
-                        >
-                          {data.review?.reason ? "Edit" : "Review"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Review Dialog */}
-      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Review Utilisation - {selectedMachine?.machineName}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {selectedMachine && (
-            <div className="space-y-4">
-              {/* Summary */}
-              <div className="grid grid-cols-3 gap-4 text-center p-4 bg-muted/50 rounded-lg">
-                <div>
-                  <p className="text-xs text-muted-foreground">Expected</p>
-                  <p className="font-mono font-medium">{formatMinutes(selectedMachine.expectedRuntime)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Actual</p>
-                  <p className="font-mono font-medium">{formatMinutes(selectedMachine.actualRuntime)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Utilisation</p>
-                  <p className={cn("font-bold", getUtilisationColor(selectedMachine.utilisationPct))}>
-                    {selectedMachine.utilisationPct}%
-                  </p>
-                </div>
-              </div>
-
-              {/* Reason */}
-              <div className="space-y-2">
-                <Label htmlFor="reason">Reason for Low Utilisation *</Label>
-                <Textarea
-                  id="reason"
-                  placeholder="e.g., No job scheduled, Tool change, Maintenance..."
-                  value={reviewReason}
-                  onChange={(e) => setReviewReason(e.target.value)}
-                  rows={3}
-                />
-              </div>
-
-              {/* Action Taken */}
-              <div className="space-y-2">
-                <Label htmlFor="action">Action Taken (Optional)</Label>
-                <Textarea
-                  id="action"
-                  placeholder="e.g., Rescheduled jobs, Requested maintenance..."
-                  value={reviewAction}
-                  onChange={(e) => setReviewAction(e.target.value)}
-                  rows={2}
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmitReview} disabled={submitting}>
-              {submitting ? "Saving..." : "Save Review"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Settings Dialog */}
-      <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Utilisation Settings</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="space-y-4">
-              <Label>Utilisation Threshold: {threshold}%</Label>
-              <Slider
-                value={[threshold]}
-                onValueChange={(v) => setThreshold(v[0])}
-                min={50}
-                max={95}
-                step={5}
-              />
-              <p className="text-xs text-muted-foreground">
-                Machines below this threshold will be flagged for review.
-              </p>
-            </div>
+      {loading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-[300px] w-full" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <Skeleton className="h-[300px]" />
+            <Skeleton className="h-[300px]" />
           </div>
-          <DialogFooter>
-            <Button onClick={() => setShowSettings(false)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : (
+        <>
+          {/* Utilisation Trend Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Utilisation Trend ({period === "daily" ? "Last 7 Days" : period === "weekly" ? "Last 4 Weeks" : "Last 3 Months"})
+              </CardTitle>
+              <CardDescription>
+                Runtime vs downtime and utilisation percentage over time
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {utilisationTrend.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No data available for the selected period
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={utilisationTrend}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="date" className="text-xs" />
+                    <YAxis yAxisId="left" className="text-xs" />
+                    <YAxis yAxisId="right" orientation="right" domain={[0, 100]} className="text-xs" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--popover))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                      }}
+                      labelStyle={{ color: 'hsl(var(--foreground))' }}
+                    />
+                    <Legend />
+                    <Bar yAxisId="left" dataKey="runtime" name="Runtime (min)" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="downtime" name="Downtime (min)" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="utilization" name="Utilisation %" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981' }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Two Column Layout: Downtime Pareto & Scrap by Machine */}
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Downtime Breakdown by Category */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Downtime by Category (Pareto)
+                </CardTitle>
+                <CardDescription>
+                  Total downtime grouped by reason category
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {downtimeByCategory.length === 0 ? (
+                  <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                    No downtime recorded
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={downtimeByCategory} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis type="number" className="text-xs" />
+                      <YAxis dataKey="category" type="category" width={80} className="text-xs" />
+                      <Tooltip 
+                        formatter={(value: number) => [`${formatMinutes(value * 60)}`, 'Duration']}
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--popover))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px',
+                        }}
+                      />
+                      <Bar dataKey="hours" name="Hours" radius={[0, 4, 4, 0]}>
+                        {downtimeByCategory.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+
+                {/* Category Legend */}
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {downtimeByCategory.slice(0, 5).map((cat) => (
+                    <Badge key={cat.category} variant="secondary" style={{ backgroundColor: `${cat.color}20`, color: cat.color }}>
+                      {cat.category}: {cat.hours}h
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Scrap Contribution by Machine */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  Scrap by Machine
+                </CardTitle>
+                <CardDescription>
+                  Rejection contribution from each machine
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {scrapByMachine.length === 0 ? (
+                  <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                    No scrap recorded
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={scrapByMachine.slice(0, 8)} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis type="number" className="text-xs" />
+                      <YAxis dataKey="name" type="category" width={60} className="text-xs" />
+                      <Tooltip 
+                        formatter={(value: number, name: string) => [
+                          name === 'scrap' ? `${value} pcs` : `${value}%`,
+                          name === 'scrap' ? 'Scrap Qty' : 'Scrap %'
+                        ]}
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--popover))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px',
+                        }}
+                      />
+                      <Bar dataKey="scrap" name="Scrap Qty" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Machine Utilisation Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Machine Utilisation Breakdown
+              </CardTitle>
+              <CardDescription>
+                Detailed utilisation metrics per machine for the selected period
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {machineUtilisation.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No machine data for this period.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Machine</TableHead>
+                        <TableHead className="text-right">Expected</TableHead>
+                        <TableHead className="text-right">Runtime</TableHead>
+                        <TableHead className="text-right">Downtime</TableHead>
+                        <TableHead className="w-[200px]">Utilisation</TableHead>
+                        <TableHead className="text-right">Efficiency</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {machineUtilisation.map((machine) => (
+                        <TableRow key={machine.fullName}>
+                          <TableCell>
+                            <span className="font-mono text-sm font-medium">
+                              {machine.name}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {formatMinutes(machine.expected)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {formatMinutes(machine.runtime)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm text-amber-600 dark:text-amber-400">
+                            {formatMinutes(machine.downtime)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className={cn("font-bold", getUtilisationColor(machine.utilization))}>
+                                  {Math.round(machine.utilization)}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                                <div 
+                                  className={cn("h-full transition-all", getProgressColor(machine.utilization))}
+                                  style={{ width: `${Math.min(machine.utilization, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={machine.efficiency >= 80 ? "secondary" : "outline"}>
+                              {Math.round(machine.efficiency)}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Downtime Details Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Downtime Breakdown by Reason
+              </CardTitle>
+              <CardDescription>
+                Individual downtime reasons sorted by duration
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(!metrics?.downtimePareto || metrics.downtimePareto.length === 0) ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No downtime events recorded.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Duration</TableHead>
+                        <TableHead className="w-[200px]">% of Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {metrics.downtimePareto.slice(0, 15).map((dt) => {
+                        const category = getCategoryForReason(dt.reason);
+                        return (
+                          <TableRow key={dt.reason}>
+                            <TableCell className="font-medium">{dt.reason}</TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant="secondary" 
+                                style={{ 
+                                  backgroundColor: `${CATEGORY_COLORS[category]}20`, 
+                                  color: CATEGORY_COLORS[category] 
+                                }}
+                              >
+                                {category}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatMinutes(dt.minutes)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="w-full bg-muted rounded-full h-2 overflow-hidden flex-1">
+                                  <div 
+                                    className="h-full bg-primary transition-all"
+                                    style={{ width: `${Math.min(dt.percent, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm text-muted-foreground w-12 text-right">
+                                  {Math.round(dt.percent)}%
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Formula explanation */}
+          <Card className="bg-muted/30 border-dashed">
+            <CardContent className="py-3">
+              <p className="text-xs font-mono text-muted-foreground">
+                <span className="font-semibold text-foreground">Formulas:</span>{" "}
+                Utilisation % = (Runtime ÷ Expected) × 100 | 
+                Scrap % = (Rejections ÷ Total Produced) × 100 | 
+                All data from daily_production_logs
+              </p>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
