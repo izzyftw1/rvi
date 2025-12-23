@@ -96,7 +96,6 @@ export const navigationGroups: NavGroup[] = [
       // === Entry Points (Data Sources) ===
       { label: "Work Orders", path: "/work-orders", icon: Search },
       { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
-      { label: "CNC Programmer Activity", path: "/cnc-programmer-activity", icon: Cpu },
       { label: "Cutting", path: "/cutting", icon: Scissors },
       { label: "Forging", path: "/forging", icon: Flame },
       // === Dashboards (Read-Only Views) ===
