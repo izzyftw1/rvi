@@ -71,6 +71,19 @@ export const QCActionDrawer = ({
     }
   };
 
+  // Generate a unique QC ID
+  const generateQCId = (type: string): string => {
+    const prefixes: Record<string, string> = {
+      'incoming': 'QC-MAT',
+      'first_piece': 'QC-FP',
+      'in_process': 'QC-IP',
+      'final': 'QC-FIN'
+    };
+    const prefix = prefixes[type] || 'QC';
+    const timestamp = Date.now().toString(36).toUpperCase();
+    return `${prefix}-${timestamp}`;
+  };
+
   const handleQCAction = async (action: 'passed' | 'failed' | 'waived') => {
     if (action === 'waived' && !waiveReason.trim()) {
       toast.error('Please provide a reason for waiving this QC stage');
@@ -81,46 +94,107 @@ export const QCActionDrawer = ({
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Find existing QC record or create new one
-      const { data: existingQC } = await supabase
+      // Find existing QC record (use maybeSingle to avoid error when none exists)
+      const { data: existingQC, error: fetchError } = await supabase
         .from('qc_records')
-        .select('id')
+        .select('id, qc_id')
         .eq('wo_id', woId)
         .eq('qc_type', qcType)
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      // Map action to database value
-      const dbResult = action === 'failed' ? 'fail' as const : action === 'passed' ? 'pass' as const : 'pending' as const;
+      if (fetchError) throw fetchError;
 
-      const qcData: any = {
-        wo_id: woId,
-        qc_type: qcType,
-        result: dbResult,
-        remarks: remarks || null,
-        waive_reason: action === 'waived' ? waiveReason : null,
-        approved_by: user?.id || null,
-        approved_at: new Date().toISOString(),
-        tested_on: new Date().toISOString(),
-        file_upload_url: uploadedFileUrl || null,
-        digital_signature: {
-          user_id: user?.id,
-          timestamp: new Date().toISOString()
-        }
-      };
+      // Map action to database value - waived should store as 'pass' with waive_reason populated
+      const dbResult = action === 'failed' ? 'fail' as const : 'pass' as const;
+
+      const timestamp = new Date().toISOString();
 
       if (existingQC) {
+        // Update existing record
         const { error } = await supabase
           .from('qc_records')
-          .update(qcData)
+          .update({
+            result: dbResult,
+            remarks: remarks || null,
+            waive_reason: action === 'waived' ? waiveReason : null,
+            approved_by: user?.id || null,
+            approved_at: timestamp,
+            tested_on: timestamp,
+            file_upload_url: uploadedFileUrl || null,
+            digital_signature: {
+              user_id: user?.id,
+              timestamp: timestamp,
+              action: action
+            }
+          })
           .eq('id', existingQC.id);
         
         if (error) throw error;
       } else {
+        // Create new record with generated qc_id
+        const newQcId = generateQCId(qcType);
         const { error } = await supabase
           .from('qc_records')
-          .insert([qcData]);
+          .insert([{
+            qc_id: newQcId,
+            wo_id: woId,
+            qc_type: qcType,
+            result: dbResult,
+            remarks: remarks || null,
+            waive_reason: action === 'waived' ? waiveReason : null,
+            approved_by: user?.id || null,
+            approved_at: timestamp,
+            tested_on: timestamp,
+            file_upload_url: uploadedFileUrl || null,
+            digital_signature: {
+              user_id: user?.id,
+              timestamp: timestamp,
+              action: action
+            }
+          }]);
         
         if (error) throw error;
+      }
+
+      // Also update work_order QC status fields for consistency
+      const statusValue = action === 'waived' ? 'waived' : action === 'passed' ? 'passed' : 'failed';
+      const woUpdateData: Record<string, any> = {};
+      
+      if (qcType === 'incoming') {
+        woUpdateData.qc_material_status = statusValue;
+        woUpdateData.qc_material_passed = action === 'passed' || action === 'waived';
+        woUpdateData.qc_material_approved_by = user?.id;
+        woUpdateData.qc_material_approved_at = timestamp;
+        woUpdateData.qc_material_remarks = remarks || null;
+        // Also update legacy field
+        woUpdateData.qc_raw_material_status = statusValue;
+        woUpdateData.qc_raw_material_approved_by = user?.id;
+        woUpdateData.qc_raw_material_approved_at = timestamp;
+        woUpdateData.qc_raw_material_remarks = remarks || null;
+      } else if (qcType === 'first_piece') {
+        woUpdateData.qc_first_piece_status = statusValue;
+        woUpdateData.qc_first_piece_passed = action === 'passed' || action === 'waived';
+        woUpdateData.qc_first_piece_approved_by = user?.id;
+        woUpdateData.qc_first_piece_approved_at = timestamp;
+        woUpdateData.qc_first_piece_remarks = remarks || null;
+      } else if (qcType === 'final') {
+        woUpdateData.qc_final_status = statusValue;
+        woUpdateData.qc_final_approved_by = user?.id;
+        woUpdateData.qc_final_approved_at = timestamp;
+        woUpdateData.qc_final_remarks = remarks || null;
+      }
+
+      if (Object.keys(woUpdateData).length > 0) {
+        const { error: woError } = await supabase
+          .from('work_orders')
+          .update(woUpdateData)
+          .eq('id', woId);
+        
+        if (woError) {
+          console.error('Failed to update work order QC status:', woError);
+        }
       }
 
       toast.success(`${stageLabels[qcType]} marked as ${action}`);

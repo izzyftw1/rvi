@@ -711,12 +711,43 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   };
 
   if (disabled) {
+    // Determine specific reason for blocking
+    const materialStatus = propWorkOrder?.qc_material_status || propWorkOrder?.qc_raw_material_status || 'pending';
+    const firstPieceStatus = propWorkOrder?.qc_first_piece_status || 'pending';
+    const isReleased = propWorkOrder?.production_release_status === 'RELEASED';
+    
+    const materialPending = materialStatus === 'pending' || materialStatus === 'failed';
+    const firstPiecePending = firstPieceStatus === 'pending' || firstPieceStatus === 'failed';
+    
+    let blockReason = 'Production logging is blocked.';
+    const reasons: string[] = [];
+    
+    if (!isReleased) {
+      reasons.push('Work order must be released for production');
+    }
+    if (materialPending) {
+      reasons.push(`Material QC is ${materialStatus}`);
+    }
+    if (firstPiecePending) {
+      reasons.push(`First Piece QC is ${firstPieceStatus}`);
+    }
+    
     return (
-      <Card className="border-muted">
+      <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
         <CardContent className="p-4">
-          <p className="text-sm text-muted-foreground">
-            Production logging is blocked. Work order must be released and QC gates must pass.
-          </p>
+          <div className="flex items-start gap-3">
+            <Lock className="h-5 w-5 text-amber-600 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                {blockReason}
+              </p>
+              {reasons.length > 0 && (
+                <ul className="text-xs text-amber-700 dark:text-amber-300 list-disc list-inside space-y-0.5">
+                  {reasons.map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
