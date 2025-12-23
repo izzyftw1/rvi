@@ -238,8 +238,8 @@ const WorkOrderRow = memo(({
   const hasIssue = isCritical || isWarning;
   const isExternal = externalWipTotal > 0;
   
-  // Human-readable WO code
-  const woCode = wo.wo_number || wo.display_id || `WO-${wo.id?.slice(0, 8)}`;
+  // Human-readable WO code - wo_number is the primary identifier (WO-YYYY-XXXXX)
+  const woCode = wo.wo_number;
 
   return (
     <div 

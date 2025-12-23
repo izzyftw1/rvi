@@ -17,9 +17,7 @@ import { cn } from "@/lib/utils";
 
 interface WorkOrderSummaryProps {
   workOrder: {
-    wo_number?: string;
-    display_id?: string;
-    wo_id?: string;
+    wo_number: string;  // Primary identifier: WO-YYYY-XXXXX
     id?: string;
     item_code?: string;
     customer?: string;
@@ -44,7 +42,8 @@ const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; col
 const ALL_STAGES = ['goods_in', 'material_prep', 'production', 'external', 'qc', 'packing', 'dispatch'];
 
 export function WorkOrderSummary({ workOrder }: WorkOrderSummaryProps) {
-  const humanReadableRef = workOrder.wo_number || workOrder.display_id || `WO-${workOrder.id?.slice(0, 8)}`;
+  // wo_number is the primary immutable identifier (format: WO-YYYY-XXXXX)
+  const humanReadableRef = workOrder.wo_number;
   const systemId = workOrder.id;
   
   const currentStage = workOrder.current_stage || 'goods_in';
