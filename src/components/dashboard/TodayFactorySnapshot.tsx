@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   ClipboardList, 
   Cpu, 
   Target, 
   AlertTriangle, 
   ClipboardCheck,
-  TrendingUp
+  TrendingUp,
+  Info
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -154,11 +156,20 @@ export const TodayFactorySnapshot = () => {
   }
 
   return (
+    <TooltipProvider>
     <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold text-foreground">Today's Factory Snapshot</h3>
+          <Tooltip>
+            <TooltipTrigger>
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">Read-only metrics derived from Production Logs</p>
+            </TooltipContent>
+          </Tooltip>
           <span className="text-[10px] text-muted-foreground ml-auto">
             {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
           </span>
@@ -262,5 +273,6 @@ export const TodayFactorySnapshot = () => {
         </div>
       </CardContent>
     </Card>
+    </TooltipProvider>
   );
 };

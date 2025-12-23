@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
-import { CalendarIcon, Users, TrendingUp, Clock, Target, XCircle, Download } from "lucide-react";
+import { CalendarIcon, Users, TrendingUp, Clock, Target, XCircle, Download, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -228,8 +228,14 @@ export default function OperatorEfficiency() {
     <div className="container mx-auto p-4 space-y-6">
       <PageHeader
         title="Operator Efficiency"
-        description="Read-only analytics derived from Daily Production Logs"
+        description="Read-only analytics derived from Daily Production Logs — no manual overrides"
       />
+
+      {/* Read-only notice */}
+      <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
+        <Info className="h-4 w-4 shrink-0" />
+        <span>All metrics on this page are calculated from production log entries. Data cannot be manually edited.</span>
+      </div>
 
       {/* Controls */}
       <Card>

@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 
 import { toast } from "sonner";
-import { Download, ChevronDown, ChevronUp, FileText, Filter } from "lucide-react";
+import { Download, ChevronDown, ChevronUp, FileText, Filter, Info } from "lucide-react";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -394,7 +394,10 @@ export default function MachineRuntime() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Machine Runtime Report</h1>
-            <p className="text-muted-foreground">OEE metrics and runtime analysis</p>
+            <p className="text-muted-foreground flex items-center gap-1">
+              <Info className="h-3 w-3" />
+              OEE metrics derived from production logs — read-only analytics
+            </p>
           </div>
           <div className="flex gap-2">
             <Button onClick={exportCSV} variant="outline">
