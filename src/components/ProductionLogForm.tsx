@@ -336,7 +336,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   // ==========================================
   // LAYER 1: AUTO-PULLED & LOCKED VALUES
   // ==========================================
-  const workOrderNo = propWorkOrder?.display_id || "—";
+  const workOrderNo = propWorkOrder?.wo_number || "—";
   const partyCode = propWorkOrder?.customer || "—";
   const productDescription = propWorkOrder?.item_code || "—";
   const drawingNumber = propWorkOrder?.revision || "—";
@@ -358,8 +358,8 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     if (overrideSetup && setupOverrideValue) {
       return setupOverrideValue;
     }
-    return propWorkOrder?.display_id ? `${propWorkOrder.display_id}-S1` : "";
-  }, [overrideSetup, setupOverrideValue, propWorkOrder?.display_id]);
+    return propWorkOrder?.wo_number ? `${propWorkOrder.wo_number}-S1` : "";
+  }, [overrideSetup, setupOverrideValue, propWorkOrder?.wo_number]);
 
   // ==========================================
   // LAYER 3: SYSTEM-CALCULATED OUTPUTS
@@ -895,7 +895,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
 
               <OverridableField
                 label="Setup No"
-                autoValue={propWorkOrder?.display_id ? `${propWorkOrder.display_id}-S1` : null}
+                autoValue={propWorkOrder?.wo_number ? `${propWorkOrder.wo_number}-S1` : null}
                 overrideValue={setupOverrideValue}
                 onOverrideChange={setSetupOverrideValue}
                 isOverriding={overrideSetup}

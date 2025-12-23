@@ -192,7 +192,7 @@ const FinalQCList = () => {
                 {filteredWorkOrders.map((wo) => (
                   <TableRow key={wo.id} className={wo.quality_released ? "bg-green-50/50 dark:bg-green-900/10" : ""}>
                     <TableCell className="font-medium">
-                      {wo.display_id || wo.wo_number || wo.id.slice(0, 8)}
+                      {wo.wo_number}
                     </TableCell>
                     <TableCell>{wo.customer || "-"}</TableCell>
                     <TableCell>{wo.item_code || "-"}</TableCell>

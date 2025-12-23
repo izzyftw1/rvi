@@ -24,8 +24,7 @@ interface ProductionMetrics {
 
 interface WorkOrderQCSummary {
   id: string;
-  wo_id: string;
-  display_id: string;
+  wo_number: string;
   customer: string;
   item_code: string;
   status: string;
@@ -60,7 +59,7 @@ const Quality = () => {
       const { data: workOrders, error: woError } = await supabase
         .from("work_orders")
         .select(`
-          id, wo_id, display_id, customer, item_code, status,
+          id, wo_number, customer, item_code, status,
           qc_material_status, qc_first_piece_status
         `)
         .in('status', ['pending', 'in_progress', 'qc', 'packing'])
@@ -137,8 +136,7 @@ const Quality = () => {
         const prodMetrics = productionByWo.get(wo.id) || null;
         return {
           id: wo.id,
-          wo_id: wo.wo_id,
-          display_id: wo.display_id || wo.wo_id,
+          wo_number: wo.wo_number,
           customer: wo.customer,
           item_code: wo.item_code,
           status: wo.status,
@@ -257,7 +255,7 @@ const Quality = () => {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
                     >
-                      <TableCell className="font-medium">{wo.display_id}</TableCell>
+                      <TableCell className="font-medium">{wo.wo_number}</TableCell>
                       <TableCell>{wo.customer}</TableCell>
                       <TableCell>{wo.item_code}</TableCell>
                       <TableCell><QCStatusIndicator status={wo.qc_material_status as any} size="sm" /></TableCell>
@@ -319,7 +317,7 @@ const Quality = () => {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
                     >
-                      <TableCell className="font-medium">{wo.display_id}</TableCell>
+                      <TableCell className="font-medium">{wo.wo_number}</TableCell>
                       <TableCell>{wo.customer}</TableCell>
                       <TableCell>{wo.item_code}</TableCell>
                       <TableCell>

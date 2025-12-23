@@ -9,8 +9,7 @@ import { cn } from "@/lib/utils";
 
 interface QueuedWorkOrder {
   id: string;
-  wo_id: string;
-  display_id: string;
+  wo_number: string;
   item_code: string;
   quantity: number;
   customer: string;
@@ -77,7 +76,7 @@ export const MachineUtilizationDashboard = () => {
         .select(`
           machine_id,
           machines(machine_id, name),
-          work_orders(id, wo_id, display_id, item_code, quantity, customer),
+          work_orders(id, wo_number, item_code, quantity, customer),
           scheduled_start,
           scheduled_end
         `)
@@ -300,7 +299,7 @@ export const MachineUtilizationDashboard = () => {
                                 className="w-full flex items-center justify-between p-2 rounded bg-background hover:bg-muted/50 transition-colors text-left"
                               >
                                 <div>
-                                  <span className="font-mono text-sm font-semibold">{wo.display_id}</span>
+                                  <span className="font-mono text-sm font-semibold">{wo.wo_number}</span>
                                   <span className="text-xs text-muted-foreground ml-2">{wo.item_code}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -375,7 +374,7 @@ export const MachineUtilizationDashboard = () => {
                                 className="w-full flex items-center justify-between p-2 rounded bg-background hover:bg-muted/50 transition-colors text-left"
                               >
                                 <div>
-                                  <span className="font-mono text-sm font-semibold">{wo.display_id}</span>
+                                  <span className="font-mono text-sm font-semibold">{wo.wo_number}</span>
                                   <span className="text-xs text-muted-foreground ml-2">{wo.item_code}</span>
                                 </div>
                                 <div className="flex items-center gap-2">

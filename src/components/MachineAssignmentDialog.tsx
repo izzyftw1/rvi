@@ -235,7 +235,7 @@ export const MachineAssignmentDialog = ({
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="text-muted-foreground">WO ID:</span>{" "}
-                  {workOrder.display_id || workOrder.wo_id}
+                  {workOrder.wo_number}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Item:</span> {workOrder.item_code}

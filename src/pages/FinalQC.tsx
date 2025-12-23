@@ -308,7 +308,7 @@ const FinalQC = () => {
   return (
     <PageContainer>
       <PageHeader
-        title={`Final QC: ${workOrder.display_id || workOrder.wo_number || woId.slice(0, 8)}`}
+        title={`Final QC: ${workOrder.wo_number}`}
         description={`${workOrder.customer} - ${workOrder.item_code}`}
         icon={<ClipboardCheck className="h-6 w-6" />}
       >
@@ -554,7 +554,7 @@ const FinalQC = () => {
           {isReleased && (
             <FinalDispatchReportGenerator
               woId={woId!}
-              woNumber={workOrder.display_id || workOrder.wo_number || ""}
+              woNumber={workOrder.wo_number}
               customer={workOrder.customer}
               itemCode={workOrder.item_code}
               quantity={workOrder.quantity}

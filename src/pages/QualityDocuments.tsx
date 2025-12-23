@@ -30,7 +30,7 @@ interface QCFinalReport {
   generated_at: string;
   remarks: string | null;
   work_orders?: {
-    display_id: string;
+    wo_number: string;
     customer: string;
     item_code: string;
   };
@@ -46,7 +46,7 @@ interface NCRDocument {
   closed_at: string | null;
   work_order_id: string | null;
   work_orders?: {
-    display_id: string;
+    wo_number: string;
   } | null;
 }
 
@@ -80,7 +80,7 @@ export default function QualityDocuments() {
       if (woIds.length > 0) {
         const { data: workOrders } = await supabase
           .from("work_orders")
-          .select("id, display_id, customer, item_code")
+          .select("id, wo_number, customer, item_code")
           .in("id", woIds);
         (workOrders || []).forEach(wo => {
           woMap[wo.id] = wo;
@@ -109,7 +109,7 @@ export default function QualityDocuments() {
       if (ncrWoIds.length > 0) {
         const { data: ncrWorkOrders } = await supabase
           .from("work_orders")
-          .select("id, display_id")
+          .select("id, wo_number")
           .in("id", ncrWoIds);
         (ncrWorkOrders || []).forEach(wo => {
           ncrWoMap[wo.id] = wo;
@@ -145,7 +145,7 @@ export default function QualityDocuments() {
   };
 
   const filteredReports = finalReports.filter(r => 
-    r.work_orders?.display_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.work_orders?.wo_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.work_orders?.customer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.work_orders?.item_code?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -153,7 +153,7 @@ export default function QualityDocuments() {
   const filteredNCRs = ncrDocuments.filter(n =>
     n.ncr_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     n.issue_description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    n.work_orders?.display_id?.toLowerCase().includes(searchTerm.toLowerCase())
+    n.work_orders?.wo_number?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -235,7 +235,7 @@ export default function QualityDocuments() {
                       {filteredReports.map((report) => (
                         <TableRow key={report.id}>
                           <TableCell className="font-medium">
-                            {report.work_orders?.display_id || "-"}
+                            {report.work_orders?.wo_number || "-"}
                           </TableCell>
                           <TableCell>{report.work_orders?.customer || "-"}</TableCell>
                           <TableCell>{report.work_orders?.item_code || "-"}</TableCell>
@@ -309,7 +309,7 @@ export default function QualityDocuments() {
                       {filteredNCRs.map((ncr) => (
                         <TableRow key={ncr.id}>
                           <TableCell className="font-medium">{ncr.ncr_number}</TableCell>
-                          <TableCell>{ncr.work_orders?.display_id || "-"}</TableCell>
+                          <TableCell>{ncr.work_orders?.wo_number || "-"}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">
                               {ncr.ncr_type || "-"}
