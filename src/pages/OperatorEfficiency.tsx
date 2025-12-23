@@ -170,51 +170,57 @@ export default function OperatorEfficiency() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Build query with filters
+      // Build query directly from daily_production_logs
       let query = supabase
-        .from("operator_production_ledger")
+        .from("daily_production_logs")
         .select(`
           id,
-          production_log_id,
           operator_id,
           machine_id,
-          runtime_minutes,
-          actual_qty,
-          ok_qty,
-          rejection_qty,
-          target_qty,
-          efficiency_pct,
-          operator:operator_id(full_name),
-          machine:machine_id(name, machine_id)
+          actual_runtime_minutes,
+          actual_quantity,
+          ok_quantity,
+          total_rejection_quantity,
+          target_quantity,
+          efficiency_percentage,
+          operation_code,
+          machines:machine_id(name, machine_id)
         `)
         .gte("log_date", dateRange.start)
-        .lte("log_date", dateRange.end);
+        .lte("log_date", dateRange.end)
+        .not("operator_id", "is", null);
 
       if (selectedMachine !== "all") {
         query = query.eq("machine_id", selectedMachine);
       }
 
-      const { data: ledgerData, error } = await query;
+      const { data: logsData, error } = await query;
 
       if (error) throw error;
 
-      // If process filter is active, we need to filter by checking production logs
-      let filteredData = ledgerData || [];
+      // Get operator names
+      const operatorIds = [...new Set((logsData || []).map(l => l.operator_id).filter(Boolean))];
+      let operatorNames: Record<string, string> = {};
+      
+      if (operatorIds.length > 0) {
+        const { data: people } = await supabase
+          .from("people")
+          .select("id, full_name")
+          .in("id", operatorIds);
+        
+        operatorNames = (people || []).reduce((acc, p) => {
+          acc[p.id] = p.full_name || "Unknown";
+          return acc;
+        }, {} as Record<string, string>);
+      }
+
+      // Filter by process if needed
+      let filteredData = logsData || [];
       
       if (selectedProcess !== "all" && filteredData.length > 0) {
-        const logIds = [...new Set(filteredData.map(d => d.production_log_id))];
-        const { data: logs } = await supabase
-          .from("daily_production_logs")
-          .select("id, operation_code")
-          .in("id", logIds);
-        
-        const matchingLogIds = new Set(
-          (logs || [])
-            .filter(log => log.operation_code?.toLowerCase().includes(selectedProcess.toLowerCase()))
-            .map(log => log.id)
+        filteredData = filteredData.filter(log => 
+          log.operation_code?.toLowerCase().includes(selectedProcess.toLowerCase())
         );
-        
-        filteredData = filteredData.filter(d => matchingLogIds.has(d.production_log_id));
       }
 
       // Aggregate data by operator
@@ -225,34 +231,35 @@ export default function OperatorEfficiency() {
 
         const key = entry.operator_id;
         const existing = aggregatedMap.get(key);
+        const machineName = entry.machines?.machine_id || entry.machines?.name || "Unknown";
 
         if (existing) {
-          existing.totalRuntimeMinutes += entry.runtime_minutes || 0;
-          existing.totalActualQuantity += entry.actual_qty || 0;
-          existing.totalOkQuantity += entry.ok_qty || 0;
-          existing.totalRejectionQuantity += entry.rejection_qty || 0;
-          existing.totalTargetQuantity += entry.target_qty || 0;
+          existing.totalRuntimeMinutes += entry.actual_runtime_minutes || 0;
+          existing.totalActualQuantity += entry.actual_quantity || 0;
+          existing.totalOkQuantity += entry.ok_quantity || 0;
+          existing.totalRejectionQuantity += entry.total_rejection_quantity || 0;
+          existing.totalTargetQuantity += entry.target_quantity || 0;
           existing.logCount++;
-          existing.productionLogIds.push(entry.production_log_id);
+          existing.productionLogIds.push(entry.id);
           // Track all machines used
-          if (entry.machine?.machine_id && !existing.machineName.includes(entry.machine.machine_id)) {
-            existing.machineName += `, ${entry.machine.machine_id}`;
+          if (machineName && !existing.machineName.includes(machineName)) {
+            existing.machineName += `, ${machineName}`;
           }
         } else {
           aggregatedMap.set(key, {
             operatorId: entry.operator_id,
-            operatorName: entry.operator?.full_name || "Unknown",
+            operatorName: operatorNames[entry.operator_id] || "Unknown",
             machineId: entry.machine_id,
-            machineName: entry.machine?.machine_id || "Unknown",
-            totalRuntimeMinutes: entry.runtime_minutes || 0,
-            totalActualQuantity: entry.actual_qty || 0,
-            totalOkQuantity: entry.ok_qty || 0,
-            totalRejectionQuantity: entry.rejection_qty || 0,
-            totalTargetQuantity: entry.target_qty || 0,
+            machineName: machineName,
+            totalRuntimeMinutes: entry.actual_runtime_minutes || 0,
+            totalActualQuantity: entry.actual_quantity || 0,
+            totalOkQuantity: entry.ok_quantity || 0,
+            totalRejectionQuantity: entry.total_rejection_quantity || 0,
+            totalTargetQuantity: entry.target_quantity || 0,
             efficiencyPercentage: 0,
             scrapPercentage: 0,
             logCount: 1,
-            productionLogIds: [entry.production_log_id],
+            productionLogIds: [entry.id],
           });
         }
       });
@@ -261,7 +268,7 @@ export default function OperatorEfficiency() {
       const result = Array.from(aggregatedMap.values()).map((entry) => ({
         ...entry,
         efficiencyPercentage: entry.totalTargetQuantity > 0
-          ? Math.round((entry.totalActualQuantity / entry.totalTargetQuantity) * 100 * 10) / 10
+          ? Math.round((entry.totalOkQuantity / entry.totalTargetQuantity) * 100 * 10) / 10
           : 0,
         scrapPercentage: entry.totalActualQuantity > 0
           ? Math.round((entry.totalRejectionQuantity / entry.totalActualQuantity) * 100 * 10) / 10
@@ -369,13 +376,17 @@ export default function OperatorEfficiency() {
     <div className="container mx-auto p-4 space-y-6">
       <PageHeader
         title="Operator Efficiency"
-        description="Analytics derived from Operator Production Ledger"
+        description="Historical analytics derived from Daily Production Logs"
       />
 
       {/* Read-only notice */}
-      <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
-        <Info className="h-4 w-4 shrink-0" />
-        <span>All metrics are calculated from production log entries. Click an operator row to drill down.</span>
+      <div className="bg-muted/50 border rounded-lg p-3 flex items-start gap-2 text-sm text-muted-foreground">
+        <Info className="h-4 w-4 shrink-0 mt-0.5" />
+        <div>
+          <span>All metrics are derived from Daily Production Logs. This is a read-only historical analytics view.</span>
+          <br />
+          <span className="text-xs">Efficiency = (OK Qty ÷ Target Qty) × 100 | Scrap % = (Rejection Qty ÷ Actual Qty) × 100</span>
+        </div>
       </div>
 
       {/* Controls */}
