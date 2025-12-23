@@ -876,9 +876,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                       <SelectValue placeholder="Select machine" />
                     </SelectTrigger>
                     <SelectContent>
-                      {machines.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.machine_id} - {m.name}</SelectItem>
-                      ))}
+                      {machines.length === 0 ? (
+                        <div className="px-2 py-1.5 text-sm text-muted-foreground">No machines available</div>
+                      ) : (
+                        machines.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.machine_id} - {m.name}</SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 ) : (
@@ -997,9 +1001,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                     <SelectValue placeholder="Select supervisor" />
                   </SelectTrigger>
                   <SelectContent>
-                    {supervisors.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                    ))}
+                    {supervisors.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">No supervisors available</div>
+                    ) : (
+                      supervisors.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1012,9 +1020,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                     <SelectValue placeholder="Select setter" />
                   </SelectTrigger>
                   <SelectContent>
-                    {setters.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                    ))}
+                    {setters.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">No setters available</div>
+                    ) : (
+                      setters.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1027,9 +1039,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
                     <SelectValue placeholder="Select QC supervisor" />
                   </SelectTrigger>
                   <SelectContent>
-                    {qcSupervisors.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                    ))}
+                    {qcSupervisors.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">No QC supervisors available</div>
+                    ) : (
+                      qcSupervisors.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
