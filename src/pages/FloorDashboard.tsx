@@ -14,12 +14,10 @@ import { NCRBlockerAlert } from "@/components/ncr/NCRBlockerAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Factory, 
-  TrendingUp, 
   Users, 
   AlertTriangle, 
   Clock, 
   ArrowRight,
-  Zap,
   CheckCircle,
   XCircle,
   RefreshCw,
@@ -155,7 +153,7 @@ const FloorDashboard = () => {
     if (lastUpdate > 0) loadData();
   }, [lastUpdate, loadData]);
 
-  // Calculate blocker stats
+  // Calculate blocker stats - LIVE STATE ONLY
   const blockerStats = useMemo(() => {
     const total = workOrders.length;
     const materialQcBlocked = workOrders.filter(wo => !wo.qc_material_passed).length;
@@ -166,12 +164,7 @@ const FloorDashboard = () => {
     const activeMachines = machines.filter(m => m.status === 'running' || m.current_wo_id).length;
     const idleMachines = machines.filter(m => m.status === 'idle' && !m.current_wo_id).length;
 
-    // Live efficiency from today's logs
-    const totalOk = productionLogs.reduce((sum, l) => sum + (l.ok_quantity || 0), 0);
-    const totalTarget = productionLogs.reduce((sum, l) => sum + (l.target_quantity || 0), 0);
-    const liveEfficiency = totalTarget > 0 ? Math.round((totalOk / totalTarget) * 100) : 0;
-
-    // Active operators today
+    // Active operators today (from today's logs for context)
     const activeOperators = new Set(productionLogs.map(l => l.operator_id).filter(Boolean)).size;
 
     return {
@@ -184,7 +177,6 @@ const FloorDashboard = () => {
       idleMachines,
       totalMachines: machines.length,
       blockedTotal: materialQcBlocked + firstPieceBlocked + externalBlocked,
-      liveEfficiency,
       activeOperators
     };
   }, [workOrders, externalMoves, machines, productionLogs]);
@@ -204,7 +196,7 @@ const FloorDashboard = () => {
               )}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Action-focused: What's blocked, why, and who owns it
+              Live operational state: blockers, machine status, queue depth
             </p>
           </div>
 
@@ -219,8 +211,8 @@ const FloorDashboard = () => {
           </Button>
         </div>
 
-        {/* Quick Stats Strip - Action Focused */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        {/* Live State Cards - Current Status Only (NOT historical) */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Card className={cn(
             "border-l-4",
             blockerStats.materialQcBlocked > 0 ? "border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-l-muted"
@@ -279,22 +271,6 @@ const FloorDashboard = () => {
                 {blockerStats.ready}
               </p>
               <p className="text-[10px] text-muted-foreground">Owner: Production</p>
-            </CardContent>
-          </Card>
-
-          <Card className={cn(
-            "border-l-4",
-            blockerStats.liveEfficiency > 0 ? "border-l-primary" : "border-l-muted"
-          )}>
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Live Efficiency</span>
-                <TrendingUp className={cn("h-4 w-4", blockerStats.liveEfficiency > 0 ? "text-primary" : "text-muted-foreground/30")} />
-              </div>
-              <p className={cn("text-xl font-bold", blockerStats.liveEfficiency >= 80 && "text-green-600", blockerStats.liveEfficiency < 80 && blockerStats.liveEfficiency > 0 && "text-amber-600")}>
-                {blockerStats.liveEfficiency}%
-              </p>
-              <p className="text-[10px] text-muted-foreground">{blockerStats.activeOperators} operators</p>
             </CardContent>
           </Card>
 
