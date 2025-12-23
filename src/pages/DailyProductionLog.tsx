@@ -207,7 +207,8 @@ function calculateTargetQuantity(runtimeMinutes: number, cycleTimeSeconds: numbe
 export default function DailyProductionLog() {
   const { toast } = useToast();
   const { hasAnyRole } = useUserRole();
-  const isSupervisor = hasAnyRole(['admin', 'ops_manager', 'super_admin']);
+  // Only admin roles can override calculated values
+  const isAdmin = hasAnyRole(['admin', 'super_admin']);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -861,6 +862,15 @@ export default function DailyProductionLog() {
                         Shift Time Tracking
                       </h3>
                       
+                      {/* Formula explanation banner */}
+                      <div className="p-3 bg-muted/50 rounded-lg border border-dashed">
+                        <p className="text-xs font-mono text-muted-foreground">
+                          <span className="font-semibold text-foreground">Gross Time</span> = End - Start | 
+                          <span className="font-semibold text-foreground ml-2">Actual Runtime</span> = Gross - Downtime | 
+                          <span className="font-semibold text-foreground ml-2">Target Qty</span> = (Runtime × 60) ÷ Cycle Time
+                        </p>
+                      </div>
+                      
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         {/* Shift Start Time */}
                         <FormField
@@ -892,12 +902,15 @@ export default function DailyProductionLog() {
                           )}
                         />
 
-                        {/* Calculated Shift Duration */}
+                        {/* Calculated Gross Time (Shift Duration) */}
                         <div className="space-y-2">
-                          <label className="text-sm font-medium">Shift Duration</label>
+                          <label className="text-sm font-medium">Gross Time</label>
                           <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center text-sm font-medium">
                             {formatMinutes(shiftDurationMinutes)}
                           </div>
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            = {shiftEndTime} - {shiftStartTime}
+                          </p>
                         </div>
 
                         {/* Actual Runtime (Auto-calculated) */}
@@ -906,6 +919,9 @@ export default function DailyProductionLog() {
                           <div className="h-10 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md flex items-center text-sm font-semibold text-green-700 dark:text-green-400">
                             {formatMinutes(actualRuntimeMinutes)}
                           </div>
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            = {formatMinutes(shiftDurationMinutes)} - {formatMinutes(totalDowntimeMinutes)}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1021,11 +1037,13 @@ export default function DailyProductionLog() {
                           <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center text-sm font-medium">
                             {calculatedTargetQuantity > 0 ? calculatedTargetQuantity.toLocaleString() : "-"}
                           </div>
-                          {selectedWO?.cycle_time_seconds && (
-                            <p className="text-xs text-muted-foreground">
-                              Based on {selectedWO.cycle_time_seconds}s cycle time
-                            </p>
-                          )}
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            {selectedWO?.cycle_time_seconds ? (
+                              <>= ({actualRuntimeMinutes} × 60) ÷ {selectedWO.cycle_time_seconds}s</>
+                            ) : (
+                              <>Select WO with cycle time</>
+                            )}
+                          </p>
                         </div>
 
                         {/* Effective Target (with override) */}
@@ -1092,9 +1110,9 @@ export default function DailyProductionLog() {
                           </div>
                         </div>
 
-                        {/* Target Override (Supervisor Only) */}
-                        {isSupervisor && (
-                          <div className="sm:col-span-2 space-y-3 p-3 border border-dashed rounded-lg">
+                        {/* Target Override (Admin Only) */}
+                        {isAdmin ? (
+                          <div className="sm:col-span-2 space-y-3 p-3 border border-dashed border-amber-500/50 bg-amber-50/30 dark:bg-amber-900/10 rounded-lg">
                             <div className="flex items-center gap-2">
                               <Checkbox
                                 id="target-override"
@@ -1102,7 +1120,7 @@ export default function DailyProductionLog() {
                                 onCheckedChange={(checked) => setEnableTargetOverride(checked as boolean)}
                               />
                               <label htmlFor="target-override" className="text-sm font-medium cursor-pointer">
-                                Override Target (Supervisor)
+                                Override Target (Admin Only)
                               </label>
                             </div>
                             
@@ -1124,6 +1142,12 @@ export default function DailyProductionLog() {
                                 />
                               </div>
                             )}
+                          </div>
+                        ) : (
+                          <div className="sm:col-span-2 p-3 border border-dashed rounded-lg bg-muted/30">
+                            <p className="text-xs text-muted-foreground text-center">
+                              Target override requires Admin role
+                            </p>
                           </div>
                         )}
                       </div>
