@@ -15,6 +15,7 @@ import { QualityLossIndicators } from "@/components/quality/QualityLossIndicator
 import { IPQCComplianceCard } from "@/components/quality/IPQCComplianceCard";
 import { SupplierDefectCard } from "@/components/quality/SupplierDefectCard";
 import { FirstPieceMetrics } from "@/components/quality/FirstPieceMetrics";
+import { QCFailuresAnalytics } from "@/components/quality/QCFailuresAnalytics";
 
 export default function QualityAnalytics() {
   const { toast } = useToast();
@@ -53,7 +54,7 @@ export default function QualityAnalytics() {
         supabase
           .from("daily_production_logs")
           .select(`
-            id, log_date, shift, wo_id, machine_id, operator_id, programmer_id,
+            id, log_date, shift, wo_id, machine_id, operator_id, programmer_id, setter_id,
             actual_quantity, ok_quantity, total_rejection_quantity, rework_quantity,
             rejection_dimension, rejection_setting, rejection_scratch, rejection_dent,
             rejection_tool_mark, rejection_forging_mark, rejection_material_not_ok, rejection_lining,
@@ -61,6 +62,7 @@ export default function QualityAnalytics() {
             machines:machine_id(name, machine_id),
             operator:operator_id(full_name),
             programmer:programmer_id(full_name),
+            setter:setter_id(full_name),
             work_order:wo_id(display_id, customer)
           `)
           .gte("log_date", startDate),
@@ -570,6 +572,12 @@ export default function QualityAnalytics() {
             dailyTrend={trendData.dailyTrend}
             weeklyTrend={trendData.weeklyTrend}
             monthlyTrend={trendData.monthlyTrend}
+          />
+
+          {/* QC Failures Analytics - New comprehensive view */}
+          <QCFailuresAnalytics 
+            hourlyChecks={hourlyChecks}
+            productionLogs={productionLogs}
           />
 
           {/* Rejection Analysis by Dimension */}
