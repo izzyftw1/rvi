@@ -367,12 +367,10 @@ const WorkOrderDetail = () => {
 
   const loadWOOEE = async (assignments: any[]) => {
     try {
-      // Get running machines
-      const runningMachines = assignments
-        .filter((a: any) => a.status === 'running')
-        .map((a: any) => a.machine_id);
+      // Get assigned machines (not just running - all assigned to this WO)
+      const assignedMachines = assignments.map((a: any) => a.machine_id);
 
-      if (runningMachines.length === 0) {
+      if (assignedMachines.length === 0) {
         setWoOEE(null);
         return;
       }
@@ -383,51 +381,65 @@ const WorkOrderDetail = () => {
       const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
 
-      // Fetch metrics for all running machines
-      const { data: todayData } = await supabase
-        .from('machine_daily_metrics')
-        .select('*')
-        .in('machine_id', runningMachines)
-        .eq('date', today);
+      // Fetch production logs for this WO - single source of truth
+      const { data: todayLogs } = await supabase
+        .from('daily_production_logs')
+        .select('actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
+        .eq('wo_id', id)
+        .eq('log_date', today);
 
-      const { data: weekData } = await supabase
-        .from('machine_daily_metrics')
-        .select('*')
-        .in('machine_id', runningMachines)
-        .gte('date', weekStart)
-        .lte('date', weekEnd);
+      const { data: weekLogs } = await supabase
+        .from('daily_production_logs')
+        .select('actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
+        .eq('wo_id', id)
+        .gte('log_date', weekStart)
+        .lte('log_date', weekEnd);
 
-      const { data: monthData } = await supabase
-        .from('machine_daily_metrics')
-        .select('*')
-        .in('machine_id', runningMachines)
-        .gte('date', monthStart)
-        .lte('date', monthEnd);
+      const { data: monthLogs } = await supabase
+        .from('daily_production_logs')
+        .select('actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
+        .eq('wo_id', id)
+        .gte('log_date', monthStart)
+        .lte('log_date', monthEnd);
 
-      const calculateAverageOEE = (dataArray: any[]) => {
-        if (!dataArray || dataArray.length === 0) {
+      // Calculate OEE from production logs
+      // OEE = Availability × Performance × Quality
+      // Availability = Actual Run Time / (Actual Run Time + Downtime)
+      // Performance = Actual Output / Target Output (or Actual/Expected based on cycle time)
+      // Quality = OK Quantity / (OK Quantity + Rejection Quantity)
+      const calculateOEEFromLogs = (logs: any[]) => {
+        if (!logs || logs.length === 0) {
           return { availability: 0, performance: 0, quality: 0, oee: 0 };
         }
 
-        const totals = dataArray.reduce((acc, d) => ({
-          availability: acc.availability + (d.availability_pct || 0),
-          performance: acc.performance + (d.performance_pct || 0),
-          quality: acc.quality + (d.quality_pct || 0),
-          oee: acc.oee + (d.oee_pct || 0),
-        }), { availability: 0, performance: 0, quality: 0, oee: 0 });
+        const totals = logs.reduce((acc, log) => ({
+          runtime: acc.runtime + (log.actual_runtime_minutes || 0),
+          downtime: acc.downtime + (log.total_downtime_minutes || 0),
+          okQty: acc.okQty + (log.ok_quantity || 0),
+          rejectQty: acc.rejectQty + (log.total_rejection_quantity || 0),
+          targetQty: acc.targetQty + (log.target_quantity || 0),
+        }), { runtime: 0, downtime: 0, okQty: 0, rejectQty: 0, targetQty: 0 });
+
+        const totalTime = totals.runtime + totals.downtime;
+        const totalProduced = totals.okQty + totals.rejectQty;
+
+        const availability = totalTime > 0 ? (totals.runtime / totalTime) * 100 : 0;
+        const performance = totals.targetQty > 0 ? Math.min((totalProduced / totals.targetQty) * 100, 100) : 0;
+        const quality = totalProduced > 0 ? (totals.okQty / totalProduced) * 100 : 0;
+        const oee = (availability * performance * quality) / 10000;
 
         return {
-          availability: totals.availability / dataArray.length,
-          performance: totals.performance / dataArray.length,
-          quality: totals.quality / dataArray.length,
-          oee: totals.oee / dataArray.length,
+          availability: Math.round(availability * 10) / 10,
+          performance: Math.round(performance * 10) / 10,
+          quality: Math.round(quality * 10) / 10,
+          oee: Math.round(oee * 10) / 10,
         };
       };
 
       setWoOEE({
-        today: calculateAverageOEE(todayData || []),
-        week: calculateAverageOEE(weekData || []),
-        month: calculateAverageOEE(monthData || []),
+        today: calculateOEEFromLogs(todayLogs || []),
+        week: calculateOEEFromLogs(weekLogs || []),
+        month: calculateOEEFromLogs(monthLogs || []),
       });
     } catch (error: any) {
       console.error('Error loading WO OEE:', error);

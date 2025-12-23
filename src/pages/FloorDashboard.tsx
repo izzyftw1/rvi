@@ -467,9 +467,24 @@ const FloorDashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12 text-muted-foreground">
-                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-sm">Operator efficiency metrics coming soon</p>
+                <div className="text-center py-8 space-y-4">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      View detailed operator performance metrics derived from Production Logs
+                    </p>
+                    <button
+                      onClick={() => navigate('/operator-efficiency')}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+                    >
+                      <TrendingUp className="h-4 w-4" />
+                      Open Operator Efficiency Report
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic">
+                    All metrics are read-only and derived from daily production log entries
+                  </p>
                 </div>
               </CardContent>
             </Card>
