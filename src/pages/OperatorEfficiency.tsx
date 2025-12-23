@@ -1,8 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+/**
+ * Operator Efficiency Page
+ * 
+ * READ-ONLY HISTORICAL ANALYTICS VIEW
+ * All metrics derived exclusively from useProductionLogMetrics hook.
+ * No local calculations or write actions.
+ */
+
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { CalendarIcon, Users, TrendingUp, Clock, Target, XCircle, Download, Info, Filter, ChevronRight, Percent } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useProductionLogMetrics, type OperatorMetrics } from "@/hooks/useProductionLogMetrics";
 import { useToast } from "@/hooks/use-toast";
 
 import { PageHeader } from "@/components/ui/page-header";
@@ -30,49 +38,6 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-
-interface OperatorEfficiencyData {
-  operatorId: string;
-  operatorName: string;
-  machineId: string;
-  machineName: string;
-  totalRuntimeMinutes: number;
-  totalActualQuantity: number;
-  totalOkQuantity: number;
-  totalRejectionQuantity: number;
-  totalTargetQuantity: number;
-  efficiencyPercentage: number;
-  scrapPercentage: number;
-  logCount: number;
-  productionLogIds: string[];
-}
-
-interface ProductionLogDetail {
-  id: string;
-  log_date: string;
-  shift: string;
-  actual_runtime_minutes: number;
-  actual_quantity: number;
-  ok_quantity: number;
-  total_rejection_quantity: number;
-  target_quantity: number;
-  efficiency_percentage: number;
-  wo_id: string | null;
-  work_order?: { display_id: string } | null;
-}
-
-interface Machine {
-  id: string;
-  machine_id: string;
-  name: string;
-}
 
 type PeriodFilter = "daily" | "weekly" | "monthly";
 
@@ -85,21 +50,10 @@ function formatMinutes(minutes: number): string {
 export default function OperatorEfficiency() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("daily");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [efficiencyData, setEfficiencyData] = useState<OperatorEfficiencyData[]>([]);
-  
-  // Filters
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [selectedMachine, setSelectedMachine] = useState<string>("all");
-  const [processes, setProcesses] = useState<string[]>([]);
-  const [selectedProcess, setSelectedProcess] = useState<string>("all");
-  
-  // Drill-down
-  const [selectedOperator, setSelectedOperator] = useState<OperatorEfficiencyData | null>(null);
-  const [drillDownLogs, setDrillDownLogs] = useState<ProductionLogDetail[]>([]);
-  const [loadingDrillDown, setLoadingDrillDown] = useState(false);
+  const [machineFilter, setMachineFilter] = useState<string>("all");
+  const [processFilter, setProcessFilter] = useState<string>("all");
 
   // Calculate date range based on period filter
   const dateRange = useMemo(() => {
@@ -126,206 +80,50 @@ export default function OperatorEfficiency() {
     }
   }, [periodFilter, selectedDate]);
 
-  // Summary statistics
+  // SINGLE SOURCE: useProductionLogMetrics
+  const { metrics, loading } = useProductionLogMetrics({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+    period: 'custom',
+    machineId: machineFilter !== "all" ? machineFilter : undefined,
+    processFilter: processFilter !== "all" ? processFilter : undefined,
+  });
+
+  // Derived data from hook - NO LOCAL CALCULATIONS
+  const operatorData = useMemo(() => {
+    if (!metrics?.operatorMetrics) return [];
+    return metrics.operatorMetrics
+      .filter(op => op.logCount > 0)
+      .sort((a, b) => b.efficiencyPercent - a.efficiencyPercent);
+  }, [metrics]);
+
+  // Summary statistics - derived from hook data only
   const summary = useMemo(() => {
-    const totalOperators = new Set(efficiencyData.map(d => d.operatorId)).size;
-    const totalMachines = new Set(efficiencyData.map(d => d.machineId)).size;
-    const totalRuntime = efficiencyData.reduce((sum, d) => sum + d.totalRuntimeMinutes, 0);
-    const totalActual = efficiencyData.reduce((sum, d) => sum + d.totalActualQuantity, 0);
-    const totalOk = efficiencyData.reduce((sum, d) => sum + d.totalOkQuantity, 0);
-    const totalRejection = efficiencyData.reduce((sum, d) => sum + d.totalRejectionQuantity, 0);
-    const avgEfficiency = efficiencyData.length > 0
-      ? Math.round(efficiencyData.reduce((sum, d) => sum + d.efficiencyPercentage, 0) / efficiencyData.length)
+    const totalOperators = operatorData.length;
+    const totalRuntime = operatorData.reduce((sum, d) => sum + d.totalRuntime, 0);
+    const totalActual = operatorData.reduce((sum, d) => sum + d.totalActual, 0);
+    const totalOk = operatorData.reduce((sum, d) => sum + d.totalOk, 0);
+    const totalRejection = operatorData.reduce((sum, d) => sum + d.totalRejections, 0);
+    const avgEfficiency = operatorData.length > 0
+      ? Math.round(operatorData.reduce((sum, d) => sum + d.efficiencyPercent, 0) / operatorData.length)
       : 0;
     const avgScrap = totalActual > 0 ? Math.round((totalRejection / totalActual) * 100 * 10) / 10 : 0;
-    return { totalOperators, totalMachines, totalRuntime, totalActual, totalOk, totalRejection, avgEfficiency, avgScrap };
-  }, [efficiencyData]);
+    return { totalOperators, totalRuntime, totalActual, totalOk, totalRejection, avgEfficiency, avgScrap };
+  }, [operatorData]);
 
-  // Load machines and processes for filters
-  useEffect(() => {
-    loadFilters();
-  }, []);
+  // Available machines from metrics for filter
+  const availableMachines = useMemo(() => {
+    if (!metrics?.machineMetrics) return [];
+    return metrics.machineMetrics.map(m => ({
+      id: m.machineId,
+      name: m.machineName,
+    }));
+  }, [metrics]);
 
-  useEffect(() => {
-    loadData();
-  }, [dateRange, selectedMachine, selectedProcess]);
-
-  const loadFilters = async () => {
-    try {
-      const [machinesRes, processesRes] = await Promise.all([
-        supabase.from("machines").select("id, machine_id, name").order("machine_id"),
-        supabase.from("operation_routes").select("process_name").not("process_name", "is", null)
-      ]);
-      
-      if (machinesRes.data) setMachines(machinesRes.data);
-      if (processesRes.data) {
-        const uniqueProcesses = [...new Set(processesRes.data.map(r => r.process_name).filter(Boolean))] as string[];
-        setProcesses(uniqueProcesses);
-      }
-    } catch (error) {
-      console.error("Error loading filters:", error);
-    }
-  };
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Build query directly from daily_production_logs
-      let query = supabase
-        .from("daily_production_logs")
-        .select(`
-          id,
-          operator_id,
-          machine_id,
-          actual_runtime_minutes,
-          actual_quantity,
-          ok_quantity,
-          total_rejection_quantity,
-          target_quantity,
-          efficiency_percentage,
-          operation_code,
-          machines:machine_id(name, machine_id)
-        `)
-        .gte("log_date", dateRange.start)
-        .lte("log_date", dateRange.end)
-        .not("operator_id", "is", null);
-
-      if (selectedMachine !== "all") {
-        query = query.eq("machine_id", selectedMachine);
-      }
-
-      const { data: logsData, error } = await query;
-
-      if (error) throw error;
-
-      // Get operator names
-      const operatorIds = [...new Set((logsData || []).map(l => l.operator_id).filter(Boolean))];
-      let operatorNames: Record<string, string> = {};
-      
-      if (operatorIds.length > 0) {
-        const { data: people } = await supabase
-          .from("people")
-          .select("id, full_name")
-          .in("id", operatorIds);
-        
-        operatorNames = (people || []).reduce((acc, p) => {
-          acc[p.id] = p.full_name || "Unknown";
-          return acc;
-        }, {} as Record<string, string>);
-      }
-
-      // Filter by process if needed
-      let filteredData = logsData || [];
-      
-      if (selectedProcess !== "all" && filteredData.length > 0) {
-        filteredData = filteredData.filter(log => 
-          log.operation_code?.toLowerCase().includes(selectedProcess.toLowerCase())
-        );
-      }
-
-      // Aggregate data by operator
-      const aggregatedMap = new Map<string, OperatorEfficiencyData>();
-
-      filteredData.forEach((entry: any) => {
-        if (!entry.operator_id) return;
-
-        const key = entry.operator_id;
-        const existing = aggregatedMap.get(key);
-        const machineName = entry.machines?.machine_id || entry.machines?.name || "Unknown";
-
-        if (existing) {
-          existing.totalRuntimeMinutes += entry.actual_runtime_minutes || 0;
-          existing.totalActualQuantity += entry.actual_quantity || 0;
-          existing.totalOkQuantity += entry.ok_quantity || 0;
-          existing.totalRejectionQuantity += entry.total_rejection_quantity || 0;
-          existing.totalTargetQuantity += entry.target_quantity || 0;
-          existing.logCount++;
-          existing.productionLogIds.push(entry.id);
-          // Track all machines used
-          if (machineName && !existing.machineName.includes(machineName)) {
-            existing.machineName += `, ${machineName}`;
-          }
-        } else {
-          aggregatedMap.set(key, {
-            operatorId: entry.operator_id,
-            operatorName: operatorNames[entry.operator_id] || "Unknown",
-            machineId: entry.machine_id,
-            machineName: machineName,
-            totalRuntimeMinutes: entry.actual_runtime_minutes || 0,
-            totalActualQuantity: entry.actual_quantity || 0,
-            totalOkQuantity: entry.ok_quantity || 0,
-            totalRejectionQuantity: entry.total_rejection_quantity || 0,
-            totalTargetQuantity: entry.target_quantity || 0,
-            efficiencyPercentage: 0,
-            scrapPercentage: 0,
-            logCount: 1,
-            productionLogIds: [entry.id],
-          });
-        }
-      });
-
-      // Calculate efficiency and scrap % for each aggregated entry
-      const result = Array.from(aggregatedMap.values()).map((entry) => ({
-        ...entry,
-        efficiencyPercentage: entry.totalTargetQuantity > 0
-          ? Math.round((entry.totalOkQuantity / entry.totalTargetQuantity) * 100 * 10) / 10
-          : 0,
-        scrapPercentage: entry.totalActualQuantity > 0
-          ? Math.round((entry.totalRejectionQuantity / entry.totalActualQuantity) * 100 * 10) / 10
-          : 0,
-      }));
-
-      // Sort by efficiency descending
-      result.sort((a, b) => b.efficiencyPercentage - a.efficiencyPercentage);
-
-      setEfficiencyData(result);
-    } catch (error: any) {
-      console.error("Error loading data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load efficiency data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Drill-down to production logs
-  const handleOperatorClick = async (operator: OperatorEfficiencyData) => {
-    setSelectedOperator(operator);
-    setLoadingDrillDown(true);
-    
-    try {
-      const uniqueLogIds = [...new Set(operator.productionLogIds)];
-      
-      const { data, error } = await supabase
-        .from("daily_production_logs")
-        .select(`
-          id,
-          log_date,
-          shift,
-          actual_runtime_minutes,
-          actual_quantity,
-          ok_quantity,
-          total_rejection_quantity,
-          target_quantity,
-          efficiency_percentage,
-          wo_id,
-          work_order:wo_id(display_id)
-        `)
-        .in("id", uniqueLogIds)
-        .order("log_date", { ascending: false });
-      
-      if (error) throw error;
-      setDrillDownLogs((data as ProductionLogDetail[]) || []);
-    } catch (error) {
-      console.error("Error loading drill-down:", error);
-      toast({ title: "Error", description: "Failed to load production logs", variant: "destructive" });
-    } finally {
-      setLoadingDrillDown(false);
-    }
-  };
+  // Available processes from metrics
+  const availableProcesses = useMemo(() => {
+    return metrics?.availableProcesses || [];
+  }, [metrics]);
 
   const getEfficiencyColor = (pct: number) => {
     if (pct >= 100) return "text-green-600 dark:text-green-400";
@@ -341,17 +139,16 @@ export default function OperatorEfficiency() {
   };
 
   const exportCSV = () => {
-    const headers = ["Operator", "Machines", "Runtime", "Target Qty", "Actual Qty", "OK Qty", "Rejection Qty", "Efficiency %", "Scrap %"];
-    const rows = efficiencyData.map((d) => [
+    const headers = ["Operator", "Runtime", "Target Qty", "Actual Qty", "OK Qty", "Rejection Qty", "Efficiency %", "Scrap %"];
+    const rows = operatorData.map((d) => [
       d.operatorName,
-      d.machineName,
-      formatMinutes(d.totalRuntimeMinutes),
-      d.totalTargetQuantity,
-      d.totalActualQuantity,
-      d.totalOkQuantity,
-      d.totalRejectionQuantity,
-      d.efficiencyPercentage.toFixed(1),
-      d.scrapPercentage.toFixed(1),
+      formatMinutes(d.totalRuntime),
+      d.totalTarget,
+      d.totalActual,
+      d.totalOk,
+      d.totalRejections,
+      d.efficiencyPercent.toFixed(1),
+      d.scrapPercent.toFixed(1),
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
@@ -366,11 +163,11 @@ export default function OperatorEfficiency() {
   };
 
   const clearFilters = () => {
-    setSelectedMachine("all");
-    setSelectedProcess("all");
+    setMachineFilter("all");
+    setProcessFilter("all");
   };
 
-  const hasActiveFilters = selectedMachine !== "all" || selectedProcess !== "all";
+  const hasActiveFilters = machineFilter !== "all" || processFilter !== "all";
 
   return (
     <div className="container mx-auto p-4 space-y-6">
@@ -383,7 +180,7 @@ export default function OperatorEfficiency() {
       <div className="bg-muted/50 border rounded-lg p-3 flex items-start gap-2 text-sm text-muted-foreground">
         <Info className="h-4 w-4 shrink-0 mt-0.5" />
         <div>
-          <span>All metrics are derived from Daily Production Logs. This is a read-only historical analytics view.</span>
+          <span>All metrics derived from Production Log entries via shared calculation engine. This is a read-only view — no local calculations.</span>
           <br />
           <span className="text-xs">Efficiency = (OK Qty ÷ Target Qty) × 100 | Scrap % = (Rejection Qty ÷ Actual Qty) × 100</span>
         </div>
@@ -430,7 +227,7 @@ export default function OperatorEfficiency() {
               </Popover>
             </div>
 
-            <Button variant="outline" onClick={exportCSV}>
+            <Button variant="outline" onClick={exportCSV} disabled={operatorData.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -444,26 +241,26 @@ export default function OperatorEfficiency() {
             </div>
             
             {/* Machine Filter */}
-            <Select value={selectedMachine} onValueChange={setSelectedMachine}>
+            <Select value={machineFilter} onValueChange={setMachineFilter}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All Machines" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Machines</SelectItem>
-                {machines.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.machine_id} - {m.name}</SelectItem>
+                {availableMachines.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name.split(' - ')[0]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
             {/* Process Filter */}
-            <Select value={selectedProcess} onValueChange={setSelectedProcess}>
+            <Select value={processFilter} onValueChange={setProcessFilter}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All Processes" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Processes</SelectItem>
-                {processes.map((p) => (
+                {availableProcesses.map((p) => (
                   <SelectItem key={p} value={p}>{p}</SelectItem>
                 ))}
               </SelectContent>
@@ -479,289 +276,162 @@ export default function OperatorEfficiency() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <Users className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-              <p className="text-xs text-muted-foreground">Operators</p>
-              <p className="text-lg font-bold">{summary.totalOperators}</p>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Operators</span>
             </div>
+            {loading ? <Skeleton className="h-8 w-12" /> : (
+              <p className="text-2xl font-bold">{summary.totalOperators}</p>
+            )}
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <Target className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-              <p className="text-xs text-muted-foreground">Machines</p>
-              <p className="text-lg font-bold">{summary.totalMachines}</p>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Runtime</span>
             </div>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <p className="text-2xl font-bold">{formatMinutes(summary.totalRuntime)}</p>
+            )}
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <Clock className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-              <p className="text-xs text-muted-foreground">Runtime</p>
-              <p className="text-lg font-bold">{formatMinutes(summary.totalRuntime)}</p>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Actual Qty</span>
             </div>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <p className="text-2xl font-bold">{summary.totalActual.toLocaleString()}</p>
+            )}
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <Target className="h-5 w-5 mx-auto text-blue-500 mb-1" />
-              <p className="text-xs text-muted-foreground">Target</p>
-              <p className="text-lg font-bold">{summary.totalActual > 0 ? Math.round(summary.totalActual / (summary.avgEfficiency / 100)).toLocaleString() : 0}</p>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="h-4 w-4 text-green-600" />
+              <span className="text-xs text-muted-foreground">OK Qty</span>
             </div>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <p className="text-2xl font-bold text-green-600">{summary.totalOk.toLocaleString()}</p>
+            )}
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <TrendingUp className="h-5 w-5 mx-auto text-green-500 mb-1" />
-              <p className="text-xs text-muted-foreground">Actual</p>
-              <p className="text-lg font-bold">{summary.totalActual.toLocaleString()}</p>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <XCircle className="h-4 w-4 text-red-600" />
+              <span className="text-xs text-muted-foreground">Rejections</span>
             </div>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <p className="text-2xl font-bold text-red-600">{summary.totalRejection.toLocaleString()}</p>
+            )}
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <XCircle className="h-5 w-5 mx-auto text-red-500 mb-1" />
-              <p className="text-xs text-muted-foreground">Rejected</p>
-              <p className="text-lg font-bold text-red-600">{summary.totalRejection.toLocaleString()}</p>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Avg Efficiency</span>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <TrendingUp className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-              <p className="text-xs text-muted-foreground">Efficiency</p>
-              <p className={cn("text-lg font-bold", getEfficiencyColor(summary.avgEfficiency))}>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <p className={cn("text-2xl font-bold", getEfficiencyColor(summary.avgEfficiency))}>
                 {summary.avgEfficiency}%
               </p>
-            </div>
+            )}
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="pt-4 pb-3">
-            <div className="text-center">
-              <Percent className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-              <p className="text-xs text-muted-foreground">Scrap</p>
-              <p className={cn("text-lg font-bold", getScrapColor(summary.avgScrap))}>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Percent className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Avg Scrap</span>
+            </div>
+            {loading ? <Skeleton className="h-8 w-16" /> : (
+              <p className={cn("text-2xl font-bold", getScrapColor(summary.avgScrap))}>
                 {summary.avgScrap}%
               </p>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Efficiency Table */}
+      {/* Operator Table */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Operator Performance - {dateRange.label}
-            {hasActiveFilters && (
-              <Badge variant="secondary" className="text-xs">Filtered</Badge>
-            )}
+            Operator Performance
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
+              {[1, 2, 3, 4, 5].map((i) => (
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : efficiencyData.length === 0 ? (
+          ) : operatorData.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-              <h3 className="text-sm font-medium mb-1">No operator efficiency data yet</h3>
-              <p className="text-sm text-muted-foreground mb-1">
-                <span className="font-medium">Why:</span> No production logs with operators assigned for this period.
+              <h3 className="text-lg font-medium mb-2">No operator data</h3>
+              <p className="text-sm text-muted-foreground">
+                No production logs with operator assignments for the selected period.
               </p>
-              <p className="text-sm text-muted-foreground mb-4">
-                <span className="font-medium">How to populate:</span> Log production with operators assigned to machines.
-              </p>
-              <Button 
-                variant="default" 
-                onClick={() => navigate('/daily-production-log')}
-                className="gap-2"
-              >
-                Log Production
-                <ChevronRight className="h-4 w-4" />
-              </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Operator</TableHead>
-                    <TableHead>Machine(s)</TableHead>
-                    <TableHead className="text-right">Runtime</TableHead>
-                    <TableHead className="text-right">Target</TableHead>
-                    <TableHead className="text-right">Actual</TableHead>
-                    <TableHead className="text-right">Efficiency</TableHead>
-                    <TableHead className="text-right">Scrap %</TableHead>
-                    <TableHead className="w-10"></TableHead>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Operator</TableHead>
+                  <TableHead className="text-right">Runtime</TableHead>
+                  <TableHead className="text-right">Target</TableHead>
+                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right">OK</TableHead>
+                  <TableHead className="text-right">Rejected</TableHead>
+                  <TableHead className="text-right">Efficiency</TableHead>
+                  <TableHead className="text-right">Scrap %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {operatorData.map((op) => (
+                  <TableRow key={op.operatorId}>
+                    <TableCell className="font-medium">{op.operatorName}</TableCell>
+                    <TableCell className="text-right">{formatMinutes(op.totalRuntime)}</TableCell>
+                    <TableCell className="text-right">{op.totalTarget.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{op.totalActual.toLocaleString()}</TableCell>
+                    <TableCell className="text-right text-green-600">{op.totalOk.toLocaleString()}</TableCell>
+                    <TableCell className="text-right text-red-600">{op.totalRejections.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={cn("font-medium", getEfficiencyColor(op.efficiencyPercent))}>
+                        {op.efficiencyPercent.toFixed(1)}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={cn("font-medium", getScrapColor(op.scrapPercent))}>
+                        {op.scrapPercent.toFixed(1)}%
+                      </span>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {efficiencyData.map((data, idx) => (
-                    <TableRow 
-                      key={`${data.operatorId}-${idx}`}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => handleOperatorClick(data)}
-                    >
-                      <TableCell className="font-medium">{data.operatorName}</TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">{data.machineName}</span>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatMinutes(data.totalRuntimeMinutes)}
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {data.totalTargetQuantity.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {data.totalActualQuantity.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className={cn("font-bold", getEfficiencyColor(data.efficiencyPercentage))}>
-                            {data.efficiencyPercentage}%
-                          </span>
-                          <Progress 
-                            value={Math.min(data.efficiencyPercentage, 120)} 
-                            className="w-16 h-2"
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={cn("font-medium", getScrapColor(data.scrapPercentage))}>
-                          {data.scrapPercentage}%
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
 
-      {/* Drill-down Sheet */}
-      <Sheet open={!!selectedOperator} onOpenChange={() => setSelectedOperator(null)}>
-        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              {selectedOperator?.operatorName}
-            </SheetTitle>
-            <SheetDescription>
-              Production logs for {dateRange.label}
-            </SheetDescription>
-          </SheetHeader>
-
-          {selectedOperator && (
-            <div className="mt-6 space-y-6">
-              {/* Summary */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 rounded-lg bg-muted text-center">
-                  <p className="text-xs text-muted-foreground">Runtime</p>
-                  <p className="font-bold">{formatMinutes(selectedOperator.totalRuntimeMinutes)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted text-center">
-                  <p className="text-xs text-muted-foreground">Efficiency</p>
-                  <p className={cn("font-bold", getEfficiencyColor(selectedOperator.efficiencyPercentage))}>
-                    {selectedOperator.efficiencyPercentage}%
-                  </p>
-                </div>
-                <div className="p-3 rounded-lg bg-muted text-center">
-                  <p className="text-xs text-muted-foreground">Scrap</p>
-                  <p className={cn("font-bold", getScrapColor(selectedOperator.scrapPercentage))}>
-                    {selectedOperator.scrapPercentage}%
-                  </p>
-                </div>
-              </div>
-
-              {/* Logs List */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-muted-foreground">Production Logs ({drillDownLogs.length})</h4>
-                
-                {loadingDrillDown ? (
-                  <div className="space-y-2">
-                    {[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
-                  </div>
-                ) : drillDownLogs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">No logs found</p>
-                ) : (
-                  <div className="space-y-2">
-                    {drillDownLogs.map((log) => (
-                      <div 
-                        key={log.id}
-                        className="p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => log.wo_id && navigate(`/work-orders/${log.wo_id}`)}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {format(new Date(log.log_date), "MMM d")}
-                            </Badge>
-                            <Badge variant="secondary" className="text-xs capitalize">
-                              {log.shift}
-                            </Badge>
-                          </div>
-                          {log.work_order?.display_id && (
-                            <span className="text-xs text-primary font-medium">
-                              {log.work_order.display_id}
-                            </span>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-4 gap-2 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">Runtime: </span>
-                            <span className="font-medium">{log.actual_runtime_minutes}m</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Actual: </span>
-                            <span className="font-medium">{log.actual_quantity}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">OK: </span>
-                            <span className="font-medium text-green-600">{log.ok_quantity}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Eff: </span>
-                            <span className={cn("font-medium", getEfficiencyColor(log.efficiency_percentage || 0))}>
-                              {log.efficiency_percentage}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* Footer */}
+      <div className="bg-muted/30 border rounded-lg p-4">
+        <h4 className="text-sm font-medium mb-2">Calculation Formulas</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground font-mono">
+          <div>Efficiency % = (OK Qty ÷ Target Qty) × 100</div>
+          <div>Scrap % = (Rejection Qty ÷ Actual Qty) × 100</div>
+        </div>
+      </div>
     </div>
   );
 }
