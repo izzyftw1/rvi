@@ -81,6 +81,7 @@ import FinalQC from "./pages/FinalQC";
 import QualityTraceability from "./pages/QualityTraceability";
 import QualityDocuments from "./pages/QualityDocuments";
 import QualityAnalytics from "./pages/QualityAnalytics";
+import DowntimeAnalytics from "./pages/DowntimeAnalytics";
 
 
 const App = () => (
@@ -146,6 +147,7 @@ const App = () => (
           <Route path="/operator-efficiency" element={<OperatorEfficiency />} />
           <Route path="/setter-efficiency" element={<SetterEfficiency />} />
           <Route path="/cnc-programmer-activity" element={<CNCProgrammerActivity />} />
+          <Route path="/downtime-analytics" element={<DowntimeAnalytics />} />
           <Route path="/finance/dashboard" element={<FinanceDashboard />} />
           <Route path="/finance/invoices" element={<Invoices />} />
           <Route path="/finance/invoices/create" element={<CreateInvoices />} />
