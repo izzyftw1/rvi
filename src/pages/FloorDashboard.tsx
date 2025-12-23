@@ -342,7 +342,7 @@ const FloorDashboard = () => {
 
         {/* Main Content - Tabs */}
         <Tabs defaultValue="stages" className="w-full">
-          <TabsList className="grid w-full md:w-auto grid-cols-4">
+          <TabsList className="grid w-full md:w-auto grid-cols-3">
             <TabsTrigger value="stages" className="gap-2">
               <Layers className="h-4 w-4" />
               Stages
@@ -350,10 +350,6 @@ const FloorDashboard = () => {
             <TabsTrigger value="machines" className="gap-2">
               <Factory className="h-4 w-4" />
               Machines
-            </TabsTrigger>
-            <TabsTrigger value="operators" className="gap-2">
-              <Users className="h-4 w-4" />
-              Operators
             </TabsTrigger>
             <TabsTrigger value="blockers" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
@@ -402,24 +398,8 @@ const FloorDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Operators Tab */}
-          <TabsContent value="operators" className="mt-6">
-            {loading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-8 w-64" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                    <Skeleton key={i} className="h-28" />
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <OperatorsView
-                productionLogs={productionLogs}
-                operators={operators}
-              />
-            )}
-          </TabsContent>
+          {/* Operators Tab - DISABLED: Operator data is post-shift, not real-time.
+              Access operator analytics via /operator-efficiency page instead. */}
 
           {/* Blockers Tab */}
           <TabsContent value="blockers" className="mt-6 space-y-6">
