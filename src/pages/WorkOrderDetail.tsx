@@ -932,7 +932,7 @@ const WorkOrderDetail = () => {
               </div>
               <Button 
                 variant="outline" 
-                onClick={() => navigate('/daily-production-log')}
+                onClick={() => navigate(`/daily-production-log?wo=${id}`)}
                 disabled={qcGatesBlocked || productionNotReleased}
               >
                 Open Production Log

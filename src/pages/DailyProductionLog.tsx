@@ -3,11 +3,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle, Target, TrendingUp, XCircle } from "lucide-react";
+import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle, Target, TrendingUp, XCircle, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
-
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,8 +208,14 @@ function calculateTargetQuantity(runtimeMinutes: number, cycleTimeSeconds: numbe
 export default function DailyProductionLog() {
   const { toast } = useToast();
   const { hasAnyRole } = useUserRole();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   // Only admin roles can override calculated values
   const isAdmin = hasAnyRole(['admin', 'super_admin']);
+  
+  // Check if opened from a specific Work Order
+  const preselectedWoId = searchParams.get('wo');
+  const isLockedMode = !!preselectedWoId;
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -222,6 +228,7 @@ export default function DailyProductionLog() {
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
   const [filterDate, setFilterDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
+  const [preselectedWoLoaded, setPreselectedWoLoaded] = useState(false);
   
   // Downtime events state
   const [downtimeEvents, setDowntimeEvents] = useState<DowntimeEvent[]>([]);
@@ -318,6 +325,18 @@ export default function DailyProductionLog() {
     loadData();
   }, [filterDate]);
 
+  // Effect to pre-select WO and open dialog when navigating from Work Order Detail
+  useEffect(() => {
+    if (preselectedWoId && workOrders.length > 0 && !preselectedWoLoaded) {
+      const wo = workOrders.find(w => w.id === preselectedWoId);
+      if (wo) {
+        setSelectedWO(wo);
+        form.setValue("wo_id", wo.id);
+        setDialogOpen(true);
+        setPreselectedWoLoaded(true);
+      }
+    }
+  }, [preselectedWoId, workOrders, preselectedWoLoaded]);
   const loadData = async () => {
     setLoading(true);
     try {
@@ -576,6 +595,11 @@ export default function DailyProductionLog() {
       rejection_face_not_ok: 0,
       rejection_material_not_ok: 0,
     });
+    
+    // Navigate back to WO detail if in locked mode
+    if (isLockedMode && preselectedWoId) {
+      navigate(`/work-order/${preselectedWoId}`);
+    }
   };
 
   const getEfficiencyColor = (efficiency: number | null) => {
@@ -649,6 +673,21 @@ export default function DailyProductionLog() {
                 <DialogHeader>
                   <DialogTitle>New Daily Production Log</DialogTitle>
                 </DialogHeader>
+                
+                {/* Locked WO Banner */}
+                {isLockedMode && selectedWO && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                    <Lock className="h-5 w-5 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-primary">
+                        Logging production for {selectedWO.wo_number}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {selectedWO.item_code} | {selectedWO.customer || 'No customer'} | Qty {selectedWO.quantity || 0}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                     {/* Basic Fields */}
@@ -782,22 +821,31 @@ export default function DailyProductionLog() {
                         name="wo_id"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Work Order (Optional)</FormLabel>
+                            <FormLabel>
+                              Work Order {isLockedMode ? '(Locked)' : '(Optional)'}
+                            </FormLabel>
                             <FormControl>
-                              <WorkOrderSelect
-                                value={field.value}
-                                onValueChange={handleWOChange}
-                                workOrders={workOrders.filter((wo) => Boolean(wo.id)).map(wo => ({
-                                  id: wo.id,
-                                  wo_number: wo.wo_number,
-                                  item_code: wo.item_code,
-                                  customer: wo.customer,
-                                  quantity: wo.quantity,
-                                }))}
-                                placeholder="Select work order..."
-                                includeNone={true}
-                                noneLabel="None"
-                              />
+                              {isLockedMode ? (
+                                <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50 text-sm">
+                                  <Lock className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{selectedWO?.wo_number}</span>
+                                </div>
+                              ) : (
+                                <WorkOrderSelect
+                                  value={field.value}
+                                  onValueChange={handleWOChange}
+                                  workOrders={workOrders.filter((wo) => Boolean(wo.id)).map(wo => ({
+                                    id: wo.id,
+                                    wo_number: wo.wo_number,
+                                    item_code: wo.item_code,
+                                    customer: wo.customer,
+                                    quantity: wo.quantity,
+                                  }))}
+                                  placeholder="Select work order..."
+                                  includeNone={true}
+                                  noneLabel="None"
+                                />
+                              )}
                             </FormControl>
                             <FormMessage />
                           </FormItem>
