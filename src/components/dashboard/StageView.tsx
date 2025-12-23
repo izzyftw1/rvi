@@ -1,12 +1,16 @@
 /**
  * StageView - Action-Oriented Stage Overview
  * 
+ * SINGLE SOURCE OF TRUTH: This component receives work orders, external moves,
+ * and production logs from FloorDashboard (the primary operational control page).
+ * All stage counts and status logic are derived here - no duplicate calculations.
+ * 
  * Shows for each stage:
  * - Queue vs capacity
  * - Ready vs blocked
  * - Primary blocker reason
  * 
- * All values derived from Production Logs and QC states.
+ * All values derived from Work Orders and QC states passed from FloorDashboard.
  */
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";

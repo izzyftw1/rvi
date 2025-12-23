@@ -1,3 +1,16 @@
+/**
+ * FloorDashboard - PRIMARY OPERATIONAL CONTROL PAGE
+ * 
+ * SINGLE SOURCE OF TRUTH for all stage-level insights:
+ * - Fetches work_orders, wo_external_moves, machines, daily_production_logs once
+ * - Passes data to child components (StageView, MachinesView, OperatorsView, etc.)
+ * - All stage counts, blockers, and status logic derive from this dataset
+ * - No child component should independently fetch work order or stage data
+ * 
+ * Access process-specific views via:
+ * - Stage cards → /work-orders?stage=<stage> or /work-orders?type=external
+ * - All filtering happens on the Work Orders page
+ */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
