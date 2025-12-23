@@ -65,6 +65,7 @@ export const ProductionReleaseSection = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Release unlocks production logging and sets stage to 'production'
       const { error } = await supabase
         .from('work_orders')
         .update({
@@ -72,12 +73,14 @@ export const ProductionReleaseSection = ({
           production_release_date: new Date().toISOString(),
           production_released_by: user.id,
           production_release_notes: releaseNotes || null,
+          current_stage: 'production' as any, // Auto-advance stage to production
+          production_allowed: true, // Explicitly unlock logging
         })
         .eq('id', workOrder.id);
 
       if (error) throw error;
 
-      toast.success('Work Order released for production');
+      toast.success('Production logging unlocked — stage set to Production');
       setShowReleaseDialog(false);
       setReleaseNotes('');
       onReleased();
@@ -98,7 +101,7 @@ export const ProductionReleaseSection = ({
             ) : (
               <Lock className="h-5 w-5 text-warning" />
             )}
-            Production Release
+            Production Logging
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -108,7 +111,7 @@ export const ProductionReleaseSection = ({
             <div className="bg-success/10 border border-success/20 rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-success" />
-                <span className="font-semibold text-success">Released for Production</span>
+                <span className="font-semibold text-success">Logging Unlocked</span>
               </div>
               <div className="text-sm text-muted-foreground space-y-1">
                 <p>
@@ -149,9 +152,10 @@ export const ProductionReleaseSection = ({
                   onClick={() => setShowReleaseDialog(true)}
                   disabled={!canBeReleased}
                   className="w-full"
+                  title="Unlocks production logging and sets stage to Production"
                 >
                   <Unlock className="h-4 w-4 mr-2" />
-                  Release for Production
+                  Unlock Production Logging
                 </Button>
               )}
 
@@ -169,11 +173,11 @@ export const ProductionReleaseSection = ({
       <Dialog open={showReleaseDialog} onOpenChange={setShowReleaseDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Release for Production</DialogTitle>
+            <DialogTitle>Unlock Production Logging</DialogTitle>
             <DialogDescription>
-              This will authorize production activities for work order{' '}
-              <strong>{workOrder.wo_number || workOrder.display_id || workOrder.id}</strong>.
-              Once released, material can be issued, external processing can begin, and machining quantities can be recorded.
+              This will unlock production logging for work order{' '}
+              <strong>{workOrder.wo_number || workOrder.display_id || workOrder.id}</strong> and set its stage to <strong>Production</strong>.
+              Once unlocked, operators can log quantities, reject counts, and downtime. Stage will auto-advance based on routing completion and QC gates.
             </DialogDescription>
           </DialogHeader>
 

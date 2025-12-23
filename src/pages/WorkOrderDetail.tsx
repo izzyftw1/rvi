@@ -623,7 +623,7 @@ const WorkOrderDetail = () => {
   const warnings = [];
   
   if (productionNotReleased) {
-    blockers.push({ type: 'release', targetId: 'production-release-section', label: 'Production Not Released', description: 'Work order must be released before production can start' });
+    blockers.push({ type: 'release', targetId: 'production-release-section', label: 'Production Logging Locked', description: 'Unlock production logging before operators can record quantities' });
   }
   if (wo.qc_material_status === 'failed') {
     blockers.push({ type: 'qc', targetId: 'qc-status-section', label: 'Material QC Failed', description: 'Raw material quality check failed - cannot proceed' });
@@ -708,7 +708,7 @@ const WorkOrderDetail = () => {
                 variant="default"
                 size="sm"
                 disabled={qcGatesBlocked || productionNotReleased}
-                title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Work order must be released for production first' : ''}
+                title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Unlock production logging first' : ''}
               >
                 <Cpu className="h-4 w-4 mr-2" />
                 Assign Machines
@@ -760,7 +760,7 @@ const WorkOrderDetail = () => {
                     className="mt-4"
                     onClick={() => blockers[0] && scrollToBlocker(blockers[0])}
                   >
-                    Resolve Issues
+                    {blockers[0]?.type === 'release' ? 'Go to Unlock' : 'View Details'}
                   </Button>
                 </div>
               </div>
