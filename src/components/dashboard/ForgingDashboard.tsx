@@ -87,12 +87,12 @@ export function ForgingDashboard() {
     : 0;
 
   return (
-    <Link to="/forging">
+    <Link to="/work-orders?type=external&stage=forging">
       <Card className="hover:shadow-lg transition-shadow cursor-pointer">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Hammer className="w-4 h-4" />
-            Forging Department
+            Forging Queue
           </CardTitle>
           <Badge variant="secondary">{stats.total} Jobs</Badge>
         </CardHeader>

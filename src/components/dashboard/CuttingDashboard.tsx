@@ -81,12 +81,12 @@ export function CuttingDashboard() {
     : 0;
 
   return (
-    <Link to="/cutting">
+    <Link to="/work-orders?stage=cutting_queue">
       <Card className="hover:shadow-lg transition-shadow cursor-pointer">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Scissors className="w-4 h-4" />
-            Cutting Department
+            Cutting Queue
           </CardTitle>
           <Badge variant="secondary">{stats.total} Jobs</Badge>
         </CardHeader>

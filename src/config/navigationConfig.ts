@@ -96,8 +96,7 @@ export const navigationGroups: NavGroup[] = [
       // === Entry Points (Data Sources) ===
       { label: "Work Orders", path: "/work-orders", icon: Search },
       { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet },
-      { label: "Cutting", path: "/cutting", icon: Scissors },
-      { label: "Forging", path: "/forging", icon: Flame },
+      // Cutting & Forging are now filtered views accessible via Floor Dashboard drill-down
       // === Dashboards (Read-Only Views) ===
       { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity },
       { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity },
