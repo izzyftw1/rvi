@@ -25,6 +25,11 @@ export interface ProductionBatch {
   started_at: string;
   ended_at: string | null;
   created_at: string;
+  // Quantity tracking
+  produced_qty: number;
+  qc_approved_qty: number;
+  qc_rejected_qty: number;
+  qc_pending_qty: number; // computed: produced - approved - rejected
   // Batch-level QC status
   qc_material_status: BatchQCStatus;
   qc_material_approved_by: string | null;
@@ -169,6 +174,10 @@ export function getBatchQCSummary(batch: ProductionBatch | null): {
   final: BatchQCStatus;
   productionAllowed: boolean;
   dispatchAllowed: boolean;
+  producedQty: number;
+  approvedQty: number;
+  rejectedQty: number;
+  pendingQty: number;
 } {
   if (!batch) {
     return {
@@ -176,7 +185,11 @@ export function getBatchQCSummary(batch: ProductionBatch | null): {
       firstPiece: 'pending',
       final: 'pending',
       productionAllowed: false,
-      dispatchAllowed: false
+      dispatchAllowed: false,
+      producedQty: 0,
+      approvedQty: 0,
+      rejectedQty: 0,
+      pendingQty: 0
     };
   }
   
@@ -185,6 +198,45 @@ export function getBatchQCSummary(batch: ProductionBatch | null): {
     firstPiece: batch.qc_first_piece_status,
     final: batch.qc_final_status,
     productionAllowed: isBatchProductionAllowed(batch),
-    dispatchAllowed: isBatchDispatchAllowed(batch)
+    dispatchAllowed: isBatchDispatchAllowed(batch),
+    producedQty: batch.produced_qty || 0,
+    approvedQty: batch.qc_approved_qty || 0,
+    rejectedQty: batch.qc_rejected_qty || 0,
+    pendingQty: batch.qc_pending_qty || 0
+  };
+}
+
+/**
+ * Gets batch quantity summary for display.
+ */
+export function getBatchQuantitySummary(batch: ProductionBatch | null): {
+  produced: number;
+  approved: number;
+  rejected: number;
+  pending: number;
+  approvalRate: number; // percentage
+} {
+  if (!batch || batch.produced_qty === 0) {
+    return {
+      produced: 0,
+      approved: 0,
+      rejected: 0,
+      pending: 0,
+      approvalRate: 0
+    };
+  }
+  
+  const produced = batch.produced_qty || 0;
+  const approved = batch.qc_approved_qty || 0;
+  const rejected = batch.qc_rejected_qty || 0;
+  const pending = produced - approved - rejected;
+  const approvalRate = produced > 0 ? Math.round((approved / produced) * 100) : 0;
+  
+  return {
+    produced,
+    approved,
+    rejected,
+    pending,
+    approvalRate
   };
 }
