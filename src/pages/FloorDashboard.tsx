@@ -4,82 +4,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { MachineUtilizationDashboard } from "@/components/MachineUtilizationDashboard";
+import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
+import { BlockedWorkOrdersTable } from "@/components/dashboard/BlockedWorkOrdersTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Factory, 
   TrendingUp, 
   Users, 
-  CheckCircle2, 
   AlertTriangle, 
   Clock, 
-  Hammer, 
-  Package, 
-  Inbox,
-  Pause,
   ArrowRight,
   Zap,
-  Activity
+  CheckCircle,
+  XCircle,
+  RefreshCw
 } from "lucide-react";
 import { differenceInHours, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 
-// Stage configuration with daily capacity estimates
-interface StageConfig {
-  label: string;
-  icon: React.ElementType;
-  color: string;
-  dailyCapacity: number; // estimated WOs per day
-  isProduction: boolean;
-}
-
-const STAGE_CONFIG: Record<string, StageConfig> = {
-  goods_in: { label: 'Goods In', icon: Inbox, color: 'hsl(var(--muted-foreground))', dailyCapacity: 20, isProduction: false },
-  cutting_queue: { label: 'Cutting', icon: Package, color: 'hsl(210 90% 52%)', dailyCapacity: 8, isProduction: true },
-  forging_queue: { label: 'Forging', icon: Hammer, color: 'hsl(38 92% 50%)', dailyCapacity: 6, isProduction: true },
-  production: { label: 'CNC Production', icon: Factory, color: 'hsl(210 90% 42%)', dailyCapacity: 10, isProduction: true },
-  qc: { label: 'Quality Check', icon: CheckCircle2, color: 'hsl(142 76% 36%)', dailyCapacity: 15, isProduction: false },
-  packing: { label: 'Packing', icon: Package, color: 'hsl(210 70% 40%)', dailyCapacity: 12, isProduction: false },
-  dispatch: { label: 'Dispatch', icon: Package, color: 'hsl(142 76% 40%)', dailyCapacity: 20, isProduction: false },
-};
-
-type LoadLevel = 'underloaded' | 'balanced' | 'overloaded';
-
-interface StageStatus {
-  stage: string;
-  config: StageConfig;
-  queuedCount: number;
-  loadLevel: LoadLevel;
-  loadPercent: number;
-  blockedCount: number;
-  readyCount: number;
-  avgWaitHours: number;
-  orders: any[];
-}
-
-function getLoadLevel(queuedCount: number, dailyCapacity: number): { level: LoadLevel; percent: number } {
-  const percent = Math.round((queuedCount / dailyCapacity) * 100);
-  if (percent <= 50) return { level: 'underloaded', percent };
-  if (percent <= 120) return { level: 'balanced', percent };
-  return { level: 'overloaded', percent };
-}
-
-function getAvgWaitHours(orders: any[]): number {
-  if (orders.length === 0) return 0;
-  const totalHours = orders.reduce((sum, wo) => {
-    try {
-      return sum + differenceInHours(new Date(), parseISO(wo.stage_entered_at || wo.created_at));
-    } catch {
-      return sum;
-    }
-  }, 0);
-  return Math.round(totalHours / orders.length);
-}
-
 const FloorDashboard = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [externalMoves, setExternalMoves] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
@@ -88,7 +36,7 @@ const FloorDashboard = () => {
     try {
       setLoading(true);
       
-      const [woResult, machinesResult] = await Promise.all([
+      const [woResult, machinesResult, externalResult] = await Promise.all([
         supabase
           .from("work_orders")
           .select(`
@@ -102,8 +50,10 @@ const FloorDashboard = () => {
             current_stage,
             due_date,
             created_at,
+            stage_entered_at,
             qc_material_passed,
-            qc_first_piece_passed
+            qc_first_piece_passed,
+            machine_id
           `)
           .in("status", ["pending", "in_progress"])
           .order("due_date", { ascending: true }),
@@ -111,14 +61,21 @@ const FloorDashboard = () => {
         supabase
           .from("machines")
           .select("id, machine_id, name, status, current_wo_id")
-          .order("machine_id", { ascending: true })
+          .order("machine_id", { ascending: true }),
+
+        supabase
+          .from("wo_external_moves")
+          .select("id, work_order_id, process, status, expected_return_date")
+          .eq("status", "sent")
       ]);
 
       if (woResult.error) throw woResult.error;
       if (machinesResult.error) throw machinesResult.error;
+      if (externalResult.error) throw externalResult.error;
 
       setWorkOrders(woResult.data || []);
       setMachines(machinesResult.data || []);
+      setExternalMoves(externalResult.data || []);
     } catch (error: any) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -141,7 +98,7 @@ const FloorDashboard = () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
@@ -158,138 +115,195 @@ const FloorDashboard = () => {
     if (lastUpdate > 0) loadData();
   }, [lastUpdate, loadData]);
 
-  // Calculate stage statuses with load balancing info
-  const stageStatuses = useMemo((): StageStatus[] => {
-    return Object.entries(STAGE_CONFIG)
-      .map(([stage, config]) => {
-        const orders = workOrders.filter((wo) => wo.current_stage === stage);
-        const { level, percent } = getLoadLevel(orders.length, config.dailyCapacity);
-        
-        const blockedCount = orders.filter(wo => 
-          !wo.qc_material_passed || !wo.qc_first_piece_passed
-        ).length;
-        
-        const readyCount = orders.filter(wo => 
-          wo.qc_material_passed && wo.qc_first_piece_passed
-        ).length;
-
-        return {
-          stage,
-          config,
-          queuedCount: orders.length,
-          loadLevel: level,
-          loadPercent: percent,
-          blockedCount,
-          readyCount,
-          avgWaitHours: getAvgWaitHours(orders),
-          orders
-        };
-      })
-      .filter(s => s.queuedCount > 0 || s.config.isProduction); // Hide irrelevant stages with no orders
-  }, [workOrders]);
-
-  // Overall balance metrics
-  const balanceMetrics = useMemo(() => {
-    const productionStages = stageStatuses.filter(s => s.config.isProduction);
-    const overloadedStages = productionStages.filter(s => s.loadLevel === 'overloaded');
-    const idleStages = productionStages.filter(s => s.loadLevel === 'underloaded' && s.queuedCount === 0);
-    const totalQueued = stageStatuses.reduce((sum, s) => sum + s.queuedCount, 0);
-    const totalBlocked = stageStatuses.reduce((sum, s) => sum + s.blockedCount, 0);
+  // Calculate blocker stats
+  const blockerStats = useMemo(() => {
+    const total = workOrders.length;
+    const materialQcBlocked = workOrders.filter(wo => !wo.qc_material_passed).length;
+    const firstPieceBlocked = workOrders.filter(wo => wo.qc_material_passed && !wo.qc_first_piece_passed).length;
+    const externalBlocked = externalMoves.length;
+    const ready = total - materialQcBlocked - firstPieceBlocked - externalBlocked;
     
     const activeMachines = machines.filter(m => m.status === 'running' || m.current_wo_id).length;
     const idleMachines = machines.filter(m => m.status === 'idle' && !m.current_wo_id).length;
 
     return {
-      overloadedCount: overloadedStages.length,
-      idleStageCount: idleStages.length,
-      totalQueued,
-      totalBlocked,
+      total,
+      materialQcBlocked,
+      firstPieceBlocked,
+      externalBlocked,
+      ready: Math.max(0, ready),
       activeMachines,
       idleMachines,
-      totalMachines: machines.length
+      totalMachines: machines.length,
+      blockedTotal: materialQcBlocked + firstPieceBlocked + externalBlocked
     };
-  }, [stageStatuses, machines]);
-
-  const loadColors = {
-    underloaded: 'text-blue-600 dark:text-blue-400',
-    balanced: 'text-green-600 dark:text-green-400',
-    overloaded: 'text-red-600 dark:text-red-400'
-  };
-
-  const loadBgColors = {
-    underloaded: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800',
-    balanced: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800',
-    overloaded: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800'
-  };
-
-  const loadLabels = {
-    underloaded: 'Idle Capacity',
-    balanced: 'Balanced',
-    overloaded: 'Overloaded'
-  };
+  }, [workOrders, externalMoves, machines]);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto p-4 space-y-6">
-        {/* Header */}
+        {/* Header with Action Focus */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Floor Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+              Floor Dashboard
+              {blockerStats.blockedTotal > 0 && (
+                <Badge variant="destructive" className="text-sm">
+                  {blockerStats.blockedTotal} Blocked
+                </Badge>
+              )}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Load balancing & execution readiness
+              Action-focused: What's blocked, why, and who owns it
             </p>
           </div>
 
-          {/* Quick Balance Summary - only show if issues exist */}
-          <div className="flex flex-wrap gap-2">
-            {balanceMetrics.overloadedCount > 0 && (
-              <Badge variant="destructive" className="gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                {balanceMetrics.overloadedCount} Overloaded
-              </Badge>
-            )}
-            {balanceMetrics.totalBlocked > 0 && (
-              <Badge variant="outline" className="gap-1">
-                <Clock className="h-3 w-3" />
-                {balanceMetrics.totalBlocked} Blocked
-              </Badge>
-            )}
-          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={loadData}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
         </div>
 
-        {/* Machine Utilization Strip */}
-        <Card className="bg-muted/30">
-          <CardContent className="py-3 px-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <Factory className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{balanceMetrics.totalMachines} Machines</span>
-                </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-green-500" />
-                    {balanceMetrics.activeMachines} Running
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-gray-400" />
-                    {balanceMetrics.idleMachines} Idle
-                  </span>
-                </div>
+        {/* Quick Stats Strip - Blocker Focused */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          <Card className={cn(
+            "border-l-4",
+            blockerStats.materialQcBlocked > 0 ? "border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-l-muted"
+          )}>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Material QC</span>
+                <XCircle className={cn("h-4 w-4", blockerStats.materialQcBlocked > 0 ? "text-amber-500" : "text-muted-foreground/30")} />
               </div>
-              <div className="text-xs text-muted-foreground">
-                {balanceMetrics.totalQueued} WOs in queue
+              <p className={cn("text-xl font-bold", blockerStats.materialQcBlocked > 0 && "text-amber-700 dark:text-amber-400")}>
+                {blockerStats.materialQcBlocked}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Owner: Quality</p>
+            </CardContent>
+          </Card>
+
+          <Card className={cn(
+            "border-l-4",
+            blockerStats.firstPieceBlocked > 0 ? "border-l-orange-500 bg-orange-50/50 dark:bg-orange-950/20" : "border-l-muted"
+          )}>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">First Piece QC</span>
+                <XCircle className={cn("h-4 w-4", blockerStats.firstPieceBlocked > 0 ? "text-orange-500" : "text-muted-foreground/30")} />
               </div>
-            </div>
-          </CardContent>
-        </Card>
+              <p className={cn("text-xl font-bold", blockerStats.firstPieceBlocked > 0 && "text-orange-700 dark:text-orange-400")}>
+                {blockerStats.firstPieceBlocked}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Owner: QC / Production</p>
+            </CardContent>
+          </Card>
+
+          <Card className={cn(
+            "border-l-4",
+            blockerStats.externalBlocked > 0 ? "border-l-purple-500 bg-purple-50/50 dark:bg-purple-950/20" : "border-l-muted"
+          )}>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">At External</span>
+                <Clock className={cn("h-4 w-4", blockerStats.externalBlocked > 0 ? "text-purple-500" : "text-muted-foreground/30")} />
+              </div>
+              <p className={cn("text-xl font-bold", blockerStats.externalBlocked > 0 && "text-purple-700 dark:text-purple-400")}>
+                {blockerStats.externalBlocked}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Owner: External Ops</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Ready to Run</span>
+                <CheckCircle className="h-4 w-4 text-green-500" />
+              </div>
+              <p className="text-xl font-bold text-green-700 dark:text-green-400">
+                {blockerStats.ready}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Owner: Production</p>
+            </CardContent>
+          </Card>
+
+          <Card className={cn(
+            "border-l-4",
+            blockerStats.idleMachines > 0 && blockerStats.ready > 0 ? "border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20" : "border-l-muted"
+          )}>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Idle Machines</span>
+                <Factory className={cn("h-4 w-4", blockerStats.idleMachines > 0 ? "text-blue-500" : "text-muted-foreground/30")} />
+              </div>
+              <p className={cn("text-xl font-bold", blockerStats.idleMachines > 0 && "text-blue-700 dark:text-blue-400")}>
+                {blockerStats.idleMachines} / {blockerStats.totalMachines}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Action: Assign Work</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-muted">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Total Active</span>
+                <Zap className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-xl font-bold">{blockerStats.total}</p>
+              <p className="text-[10px] text-muted-foreground">Work Orders</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Priority Action Alert */}
+        {blockerStats.idleMachines > 0 && blockerStats.ready > 0 && (
+          <Card className="border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <div>
+                    <p className="font-medium text-blue-800 dark:text-blue-200">
+                      {blockerStats.idleMachines} machine{blockerStats.idleMachines > 1 ? 's' : ''} idle with {blockerStats.ready} ready WOs
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      Assign machines to start production
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={() => navigate('/production-progress?status=ready')}
+                  className="gap-1"
+                >
+                  Assign Now <ArrowRight className="h-3 w-3" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Main Content */}
-        <Tabs defaultValue="stages" className="w-full">
-          <TabsList className="grid w-full md:w-auto grid-cols-3">
-            <TabsTrigger value="stages" className="gap-2">
+        <Tabs defaultValue="blockers" className="w-full">
+          <TabsList className="grid w-full md:w-auto grid-cols-4">
+            <TabsTrigger value="blockers" className="gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Blockers
+              {blockerStats.blockedTotal > 0 && (
+                <Badge variant="destructive" className="h-5 text-[10px] px-1.5">
+                  {blockerStats.blockedTotal}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="actions" className="gap-2">
               <Zap className="h-4 w-4" />
-              Stage Load
+              Quick Actions
             </TabsTrigger>
             <TabsTrigger value="machines" className="gap-2">
               <Factory className="h-4 w-4" />
@@ -301,157 +315,192 @@ const FloorDashboard = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="stages" className="mt-6">
+          {/* Blockers Tab - Priority */}
+          <TabsContent value="blockers" className="mt-6 space-y-6">
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <Card key={i}>
-                    <CardContent className="p-4 space-y-3">
-                      <Skeleton className="h-6 w-1/2" />
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-20 w-full" />
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="space-y-4">
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-60 w-full" />
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {stageStatuses.map((stageStatus) => {
-                  const { stage, config, queuedCount, loadLevel, loadPercent, blockedCount, readyCount, avgWaitHours, orders } = stageStatus;
-                  const Icon = config.icon;
-                  const isIdle = queuedCount === 0;
+              <>
+                {/* Top Priority Actions */}
+                <ActionableBlockers />
 
-                  return (
-                    <Card 
-                      key={stage} 
-                      className={cn(
-                        "transition-all border",
-                        isIdle 
-                          ? "border-muted bg-muted/20" 
-                          : loadBgColors[loadLevel]
-                      )}
-                    >
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Icon className={cn("h-5 w-5", isIdle && "opacity-50")} style={{ color: isIdle ? undefined : config.color }} />
-                            <CardTitle className={cn("text-base", isIdle && "text-muted-foreground")}>{config.label}</CardTitle>
-                          </div>
-                          {!isIdle && (
-                            <Badge 
-                              variant="secondary" 
-                              className={cn("text-xs", loadColors[loadLevel])}
-                            >
-                              {loadLabels[loadLevel]}
-                            </Badge>
-                          )}
-                          {isIdle && (
-                            <span className="text-xs text-muted-foreground">0 WOs</span>
-                          )}
-                        </div>
-                      </CardHeader>
-                      
-                      <CardContent className="space-y-4">
-                        {isIdle ? (
-                          <div className="py-2 text-xs text-muted-foreground">
-                            No work orders in this stage
-                          </div>
-                        ) : (
-                          <>
-                            {/* Load Bar */}
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">Queue vs Capacity</span>
-                                <span className={cn("font-semibold", loadColors[loadLevel])}>
-                                  {queuedCount} / {config.dailyCapacity}
-                                </span>
-                              </div>
-                              <Progress 
-                                value={Math.min(loadPercent, 150)} 
-                                className={cn(
-                                  "h-2",
-                                  loadLevel === 'overloaded' && "[&>div]:bg-red-500",
-                                  loadLevel === 'balanced' && "[&>div]:bg-green-500",
-                                  loadLevel === 'underloaded' && "[&>div]:bg-blue-500"
-                                )}
-                              />
-                              <p className="text-[10px] text-muted-foreground text-right">
-                                {loadPercent}% of daily capacity
-                              </p>
-                            </div>
-
-                            {/* Breakdown */}
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                                <span className="text-muted-foreground">Ready</span>
-                                <span className="font-semibold text-green-600 dark:text-green-400">{readyCount}</span>
-                              </div>
-                              <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                                <span className="text-muted-foreground">Blocked</span>
-                                <span className={cn(
-                                  "font-semibold",
-                                  blockedCount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-                                )}>
-                                  {blockedCount}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Guidance Text */}
-                            <div className="text-xs text-muted-foreground italic px-1">
-                              {blockedCount > 0 && blockedCount >= readyCount && (
-                                <span>Primary blocker: {orders.some(o => !o.qc_material_passed) ? 'Material QC' : 'First Piece QC'}</span>
-                              )}
-                              {blockedCount === 0 && readyCount > 0 && loadLevel === 'underloaded' && (
-                                <span>Capacity available, ready to execute</span>
-                              )}
-                              {blockedCount === 0 && readyCount > 0 && loadLevel === 'overloaded' && (
-                                <span>Queue exceeds daily capacity</span>
-                              )}
-                              {blockedCount === 0 && readyCount > 0 && loadLevel === 'balanced' && (
-                                <span>Load balanced, execution on track</span>
-                              )}
-                              {readyCount === 0 && blockedCount > 0 && (
-                                <span>All WOs blocked, none ready to run</span>
-                              )}
-                            </div>
-
-                            {/* Quick Actions */}
-                            <div className="pt-2 border-t">
-                              <button
-                                onClick={() => navigate(`/production-progress?stage=${stage}`)}
-                                className="w-full flex items-center justify-between text-xs text-primary hover:underline group"
-                              >
-                                <span>View {queuedCount} work orders</span>
-                                <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Imbalance Alert */}
-            {!loading && balanceMetrics.overloadedCount > 0 && balanceMetrics.idleStageCount > 0 && (
-              <Card className="mt-6 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30">
-                <CardContent className="py-4 px-6">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-amber-800 dark:text-amber-200">Stage Imbalance Detected</p>
-                      <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                        {balanceMetrics.overloadedCount} stage{balanceMetrics.overloadedCount > 1 ? 's are' : ' is'} overloaded while {balanceMetrics.idleStageCount} stage{balanceMetrics.idleStageCount > 1 ? 's are' : ' is'} idle. 
-                        Consider reallocating resources or investigating blockers.
-                      </p>
+                {/* Full Blocked Orders Table */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        All Blocked Work Orders
+                      </CardTitle>
+                      <span className="text-xs text-muted-foreground">
+                        Each row has one primary action
+                      </span>
                     </div>
+                  </CardHeader>
+                  <CardContent>
+                    <BlockedWorkOrdersTable 
+                      workOrders={workOrders}
+                      externalMoves={externalMoves}
+                      machines={machines}
+                    />
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
+          {/* Quick Actions Tab */}
+          <TabsContent value="actions" className="mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Material QC Action */}
+              <Card className={cn(
+                "transition-all hover:shadow-md cursor-pointer",
+                blockerStats.materialQcBlocked > 0 && "ring-2 ring-amber-500/50"
+              )} onClick={() => navigate('/qc/incoming')}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge variant="outline" className="border-amber-500 text-amber-700">
+                      Quality
+                    </Badge>
+                    {blockerStats.materialQcBlocked > 0 && (
+                      <Badge variant="destructive">{blockerStats.materialQcBlocked} pending</Badge>
+                    )}
                   </div>
+                  <h3 className="font-semibold mb-1">Approve Material QC</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Inspect and approve incoming materials to unblock production
+                  </p>
+                  <Button size="sm" className="w-full gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Open QC Incoming
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
-            )}
+
+              {/* First Piece QC Action */}
+              <Card className={cn(
+                "transition-all hover:shadow-md cursor-pointer",
+                blockerStats.firstPieceBlocked > 0 && "ring-2 ring-orange-500/50"
+              )} onClick={() => navigate('/quality?tab=first-piece')}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge variant="outline" className="border-orange-500 text-orange-700">
+                      QC / Production
+                    </Badge>
+                    {blockerStats.firstPieceBlocked > 0 && (
+                      <Badge variant="destructive">{blockerStats.firstPieceBlocked} pending</Badge>
+                    )}
+                  </div>
+                  <h3 className="font-semibold mb-1">Approve First Piece</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Perform first piece inspection to release production
+                  </p>
+                  <Button size="sm" className="w-full gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Open First Piece
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Assign Machine Action */}
+              <Card className={cn(
+                "transition-all hover:shadow-md cursor-pointer",
+                blockerStats.idleMachines > 0 && blockerStats.ready > 0 && "ring-2 ring-blue-500/50"
+              )} onClick={() => navigate('/production-progress')}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge variant="outline" className="border-blue-500 text-blue-700">
+                      Production Planning
+                    </Badge>
+                    {blockerStats.ready > 0 && (
+                      <Badge className="bg-green-500">{blockerStats.ready} ready</Badge>
+                    )}
+                  </div>
+                  <h3 className="font-semibold mb-1">Assign Machines</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Assign work orders to available machines
+                  </p>
+                  <Button size="sm" className="w-full gap-2">
+                    <Factory className="h-4 w-4" />
+                    Open Production Progress
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* External Status Action */}
+              <Card className={cn(
+                "transition-all hover:shadow-md cursor-pointer",
+                blockerStats.externalBlocked > 0 && "ring-2 ring-purple-500/50"
+              )} onClick={() => navigate('/external-efficiency')}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge variant="outline" className="border-purple-500 text-purple-700">
+                      External Ops
+                    </Badge>
+                    {blockerStats.externalBlocked > 0 && (
+                      <Badge variant="secondary">{blockerStats.externalBlocked} at external</Badge>
+                    )}
+                  </div>
+                  <h3 className="font-semibold mb-1">Check External Status</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Track and expedite items at external vendors
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full gap-2">
+                    <Clock className="h-4 w-4" />
+                    View External Jobs
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Issue Material Action */}
+              <Card className="transition-all hover:shadow-md cursor-pointer" 
+                onClick={() => navigate('/material-requirements')}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge variant="outline" className="border-green-500 text-green-700">
+                      Procurement
+                    </Badge>
+                  </div>
+                  <h3 className="font-semibold mb-1">Issue Material</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Issue materials to work orders ready for production
+                  </p>
+                  <Button size="sm" variant="outline" className="w-full gap-2">
+                    <Zap className="h-4 w-4" />
+                    Material Requirements
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Maintenance Action */}
+              <Card className="transition-all hover:shadow-md cursor-pointer"
+                onClick={() => navigate('/cnc')}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge variant="outline" className="border-red-500 text-red-700">
+                      Maintenance
+                    </Badge>
+                  </div>
+                  <h3 className="font-semibold mb-1">Call Maintenance</h3>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Report machine issues or schedule maintenance
+                  </p>
+                  <Button size="sm" variant="destructive" className="w-full gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Machine Status
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="machines" className="mt-6">
@@ -473,18 +522,15 @@ const FloorDashboard = () => {
                     <p className="text-sm text-muted-foreground mb-3">
                       View detailed operator performance metrics from the Operator Production Ledger
                     </p>
-                    <button
+                    <Button
                       onClick={() => navigate('/operator-efficiency')}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+                      className="gap-2"
                     >
                       <TrendingUp className="h-4 w-4" />
                       Open Operator Efficiency Report
                       <ArrowRight className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground italic">
-                    All metrics are read-only and derived from production logs via the operator ledger
-                  </p>
                 </div>
               </CardContent>
             </Card>
