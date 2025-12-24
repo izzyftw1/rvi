@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, startOfQuarter, startOfYear, endOfMonth, endOfQuarter, endOfYear } from "date-fns";
 import { DrillDownModal } from "@/components/finance/DrillDownModal";
 import { NCRCostImpactWidget } from "@/components/finance/NCRCostImpactWidget";
+import { OutstandingBreakdownWidget } from "@/components/finance/OutstandingBreakdownWidget";
 
 interface DashboardFilters {
   customerId: string;
@@ -1046,6 +1047,9 @@ export default function FinanceDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Outstanding Breakdown Widget - Full Width */}
+        <OutstandingBreakdownWidget />
 
         {/* Advance Payment Stats + NCR Cost Impact */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
