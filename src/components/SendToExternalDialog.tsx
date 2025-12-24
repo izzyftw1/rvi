@@ -70,15 +70,21 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   // Processes that can be done before production release (pre-production processes)
   const preProductionProcesses = ["Forging", "Heat Treatment", "Cutting"];
   
+  // Internal processes don't require external partner selection
+  const internalProcesses = ["Cutting"];
+  
   const processOptions = [
-    { value: "Forging", label: "Forging", prefix: "FG", preProduction: true },
-    { value: "Heat Treatment", label: "Heat Treatment", prefix: "HT", preProduction: true },
-    { value: "Cutting", label: "Cutting", prefix: "CT", preProduction: true },
-    { value: "Plating", label: "Plating", prefix: "PL", preProduction: false },
-    { value: "Job Work", label: "Job Work", prefix: "JW", preProduction: false },
-    { value: "Buffing", label: "Buffing", prefix: "BF", preProduction: false },
-    { value: "Blasting", label: "Blasting", prefix: "BL", preProduction: false },
+    { value: "Cutting", label: "Cutting (Internal)", prefix: "CT", preProduction: true, internal: true },
+    { value: "Forging", label: "Forging", prefix: "FG", preProduction: true, internal: false },
+    { value: "Heat Treatment", label: "Heat Treatment", prefix: "HT", preProduction: true, internal: false },
+    { value: "Plating", label: "Plating", prefix: "PL", preProduction: false, internal: false },
+    { value: "Job Work", label: "Job Work", prefix: "JW", preProduction: false, internal: false },
+    { value: "Buffing", label: "Buffing", prefix: "BF", preProduction: false, internal: false },
+    { value: "Blasting", label: "Blasting", prefix: "BL", preProduction: false, internal: false },
   ];
+  
+  // Check if current process is internal
+  const isInternalProcess = process && internalProcesses.includes(process);
 
   useEffect(() => {
     loadPartners();
@@ -184,7 +190,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       newErrors.process = "Process selection is required";
     }
     
-    if (!partnerId) {
+    // Partner is only required for external (non-internal) processes
+    if (!isInternalProcess && !partnerId) {
       newErrors.partnerId = "Partner selection is required";
     }
     
@@ -276,13 +283,14 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         .insert([{
           work_order_id: workOrder.id,
           process,
-          partner_id: partnerId,
+          partner_id: isInternalProcess ? null : partnerId, // No partner for internal processes
           quantity_sent: qty,
           expected_return_date: expectedReturnDate,
           challan_no: challanNo,
           remarks: remarks.trim() || null,
           operation_tag: operationTag?.trim() || null,
           created_by: user?.id,
+          is_internal: isInternalProcess || false, // Mark as internal process
         }])
         .select()
         .single();
@@ -297,9 +305,9 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         throw error;
       }
 
-      // Get partner name for material location
+      // Get partner name for material location (or "In-House" for internal processes)
       const selectedPartner = partners.find(p => p.id === partnerId);
-      const partnerName = selectedPartner?.name || 'External Partner';
+      const partnerName = isInternalProcess ? 'In-House (Cutting)' : (selectedPartner?.name || 'External Partner');
       
       // Calculate weight
       const weightPerPc = workOrder.gross_weight_per_pc || 0;
@@ -329,6 +337,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       
       // Map process type to stage value
       const stageMap: Record<string, string> = {
+        'Cutting': 'cutting',
         'Forging': 'forging',
         'Plating': 'plating',
         'Buffing': 'buffing',
@@ -357,15 +366,15 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       // Reload quantity tracking
       await loadQuantityTracking();
       
-      // Create execution record for external process OUT
+      // Create execution record for process OUT (use EXTERNAL_PROCESS for all process moves)
       await createExecutionRecord({
         workOrderId: workOrder.id,
-        operationType: 'EXTERNAL_PROCESS',
+        operationType: 'EXTERNAL_PROCESS', // All process moves (internal/external) tracked same way
         processName: process,
         quantity: qty,
         unit: 'pcs',
         direction: 'OUT',
-        relatedPartnerId: partnerId,
+        relatedPartnerId: isInternalProcess ? undefined : partnerId,
         relatedChallanId: moveData?.id,
       });
       
@@ -403,9 +412,9 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Send to External Processing</DialogTitle>
+          <DialogTitle>Send to Processing</DialogTitle>
           <DialogDescription>
-            Send items for {workOrder?.item_code} to external partner
+            Send items for {workOrder?.item_code} to {isInternalProcess ? 'internal department' : 'external partner'}
           </DialogDescription>
         </DialogHeader>
 
@@ -479,48 +488,58 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                 {errors.process && <FormHint variant="error">{errors.process}</FormHint>}
               </FormField>
 
-              <FormField>
-                <Label>Partner<RequiredIndicator /></Label>
-                <Select 
-                  value={partnerId} 
-                  onValueChange={handlePartnerChange}
-                  disabled={!process || filteredPartners.length === 0}
-                >
-                  <SelectTrigger className={errors.partnerId ? "border-destructive" : ""}>
-                    <SelectValue placeholder={
-                      !process 
-                        ? "Select process first" 
-                        : filteredPartners.length === 0 
-                          ? "No partners found" 
-                          : "Select partner"
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredPartners.length === 0 ? (
-                      <SelectItem value="__no_partners" disabled>
-                        {process ? `No partners for ${process}` : "Select process first"}
-                      </SelectItem>
-                    ) : (
-                      filteredPartners.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
+              {isInternalProcess ? (
+                <FormField>
+                  <Label>Department</Label>
+                  <div className="flex items-center h-10 px-3 rounded-md border bg-muted text-muted-foreground">
+                    In-House ({process})
+                  </div>
+                  <FormHint>Internal process - no external partner required</FormHint>
+                </FormField>
+              ) : (
+                <FormField>
+                  <Label>Partner<RequiredIndicator /></Label>
+                  <Select 
+                    value={partnerId} 
+                    onValueChange={handlePartnerChange}
+                    disabled={!process || filteredPartners.length === 0}
+                  >
+                    <SelectTrigger className={errors.partnerId ? "border-destructive" : ""}>
+                      <SelectValue placeholder={
+                        !process 
+                          ? "Select process first" 
+                          : filteredPartners.length === 0 
+                            ? "No partners found" 
+                            : "Select partner"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredPartners.length === 0 ? (
+                        <SelectItem value="__no_partners" disabled>
+                          {process ? `No partners for ${process}` : "Select process first"}
                         </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {errors.partnerId && <FormHint variant="error">{errors.partnerId}</FormHint>}
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs"
-                  onClick={() => window.open("/partners", "_blank")}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add New Partner
-                </Button>
-              </FormField>
+                      ) : (
+                        filteredPartners.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {errors.partnerId && <FormHint variant="error">{errors.partnerId}</FormHint>}
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => window.open("/partners", "_blank")}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add New Partner
+                  </Button>
+                </FormField>
+              )}
             </FormRow>
           </FormSection>
 
