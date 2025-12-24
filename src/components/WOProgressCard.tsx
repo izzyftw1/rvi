@@ -2,7 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Package, TrendingUp, AlertTriangle, Clock, CheckCircle2, Loader2 } from "lucide-react";
+import { 
+  Package, TrendingUp, AlertTriangle, Clock, CheckCircle2, Loader2, 
+  Truck, ClipboardCheck, Layers 
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Tooltip,
@@ -10,44 +13,74 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface WOProgressCardProps {
   woId: string;
   orderedQuantity: number;
 }
 
+interface BatchData {
+  id: string;
+  batch_number: number;
+  produced_qty: number;
+  qc_approved_qty: number;
+  qc_rejected_qty: number;
+  dispatched_qty: number;
+  qc_final_status: string;
+}
+
 interface ProgressData {
-  totalProduced: number;      // qty_completed from work_orders (synced from logs)
-  totalScrap: number;         // qty_rejected from work_orders (synced from logs)
-  netCompleted: number;       // Same as totalProduced (ok_quantity)
-  remaining: number;          // qty_remaining from work_orders (generated column)
-  progressPercent: number;    // completion_pct from work_orders (generated column)
-  completedToday: number;     // Today's ok_quantity from logs
-  scrapToday: number;         // Today's rejections from logs
-  avgRatePerHour: number;     // Average production rate from logs
+  totalProduced: number;
+  totalQCApproved: number;
+  totalQCRejected: number;
+  totalDispatched: number;
+  remaining: number;
+  progressPercent: number;
+  completedToday: number;
+  scrapToday: number;
+  avgRatePerHour: number;
   lastUpdated: string | null;
+  batches: BatchData[];
 }
 
 export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
   const [progress, setProgress] = useState<ProgressData>({
     totalProduced: 0,
-    totalScrap: 0,
-    netCompleted: 0,
+    totalQCApproved: 0,
+    totalQCRejected: 0,
+    totalDispatched: 0,
     remaining: orderedQuantity,
     progressPercent: 0,
     completedToday: 0,
     scrapToday: 0,
     avgRatePerHour: 0,
-    lastUpdated: null
+    lastUpdated: null,
+    batches: []
   });
   const [loading, setLoading] = useState(true);
   const [animatedProgress, setAnimatedProgress] = useState(0);
+  const [showBatches, setShowBatches] = useState(false);
 
   const loadProgress = useCallback(async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Get cached progress from work_orders (single source of truth)
+      // Get cached progress from work_orders
       const { data: wo, error: woError } = await supabase
         .from('work_orders')
         .select('qty_completed, qty_rejected, qty_remaining, completion_pct, updated_at')
@@ -56,43 +89,72 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
 
       if (woError) throw woError;
 
-      // Get today's stats and avg rate from logs (for display only)
+      // Get batch-level data
+      const { data: batchData } = await supabase
+        .from('production_batches')
+        .select('id, batch_number, produced_qty, qc_approved_qty, qc_rejected_qty, dispatched_qty, qc_final_status')
+        .eq('wo_id', woId)
+        .order('batch_number', { ascending: true });
+
+      const batches: BatchData[] = (batchData || []).map(b => ({
+        id: b.id,
+        batch_number: b.batch_number,
+        produced_qty: b.produced_qty || 0,
+        qc_approved_qty: b.qc_approved_qty || 0,
+        qc_rejected_qty: b.qc_rejected_qty || 0,
+        dispatched_qty: b.dispatched_qty || 0,
+        qc_final_status: b.qc_final_status || 'pending'
+      }));
+
+      // Calculate totals from batches
+      const totalProduced = batches.reduce((sum, b) => sum + b.produced_qty, 0);
+      const totalQCApproved = batches.reduce((sum, b) => sum + b.qc_approved_qty, 0);
+      const totalQCRejected = batches.reduce((sum, b) => sum + b.qc_rejected_qty, 0);
+      const totalDispatched = batches.reduce((sum, b) => sum + b.dispatched_qty, 0);
+
+      // Get today's stats
       const { data: todayLogs } = await supabase
         .from('daily_production_logs')
-        .select('ok_quantity, total_rejection_quantity, actual_runtime_minutes, created_at')
+        .select('ok_quantity, total_rejection_quantity')
         .eq('wo_id', woId)
         .eq('log_date', today);
-
-      const { data: allLogs } = await supabase
-        .from('daily_production_logs')
-        .select('ok_quantity, actual_runtime_minutes, created_at')
-        .eq('wo_id', woId)
-        .order('created_at', { ascending: false })
-        .limit(1);
 
       const completedToday = todayLogs?.reduce((sum, log) => sum + (log.ok_quantity || 0), 0) || 0;
       const scrapToday = todayLogs?.reduce((sum, log) => sum + (log.total_rejection_quantity || 0), 0) || 0;
 
-      // Calculate avg rate from all logs
+      // Calculate avg rate
       const { data: runtimeData } = await supabase
+        .from('daily_production_logs')
+        .select('actual_runtime_minutes, created_at')
+        .eq('wo_id', woId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const { data: allRuntimeData } = await supabase
         .from('daily_production_logs')
         .select('actual_runtime_minutes')
         .eq('wo_id', woId);
 
-      const totalRuntimeMinutes = runtimeData?.reduce((sum, log) => sum + (log.actual_runtime_minutes || 0), 0) || 0;
+      const totalRuntimeMinutes = allRuntimeData?.reduce((sum, log) => sum + (log.actual_runtime_minutes || 0), 0) || 0;
       const totalRuntimeHours = totalRuntimeMinutes / 60;
-      const avgRatePerHour = totalRuntimeHours > 0 ? (wo?.qty_completed || 0) / totalRuntimeHours : 0;
+      const avgRatePerHour = totalRuntimeHours > 0 ? totalProduced / totalRuntimeHours : 0;
+
+      // Remaining = ordered - dispatched
+      const remaining = Math.max(0, orderedQuantity - totalDispatched);
+      const progressPercent = orderedQuantity > 0 ? Math.min(100, (totalDispatched / orderedQuantity) * 100) : 0;
 
       setProgress({
-        totalProduced: wo?.qty_completed || 0,
-        totalScrap: wo?.qty_rejected || 0,
-        netCompleted: wo?.qty_completed || 0,
-        remaining: wo?.qty_remaining || orderedQuantity,
-        progressPercent: Math.min(100, wo?.completion_pct || 0),
+        totalProduced,
+        totalQCApproved,
+        totalQCRejected,
+        totalDispatched,
+        remaining,
+        progressPercent,
         completedToday,
         scrapToday,
         avgRatePerHour,
-        lastUpdated: allLogs?.[0]?.created_at || wo?.updated_at || null
+        lastUpdated: runtimeData?.[0]?.created_at || wo?.updated_at || null,
+        batches
       });
     } catch (error) {
       console.error('Error loading production progress:', error);
@@ -104,20 +166,22 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
   useEffect(() => {
     loadProgress();
 
-    // Real-time subscription for work_orders changes (triggered by production log sync)
     const channel = supabase
       .channel(`wo_progress_realtime_${woId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'work_orders',
-          filter: `id=eq.${woId}`
-        },
-        () => {
-          loadProgress();
-        }
+        { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${woId}` },
+        () => loadProgress()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dispatches', filter: `wo_id=eq.${woId}` },
+        () => loadProgress()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'work_orders', filter: `id=eq.${woId}` },
+        () => loadProgress()
       )
       .subscribe();
 
@@ -126,7 +190,6 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
     };
   }, [woId, loadProgress]);
 
-  // Animate progress bar
   useEffect(() => {
     const timer = setTimeout(() => {
       setAnimatedProgress(progress.progressPercent);
@@ -144,9 +207,18 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
     );
   }
 
-  const scrapRate = progress.totalProduced > 0 
-    ? ((progress.totalScrap / (progress.totalProduced + progress.totalScrap)) * 100).toFixed(1)
-    : '0';
+  const getBatchStatusBadge = (status: string) => {
+    switch (status) {
+      case 'passed':
+        return <Badge variant="default" className="bg-green-600">Passed</Badge>;
+      case 'failed':
+        return <Badge variant="destructive">Failed</Badge>;
+      case 'waived':
+        return <Badge variant="secondary">Waived</Badge>;
+      default:
+        return <Badge variant="outline">Pending</Badge>;
+    }
+  };
 
   return (
     <Card>
@@ -154,7 +226,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
         <CardTitle className="flex items-center justify-between">
           <span className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5" />
-            Production Progress
+            Work Order Progress
           </span>
           {progress.lastUpdated && (
             <span className="text-xs font-normal text-muted-foreground">
@@ -164,10 +236,10 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Progress Bar */}
+        {/* Progress Bar - based on dispatched qty */}
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span>Progress</span>
+            <span>Dispatch Progress</span>
             <span className="font-semibold">{progress.progressPercent.toFixed(1)}%</span>
           </div>
           <Progress 
@@ -176,16 +248,16 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
           />
         </div>
 
-        {/* Main Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Main Stats Grid - 5 columns */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <TooltipProvider>
-            {/* Target */}
+            {/* Ordered Qty */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-muted-foreground text-sm">
                     <Package className="h-4 w-4" />
-                    Target
+                    Ordered
                   </div>
                   <div className="text-2xl font-bold">{orderedQuantity.toLocaleString()}</div>
                 </div>
@@ -195,16 +267,16 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
               </TooltipContent>
             </Tooltip>
 
-            {/* Completed */}
+            {/* Produced */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Completed
+                    <Layers className="h-4 w-4" />
+                    Produced
                   </div>
-                  <div className="text-2xl font-bold text-green-600">
-                    {progress.netCompleted.toLocaleString()}
+                  <div className="text-2xl font-bold text-blue-600">
+                    {progress.totalProduced.toLocaleString()}
                   </div>
                   {progress.completedToday > 0 && (
                     <div className="text-xs text-muted-foreground flex items-center gap-1">
@@ -215,40 +287,51 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <div className="space-y-1">
-                  <p>Net completed (OK pieces): {progress.netCompleted.toLocaleString()}</p>
-                  <p>Completed today: {progress.completedToday.toLocaleString()}</p>
-                  <p>Avg rate: {progress.avgRatePerHour.toFixed(1)} pcs/hr</p>
-                </div>
+                <p>Total produced across all batches</p>
+                <p className="text-xs">Avg rate: {progress.avgRatePerHour.toFixed(1)} pcs/hr</p>
               </TooltipContent>
             </Tooltip>
 
-            {/* Scrap */}
+            {/* QC Approved */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                    <AlertTriangle className="h-4 w-4" />
-                    Scrap
+                    <ClipboardCheck className="h-4 w-4" />
+                    QC Approved
                   </div>
-                  <div className="text-2xl font-bold">
-                    <Badge variant={progress.totalScrap > 0 ? "destructive" : "secondary"}>
-                      {progress.totalScrap.toLocaleString()}
-                    </Badge>
+                  <div className="text-2xl font-bold text-green-600">
+                    {progress.totalQCApproved.toLocaleString()}
                   </div>
-                  {progress.scrapToday > 0 && (
+                  {progress.totalQCRejected > 0 && (
                     <div className="text-xs text-red-500 flex items-center gap-1">
-                      +{progress.scrapToday} today
+                      <AlertTriangle className="h-3 w-3" />
+                      {progress.totalQCRejected} rejected
                     </div>
                   )}
                 </div>
               </TooltipTrigger>
               <TooltipContent>
+                <p>QC approved: {progress.totalQCApproved.toLocaleString()}</p>
+                <p>QC rejected: {progress.totalQCRejected.toLocaleString()}</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Dispatched */}
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <div className="space-y-1">
-                  <p>Total scrap: {progress.totalScrap.toLocaleString()} pcs</p>
-                  <p>Scrap rate: {scrapRate}%</p>
-                  <p>Scrap today: {progress.scrapToday} pcs</p>
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <Truck className="h-4 w-4" />
+                    Dispatched
+                  </div>
+                  <div className="text-2xl font-bold text-purple-600">
+                    {progress.totalDispatched.toLocaleString()}
+                  </div>
                 </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Total dispatched to customer</p>
               </TooltipContent>
             </Tooltip>
 
@@ -257,31 +340,74 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
               <TooltipTrigger asChild>
                 <div className="space-y-1">
                   <div className="text-muted-foreground text-sm">Remaining</div>
-                  <div className="text-2xl font-bold text-blue-600">
+                  <div className="text-2xl font-bold text-orange-600">
                     {progress.remaining.toLocaleString()}
                   </div>
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Pieces yet to be produced</p>
-                {progress.avgRatePerHour > 0 && progress.remaining > 0 && (
-                  <p className="text-xs mt-1">
-                    Est. {Math.ceil(progress.remaining / progress.avgRatePerHour)} hrs remaining
-                  </p>
-                )}
+                <p>Ordered - Dispatched = Remaining</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
 
+        {/* Batch Breakdown */}
+        {progress.batches.length > 0 && (
+          <Collapsible open={showBatches} onOpenChange={setShowBatches}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-between border-t pt-3 mt-2">
+                <span className="flex items-center gap-2">
+                  <Layers className="h-4 w-4" />
+                  Batch Breakdown ({progress.batches.length} batch{progress.batches.length > 1 ? 'es' : ''})
+                </span>
+                {showBatches ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Batch</TableHead>
+                    <TableHead className="text-right">Produced</TableHead>
+                    <TableHead className="text-right">QC Approved</TableHead>
+                    <TableHead className="text-right">Dispatched</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {progress.batches.map(batch => (
+                    <TableRow key={batch.id}>
+                      <TableCell className="font-medium">#{batch.batch_number}</TableCell>
+                      <TableCell className="text-right">{batch.produced_qty.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-green-600">{batch.qc_approved_qty.toLocaleString()}</span>
+                        {batch.qc_rejected_qty > 0 && (
+                          <span className="text-red-500 text-xs ml-1">
+                            (-{batch.qc_rejected_qty})
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">{batch.dispatched_qty.toLocaleString()}</TableCell>
+                      <TableCell>{getBatchStatusBadge(batch.qc_final_status)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
         {/* Summary Footer */}
         <div className="pt-2 border-t flex justify-between items-center">
           <span className="text-sm text-muted-foreground">
-            Synced from Production Logs
+            {progress.totalDispatched.toLocaleString()} dispatched of {orderedQuantity.toLocaleString()} ordered
           </span>
-          <span className="text-lg font-semibold">
-            {progress.netCompleted.toLocaleString()} / {orderedQuantity.toLocaleString()}
-          </span>
+          {progress.batches.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {progress.batches.length} batch{progress.batches.length > 1 ? 'es' : ''}
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
