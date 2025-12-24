@@ -57,6 +57,7 @@ export interface ExecutionBasedWIPData {
 
 const INTERNAL_STAGES = [
   'goods_in',
+  'cutting',  // Internal cutting process
   'production',
   'qc',
   'packing',
@@ -70,6 +71,7 @@ const EXTERNAL_PROCESSES = [
   'Buffing',
   'Blasting',
   'Heat Treatment'
+  // Note: Cutting is NOT external - it's internal
 ];
 
 export function useExecutionBasedWIP(): ExecutionBasedWIPData {
