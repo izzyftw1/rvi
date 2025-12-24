@@ -132,9 +132,9 @@ const Packing = () => {
 
   const loadPackableBatches = async () => {
     // Load production batches where:
-    // 1. Final QC has approved quantity
-    // 2. Work order production is complete
-    // 3. Has remaining quantity to pack
+    // 1. BATCH-LEVEL production_complete = true (not WO level)
+    // 2. Final QC has approved quantity (qc_final_status = passed)
+    // 3. Has remaining quantity to pack (available_qty > 0)
     const { data, error } = await supabase
       .from("production_batches")
       .select(`
@@ -150,9 +150,14 @@ const Packing = () => {
         qc_final_approved_at,
         stage_type,
         batch_status,
-        work_orders!inner(display_id, item_code, customer, quantity, production_complete)
+        production_complete,
+        production_complete_qty,
+        production_completed_at,
+        work_orders!inner(display_id, item_code, customer, quantity)
       `)
+      .eq("production_complete", true)  // Filter by BATCH production_complete
       .eq("qc_final_status", "passed")
+      .gt("qc_approved_qty", 0)
       .not("batch_status", "eq", "completed")
       .not("stage_type", "eq", "dispatched")
       .order("qc_final_approved_at", { ascending: false });
@@ -180,12 +185,8 @@ const Packing = () => {
     }
 
     // Enrich with packed qty and available for packing
-    // ONLY include batches where production is complete
+    // Batch-level production_complete is already filtered in query
     const enriched: PackableBatch[] = (data || [])
-      .filter(b => {
-        const wo = b.work_orders as any;
-        return wo?.production_complete === true;
-      })
       .map(b => {
         const wo = b.work_orders as any;
         const packedQty = packedQtyMap[b.id] || 0;
@@ -210,7 +211,7 @@ const Packing = () => {
           item_code: wo?.item_code || "",
           customer: wo?.customer || "",
           wo_quantity: wo?.quantity || 0,
-          production_complete: wo?.production_complete || false,
+          production_complete: b.production_complete || false,  // Now from batch level
         };
       }).filter(b => b.available_for_packing > 0);
 
@@ -218,29 +219,29 @@ const Packing = () => {
   };
 
   const loadPackingWorkOrders = async () => {
-    // ONLY load work orders that have:
-    // 1. Production complete = true (or significant production qty)
-    // 2. AND dispatch QC approved batches with available quantity
-    // This prevents showing irrelevant work orders to the packing department
+    // Load batches that are ready for packing (BATCH-level production_complete)
+    // This shows a WO-level summary but filters by batch-level completion
     
-    // First, find work orders with QC-approved batches ready for packing
     const { data: batchData, error: batchError } = await supabase
       .from("production_batches")
       .select(`
+        id,
         wo_id,
+        batch_number,
         qc_approved_qty,
         qc_final_status,
+        production_complete,
+        production_complete_qty,
         work_orders!inner(
           id,
           display_id,
           item_code,
           customer,
           quantity,
-          production_complete,
-          production_complete_qty,
           status
         )
       `)
+      .eq("production_complete", true)  // BATCH-level production complete
       .eq("qc_final_status", "passed")
       .gt("qc_approved_qty", 0);
 
@@ -249,26 +250,28 @@ const Packing = () => {
       return;
     }
 
-    // Build unique WO map from batches
+    // Build unique WO map from batches - now based on BATCH production_complete
     const woMap = new Map<string, {
       wo: any;
       qcApproved: number;
+      completeBatches: number;
+      totalBatches: number;
     }>();
 
     (batchData || []).forEach(b => {
       const wo = b.work_orders as any;
       if (!wo) return;
       
-      // Only include if production_complete is true
-      if (!wo.production_complete) return;
-      
       const existing = woMap.get(wo.id);
       if (existing) {
         existing.qcApproved += b.qc_approved_qty || 0;
+        existing.completeBatches += 1;
       } else {
         woMap.set(wo.id, {
           wo,
           qcApproved: b.qc_approved_qty || 0,
+          completeBatches: 1,
+          totalBatches: 1,
         });
       }
     });
@@ -278,6 +281,22 @@ const Packing = () => {
       setPackingWorkOrders([]);
       return;
     }
+
+    // Get total batch count per WO (to show "X of Y batches complete")
+    const { data: allBatches } = await supabase
+      .from("production_batches")
+      .select("wo_id")
+      .in("wo_id", woIds);
+    
+    const totalBatchMap: Record<string, number> = {};
+    (allBatches || []).forEach(b => {
+      totalBatchMap[b.wo_id] = (totalBatchMap[b.wo_id] || 0) + 1;
+    });
+
+    // Update total batch counts
+    woMap.forEach((val, woId) => {
+      val.totalBatches = totalBatchMap[woId] || val.completeBatches;
+    });
 
     // Get packed quantities for these WOs
     const { data: cartonData } = await supabase
@@ -291,7 +310,7 @@ const Packing = () => {
     });
 
     // Build WO list with status
-    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved }) => {
+    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved, completeBatches, totalBatches }) => {
       const packedQty = packedQtyMap[wo.id] || 0;
       const availableForPacking = Math.max(0, qcApproved - packedQty);
       const remainingQty = wo.quantity - packedQty;
@@ -310,8 +329,8 @@ const Packing = () => {
         item_code: wo.item_code || '',
         customer: wo.customer || '',
         wo_quantity: wo.quantity || 0,
-        production_complete: wo.production_complete || false,
-        production_complete_qty: wo.production_complete_qty || 0,
+        production_complete: completeBatches === totalBatches,  // Derived from batch counts
+        production_complete_qty: qcApproved,
         qc_approved_qty: qcApproved,
         packed_qty: packedQty,
         available_for_packing: availableForPacking,

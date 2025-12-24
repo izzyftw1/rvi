@@ -4961,6 +4961,11 @@ export type Database = {
           previous_batch_id: string | null
           produced_qty: number | null
           production_allowed: boolean | null
+          production_complete: boolean
+          production_complete_qty: number | null
+          production_complete_reason: string | null
+          production_completed_at: string | null
+          production_completed_by: string | null
           qc_approved_qty: number | null
           qc_final_approved_at: string | null
           qc_final_approved_by: string | null
@@ -5004,6 +5009,11 @@ export type Database = {
           previous_batch_id?: string | null
           produced_qty?: number | null
           production_allowed?: boolean | null
+          production_complete?: boolean
+          production_complete_qty?: number | null
+          production_complete_reason?: string | null
+          production_completed_at?: string | null
+          production_completed_by?: string | null
           qc_approved_qty?: number | null
           qc_final_approved_at?: string | null
           qc_final_approved_by?: string | null
@@ -5047,6 +5057,11 @@ export type Database = {
           previous_batch_id?: string | null
           produced_qty?: number | null
           production_allowed?: boolean | null
+          production_complete?: boolean
+          production_complete_qty?: number | null
+          production_complete_reason?: string | null
+          production_completed_at?: string | null
+          production_completed_by?: string | null
           qc_approved_qty?: number | null
           qc_final_approved_at?: string | null
           qc_final_approved_by?: string | null
