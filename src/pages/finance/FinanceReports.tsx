@@ -177,18 +177,10 @@ export default function FinanceReports() {
 
   const loadCollectionReport = async () => {
     try {
+      // Simplified query to avoid type recursion
       let query = supabase
         .from('payments')
-        .select(`
-          *,
-          invoice:invoices!payments_invoice_id_fkey(
-            invoice_no, 
-            customer_id, 
-            expected_payment_date, 
-            total_amount,
-            customer:customer_master!invoices_customer_id_fkey(customer_name, city)
-          )
-        `)
+        .select('id, invoice_id, amount, payment_date, method, reference')
         .gte('payment_date', filters.dateFrom)
         .lte('payment_date', filters.dateTo)
         .order('payment_date', { ascending: false });
@@ -199,7 +191,48 @@ export default function FinanceReports() {
 
       const { data: payments } = await query;
 
-      let collectionsWithVariance = (payments || []).map((p: any) => ({
+      // Get invoice details separately
+      const invoiceIds = (payments || []).map(p => p.invoice_id).filter(Boolean);
+      const { data: invoicesData } = invoiceIds.length > 0
+        ? await supabase
+            .from('invoices')
+            .select('id, invoice_no, customer_id, expected_payment_date, total_amount')
+            .in('id', invoiceIds)
+        : { data: [] };
+
+      // Get customer details
+      const customerIds = (invoicesData || []).map(i => i.customer_id).filter(Boolean);
+      const { data: customersData } = customerIds.length > 0
+        ? await supabase
+            .from('customer_master')
+            .select('id, customer_name, city')
+            .in('id', customerIds)
+        : { data: [] };
+
+      const invoiceMap: Record<string, any> = {};
+      (invoicesData || []).forEach((inv: any) => {
+        invoiceMap[inv.id] = inv;
+      });
+
+      const customerMap: Record<string, any> = {};
+      (customersData || []).forEach((c: any) => {
+        customerMap[c.id] = c;
+      });
+
+      // Enrich payments with invoice and customer data
+      const enrichedPayments = (payments || []).map((p: any) => {
+        const invoice = invoiceMap[p.invoice_id] || {};
+        const customer = invoice.customer_id ? customerMap[invoice.customer_id] : null;
+        return {
+          ...p,
+          invoice: {
+            ...invoice,
+            customer
+          }
+        };
+      });
+
+      let collectionsWithVariance = enrichedPayments.map((p: any) => ({
         ...p,
         variance: p.invoice?.expected_payment_date 
           ? Math.floor((new Date(p.payment_date).getTime() - new Date(p.invoice.expected_payment_date).getTime()) / (1000 * 60 * 60 * 24))
@@ -273,26 +306,50 @@ export default function FinanceReports() {
 
   const loadReconciliationReport = async () => {
     try {
-      let query = supabase
+      // Simplified query to avoid type recursion
+      const { data: salesOrders } = await supabase
         .from('sales_orders')
-        .select(`
-          id,
-          so_id,
-          po_number,
-          customer,
-          total_amount,
-          invoices(invoice_no, total_amount),
-          shipments(shipment_id, gross_weight_kg)
-        `)
+        .select('id, so_id, po_number, customer, total_amount')
         .gte('created_at', filters.dateFrom)
         .lte('created_at', filters.dateTo);
 
-      const { data: salesOrders } = await query;
+      const soIds = (salesOrders || []).map(so => so.id);
+      
+      // Get invoices separately
+      const { data: invoicesData } = soIds.length > 0
+        ? await supabase
+            .from('invoices')
+            .select('so_id, invoice_no, total_amount')
+            .in('so_id', soIds)
+        : { data: [] };
+
+      // Get shipments separately
+      const { data: shipmentsData } = soIds.length > 0
+        ? await supabase
+            .from('shipments')
+            .select('so_id, ship_id, gross_weight_kg')
+            .in('so_id', soIds)
+        : { data: [] };
+
+      // Build lookup maps
+      const invoicesBySO: Record<string, any[]> = {};
+      (invoicesData || []).forEach((inv: any) => {
+        if (!invoicesBySO[inv.so_id]) invoicesBySO[inv.so_id] = [];
+        invoicesBySO[inv.so_id].push(inv);
+      });
+
+      const shipmentsBySO: Record<string, any[]> = {};
+      (shipmentsData || []).forEach((ship: any) => {
+        if (!shipmentsBySO[ship.so_id]) shipmentsBySO[ship.so_id] = [];
+        shipmentsBySO[ship.so_id].push(ship);
+      });
 
       const reconciliation = (salesOrders || []).map((so: any) => {
         const soAmount = Number(so.total_amount) || 0;
-        const invoicedAmount = so.invoices?.reduce((sum: number, inv: any) => sum + (Number(inv.total_amount) || 0), 0) || 0;
-        const shippedWeight = so.shipments?.reduce((sum: number, ship: any) => sum + (Number(ship.gross_weight_kg) || 0), 0) || 0;
+        const invoices = invoicesBySO[so.id] || [];
+        const shipments = shipmentsBySO[so.id] || [];
+        const invoicedAmount = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.total_amount) || 0), 0);
+        const shippedWeight = shipments.reduce((sum: number, ship: any) => sum + (Number(ship.gross_weight_kg) || 0), 0);
         const variance = soAmount - invoicedAmount;
 
         return {
@@ -314,12 +371,10 @@ export default function FinanceReports() {
 
   const loadGSTSummary = async () => {
     try {
+      // Simplified query - load invoices first
       let query = supabase
         .from('invoices')
-        .select(`
-          *,
-          customer:customer_master!invoices_customer_id_fkey(customer_name, gst_type, gst_number)
-        `)
+        .select('id, invoice_no, invoice_date, customer_id, subtotal, gst_percent, gst_amount, total_amount, currency')
         .gte('invoice_date', filters.dateFrom)
         .lte('invoice_date', filters.dateTo);
 
@@ -329,8 +384,28 @@ export default function FinanceReports() {
 
       const { data: invoices } = await query;
 
+      // Get customer details separately
+      const customerIds = (invoices || []).map(i => i.customer_id).filter(Boolean);
+      const { data: customersData } = customerIds.length > 0
+        ? await supabase
+            .from('customer_master')
+            .select('id, customer_name, gst_type, gst_number')
+            .in('id', customerIds)
+        : { data: [] };
+
+      const customerMap: Record<string, any> = {};
+      (customersData || []).forEach((c: any) => {
+        customerMap[c.id] = c;
+      });
+
+      // Enrich invoices with customer data
+      const enrichedInvoices = (invoices || []).map((inv: any) => ({
+        ...inv,
+        customer: customerMap[inv.customer_id] || null
+      }));
+
       // Separate domestic and export
-      const domestic = (invoices || [])
+      const domestic = enrichedInvoices
         .filter((inv: any) => inv.customer?.gst_type === 'domestic')
         .map((inv: any) => ({
           invoice_no: inv.invoice_no,
@@ -343,7 +418,7 @@ export default function FinanceReports() {
           total: Number(inv.total_amount) || 0,
         }));
 
-      const exportInv = (invoices || [])
+      const exportInv = enrichedInvoices
         .filter((inv: any) => inv.customer?.gst_type === 'export')
         .map((inv: any) => ({
           invoice_no: inv.invoice_no,
@@ -364,27 +439,31 @@ export default function FinanceReports() {
   const loadProfitabilityReport = async () => {
     try {
       // Get work orders with financial snapshots
-      let query = supabase
+      // Simplified query to avoid type recursion - fetch work orders first
+      const { data: workOrders } = await supabase
         .from('work_orders')
-        .select(`
-          id,
-          wo_id,
-          display_id,
-          customer,
-          quantity,
-          financial_snapshot,
-          so_id,
-          sales_orders!work_orders_so_id_fkey(total_amount)
-        `)
+        .select('id, wo_id, display_id, customer, quantity, financial_snapshot, so_id')
         .not('financial_snapshot', 'is', null)
         .gte('created_at', filters.dateFrom)
         .lte('created_at', filters.dateTo);
 
-      const { data: workOrders } = await query;
+      // Fetch sales order totals separately
+      const soIds = (workOrders || []).map(wo => wo.so_id).filter(Boolean);
+      const { data: salesOrdersData } = soIds.length > 0 
+        ? await supabase
+            .from('sales_orders')
+            .select('id, total_amount')
+            .in('id', soIds)
+        : { data: [] };
+      
+      const salesOrderMap: Record<string, number> = {};
+      (salesOrdersData || []).forEach((so: any) => {
+        salesOrderMap[so.id] = Number(so.total_amount) || 0;
+      });
 
       const profitability = (workOrders || []).map((wo: any) => {
         const snapshot = wo.financial_snapshot || {};
-        const revenue = wo.sales_orders?.total_amount || 0;
+        const revenue = wo.so_id ? (salesOrderMap[wo.so_id] || 0) : 0;
         const materialCost = snapshot.total_material_cost || 0;
         const labourCost = snapshot.total_labour_cost || 0;
         const scrapPct = snapshot.scrap_percentage || 0;
