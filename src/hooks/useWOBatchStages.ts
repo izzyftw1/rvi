@@ -30,6 +30,14 @@ export interface WOBatchStageBreakdown {
   totalActive: number;
   stageCount: number;
   isSplitFlow: boolean;
+  
+  // Batch-level status rollup (calculated per batch, then aggregated)
+  statusRollup: {
+    late: number;         // batches past expected date
+    qcPending: number;    // batches awaiting QC
+    blocked: number;      // batches with blockers
+    onTrack: number;      // batches progressing normally
+  };
 }
 
 export interface WOBatchStagesData {
@@ -46,6 +54,8 @@ interface BatchRecord {
   batch_status: string;
   ended_at: string | null;
   wo_quantity?: number;
+  wo_due_date?: string | null;
+  expected_return_date?: string | null;
 }
 
 const EMPTY_BREAKDOWN: WOBatchStageBreakdown = {
@@ -61,6 +71,12 @@ const EMPTY_BREAKDOWN: WOBatchStageBreakdown = {
   totalActive: 0,
   stageCount: 0,
   isSplitFlow: false,
+  statusRollup: {
+    late: 0,
+    qcPending: 0,
+    blocked: 0,
+    onTrack: 0,
+  },
 };
 
 export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
@@ -80,7 +96,7 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
           current_process,
           batch_status,
           ended_at,
-          work_orders!inner(quantity)
+          work_orders!inner(quantity, due_date)
         `);
       
       if (woIds && woIds.length > 0) {
@@ -99,6 +115,8 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
         batch_status: b.batch_status || 'active',
         ended_at: b.ended_at,
         wo_quantity: b.work_orders?.quantity || 0,
+        wo_due_date: b.work_orders?.due_date || null,
+        expected_return_date: null, // Could be enhanced to fetch from external_movements
       })));
     } catch (error) {
       console.error('Error loading WO batch stages:', error);
@@ -127,6 +145,7 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
   // Compute stage breakdown per WO from production_batches
   const stagesByWO = useMemo<Record<string, WOBatchStageBreakdown>>(() => {
     const result: Record<string, WOBatchStageBreakdown> = {};
+    const today = new Date();
     
     batches.forEach(batch => {
       if (!result[batch.wo_id]) {
@@ -143,6 +162,12 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
           totalActive: 0,
           stageCount: 0,
           isSplitFlow: false,
+          statusRollup: {
+            late: 0,
+            qcPending: 0,
+            blocked: 0,
+            onTrack: 0,
+          },
         };
       }
       
@@ -194,6 +219,28 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
           breakdown.production += qty;
           if (isActive) breakdown.totalActive += qty;
       }
+      
+      // Calculate batch-level status and roll up
+      if (isActive) {
+        // Check if batch is late (WO due date passed)
+        if (batch.wo_due_date && new Date(batch.wo_due_date) < today) {
+          breakdown.statusRollup.late++;
+        }
+        // Check if batch is awaiting QC
+        if (process === 'qc' || process === 'post_external_qc') {
+          breakdown.statusRollup.qcPending++;
+        }
+        // Check if batch is blocked
+        if (batch.batch_status === 'blocked') {
+          breakdown.statusRollup.blocked++;
+        }
+        // Otherwise on track
+        if (batch.batch_status !== 'blocked' && 
+            !(batch.wo_due_date && new Date(batch.wo_due_date) < today) &&
+            process !== 'qc' && process !== 'post_external_qc') {
+          breakdown.statusRollup.onTrack++;
+        }
+      }
     });
     
     // Calculate stage count and isSplitFlow for each WO
@@ -221,5 +268,9 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
 }
 
 export function getEmptyBreakdown(): WOBatchStageBreakdown {
-  return { ...EMPTY_BREAKDOWN, externalBreakdown: {} };
+  return { 
+    ...EMPTY_BREAKDOWN, 
+    externalBreakdown: {},
+    statusRollup: { late: 0, qcPending: 0, blocked: 0, onTrack: 0 },
+  };
 }
