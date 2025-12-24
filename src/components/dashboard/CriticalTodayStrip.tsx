@@ -112,7 +112,7 @@ export const CriticalTodayStrip = () => {
           count: blockingNcrs.length,
           oldestAge: daysOld > 0 ? `${daysOld}d old` : 'Today',
           icon: FileWarning,
-          route: '/ncr-management?status=open',
+          route: '/ncr?status=open',
           owner: 'Quality'
         });
       }

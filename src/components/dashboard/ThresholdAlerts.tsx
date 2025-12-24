@@ -192,7 +192,7 @@ export const ThresholdAlerts = () => {
               value: data.count,
               threshold: THRESHOLDS.repeatNcrThreshold,
               detail: `${data.count} NCRs in ${THRESHOLDS.lookbackDays}d`,
-              route: '/ncr-management',
+              route: '/ncr',
             });
           }
         });
@@ -217,7 +217,7 @@ export const ThresholdAlerts = () => {
               value: data.count,
               threshold: THRESHOLDS.repeatNcrThreshold,
               detail: `${data.count} NCRs in ${THRESHOLDS.lookbackDays}d`,
-              route: '/ncr-management',
+              route: '/ncr',
             });
           }
         });

@@ -214,7 +214,7 @@ export const QualityLossSignals = () => {
             color: ncrsBlockingProduction.length > 0 ? 'text-destructive' : 'text-emerald-600',
             bgColor: ncrsBlockingProduction.length > 0 ? 'bg-destructive/10' : 'bg-emerald-500/10',
             severity: ncrsBlockingProduction.length > 2 ? 'critical' : ncrsBlockingProduction.length > 0 ? 'warning' : 'ok',
-            link: '/ncr-management?filter=blocking',
+            link: '/ncr?filter=blocking',
             isNcrMetric: true
           },
           {
@@ -226,7 +226,7 @@ export const QualityLossSignals = () => {
             color: ncrsOver7Days.length > 3 ? 'text-destructive' : ncrsOver7Days.length > 0 ? 'text-amber-600' : 'text-emerald-600',
             bgColor: ncrsOver7Days.length > 3 ? 'bg-destructive/10' : ncrsOver7Days.length > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
             severity: ncrsOver7Days.length > 3 ? 'critical' : ncrsOver7Days.length > 0 ? 'warning' : 'ok',
-            link: '/ncr-management?filter=overdue',
+            link: '/ncr?filter=overdue',
             isNcrMetric: true
           },
           {
@@ -238,7 +238,7 @@ export const QualityLossSignals = () => {
             color: repeatCount > 2 ? 'text-destructive' : repeatCount > 0 ? 'text-amber-600' : 'text-emerald-600',
             bgColor: repeatCount > 2 ? 'bg-destructive/10' : repeatCount > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
             severity: repeatCount > 2 ? 'critical' : repeatCount > 0 ? 'warning' : 'ok',
-            link: '/ncr-management?filter=repeat',
+            link: '/ncr?filter=repeat',
             isNcrMetric: true
           }
         ];
