@@ -641,9 +641,6 @@ const WorkOrders = () => {
   const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>('all');
   // Block reason filter
   const [blockReasonFilter, setBlockReasonFilter] = useState<string>('all');
-  // Show inactive (zero-count) stages toggle - for admins
-  const [showInactiveStages, setShowInactiveStages] = useState(false);
-  const isAdmin = hasAnyRole(['admin', 'super_admin']);
   
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50);
@@ -974,169 +971,244 @@ const WorkOrders = () => {
           />
         </div>
 
-        {/* Filter Bar - Secondary visual weight */}
-        <div className="flex flex-wrap items-center gap-3 py-2">
-          {/* Primary Toggle - Compact */}
-          <div className="inline-flex rounded-md border border-border/60 p-0.5 bg-muted/20">
-            <button
-              onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
-              className={cn(
-                "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded transition-all",
-                primaryFilter === 'internal' 
-                  ? "bg-background text-foreground shadow-sm" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              In-House
-              <span className="text-[10px] opacity-70">{kpis.internalCount}</span>
-            </button>
-            <button
-              onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
-              className={cn(
-                "flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded transition-all",
-                primaryFilter === 'external' 
-                  ? "bg-background text-foreground shadow-sm" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Partners
-              <span className="text-[10px] opacity-70">{kpis.externalCount}</span>
-            </button>
-          </div>
+        {/* Filter Bar - Clear and Always Visible */}
+        <Card className="p-3 bg-muted/20">
+          <div className="flex flex-col gap-3">
+            {/* Row 1: Primary Toggle + Search */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Primary Toggle - Prominent */}
+              <div className="inline-flex rounded-lg border border-border p-1 bg-background">
+                <button
+                  onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
+                    primaryFilter === 'internal' 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  <Factory className="h-4 w-4" />
+                  In-House
+                  <Badge variant="secondary" className="ml-1 text-xs">{kpis.internalCount}</Badge>
+                </button>
+                <button
+                  onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
+                    primaryFilter === 'external' 
+                      ? "bg-purple-600 text-white shadow-sm" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  <Truck className="h-4 w-4" />
+                  With Partners
+                  <Badge variant="secondary" className="ml-1 text-xs">{kpis.externalCount}</Badge>
+                </button>
+              </div>
 
-          {/* Divider */}
-          <div className="h-4 w-px bg-border/50" />
+              {/* Spacer */}
+              <div className="flex-1" />
+              
+              {/* Search */}
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search WO, customer, item..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9 text-sm"
+                />
+              </div>
+            </div>
 
-          {/* Stage Pills - Subtle */}
-          <div className="flex items-center gap-1 flex-wrap">
-            {stageFilter !== 'all' && (
-              <button
-                onClick={() => setStageFilter('all')}
-                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mr-0.5"
-              >
-                ×
-              </button>
-            )}
-            
-            {primaryFilter === 'internal' 
-              ? Object.entries(INTERNAL_STAGES)
-                  .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
-                  .map(([key, config]) => (
-                    <button
-                      key={key}
-                      onClick={() => setStageFilter(key)}
-                      className={cn(
-                        "px-2 py-0.5 text-[10px] font-medium rounded transition-colors",
-                        stageFilter === key 
-                          ? "bg-foreground/10 text-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      )}
-                    >
-                      {config.label} {stageCounts[key] || 0}
-                    </button>
-                  ))
-              : Object.entries(EXTERNAL_STAGES)
-                  .filter(([key]) => showInactiveStages || (stageCounts[key] || 0) > 0)
-                  .map(([key, config]) => (
-                    <button
-                      key={key}
-                      onClick={() => setStageFilter(key)}
-                      className={cn(
-                        "px-2 py-0.5 text-[10px] font-medium rounded transition-colors",
-                        stageFilter === key 
-                          ? "bg-foreground/10 text-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      )}
-                    >
-                      {config.label} {stageCounts[key] || 0}
-                    </button>
-                  ))
-            }
-
-            {isAdmin && (
-              <button
-                onClick={() => setShowInactiveStages(!showInactiveStages)}
-                className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors ml-1"
-              >
-                {showInactiveStages ? '−' : '+'}
-              </button>
-            )}
-          </div>
-
-          {/* Divider */}
-          <div className="h-4 w-px bg-border/50" />
-
-          {/* Block Reason Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={cn(
-                "flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition-colors",
-                blockReasonFilter !== 'all' 
-                  ? "bg-amber-500/10 text-amber-600" 
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}>
-                {blockReasonFilter !== 'all' 
-                  ? BLOCK_REASONS[blockReasonFilter as keyof typeof BLOCK_REASONS]?.label 
-                  : 'Block reason'}
-                {blockReasonCounts.all > 0 && (
-                  <span className="opacity-70">{blockReasonFilter === 'all' ? blockReasonCounts.all : ''}</span>
-                )}
-                {blockReasonFilter !== 'all' && <span className="ml-0.5">×</span>}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[140px]">
-              {blockReasonFilter !== 'all' && (
+            {/* Row 2: Stage Pills + Issue Filters */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Stage Pills - Always show all */}
+              {primaryFilter === 'internal' ? (
                 <>
-                  <DropdownMenuItem onClick={() => setBlockReasonFilter('all')}>
-                    Clear filter
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                  <span className="text-xs text-muted-foreground mr-1">Stage:</span>
+                  <button
+                    onClick={() => setStageFilter('all')}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                      stageFilter === 'all' 
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground hover:text-foreground border-border hover:border-foreground/30"
+                    )}
+                  >
+                    All
+                  </button>
+                  {Object.entries(INTERNAL_STAGES).map(([key, config]) => {
+                    const count = stageCounts[key] || 0;
+                    const Icon = config.icon;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setStageFilter(key)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                          stageFilter === key 
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : count > 0 
+                              ? "bg-background text-foreground border-border hover:border-foreground/30"
+                              : "bg-muted/50 text-muted-foreground border-border/50"
+                        )}
+                      >
+                        <Icon className="h-3 w-3" />
+                        {config.label}
+                        <span className={cn(
+                          "text-[10px] px-1 rounded",
+                          stageFilter === key ? "bg-primary-foreground/20" : "bg-muted"
+                        )}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <span className="text-xs text-muted-foreground mr-1">Process:</span>
+                  <button
+                    onClick={() => setStageFilter('all')}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                      stageFilter === 'all' 
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "bg-background text-muted-foreground hover:text-foreground border-border hover:border-foreground/30"
+                    )}
+                  >
+                    All
+                  </button>
+                  {Object.entries(EXTERNAL_STAGES).map(([key, config]) => {
+                    const count = stageCounts[key] || 0;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setStageFilter(key)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                          stageFilter === key 
+                            ? "bg-purple-600 text-white border-purple-600"
+                            : count > 0 
+                              ? "bg-background text-foreground border-border hover:border-foreground/30"
+                              : "bg-muted/50 text-muted-foreground border-border/50"
+                        )}
+                      >
+                        {config.label}
+                        <span className={cn(
+                          "text-[10px] px-1 rounded",
+                          stageFilter === key ? "bg-white/20" : "bg-muted"
+                        )}>{count}</span>
+                      </button>
+                    );
+                  })}
                 </>
               )}
-              {Object.entries(BLOCK_REASONS)
-                .filter(([key]) => blockReasonCounts[key] > 0)
-                .map(([key, config]) => (
-                  <DropdownMenuItem 
-                    key={key}
-                    onClick={() => setBlockReasonFilter(key)}
-                    className={cn(blockReasonFilter === key && "bg-accent")}
-                  >
-                    <span className="flex-1">{config.label}</span>
-                    <span className="text-muted-foreground text-xs">{blockReasonCounts[key]}</span>
-                  </DropdownMenuItem>
-                ))
-              }
-              {blockReasonCounts.all === 0 && (
-                <DropdownMenuItem disabled>No blocked items</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
 
-          {/* Issue Filter - if active */}
-          {issueFilter !== 'all' && (
-            <button 
-              onClick={() => setIssueFilter('all')}
-              className={cn(
-                "flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded",
-                issueFilter === 'blocked' ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"
-              )}
-            >
-              {issueFilter === 'blocked' ? 'Blocked' : 'Late'} ×
-            </button>
-          )}
+              {/* Divider */}
+              <div className="h-6 w-px bg-border mx-2" />
 
-          {/* Spacer + Search */}
-          <div className="flex-1" />
-          <div className="relative w-48">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
-            <Input
-              placeholder="Find..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-7 text-xs bg-muted/30 border-border/50"
-            />
+              {/* Issue Filters */}
+              <span className="text-xs text-muted-foreground">Issues:</span>
+              <button
+                onClick={() => setIssueFilter(issueFilter === 'blocked' ? 'all' : 'blocked')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                  issueFilter === 'blocked'
+                    ? "bg-destructive text-destructive-foreground border-destructive"
+                    : kpis.blocked > 0
+                      ? "bg-destructive/10 text-destructive border-destructive/30 hover:border-destructive/50"
+                      : "bg-muted/50 text-muted-foreground border-border/50"
+                )}
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Blocked
+                <span className={cn(
+                  "text-[10px] px-1 rounded",
+                  issueFilter === 'blocked' ? "bg-destructive-foreground/20" : "bg-destructive/20"
+                )}>{kpis.blocked}</span>
+              </button>
+              <button
+                onClick={() => setIssueFilter(issueFilter === 'delayed' ? 'all' : 'delayed')}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                  issueFilter === 'delayed'
+                    ? "bg-amber-500 text-white border-amber-500"
+                    : kpis.delayed > 0
+                      ? "bg-amber-500/10 text-amber-600 border-amber-500/30 hover:border-amber-500/50"
+                      : "bg-muted/50 text-muted-foreground border-border/50"
+                )}
+              >
+                <Clock className="h-3 w-3" />
+                Late
+                <span className={cn(
+                  "text-[10px] px-1 rounded",
+                  issueFilter === 'delayed' ? "bg-white/20" : "bg-amber-500/20"
+                )}>{kpis.delayed}</span>
+              </button>
+
+              {/* Block Reason Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                    blockReasonFilter !== 'all' 
+                      ? "bg-amber-500/10 text-amber-600 border-amber-500/30" 
+                      : "bg-background text-muted-foreground border-border hover:border-foreground/30"
+                  )}>
+                    <FileWarning className="h-3 w-3" />
+                    {blockReasonFilter !== 'all' 
+                      ? BLOCK_REASONS[blockReasonFilter as keyof typeof BLOCK_REASONS]?.label 
+                      : 'Block Reason'}
+                    {blockReasonFilter !== 'all' && <span className="ml-1">×</span>}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[160px]">
+                  {blockReasonFilter !== 'all' && (
+                    <>
+                      <DropdownMenuItem onClick={() => setBlockReasonFilter('all')}>
+                        Clear filter
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {Object.entries(BLOCK_REASONS)
+                    .filter(([key]) => blockReasonCounts[key] > 0)
+                    .map(([key, config]) => (
+                      <DropdownMenuItem 
+                        key={key}
+                        onClick={() => setBlockReasonFilter(key)}
+                        className={cn(blockReasonFilter === key && "bg-accent")}
+                      >
+                        <span className="flex-1">{config.label}</span>
+                        <Badge variant="secondary" className="text-xs">{blockReasonCounts[key]}</Badge>
+                      </DropdownMenuItem>
+                    ))
+                  }
+                  {blockReasonCounts.all === 0 && (
+                    <DropdownMenuItem disabled>No blocked items</DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Active Filter Summary */}
+              {(stageFilter !== 'all' || issueFilter !== 'all' || blockReasonFilter !== 'all' || searchQuery) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStageFilter('all');
+                    setIssueFilter('all');
+                    setBlockReasonFilter('all');
+                    setSearchQuery('');
+                  }}
+                  className="ml-auto text-xs h-7"
+                >
+                  Clear all filters
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
+        </Card>
 
         {/* Error State */}
         {error && (

@@ -43,6 +43,18 @@ interface BatchData {
   batch_status: string;
   stage_entered_at: string | null;
   external_partner_id: string | null;
+  wo_quantity?: number; // fallback from work_orders
+}
+
+interface ExternalMoveData {
+  id: string;
+  work_order_id: string;
+  process: string;
+  quantity_sent: number;
+  quantity_returned: number;
+  status: string;
+  partner_id: string | null;
+  dispatch_date: string | null;
 }
 
 interface StageData {
@@ -70,6 +82,7 @@ const STAGE_CONFIG = [
 export const StageView = () => {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchData[]>([]);
+  const [externalMoves, setExternalMoves] = useState<ExternalMoveData[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Drilldown drawer state
@@ -81,25 +94,62 @@ export const StageView = () => {
     setDrawerOpen(true);
   };
 
-  const loadBatches = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch batches with WO quantity fallback
+      const batchPromise = supabase
         .from('production_batches')
-        .select('id, wo_id, batch_number, batch_quantity, stage_type, external_process_type, batch_status, stage_entered_at, external_partner_id')
-        .is('ended_at', null) // Only active batches
-        .neq('stage_type', 'dispatched'); // Exclude dispatched
+        .select(`
+          id, wo_id, batch_number, batch_quantity, stage_type, 
+          external_process_type, batch_status, stage_entered_at, external_partner_id,
+          work_orders!inner(quantity)
+        `)
+        .is('ended_at', null)
+        .neq('stage_type', 'dispatched');
 
-      if (error) throw error;
-      setBatches((data as BatchData[]) || []);
+      // Fetch active external moves
+      const externalPromise = supabase
+        .from('wo_external_moves')
+        .select('id, work_order_id, process, quantity_sent, quantity_returned, status, partner_id, dispatch_date')
+        .not('status', 'in', '("received_full","cancelled")');
+
+      const [batchResult, externalResult] = await Promise.all([batchPromise, externalPromise]);
+
+      if (batchResult.error) throw batchResult.error;
+      if (externalResult.error) throw externalResult.error;
+      
+      setBatches((batchResult.data || []).map((b: any) => ({
+        id: b.id,
+        wo_id: b.wo_id,
+        batch_number: b.batch_number,
+        batch_quantity: b.batch_quantity || 0,
+        stage_type: b.stage_type,
+        external_process_type: b.external_process_type,
+        batch_status: b.batch_status,
+        stage_entered_at: b.stage_entered_at,
+        external_partner_id: b.external_partner_id,
+        wo_quantity: b.work_orders?.quantity || 0,
+      })));
+      
+      setExternalMoves((externalResult.data || []).map((m: any) => ({
+        id: m.id,
+        work_order_id: m.work_order_id,
+        process: m.process || 'Unknown',
+        quantity_sent: m.quantity_sent || 0,
+        quantity_returned: m.quantity_returned || 0,
+        status: m.status,
+        partner_id: m.partner_id,
+        dispatch_date: m.dispatch_date,
+      })));
     } catch (err) {
-      console.error('Error loading batches:', err);
+      console.error('Error loading stage data:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadBatches();
+    loadData();
 
     // Real-time subscription
     const channel = supabase
@@ -107,42 +157,74 @@ export const StageView = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'production_batches' },
-        () => loadBatches()
+        () => loadData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wo_external_moves' },
+        () => loadData()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadBatches]);
+  }, [loadData]);
 
   const stages = useMemo<StageData[]>(() => {
-    return STAGE_CONFIG.map(config => {
-      const stageBatches = batches.filter(b => b.stage_type === config.key);
-      
-      const totalQuantity = stageBatches.reduce((sum, b) => sum + (b.batch_quantity || 0), 0);
-      const batchCount = stageBatches.length;
-      const inQueue = stageBatches.filter(b => b.batch_status === 'in_queue').length;
-      const inProgress = stageBatches.filter(b => b.batch_status === 'in_progress').length;
-      const completed = stageBatches.filter(b => b.batch_status === 'completed').length;
+    // Compute external WIP from moves (source of truth for external)
+    const externalWipByProcess = new Map<string, { quantity: number; count: number }>();
+    let totalExternalWip = 0;
+    let totalExternalMoveCount = 0;
+    
+    externalMoves.forEach(move => {
+      const wip = move.quantity_sent - move.quantity_returned;
+      if (wip > 0) {
+        totalExternalWip += wip;
+        totalExternalMoveCount += 1;
+        const existing = externalWipByProcess.get(move.process) || { quantity: 0, count: 0 };
+        existing.quantity += wip;
+        existing.count += 1;
+        externalWipByProcess.set(move.process, existing);
+      }
+    });
 
-      // For external, group by process type
-      let externalBreakdown: { process: string; quantity: number; count: number }[] = [];
+    return STAGE_CONFIG.map(config => {
+      // For external, use external moves data instead of batch stage_type
       if (config.key === 'external') {
-        const processMap = new Map<string, { quantity: number; count: number }>();
-        stageBatches.forEach(b => {
-          const process = b.external_process_type || 'Unknown';
-          const existing = processMap.get(process) || { quantity: 0, count: 0 };
-          existing.quantity += b.batch_quantity || 0;
-          existing.count += 1;
-          processMap.set(process, existing);
-        });
-        externalBreakdown = Array.from(processMap.entries()).map(([process, data]) => ({
+        const externalBreakdown = Array.from(externalWipByProcess.entries()).map(([process, data]) => ({
           process,
           quantity: data.quantity,
           count: data.count
         }));
+        
+        return {
+          key: config.key,
+          label: config.label,
+          icon: config.icon,
+          totalQuantity: totalExternalWip,
+          batchCount: totalExternalMoveCount,
+          inQueue: 0,
+          inProgress: totalExternalMoveCount,
+          completed: 0,
+          capacity: config.capacity,
+          route: config.route,
+          externalBreakdown
+        };
       }
+      
+      // For internal stages, use batches
+      const stageBatches = batches.filter(b => b.stage_type === config.key);
+      
+      // Use batch_quantity if set, otherwise fall back to WO quantity
+      const totalQuantity = stageBatches.reduce((sum, b) => {
+        const qty = b.batch_quantity > 0 ? b.batch_quantity : b.wo_quantity || 0;
+        return sum + qty;
+      }, 0);
+      const batchCount = stageBatches.length;
+      const inQueue = stageBatches.filter(b => b.batch_status === 'in_queue').length;
+      const inProgress = stageBatches.filter(b => b.batch_status === 'in_progress').length;
+      const completed = stageBatches.filter(b => b.batch_status === 'completed').length;
 
       return {
         key: config.key,
@@ -155,10 +237,10 @@ export const StageView = () => {
         completed,
         capacity: config.capacity,
         route: config.route,
-        externalBreakdown
+        externalBreakdown: []
       };
     });
-  }, [batches]);
+  }, [batches, externalMoves]);
 
   const totalQuantity = stages.reduce((sum, s) => sum + s.totalQuantity, 0);
   const totalBatches = stages.reduce((sum, s) => sum + s.batchCount, 0);
