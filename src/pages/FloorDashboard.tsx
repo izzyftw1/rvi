@@ -64,10 +64,13 @@ const FloorDashboard = () => {
       const today = new Date().toISOString().split('T')[0];
       
       const [batchResult, machinesResult, logsResult, woResult, externalResult] = await Promise.all([
-        // Fetch batch stage summary - SOURCE OF TRUTH
+        // Fetch batch stage summary with work_orders join for quantity fallback
         supabase
           .from("production_batches")
-          .select("id, wo_id, batch_quantity, stage_type, batch_status, external_process_type")
+          .select(`
+            id, wo_id, batch_quantity, stage_type, batch_status, external_process_type,
+            work_orders!inner(quantity)
+          `)
           .is("ended_at", null), // Only active batches
         
         supabase
@@ -111,10 +114,11 @@ const FloorDashboard = () => {
           `)
           .in("status", ["pending", "in_progress"]),
 
+        // External moves with quantity for external WIP calculation
         supabase
           .from("wo_external_moves")
-          .select("id, work_order_id, process, status, expected_return_date")
-          .eq("status", "sent")
+          .select("id, work_order_id, process, status, expected_return_date, quantity_sent, quantity_returned")
+          .not("status", "in", '("received_full","cancelled")')
       ]);
 
       if (batchResult.error) throw batchResult.error;
@@ -123,19 +127,36 @@ const FloorDashboard = () => {
       if (woResult.error) throw woResult.error;
       if (externalResult.error) throw externalResult.error;
 
+      // Calculate external WIP from moves (source of truth for external)
+      const externalMovesData = externalResult.data || [];
+      let externalWipTotal = 0;
+      let externalMoveCount = 0;
+      externalMovesData.forEach((move: any) => {
+        const wip = (move.quantity_sent || 0) - (move.quantity_returned || 0);
+        if (wip > 0) {
+          externalWipTotal += wip;
+          externalMoveCount += 1;
+        }
+      });
+
       // Aggregate batch data by stage
       const batches = batchResult.data || [];
       const stageMap = new Map<string, BatchStageSummary>();
       
       batches.forEach((batch: any) => {
         const stage = batch.stage_type || 'production';
+        // Skip external - we'll calculate from moves
+        if (stage === 'external') return;
+        
         const existing = stageMap.get(stage) || {
           stage,
           totalQuantity: 0,
           batchCount: 0,
           inProgress: 0
         };
-        existing.totalQuantity += batch.batch_quantity || 0;
+        // Use batch_quantity if set, otherwise fall back to WO quantity
+        const qty = batch.batch_quantity > 0 ? batch.batch_quantity : (batch.work_orders?.quantity || 0);
+        existing.totalQuantity += qty;
         existing.batchCount += 1;
         if (batch.batch_status === 'in_progress') {
           existing.inProgress += 1;
@@ -143,11 +164,19 @@ const FloorDashboard = () => {
         stageMap.set(stage, existing);
       });
 
+      // Add external stage from moves data
+      stageMap.set('external', {
+        stage: 'external',
+        totalQuantity: externalWipTotal,
+        batchCount: externalMoveCount,
+        inProgress: externalMoveCount
+      });
+
       setBatchSummary(Array.from(stageMap.values()));
       setMachines(machinesResult.data || []);
       setProductionLogs(logsResult.data || []);
       setWorkOrders(woResult.data || []);
-      setExternalMoves(externalResult.data || []);
+      setExternalMoves(externalMovesData);
     } catch (error: any) {
       console.error("Error loading dashboard data:", error);
     } finally {
