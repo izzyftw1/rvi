@@ -27,6 +27,7 @@ import { ExternalChallanTable } from "@/components/ExternalChallanTable";
 
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { WOQuantityBreakdown } from "@/components/WOQuantityBreakdown";
+import { WOQuantityProgress } from "@/components/WOQuantityProgress";
 import { useWOBatchQuantities } from "@/hooks/useWOBatchQuantities";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
@@ -817,6 +818,14 @@ const WorkOrderDetail = () => {
         ═══════════════════════════════════════════════════════════════════ */}
         {wo && (
           <section className="space-y-3">
+            {/* Quantity-Driven Progress - Independent Stages */}
+            <WOQuantityProgress
+              woId={id!}
+              orderedQty={wo.quantity || 0}
+              itemCode={wo.item_code}
+            />
+            
+            {/* Detailed Batch Progress with Table */}
             <WOProgressCard
               woId={id!}
               orderedQuantity={wo.quantity || 0}

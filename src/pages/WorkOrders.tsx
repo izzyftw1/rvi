@@ -569,36 +569,89 @@ const WorkOrderRow = memo(({
           )}
         </div>
 
-        {/* Quantity Breakdown with Tooltip */}
+        {/* Quantity Progress with Tooltip - Independent Stages */}
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="hidden sm:block text-right min-w-[50px] cursor-help">
-                <span className="font-medium text-foreground text-[11px]">{wo.quantity?.toLocaleString()}</span>
-                <p className="text-[9px] text-muted-foreground">pcs</p>
+              <div className="hidden sm:flex flex-col items-end min-w-[70px] cursor-help">
+                <div className="flex items-center gap-1">
+                  <span className="font-medium text-foreground text-[11px]">
+                    {(wo.qty_dispatched || 0).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">
+                    / {wo.quantity?.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center gap-0.5 mt-0.5">
+                  {/* Mini stage indicators */}
+                  {(wo.ok_qty || 0) > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Produced" />
+                  )}
+                  {(wo.qc_approved_qty || batchBreakdown.qc || 0) > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500" title="QC Approved" />
+                  )}
+                  {batchBreakdown.packing > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Packed" />
+                  )}
+                  {(wo.qty_dispatched || batchBreakdown.dispatched || 0) > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Dispatched" />
+                  )}
+                </div>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="left" className="max-w-[200px]">
-              <p className="font-medium text-xs mb-1">Quantity Breakdown</p>
-              <div className="space-y-0.5 text-[10px]">
+            <TooltipContent side="left" className="max-w-[220px]">
+              <p className="font-medium text-xs mb-2">Quantity Progress (Independent Stages)</p>
+              <div className="space-y-1 text-[10px]">
+                <div className="flex justify-between gap-4 items-center">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    Produced:
+                  </span>
+                  <span className="font-medium">{(wo.ok_qty || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between gap-4 items-center">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    QC Approved:
+                  </span>
+                  <span className="font-medium">{(wo.qc_approved_qty || batchBreakdown.qc || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between gap-4 items-center">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    Packed:
+                  </span>
+                  <span className="font-medium">{batchBreakdown.packing.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between gap-4 items-center">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    Dispatched:
+                  </span>
+                  <span className="font-medium">{(wo.qty_dispatched || batchBreakdown.dispatched || 0).toLocaleString()}</span>
+                </div>
+                <div className="border-t pt-1 mt-1 flex justify-between gap-4">
+                  <span className="text-muted-foreground">Ordered:</span>
+                  <span className="font-bold">{wo.quantity?.toLocaleString() || 0}</span>
+                </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Total:</span>
-                  <span>{wo.quantity?.toLocaleString() || 0}</span>
+                  <span className="text-muted-foreground">Remaining:</span>
+                  <span className={cn(
+                    "font-bold",
+                    (wo.quantity - (wo.qty_dispatched || batchBreakdown.dispatched || 0)) === 0 
+                      ? "text-green-600" 
+                      : "text-amber-600"
+                  )}>
+                    {Math.max(0, wo.quantity - (wo.qty_dispatched || batchBreakdown.dispatched || 0)).toLocaleString()}
+                  </span>
                 </div>
                 {externalWipTotal > 0 && (
-                  <div className="flex justify-between gap-4">
-                    <span className="text-purple-500">At External:</span>
-                    <span>{externalWipTotal.toLocaleString()}</span>
-                  </div>
-                )}
-                <div className="flex justify-between gap-4">
-                  <span className="text-green-500">OK Qty:</span>
-                  <span>{(wo.ok_qty || 0).toLocaleString()}</span>
-                </div>
-                {wo.total_rejection > 0 && (
-                  <div className="flex justify-between gap-4">
-                    <span className="text-red-500">Rejected:</span>
-                    <span>{wo.total_rejection.toLocaleString()}</span>
+                  <div className="flex justify-between gap-4 items-center text-purple-500">
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-purple-500" />
+                      At External:
+                    </span>
+                    <span className="font-medium">{externalWipTotal.toLocaleString()}</span>
                   </div>
                 )}
               </div>
