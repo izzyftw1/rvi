@@ -15,6 +15,7 @@ import { downloadExcel, downloadDashboardPDF } from "@/lib/exportHelpers";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, startOfQuarter, startOfYear, endOfMonth, endOfQuarter, endOfYear } from "date-fns";
 import { DrillDownModal } from "@/components/finance/DrillDownModal";
+import { NCRCostImpactWidget } from "@/components/finance/NCRCostImpactWidget";
 
 interface DashboardFilters {
   customerId: string;
@@ -1046,7 +1047,7 @@ export default function FinanceDashboard() {
           </Card>
         </div>
 
-        {/* Advance Payment Stats */}
+        {/* Advance Payment Stats + NCR Cost Impact */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1062,6 +1063,12 @@ export default function FinanceDashboard() {
               </p>
             </CardContent>
           </Card>
+          
+          {/* NCR Cost Impact Widget */}
+          <NCRCostImpactWidget 
+            dateFrom={filters.dateFrom} 
+            dateTo={filters.dateTo}
+          />
         </div>
 
         {/* Top Performers */}
