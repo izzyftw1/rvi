@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Plus, Receipt, FileText, CheckCircle2, AlertCircle, Banknote, ArrowRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
+import { TdsPreview } from "@/components/finance/TdsPreview";
+import { createReceiptTdsRecord } from "@/hooks/useTdsCalculation";
 
 interface CustomerReceipt {
   id: string;
@@ -195,6 +197,15 @@ export default function ReceiptAllocation() {
         });
 
       if (error) throw error;
+
+      // Auto-create TDS record for domestic customers
+      await createReceiptTdsRecord({
+        customerId: newReceipt.customer_id,
+        receiptId: receiptNo,
+        grossAmount: parseFloat(newReceipt.total_amount),
+        transactionDate: newReceipt.receipt_date,
+        createdBy: user?.id,
+      });
 
       toast.success(`Receipt ${receiptNo} created`);
       setShowCreateReceipt(false);
@@ -654,6 +665,15 @@ export default function ReceiptAllocation() {
                 />
               </div>
             </div>
+            {/* TDS Preview - Internal tracking only */}
+            {newReceipt.customer_id && newReceipt.total_amount && (
+              <TdsPreview
+                customerId={newReceipt.customer_id}
+                grossAmount={parseFloat(newReceipt.total_amount) || 0}
+                currency={newReceipt.currency}
+              />
+            )}
+
             <div>
               <Label>Notes</Label>
               <Input 
