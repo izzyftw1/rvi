@@ -32,6 +32,7 @@ export default function Aging() {
 
   const loadAgingData = async () => {
     try {
+      // Exclude closed_adjusted invoices from aging - they should not appear as overdue
       const { data, error } = await supabase
         .from("invoices")
         .select(`
@@ -39,6 +40,7 @@ export default function Aging() {
           customer_master!customer_id(customer_name, primary_contact_email, primary_contact_phone)
         `)
         .in("status", ["issued", "part_paid", "overdue"])
+        .neq("status", "closed_adjusted")
         .gt("balance_amount", 0)
         .order("due_date", { ascending: true });
 
