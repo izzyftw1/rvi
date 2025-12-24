@@ -111,6 +111,28 @@ export default function Dispatch() {
     loadReadyBatches();
     loadInventoryItems();
     loadRecentShipments();
+
+    // Real-time subscriptions for live data updates
+    const channel = supabase
+      .channel('dispatch-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cartons' }, () => {
+        loadReadyBatches();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, () => {
+        loadReadyBatches();
+        loadRecentShipments();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shipments' }, () => {
+        loadRecentShipments();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'finished_goods_inventory' }, () => {
+        loadInventoryItems();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Clear selections when source changes
