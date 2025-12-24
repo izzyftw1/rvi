@@ -66,6 +66,8 @@ export default function NCRDetail() {
   const [ncr, setNCR] = useState<NCR | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [invoices, setInvoices] = useState<{ id: string; invoice_no: string }[]>([]);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
   
   const isQualityUser = hasRole('quality') || hasRole('admin');
   
@@ -106,6 +108,7 @@ export default function NCRDetail() {
 
       if (error) throw error;
       setNCR(data as NCR);
+      setSelectedInvoiceId(data.linked_invoice_id || '');
       setFormData({
         disposition: data.disposition || '',
         financial_impact_type: (data.financial_impact_type as 'SCRAP' | 'REWORK' | 'CUSTOMER_REJECTION' | '') || '',
@@ -116,11 +119,39 @@ export default function NCRDetail() {
         effectiveness_verified: data.effectiveness_verified || false,
         closure_notes: data.closure_notes || '',
       });
+
+      // Load related invoices if we have a customer from work order
+      if (data.work_orders?.customer_id) {
+        const { data: invoiceData } = await supabase
+          .from('invoices')
+          .select('id, invoice_no')
+          .eq('customer_id', data.work_orders.customer_id)
+          .order('invoice_date', { ascending: false })
+          .limit(50);
+        setInvoices(invoiceData || []);
+      }
     } catch (error) {
       console.error('Error loading NCR:', error);
       toast.error('Failed to load NCR');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleInvoiceLink = async (invoiceId: string) => {
+    if (!ncr) return;
+    try {
+      const { error } = await supabase
+        .from('ncrs')
+        .update({ linked_invoice_id: invoiceId || null } as any)
+        .eq('id', ncr.id);
+      
+      if (error) throw error;
+      setSelectedInvoiceId(invoiceId);
+      toast.success(invoiceId ? 'Invoice linked' : 'Invoice unlinked');
+    } catch (error) {
+      console.error('Error linking invoice:', error);
+      toast.error('Failed to link invoice');
     }
   };
 
@@ -424,6 +455,35 @@ export default function NCRDetail() {
                   <div>
                     <Label className="text-muted-foreground">Closed At</Label>
                     <p className="font-medium">{format(new Date(ncr.closed_at), 'dd MMM yyyy HH:mm')}</p>
+                  </div>
+                )}
+                
+                {/* Invoice Linking */}
+                {ncr.ncr_type === 'CUSTOMER' && invoices.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label className="text-muted-foreground">Linked Invoice</Label>
+                    <Select 
+                      value={selectedInvoiceId} 
+                      onValueChange={handleInvoiceLink}
+                      disabled={ncr.status === 'CLOSED'}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Link to invoice..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No invoice linked</SelectItem>
+                        {invoices.map(inv => (
+                          <SelectItem key={inv.id} value={inv.id}>
+                            {inv.invoice_no}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedInvoiceId && (
+                      <p className="text-xs text-muted-foreground">
+                        This links the NCR to the invoice for adjustment tracking
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
