@@ -135,7 +135,7 @@ export async function createReceiptTdsRecord(params: {
         financial_year: financialYear,
         quarter: quarter,
         transaction_date: params.transactionDate,
-        status: 'pending',
+        status: 'deducted', // TDS deducted at source
         created_by: params.createdBy || null,
       });
 
@@ -200,7 +200,7 @@ export async function createPaymentTdsRecord(params: {
         financial_year: financialYear,
         quarter: quarter,
         transaction_date: params.transactionDate,
-        status: 'pending',
+        status: 'deducted', // TDS deducted at source
         created_by: params.createdBy || null,
       });
 

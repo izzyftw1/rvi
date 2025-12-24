@@ -143,7 +143,10 @@ export function TdsReconciliationReport() {
 
       const dueDate = new Date(filingDueDates[q]);
       const today = new Date();
-      const allFiled = qRecords.length > 0 && qRecords.every(r => r.status === 'filed' || r.status === 'paid');
+      // Check for new status values (deducted/deposited/claimed) and legacy values (pending/filed/paid)
+      const allFiled = qRecords.length > 0 && qRecords.every(r => 
+        r.status === 'deposited' || r.status === 'claimed' || r.status === 'filed' || r.status === 'paid'
+      );
       
       let status: QuarterSummary['status'] = 'pending';
       if (allFiled) {
@@ -161,17 +164,17 @@ export function TdsReconciliationReport() {
           count: receivables.length,
           grossAmount: receivables.reduce((sum, r) => sum + r.gross_amount, 0),
           tdsAmount: recTotal,
-          pending: receivables.filter(r => r.status === 'pending').length,
-          filed: receivables.filter(r => r.status === 'filed').length,
-          paid: receivables.filter(r => r.status === 'paid').length,
+          pending: receivables.filter(r => r.status === 'pending' || r.status === 'deducted').length,
+          filed: receivables.filter(r => r.status === 'filed' || r.status === 'deposited').length,
+          paid: receivables.filter(r => r.status === 'paid' || r.status === 'claimed').length,
         },
         payables: {
           count: payables.length,
           grossAmount: payables.reduce((sum, r) => sum + r.gross_amount, 0),
           tdsAmount: payTotal,
-          pending: payables.filter(r => r.status === 'pending').length,
-          filed: payables.filter(r => r.status === 'filed').length,
-          paid: payables.filter(r => r.status === 'paid').length,
+          pending: payables.filter(r => r.status === 'pending' || r.status === 'deducted').length,
+          filed: payables.filter(r => r.status === 'filed' || r.status === 'deposited').length,
+          paid: payables.filter(r => r.status === 'paid' || r.status === 'claimed').length,
         },
         netPosition: recTotal - payTotal,
         filingDueDate: filingDueDates[q],
@@ -189,7 +192,7 @@ export function TdsReconciliationReport() {
     }), { receivablesTds: 0, payablesTds: 0, receivablesCount: 0, payablesCount: 0 });
   }, [quarterSummaries]);
 
-  const updateQuarterStatus = async (quarter: string, newStatus: 'pending' | 'filed' | 'paid') => {
+  const updateQuarterStatus = async (quarter: string, newStatus: 'deducted' | 'deposited' | 'claimed') => {
     setUpdatingStatus(quarter);
     try {
       const { error } = await supabase
@@ -200,7 +203,8 @@ export function TdsReconciliationReport() {
 
       if (error) throw error;
 
-      toast.success(`Quarter ${quarter} marked as ${newStatus}`);
+      const statusLabel = newStatus === 'deducted' ? 'Deducted' : newStatus === 'deposited' ? 'Deposited' : 'Claimed';
+      toast.success(`Quarter ${quarter} marked as ${statusLabel}`);
       loadData();
     } catch (error: any) {
       toast.error('Failed to update status');
@@ -392,13 +396,13 @@ export function TdsReconciliationReport() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => updateQuarterStatus(q.quarter, 'filed')}
+                          onClick={() => updateQuarterStatus(q.quarter, 'deposited')}
                           disabled={updatingStatus === q.quarter}
                         >
                           {updatingStatus === q.quarter ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            'Mark Filed'
+                            'Mark Deposited'
                           )}
                         </Button>
                       )}
