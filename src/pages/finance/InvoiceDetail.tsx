@@ -316,6 +316,18 @@ export default function InvoiceDetail() {
                   </div>
                 )}
 
+                {/* Internal Adjustment (auto-applied from customer ledger - not on PDF) */}
+                {invoice.internal_adjustment_total > 0 && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">Internal Adjustment (auto-applied)</p>
+                    <p className="text-lg font-bold text-blue-600">- {invoice.currency} {Number(invoice.internal_adjustment_total).toLocaleString()}</p>
+                    {invoice.internal_adjustment_notes && (
+                      <p className="text-xs text-blue-600/70 mt-1">{invoice.internal_adjustment_notes}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">This adjustment does not appear on the invoice PDF</p>
+                  </div>
+                )}
+
                 <Separator />
 
                 <div>
@@ -614,7 +626,8 @@ export default function InvoiceDetail() {
             total_amount: invoice.total_amount || 0,
             paid_amount: invoice.paid_amount || 0,
             balance_amount: invoice.balance_amount || 0,
-            currency: invoice.currency || 'INR'
+            currency: invoice.currency || 'INR',
+            customer_id: invoice.customer_id
           }}
           onSuccess={loadInvoiceData}
         />

@@ -20,6 +20,7 @@ interface CloseAdjustedDialogProps {
     paid_amount: number;
     balance_amount: number;
     currency: string;
+    customer_id?: string | null;
   };
   onSuccess: () => void;
 }
@@ -78,7 +79,7 @@ export function CloseAdjustedDialog({ open, onOpenChange, invoice, onSuccess }: 
       if (!user) throw new Error("Not authenticated");
 
       // Create immutable closure adjustment record
-      const { error: adjError } = await supabase
+      const { data: closureAdj, error: adjError } = await supabase
         .from("invoice_closure_adjustments")
         .insert({
           invoice_id: invoice.id,
@@ -87,9 +88,34 @@ export function CloseAdjustedDialog({ open, onOpenChange, invoice, onSuccess }: 
           reference_type: referenceType,
           reference_note: referenceNote.trim(),
           closed_by: user.id
-        });
+        })
+        .select()
+        .single();
 
       if (adjError) throw adjError;
+
+      // Auto-create customer_credit_adjustments ledger entry for future invoice deductions
+      if (invoice.customer_id) {
+        const { error: ledgerError } = await supabase
+          .from("customer_credit_adjustments")
+          .insert({
+            customer_id: invoice.customer_id,
+            source_invoice_id: invoice.id,
+            closure_adjustment_id: closureAdj.id,
+            adjustment_type: adjustmentReason,
+            original_amount: parsedAmount,
+            remaining_amount: parsedAmount, // Full amount available for future deductions
+            currency: invoice.currency,
+            reason: `${adjustmentReason.charAt(0).toUpperCase() + adjustmentReason.slice(1)} - ${referenceNote.trim()}`,
+            status: 'pending', // Open for application to next invoice
+            created_by: user.id
+          });
+
+        if (ledgerError) {
+          console.error("Warning: Failed to create ledger entry", ledgerError);
+          // Don't fail the whole operation, just log it
+        }
+      }
 
       // Update invoice status to closed_adjusted
       // Use type assertion since closed_adjusted was just added to enum
