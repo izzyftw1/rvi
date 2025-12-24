@@ -61,7 +61,7 @@ export default function Payments() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [paymentDate, setPaymentDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<string>("wire");
+  const [method, setMethod] = useState<string>("bank_transfer");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -190,11 +190,12 @@ export default function Payments() {
 
   const getMethodBadge = (method: string | null) => {
     const variants: Record<string, { variant: any; label: string }> = {
-      wire: { variant: "default", label: "Wire Transfer" },
-      check: { variant: "secondary", label: "Check" },
+      bank_transfer: { variant: "default", label: "Bank Transfer" },
+      cheque: { variant: "secondary", label: "Cheque" },
       cash: { variant: "outline", label: "Cash" },
       upi: { variant: "default", label: "UPI" },
-      card: { variant: "secondary", label: "Card" }
+      credit_card: { variant: "secondary", label: "Credit Card" },
+      other: { variant: "outline", label: "Other" }
     };
 
     const config = variants[method || ""] || { variant: "outline", label: method || "Unknown" };
@@ -322,11 +323,12 @@ export default function Payments() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="wire">Wire Transfer</SelectItem>
-                            <SelectItem value="check">Check</SelectItem>
+                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                            <SelectItem value="cheque">Cheque</SelectItem>
                             <SelectItem value="cash">Cash</SelectItem>
                             <SelectItem value="upi">UPI</SelectItem>
-                            <SelectItem value="card">Card</SelectItem>
+                            <SelectItem value="credit_card">Credit Card</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
