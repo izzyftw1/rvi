@@ -1,10 +1,10 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2 } from "lucide-react";
+import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,7 @@ export default function InvoiceDetail() {
   const { id } = useParams();
   const [invoice, setInvoice] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
+  const [adjustments, setAdjustments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,6 +34,23 @@ export default function InvoiceDetail() {
         .single();
 
       setInvoice(invData);
+
+      // Load invoice adjustments
+      const { data: adjData } = await supabase
+        .from("invoice_adjustments")
+        .select(`
+          *,
+          customer_credit_adjustments!credit_adjustment_id(
+            source_invoice_id,
+            reason,
+            rejection_qty,
+            invoices!source_invoice_id(invoice_no)
+          )
+        `)
+        .eq("invoice_id", id)
+        .order("applied_at", { ascending: false });
+
+      setAdjustments(adjData || []);
 
       // Build timeline from payments and follow-ups
       const timelineEvents: any[] = [];
@@ -60,6 +78,19 @@ export default function InvoiceDetail() {
           amount: payment.amount,
           reference: payment.reference,
           icon: CheckCircle2
+        });
+      });
+
+      // Add adjustments to timeline
+      adjData?.forEach((adj: any) => {
+        timelineEvents.push({
+          type: "adjustment",
+          date: adj.applied_at,
+          description: `Rejection adjustment applied`,
+          amount: adj.amount,
+          source: adj.customer_credit_adjustments?.invoices?.invoice_no,
+          reason: adj.customer_credit_adjustments?.reason,
+          icon: MinusCircle
         });
       });
 
@@ -102,12 +133,15 @@ export default function InvoiceDetail() {
       issued: { variant: "default", label: "Issued" },
       part_paid: { variant: "outline", label: "Part Paid" },
       paid: { variant: "default", label: "Paid" },
-      overdue: { variant: "destructive", label: "Overdue" }
+      overdue: { variant: "destructive", label: "Overdue" },
+      short_closed: { variant: "outline", label: "Short Closed" }
     };
 
     const config = variants[status] || { variant: "secondary", label: status };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
+
+  const totalAdjustments = adjustments.reduce((sum, adj) => sum + Number(adj.amount), 0);
 
   if (loading) {
     return (
@@ -215,9 +249,25 @@ export default function InvoiceDetail() {
                 <Separator />
 
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Amount</p>
+                  <p className="text-sm text-muted-foreground">Gross Amount</p>
                   <p className="text-xl font-bold">{invoice.currency} {invoice.total_amount?.toLocaleString()}</p>
                 </div>
+
+                {totalAdjustments > 0 && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">Rejection Adjustment</p>
+                    <p className="text-lg font-bold text-amber-600">- {invoice.currency} {totalAdjustments.toLocaleString()}</p>
+                  </div>
+                )}
+
+                {totalAdjustments > 0 && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Net Payable</p>
+                    <p className="text-xl font-bold text-primary">{invoice.currency} {(invoice.total_amount - totalAdjustments).toLocaleString()}</p>
+                  </div>
+                )}
+
+                <Separator />
 
                 <div>
                   <p className="text-sm text-muted-foreground">Paid</p>
@@ -228,6 +278,15 @@ export default function InvoiceDetail() {
                   <p className="text-sm text-muted-foreground">Balance Due</p>
                   <p className="text-xl font-bold text-destructive">{invoice.currency} {invoice.balance_amount?.toLocaleString()}</p>
                 </div>
+
+                {invoice.short_closed && (
+                  <Alert className="border-amber-500">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    <AlertDescription>
+                      <span className="font-medium">Short Closed:</span> {invoice.short_close_reason}
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {invoice.expected_payment_date && (
                   <>

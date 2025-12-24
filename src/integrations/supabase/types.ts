@@ -387,6 +387,95 @@ export type Database = {
           },
         ]
       }
+      customer_credit_adjustments: {
+        Row: {
+          adjustment_type: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string
+          expires_at: string | null
+          id: string
+          ncr_id: string | null
+          notes: string | null
+          original_amount: number
+          reason: string
+          rejection_qty: number | null
+          remaining_amount: number
+          source_invoice_id: string | null
+          status: string
+          unit_rate: number | null
+          updated_at: string
+        }
+        Insert: {
+          adjustment_type?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_id: string
+          expires_at?: string | null
+          id?: string
+          ncr_id?: string | null
+          notes?: string | null
+          original_amount: number
+          reason: string
+          rejection_qty?: number | null
+          remaining_amount: number
+          source_invoice_id?: string | null
+          status?: string
+          unit_rate?: number | null
+          updated_at?: string
+        }
+        Update: {
+          adjustment_type?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_id?: string
+          expires_at?: string | null
+          id?: string
+          ncr_id?: string | null
+          notes?: string | null
+          original_amount?: number
+          reason?: string
+          rejection_qty?: number | null
+          remaining_amount?: number
+          source_invoice_id?: string | null
+          status?: string
+          unit_rate?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credit_adjustments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: false
+            referencedRelation: "ncrs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_source_invoice_id_fkey"
+            columns: ["source_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_master: {
         Row: {
           account_owner: string | null
@@ -2194,6 +2283,58 @@ export type Database = {
           },
         ]
       }
+      invoice_adjustments: {
+        Row: {
+          amount: number
+          applied_at: string
+          applied_by: string | null
+          credit_adjustment_id: string
+          id: string
+          invoice_id: string
+          notes: string | null
+        }
+        Insert: {
+          amount: number
+          applied_at?: string
+          applied_by?: string | null
+          credit_adjustment_id: string
+          id?: string
+          invoice_id: string
+          notes?: string | null
+        }
+        Update: {
+          amount?: number
+          applied_at?: string
+          applied_by?: string | null
+          credit_adjustment_id?: string
+          id?: string
+          invoice_id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_adjustments_credit_adjustment_id_fkey"
+            columns: ["credit_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credit_adjustments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_adjustments_credit_adjustment_id_fkey"
+            columns: ["credit_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credit_ledger_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_adjustments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_items: {
         Row: {
           amount: number
@@ -2290,6 +2431,7 @@ export type Database = {
       }
       invoices: {
         Row: {
+          adjustment_amount: number
           balance_amount: number
           created_at: string | null
           created_by: string | null
@@ -2297,16 +2439,22 @@ export type Database = {
           customer_id: string
           due_date: string
           expected_payment_date: string | null
+          gross_amount: number | null
           gst_amount: number | null
           gst_percent: number | null
           id: string
           invoice_date: string
           invoice_no: string
+          net_payable: number | null
           paid_amount: number | null
           payment_terms_days: number | null
           pdf_url: string | null
           recovery_stage: Database["public"]["Enums"]["recovery_stage"] | null
           shipment_id: string | null
+          short_close_reason: string | null
+          short_closed: boolean
+          short_closed_at: string | null
+          short_closed_by: string | null
           so_id: string | null
           status: Database["public"]["Enums"]["invoice_status"] | null
           subtotal: number
@@ -2315,6 +2463,7 @@ export type Database = {
           wo_id: string | null
         }
         Insert: {
+          adjustment_amount?: number
           balance_amount?: number
           created_at?: string | null
           created_by?: string | null
@@ -2322,16 +2471,22 @@ export type Database = {
           customer_id: string
           due_date: string
           expected_payment_date?: string | null
+          gross_amount?: number | null
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
           invoice_date?: string
           invoice_no: string
+          net_payable?: number | null
           paid_amount?: number | null
           payment_terms_days?: number | null
           pdf_url?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
           shipment_id?: string | null
+          short_close_reason?: string | null
+          short_closed?: boolean
+          short_closed_at?: string | null
+          short_closed_by?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["invoice_status"] | null
           subtotal?: number
@@ -2340,6 +2495,7 @@ export type Database = {
           wo_id?: string | null
         }
         Update: {
+          adjustment_amount?: number
           balance_amount?: number
           created_at?: string | null
           created_by?: string | null
@@ -2347,16 +2503,22 @@ export type Database = {
           customer_id?: string
           due_date?: string
           expected_payment_date?: string | null
+          gross_amount?: number | null
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
           invoice_date?: string
           invoice_no?: string
+          net_payable?: number | null
           paid_amount?: number | null
           payment_terms_days?: number | null
           pdf_url?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
           shipment_id?: string | null
+          short_close_reason?: string | null
+          short_closed?: boolean
+          short_closed_at?: string | null
+          short_closed_by?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["invoice_status"] | null
           subtotal?: number
@@ -7638,6 +7800,59 @@ export type Database = {
       }
     }
     Views: {
+      customer_credit_ledger_vw: {
+        Row: {
+          adjustment_type: string | null
+          applications: Json | null
+          created_at: string | null
+          currency: string | null
+          customer_id: string | null
+          customer_name: string | null
+          expires_at: string | null
+          id: string | null
+          ncr_id: string | null
+          ncr_number: string | null
+          notes: string | null
+          original_amount: number | null
+          reason: string | null
+          rejection_qty: number | null
+          remaining_amount: number | null
+          source_invoice_id: string | null
+          source_invoice_no: string | null
+          status: string | null
+          unit_rate: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credit_adjustments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: false
+            referencedRelation: "ncrs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_source_invoice_id_fkey"
+            columns: ["source_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_last_order: {
         Row: {
           customer_id: string | null
@@ -8442,6 +8657,7 @@ export type Database = {
         | "paid"
         | "overdue"
         | "void"
+        | "short_closed"
       material_qc_status: "not_required" | "pending" | "passed" | "failed"
       material_receipt_type:
         | "supplier_to_factory"
@@ -8766,6 +8982,7 @@ export const Constants = {
         "paid",
         "overdue",
         "void",
+        "short_closed",
       ],
       material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_receipt_type: [
