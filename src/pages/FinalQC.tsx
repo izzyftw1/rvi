@@ -26,7 +26,9 @@ import {
   Activity,
   Shield,
   Loader2,
-  Plus
+  Plus,
+  ShieldAlert,
+  Ban
 } from "lucide-react";
 import { format } from "date-fns";
 import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
@@ -35,6 +37,7 @@ import { FinalDispatchReportGenerator } from "@/components/qc/FinalDispatchRepor
 import { FinalQCInspectionForm } from "@/components/qc/FinalQCInspectionForm";
 import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
 import { QCQuantityInput } from "@/components/qc/QCQuantityInput";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface WorkOrderData {
   id: string;
@@ -79,6 +82,13 @@ interface QCRecordSummary {
 const FinalQC = () => {
   const { woId } = useParams<{ woId: string }>();
   const navigate = useNavigate();
+  const { hasRole, isSuperAdmin, loading: roleLoading } = useUserRole();
+  
+  // Permission checks
+  const isQCRole = hasRole('quality');
+  const isAdmin = isSuperAdmin();
+  const canPerformFinalQC = isQCRole || isAdmin;
+  const canWaive = isAdmin; // Only admin can waive
   
   const [loading, setLoading] = useState(true);
   const [workOrder, setWorkOrder] = useState<WorkOrderData | null>(null);
@@ -88,11 +98,33 @@ const FinalQC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showReleaseDialog, setShowReleaseDialog] = useState(false);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
+  const [showWaiverDialog, setShowWaiverDialog] = useState(false);
   const [showInspectionForm, setShowInspectionForm] = useState(false);
   const [samplingPlan, setSamplingPlan] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [waiverReason, setWaiverReason] = useState("");
   
   // QC Quantity state removed - now using FinalQCInspectionForm
+
+  // Audit logging helper
+  const logAuditAction = async (action: string, oldData: any, newData: any) => {
+    if (!woId) return;
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      await supabase.from('audit_logs').insert({
+        table_name: 'work_orders',
+        record_id: woId,
+        action,
+        old_data: oldData,
+        new_data: newData,
+        changed_by: user?.id
+      });
+    } catch (error) {
+      console.error('Failed to log audit action:', error);
+    }
+  };
 
   const loadData = useCallback(async () => {
     if (!woId) return;
@@ -193,25 +225,44 @@ const FinalQC = () => {
   const handleRelease = async () => {
     if (!woId || !workOrder) return;
     
+    // Permission check
+    if (!canPerformFinalQC) {
+      toast.error("Permission denied. Only QC role can perform Final QC.");
+      return;
+    }
+    
     setSubmitting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      const oldData = {
+        quality_released: workOrder.quality_released,
+        quality_released_at: workOrder.quality_released_at,
+        final_qc_result: workOrder.final_qc_result,
+        qc_final_status: workOrder.qc_final_status,
+        current_stage: workOrder.current_stage
+      };
+      
+      const newData = {
+        quality_released: true,
+        quality_released_at: new Date().toISOString(),
+        quality_released_by: user?.id,
+        sampling_plan_reference: samplingPlan,
+        final_qc_result: 'passed',
+        qc_final_status: 'passed',
+        qc_final_remarks: remarks,
+        current_stage: 'packing' as const
+      };
+      
       const { error } = await supabase
         .from("work_orders")
-        .update({
-          quality_released: true,
-          quality_released_at: new Date().toISOString(),
-          quality_released_by: user?.id,
-          sampling_plan_reference: samplingPlan,
-          final_qc_result: 'passed',
-          qc_final_status: 'passed',
-          qc_final_remarks: remarks,
-          current_stage: 'packing'
-        })
+        .update(newData)
         .eq("id", woId);
 
       if (error) throw error;
+
+      // Log audit trail
+      await logAuditAction('FINAL_QC_RELEASE', oldData, newData);
 
       toast.success("Work Order Quality Released! Production logs are now locked.");
       setShowReleaseDialog(false);
@@ -227,22 +278,44 @@ const FinalQC = () => {
   const handleBlock = async () => {
     if (!woId || !workOrder) return;
     
+    // Permission check
+    if (!canPerformFinalQC) {
+      toast.error("Permission denied. Only QC role can block at Final QC.");
+      return;
+    }
+    
+    if (!remarks.trim()) {
+      toast.error("Block reason is required.");
+      return;
+    }
+    
     setSubmitting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      const oldData = {
+        final_qc_result: workOrder.final_qc_result,
+        qc_final_status: workOrder.qc_final_status,
+        qc_final_remarks: workOrder.qc_final_remarks
+      };
+      
+      const newData = {
+        final_qc_result: 'blocked',
+        qc_final_status: 'failed',
+        qc_final_remarks: remarks,
+        qc_final_approved_at: new Date().toISOString(),
+        qc_final_approved_by: user?.id
+      };
+      
       const { error } = await supabase
         .from("work_orders")
-        .update({
-          final_qc_result: 'blocked',
-          qc_final_status: 'failed',
-          qc_final_remarks: remarks,
-          qc_final_approved_at: new Date().toISOString(),
-          qc_final_approved_by: user?.id
-        })
+        .update(newData)
         .eq("id", woId);
 
       if (error) throw error;
+
+      // Log audit trail
+      await logAuditAction('FINAL_QC_BLOCK', oldData, newData);
 
       toast.warning("Work Order blocked at Final QC.");
       setShowBlockDialog(false);
@@ -250,6 +323,71 @@ const FinalQC = () => {
     } catch (error: any) {
       console.error("Error blocking WO:", error);
       toast.error("Failed to block work order: " + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleWaiver = async () => {
+    if (!woId || !workOrder) return;
+    
+    // Only admin can waive
+    if (!canWaive) {
+      toast.error("Permission denied. Only Admin can waive Final QC.");
+      return;
+    }
+    
+    // Mandatory reason check
+    if (!waiverReason.trim() || waiverReason.trim().length < 20) {
+      toast.error("A detailed waiver reason (at least 20 characters) is required.");
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const oldData = {
+        quality_released: workOrder.quality_released,
+        quality_released_at: workOrder.quality_released_at,
+        final_qc_result: workOrder.final_qc_result,
+        qc_final_status: workOrder.qc_final_status,
+        current_stage: workOrder.current_stage
+      };
+      
+      const newData = {
+        quality_released: true,
+        quality_released_at: new Date().toISOString(),
+        quality_released_by: user?.id,
+        sampling_plan_reference: samplingPlan || 'WAIVED',
+        final_qc_result: 'waived',
+        qc_final_status: 'waived',
+        qc_final_remarks: `ADMIN WAIVER: ${waiverReason}`,
+        current_stage: 'packing' as const
+      };
+      
+      const { error } = await supabase
+        .from("work_orders")
+        .update(newData)
+        .eq("id", woId);
+
+      if (error) throw error;
+
+      // Log audit trail with detailed waiver info
+      await logAuditAction('FINAL_QC_ADMIN_WAIVER', oldData, {
+        ...newData,
+        waiver_reason: waiverReason,
+        waived_by: user?.id,
+        waived_at: new Date().toISOString()
+      });
+
+      toast.warning("Final QC waived by Admin. Audit log created.");
+      setShowWaiverDialog(false);
+      setWaiverReason("");
+      loadData();
+    } catch (error: any) {
+      console.error("Error waiving FQC:", error);
+      toast.error("Failed to waive Final QC: " + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -326,6 +464,17 @@ const FinalQC = () => {
         </Button>
       </PageHeader>
 
+      {/* Permission Banner */}
+      {!canPerformFinalQC && !roleLoading && (
+        <Alert className="mb-6 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+          <Ban className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 dark:text-amber-300">
+            <span className="font-semibold">Read-Only Access</span> - 
+            Only Quality (QC) role can perform Final QC inspections. You have view-only access.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Release Status Banner */}
       {isReleased && (
         <Alert className="mb-6 border-green-500 bg-green-50 dark:bg-green-900/20">
@@ -339,6 +488,17 @@ const FinalQC = () => {
                 Released on {format(new Date(workOrder.quality_released_at), "dd MMM yyyy HH:mm")}
               </span>
             )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Waived Status Banner */}
+      {workOrder.final_qc_result === 'waived' && (
+        <Alert className="mb-6 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+          <ShieldAlert className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 dark:text-amber-300">
+            <span className="font-semibold">Final QC WAIVED by Admin</span>
+            {workOrder.qc_final_remarks && <span className="block mt-1">{workOrder.qc_final_remarks}</span>}
           </AlertDescription>
         </Alert>
       )}
@@ -512,7 +672,16 @@ const FinalQC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!isReleased && workOrder.final_qc_result !== 'blocked' && (
+                {!canPerformFinalQC && (
+                  <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-900/20">
+                    <Ban className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-700 dark:text-amber-300 text-sm">
+                      QC role required to perform inspections
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                {!isReleased && workOrder.final_qc_result !== 'blocked' && canPerformFinalQC && (
                   <Button
                     className="w-full"
                     onClick={() => setShowInspectionForm(true)}
@@ -563,7 +732,7 @@ const FinalQC = () => {
                 />
               </div>
 
-              {!isReleased && workOrder.final_qc_result !== 'blocked' && (
+              {!isReleased && workOrder.final_qc_result !== 'blocked' && canPerformFinalQC && (
                 <div className="space-y-2 pt-4">
                   <Button
                     className="w-full"
@@ -583,11 +752,35 @@ const FinalQC = () => {
                     Block Work Order
                   </Button>
 
+                  {/* Admin Waiver Option */}
+                  {canWaive && (
+                    <Button
+                      variant="outline"
+                      className="w-full border-amber-500 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                      onClick={() => setShowWaiverDialog(true)}
+                    >
+                      <ShieldAlert className="h-4 w-4 mr-2" />
+                      Admin Waiver (Override)
+                    </Button>
+                  )}
+
                   {!canRelease && (
                     <p className="text-xs text-muted-foreground text-center">
                       All QC stages must pass, and production must have OK quantity to release.
                     </p>
                   )}
+                </div>
+              )}
+
+              {/* Read-only notice for non-QC roles */}
+              {!isReleased && workOrder.final_qc_result !== 'blocked' && !canPerformFinalQC && (
+                <div className="pt-4">
+                  <Alert className="border-muted">
+                    <Ban className="h-4 w-4" />
+                    <AlertDescription className="text-sm">
+                      QC role required to release or block work orders.
+                    </AlertDescription>
+                  </Alert>
                 </div>
               )}
 
@@ -728,6 +921,80 @@ const FinalQC = () => {
                 <>
                   <XCircle className="h-4 w-4 mr-2" />
                   Block Work Order
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Waiver Dialog */}
+      <Dialog open={showWaiverDialog} onOpenChange={setShowWaiverDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <ShieldAlert className="h-5 w-5" />
+              Admin Waiver - Final QC Override
+            </DialogTitle>
+            <DialogDescription>
+              This action bypasses normal QC requirements and will be logged in the audit trail.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-800 dark:text-amber-300">
+              <strong>Warning:</strong> Waiving Final QC is an exceptional action. 
+              A detailed reason is mandatory and will be permanently recorded.
+            </AlertDescription>
+          </Alert>
+          
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="waiver-reason" className="text-base font-semibold">
+                Waiver Reason (Required - min 20 characters)
+              </Label>
+              <Textarea
+                id="waiver-reason"
+                placeholder="Provide a detailed justification for waiving Final QC. This will be recorded in the audit log..."
+                value={waiverReason}
+                onChange={(e) => setWaiverReason(e.target.value)}
+                rows={5}
+                className="mt-2"
+              />
+              <div className="flex justify-between mt-1">
+                <span className="text-xs text-muted-foreground">
+                  This action is irreversible and will be audited.
+                </span>
+                <span className={`text-xs ${waiverReason.length >= 20 ? 'text-green-600' : 'text-amber-600'}`}>
+                  {waiverReason.length}/20 characters
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowWaiverDialog(false);
+              setWaiverReason("");
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              variant="default"
+              className="bg-amber-600 hover:bg-amber-700"
+              onClick={handleWaiver} 
+              disabled={submitting || waiverReason.trim().length < 20}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="h-4 w-4 mr-2" />
+                  Confirm Admin Waiver
                 </>
               )}
             </Button>
