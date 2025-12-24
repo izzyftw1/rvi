@@ -1,9 +1,25 @@
+/**
+ * ExternalDashboard - Batch-Based External Processes View
+ * 
+ * Shows batches at external processing, not work orders.
+ * Each row represents a batch with:
+ * - Work Order ID
+ * - External Process Type (forging, plating, etc)
+ * - Batch quantity sent
+ * - Date sent
+ * - Date returned (if completed)
+ * - Remaining quantity still internal
+ * 
+ * Does NOT change Work Order stage when sending partial quantities externally.
+ */
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
   Sparkles, 
   Wind, 
@@ -12,7 +28,10 @@ import {
   Factory,
   AlertTriangle,
   Calendar,
-  Package
+  Package,
+  Search,
+  ArrowUpDown,
+  Layers
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -23,189 +42,230 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ExternalProcessingDetailDrawer } from "./ExternalProcessingDetailDrawer";
 
-interface HeatmapData {
-  job_work: { pcs: number; kg: number; activeMoves: number; overdue: number };
-  plating: { pcs: number; kg: number; activeMoves: number; overdue: number };
-  buffing: { pcs: number; kg: number; activeMoves: number; overdue: number };
-  blasting: { pcs: number; kg: number; activeMoves: number; overdue: number };
-  forging_ext: { pcs: number; kg: number; activeMoves: number; overdue: number };
+interface ExternalBatch {
+  id: string;
+  wo_id: string;
+  wo_display_id: string;
+  item_code: string;
+  customer: string;
+  batch_number: number;
+  batch_quantity: number;
+  external_process_type: string;
+  partner_name: string;
+  stage_entered_at: string;
+  returned_at: string | null;
+  batch_status: string;
+  wo_total_quantity: number;
+  remaining_internal: number;
+  days_external: number;
 }
 
-interface OverdueReturn {
-  id: string;
-  wo_display_id: string;
-  process_type: string;
-  partner_name: string;
-  dispatch_date: string;
-  expected_return_date: string;
-  pcs_pending: number;
-  days_overdue: number;
+interface ProcessSummary {
+  process: string;
+  totalQuantity: number;
+  batchCount: number;
+  inProgress: number;
 }
 
 const PROCESS_CONFIG = [
-  { key: 'job_work' as const, label: 'Job Work', icon: Factory, color: 'text-blue-600' },
-  { key: 'plating' as const, label: 'Plating', icon: Sparkles, color: 'text-purple-600' },
-  { key: 'buffing' as const, label: 'Buffing', icon: Wind, color: 'text-cyan-600' },
-  { key: 'blasting' as const, label: 'Blasting', icon: Hammer, color: 'text-orange-600' },
-  { key: 'forging_ext' as const, label: 'Forging', icon: Flame, color: 'text-red-600' }
+  { key: 'forging', label: 'Forging', icon: Flame, color: 'text-red-600', bgColor: 'bg-red-500/10' },
+  { key: 'plating', label: 'Plating', icon: Sparkles, color: 'text-purple-600', bgColor: 'bg-purple-500/10' },
+  { key: 'blasting', label: 'Blasting', icon: Hammer, color: 'text-orange-600', bgColor: 'bg-orange-500/10' },
+  { key: 'buffing', label: 'Buffing', icon: Wind, color: 'text-cyan-600', bgColor: 'bg-cyan-500/10' },
+  { key: 'job_work', label: 'Job Work', icon: Factory, color: 'text-blue-600', bgColor: 'bg-blue-500/10' },
 ];
-
-const METRICS = ['pcs', 'kg', 'activeMoves', 'overdue'] as const;
-const METRIC_LABELS = {
-  pcs: 'Pcs',
-  kg: 'Kg',
-  activeMoves: 'Active Moves',
-  overdue: 'Overdue'
-};
 
 export const ExternalDashboard = () => {
   const navigate = useNavigate();
-  const [heatmapData, setHeatmapData] = useState<HeatmapData>({
-    job_work: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-    plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-    buffing: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-    blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-    forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
-  });
-  const [overdueReturns, setOverdueReturns] = useState<OverdueReturn[]>([]);
+  const [batches, setBatches] = useState<ExternalBatch[]>([]);
+  const [filteredBatches, setFilteredBatches] = useState<ExternalBatch[]>([]);
+  const [processSummary, setProcessSummary] = useState<ProcessSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sortField, setSortField] = useState<"stage_entered_at" | "batch_quantity">("stage_entered_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const loadExternalBatches = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Fetch batches with stage_type = 'external' - SOURCE OF TRUTH
+      const { data: batchData, error: batchError } = await supabase
+        .from('production_batches')
+        .select(`
+          id,
+          wo_id,
+          batch_number,
+          batch_quantity,
+          stage_type,
+          external_process_type,
+          external_partner_id,
+          batch_status,
+          stage_entered_at,
+          ended_at,
+          work_orders!wo_id(
+            id,
+            display_id,
+            wo_number,
+            item_code,
+            customer,
+            quantity
+          ),
+          external_partners!external_partner_id(name)
+        `)
+        .eq('stage_type', 'external')
+        .order('stage_entered_at', { ascending: false });
+
+      if (batchError) throw batchError;
+
+      // Calculate remaining internal quantity per work order
+      const woIds = [...new Set((batchData || []).map((b: any) => b.wo_id))];
+      
+      // Get all batches for these work orders to calculate remaining internal
+      const { data: allWOBatches } = await supabase
+        .from('production_batches')
+        .select('wo_id, batch_quantity, stage_type')
+        .in('wo_id', woIds)
+        .is('ended_at', null);
+
+      const internalByWO = new Map<string, number>();
+      (allWOBatches || []).forEach((b: any) => {
+        if (b.stage_type !== 'external' && b.stage_type !== 'dispatched') {
+          const current = internalByWO.get(b.wo_id) || 0;
+          internalByWO.set(b.wo_id, current + (b.batch_quantity || 0));
+        }
+      });
+
+      const externalBatches: ExternalBatch[] = (batchData || []).map((batch: any) => {
+        const daysExternal = batch.stage_entered_at 
+          ? Math.floor((new Date().getTime() - new Date(batch.stage_entered_at).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+
+        return {
+          id: batch.id,
+          wo_id: batch.wo_id,
+          wo_display_id: batch.work_orders?.display_id || batch.work_orders?.wo_number || 'N/A',
+          item_code: batch.work_orders?.item_code || 'N/A',
+          customer: batch.work_orders?.customer || 'N/A',
+          batch_number: batch.batch_number,
+          batch_quantity: batch.batch_quantity || 0,
+          external_process_type: batch.external_process_type || 'unknown',
+          partner_name: batch.external_partners?.name || 'Unknown',
+          stage_entered_at: batch.stage_entered_at || '',
+          returned_at: batch.ended_at,
+          batch_status: batch.batch_status || 'in_progress',
+          wo_total_quantity: batch.work_orders?.quantity || 0,
+          remaining_internal: internalByWO.get(batch.wo_id) || 0,
+          days_external: daysExternal
+        };
+      });
+
+      setBatches(externalBatches);
+
+      // Build process summary
+      const summaryMap = new Map<string, ProcessSummary>();
+      externalBatches.forEach(batch => {
+        const process = batch.external_process_type.toLowerCase();
+        const existing = summaryMap.get(process) || {
+          process,
+          totalQuantity: 0,
+          batchCount: 0,
+          inProgress: 0
+        };
+        existing.totalQuantity += batch.batch_quantity;
+        existing.batchCount += 1;
+        if (batch.batch_status === 'in_progress') {
+          existing.inProgress += 1;
+        }
+        summaryMap.set(process, existing);
+      });
+
+      setProcessSummary(Array.from(summaryMap.values()));
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading external batches:', error);
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    loadExternalData();
-  }, []);
+    loadExternalBatches();
+  }, [loadExternalBatches]);
 
-  // Throttled realtime for External heatmap - separate channel
-  const loadExternalDataCallback = useCallback(() => {
-    loadExternalData();
-  }, []);
-
+  // Throttled realtime for batch updates
   useThrottledRealtime({
-    channelName: 'dashboard-external-heatmap',
-    tables: ['wo_external_moves', 'work_orders'],
-    onUpdate: loadExternalDataCallback,
+    channelName: 'external-dashboard-batches',
+    tables: ['production_batches'],
+    onUpdate: loadExternalBatches,
     throttleMs: 3000,
     cacheMs: 15000,
   });
 
-  const loadExternalData = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
+  // Apply filters and sorting
+  useEffect(() => {
+    let filtered = [...batches];
 
-      // Use the new SQL view for aggregated data
-      const { data: summaryData, error: summaryError } = await supabase
-        .from('external_processing_summary_vw')
-        .select('*');
+    // Filter by search term
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(batch =>
+        batch.wo_display_id.toLowerCase().includes(term) ||
+        batch.item_code.toLowerCase().includes(term) ||
+        batch.customer.toLowerCase().includes(term) ||
+        batch.partner_name.toLowerCase().includes(term) ||
+        batch.external_process_type.toLowerCase().includes(term)
+      );
+    }
 
-      if (summaryError) {
-        console.error('Error loading external processing summary:', summaryError);
-        setLoading(false);
-        return;
+    // Filter by selected process
+    if (selectedProcess) {
+      filtered = filtered.filter(batch =>
+        batch.external_process_type.toLowerCase() === selectedProcess.toLowerCase()
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      const direction = sortDirection === 'asc' ? 1 : -1;
+      if (sortField === 'stage_entered_at') {
+        return direction * (new Date(a.stage_entered_at).getTime() - new Date(b.stage_entered_at).getTime());
       }
+      return direction * (a.batch_quantity - b.batch_quantity);
+    });
 
-      // Initialize with zeros
-      const data: HeatmapData = {
-        job_work: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-        plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-        buffing: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-        blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-        forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
-      };
+    setFilteredBatches(filtered);
+  }, [batches, searchTerm, selectedProcess, sortField, sortDirection]);
 
-      // Map summary data to heatmap structure
-      summaryData?.forEach((row: any) => {
-        const processKey = row.process_name as keyof HeatmapData;
-        if (data[processKey]) {
-          data[processKey] = {
-            pcs: Math.round(row.pcs_total || 0),
-            kg: parseFloat((row.kg_total || 0).toFixed(1)),
-            activeMoves: row.active_moves || 0,
-            overdue: row.overdue || 0
-          };
-        }
-      });
-
-      setHeatmapData(data);
-
-      // Load overdue details for the table
-      const { data: movesData, error: movesError } = await supabase
-        .from('wo_external_moves')
-        .select(`
-          id,
-          process,
-          dispatch_date,
-          expected_return_date,
-          quantity_sent,
-          quantity_returned,
-          partner_id,
-          work_order_id,
-          work_orders!work_order_id(display_id, wo_number, gross_weight_per_pc),
-          external_partners!partner_id(name)
-        `)
-        .lt('expected_return_date', today)
-        .is('returned_date', null)
-        .order('expected_return_date', { ascending: true })
-        .limit(10);
-
-      if (!movesError && movesData) {
-        const overdueList: OverdueReturn[] = movesData.map((move: any) => {
-          const pending = (move.quantity_sent || 0) - (move.quantity_returned || 0);
-          const daysOverdue = Math.floor(
-            (new Date().getTime() - new Date(move.expected_return_date).getTime()) / (1000 * 60 * 60 * 24)
-          );
-
-          return {
-            id: move.id,
-            wo_display_id: move.work_orders?.display_id || move.work_orders?.wo_number || 'N/A',
-            process_type: move.process,
-            partner_name: move.external_partners?.name || 'Unknown',
-            dispatch_date: move.dispatch_date || '',
-            expected_return_date: move.expected_return_date || '',
-            pcs_pending: pending,
-            days_overdue: daysOverdue
-          };
-        });
-
-        setOverdueReturns(overdueList);
-      }
-
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading external data:', error);
-      setLoading(false);
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
     }
   };
 
-  const getCellColor = (metric: typeof METRICS[number], value: number) => {
-    if (metric === 'overdue') {
-      if (value === 0) return 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300';
-      if (value <= 2) return 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300';
-      return 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300';
-    }
-    
-    if (value === 0) return 'bg-muted text-muted-foreground';
-    if (value < 100) return 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300';
-    if (value < 500) return 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300';
-    return 'bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300';
+  const getProcessIcon = (processType: string) => {
+    const config = PROCESS_CONFIG.find(p => p.key === processType.toLowerCase());
+    if (!config) return Factory;
+    return config.icon;
   };
 
-  const handleCellClick = (processType: string, metric: typeof METRICS[number]) => {
-    setSelectedProcess(processType);
-    setDrawerOpen(true);
+  const getProcessColor = (processType: string) => {
+    const config = PROCESS_CONFIG.find(p => p.key === processType.toLowerCase());
+    return config?.color || 'text-muted-foreground';
   };
 
-  const getProcessLabel = (key: string) => {
-    return PROCESS_CONFIG.find(p => p.key === key)?.label || key;
-  };
+  const totalQuantity = batches.reduce((sum, b) => sum + b.batch_quantity, 0);
+  const totalBatches = batches.length;
 
   if (loading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>External Processing Dashboard</CardTitle>
+          <CardTitle>External Processing - Batch View</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-96 bg-muted animate-pulse rounded" />
@@ -215,140 +275,227 @@ export const ExternalDashboard = () => {
   }
 
   return (
-    <>
-      <div className="space-y-6">
-        {/* Heatmap */}
-        <Card>
+    <div className="space-y-6">
+      {/* Summary Header */}
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            External Processing Heatmap
+            <Layers className="h-5 w-5" />
+            External Processing - Batch View
           </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Each row represents a batch, not a work order. Same WO may have multiple batches at different external processes.
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <div className="inline-block min-w-full">
-              <div className="grid grid-cols-6 gap-2">
-                {/* Header row */}
-                <div className="font-semibold text-sm p-3"></div>
-                {PROCESS_CONFIG.map(({ key, label, icon: Icon, color }) => (
-                  <div key={key} className="font-semibold text-sm p-3 text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <Icon className={cn("h-4 w-4", color)} />
-                      <span>{label}</span>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Data rows */}
-                {METRICS.map(metric => (
-                  <>
-                    <div key={`label-${metric}`} className="font-semibold text-sm p-3 flex items-center">
-                      {METRIC_LABELS[metric]}
-                    </div>
-                    {PROCESS_CONFIG.map(({ key }) => {
-                      const value = heatmapData[key][metric];
-                      const displayValue = metric === 'kg' ? value.toFixed(1) : value;
-                      
-                      return (
-                        <div
-                          key={`${key}-${metric}`}
-                          className={cn(
-                            "p-4 rounded-lg cursor-pointer hover:shadow-md transition-all text-center font-bold text-lg",
-                            getCellColor(metric, value)
-                          )}
-                          onClick={() => handleCellClick(key, metric)}
-                        >
-                          {displayValue}
-                        </div>
-                      );
-                    })}
-                  </>
-                ))}
-              </div>
+          <div className="flex flex-wrap gap-4 mb-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <span className="font-semibold">{totalBatches}</span>
+              <span className="text-muted-foreground">batches</span>
             </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Package className="h-4 w-4 text-muted-foreground" />
+              <span className="font-semibold">{totalQuantity.toLocaleString()}</span>
+              <span className="text-muted-foreground">pcs external</span>
+            </div>
+          </div>
+
+          {/* Process Type Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {PROCESS_CONFIG.map(({ key, label, icon: Icon, color, bgColor }) => {
+              const summary = processSummary.find(p => p.process === key);
+              const isSelected = selectedProcess === key;
+              const hasData = summary && summary.batchCount > 0;
+
+              return (
+                <Card
+                  key={key}
+                  className={cn(
+                    "cursor-pointer transition-all hover:shadow-md",
+                    isSelected && "ring-2 ring-primary",
+                    !hasData && "opacity-50"
+                  )}
+                  onClick={() => setSelectedProcess(isSelected ? null : key)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={cn("p-1.5 rounded", bgColor)}>
+                        <Icon className={cn("h-4 w-4", color)} />
+                      </div>
+                      <span className="text-sm font-medium">{label}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-center">
+                      <div>
+                        <div className="text-lg font-bold">{summary?.batchCount || 0}</div>
+                        <p className="text-[10px] text-muted-foreground">batches</p>
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold">{(summary?.totalQuantity || 0).toLocaleString()}</div>
+                        <p className="text-[10px] text-muted-foreground">pcs</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
 
-      {/* Overdue Returns Table */}
+      {/* Batch List */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-              Overdue Returns
+              <Package className="h-5 w-5" />
+              External Batches
+              {selectedProcess && (
+                <Badge variant="secondary" className="capitalize">
+                  {selectedProcess}
+                </Badge>
+              )}
             </CardTitle>
-            {overdueReturns.length > 0 && (
-              <Badge variant="destructive">
-                {overdueReturns.length} overdue
-              </Badge>
-            )}
+            <span className="text-sm text-muted-foreground">
+              {filteredBatches.length} batches
+            </span>
           </div>
         </CardHeader>
         <CardContent>
-          {overdueReturns.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-2 text-green-500" />
-              <p>No overdue returns! All on track.</p>
+          {/* Search */}
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by WO ID, Item, Customer, Partner..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          {filteredBatches.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <p className="text-lg">No batches at external processing</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>WO</TableHead>
-                  <TableHead>Process</TableHead>
+                  <TableHead>Work Order</TableHead>
+                  <TableHead>Process Type</TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 text-right"
+                    onClick={() => toggleSort('batch_quantity')}
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      Batch Qty Sent
+                      <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => toggleSort('stage_entered_at')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Date Sent
+                      <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                  <TableHead>Date Returned</TableHead>
+                  <TableHead className="text-right">Remaining Internal</TableHead>
                   <TableHead>Partner</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead>Expected Return</TableHead>
-                  <TableHead className="text-right">Pcs Pending</TableHead>
-                  <TableHead className="text-right">Days Overdue</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {overdueReturns.map((item) => (
-                  <TableRow 
-                    key={item.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate('/logistics')}
-                  >
-                    <TableCell className="font-medium">{item.wo_display_id}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{getProcessLabel(item.process_type)}</Badge>
-                    </TableCell>
-                    <TableCell>{item.partner_name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(item.dispatch_date).toLocaleDateString()}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(item.expected_return_date).toLocaleDateString()}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">{item.pcs_pending}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="destructive">{item.days_overdue}d</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredBatches.map((batch) => {
+                  const ProcessIcon = getProcessIcon(batch.external_process_type);
+                  const processColor = getProcessColor(batch.external_process_type);
+
+                  return (
+                    <TableRow key={batch.id} className="hover:bg-muted/50">
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{batch.wo_display_id}</div>
+                          <div className="text-xs text-muted-foreground">{batch.item_code}</div>
+                          <div className="text-xs text-muted-foreground">{batch.customer}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <ProcessIcon className={cn("h-4 w-4", processColor)} />
+                          <span className="capitalize">{batch.external_process_type}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {batch.batch_quantity.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          {batch.stage_entered_at ? new Date(batch.stage_entered_at).toLocaleDateString() : 'N/A'}
+                        </div>
+                        {batch.days_external > 0 && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {batch.days_external}d ago
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {batch.returned_at ? (
+                          <div className="flex items-center gap-1 text-xs text-green-600">
+                            <Calendar className="h-3 w-3" />
+                            {new Date(batch.returned_at).toLocaleDateString()}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-muted-foreground">
+                          {batch.remaining_internal.toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell>{batch.partner_name}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={batch.batch_status === 'completed' ? 'default' : 'secondary'}
+                          className={cn(
+                            batch.batch_status === 'completed' && 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+                            batch.batch_status === 'in_progress' && 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                          )}
+                        >
+                          {batch.batch_status === 'in_queue' ? 'Queued' : 
+                           batch.batch_status === 'in_progress' ? 'In Progress' : 
+                           batch.batch_status === 'completed' ? 'Returned' : batch.batch_status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/work-orders/${batch.wo_id}`)}
+                        >
+                          View WO
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
-      </div>
 
-      {/* Detail Drawer */}
-      <ExternalProcessingDetailDrawer
-        processType={selectedProcess}
-        processLabel={getProcessLabel(selectedProcess || '')}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-      />
-    </>
+      {/* Source indicator */}
+      <p className="text-[10px] text-muted-foreground italic text-right">
+        All data derived from production_batches where stage_type = 'external'
+      </p>
+    </div>
   );
 };
