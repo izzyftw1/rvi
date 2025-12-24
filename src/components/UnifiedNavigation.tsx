@@ -159,7 +159,7 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
 
   // Check if admin section is active
   const isAdminActive = () => {
-    const adminPaths = ['/admin', '/factory-calendar', '/instruments'];
+    const adminPaths = ['/admin', '/factory-calendar'];
     return adminPaths.some(p => location.pathname.startsWith(p));
   };
 
@@ -499,16 +499,6 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                   >
                     <Calendar className={cn("h-4 w-4", location.pathname === '/factory-calendar' && "text-primary")} />
                     Factory Calendar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => handleNavigate("/instruments")} 
-                    className={cn(
-                      "gap-3 cursor-pointer",
-                      location.pathname === '/instruments' && "bg-primary/10 text-primary font-medium"
-                    )}
-                  >
-                    <Wrench className={cn("h-4 w-4", location.pathname === '/instruments' && "text-primary")} />
-                    Instruments
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
