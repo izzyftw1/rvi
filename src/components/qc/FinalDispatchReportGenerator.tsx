@@ -18,6 +18,17 @@ interface FinalDispatchReportGeneratorProps {
   quantity: number;
 }
 
+interface HourlyQCDimensionAverage {
+  dimension: string;
+  operation: string;
+  min: number;
+  max: number;
+  avg: number;
+  count: number;
+  tolerance?: { min: number; max: number };
+  inTolerance: boolean;
+}
+
 interface ConsolidatedReportData {
   workOrder: any;
   hourlyQC: any[];
@@ -36,6 +47,7 @@ interface ConsolidatedReportData {
     complianceRate: number;
   };
   deviationsAndWaivers: any[];
+  hourlyQCAverages: HourlyQCDimensionAverage[];
 }
 
 export const FinalDispatchReportGenerator = ({
@@ -169,6 +181,51 @@ export const FinalDispatchReportGenerator = ({
         });
       });
 
+      // Calculate hourly QC dimension averages
+      const hourlyQCAverages: HourlyQCDimensionAverage[] = [];
+      const dimStatsByOp: Record<string, Record<string, { values: number[]; min: number; max: number }>> = {};
+      
+      (hourlyData || []).forEach((check: any) => {
+        const op = check.operation;
+        if (!dimStatsByOp[op]) dimStatsByOp[op] = {};
+        
+        if (check.dimensions) {
+          Object.entries(check.dimensions).forEach(([dim, value]: [string, any]) => {
+            if (typeof value === 'number') {
+              if (!dimStatsByOp[op][dim]) {
+                dimStatsByOp[op][dim] = { values: [], min: value, max: value };
+              }
+              dimStatsByOp[op][dim].values.push(value);
+              dimStatsByOp[op][dim].min = Math.min(dimStatsByOp[op][dim].min, value);
+              dimStatsByOp[op][dim].max = Math.max(dimStatsByOp[op][dim].max, value);
+            }
+          });
+        }
+      });
+
+      // Convert to averages array
+      Object.entries(dimStatsByOp).forEach(([op, dims]) => {
+        const opTolerances = toleranceMap[op] || {};
+        Object.entries(dims).forEach(([dim, stats]) => {
+          const avg = stats.values.reduce((a, b) => a + b, 0) / stats.values.length;
+          const tol = opTolerances[dim];
+          const inTol = tol && tol.min !== undefined && tol.max !== undefined
+            ? stats.values.every(v => v >= tol.min && v <= tol.max)
+            : true;
+          
+          hourlyQCAverages.push({
+            dimension: dim,
+            operation: op,
+            min: stats.min,
+            max: stats.max,
+            avg,
+            count: stats.values.length,
+            tolerance: tol ? { min: tol.min, max: tol.max } : undefined,
+            inTolerance: inTol
+          });
+        });
+      });
+
       // Collect deviations and waivers
       const deviationsAndWaivers: any[] = [];
       
@@ -212,7 +269,8 @@ export const FinalDispatchReportGenerator = ({
           outOfTolerance,
           complianceRate: totalDimensions > 0 ? (inTolerance / totalDimensions) * 100 : 100
         },
-        deviationsAndWaivers
+        deviationsAndWaivers,
+        hourlyQCAverages
       });
     } catch (error: any) {
       console.error('Error loading report data:', error);
@@ -343,7 +401,12 @@ export const FinalDispatchReportGenerator = ({
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(28, 63, 148);
-      doc.text('2. AGGREGATED IN-PROCESS QC SUMMARY', 20, yPos);
+      doc.text('2. HOURLY QC DIMENSION AVERAGES', 20, yPos);
+      yPos += 6;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text('Aggregated min/max/avg from all in-process hourly QC checks', 20, yPos);
       yPos += 8;
       doc.setTextColor(0, 0, 0);
 

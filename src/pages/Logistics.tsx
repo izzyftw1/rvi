@@ -1,50 +1,107 @@
-
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { Package, Truck, MapPin, FileText, Home, Calendar } from "lucide-react";
+import { Package, Truck, MapPin, FileText, Home, Calendar, Loader2, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/empty-state";
+import { subDays } from "date-fns";
+
+interface Shipment {
+  id: string;
+  ship_id: string;
+  customer: string | null;
+  status: string | null;
+  transporter_name: string | null;
+  lr_no: string | null;
+  ship_date: string | null;
+  shipped_at: string | null;
+  delivered_date: string | null;
+  boxes: number | null;
+  gross_weight_kg: number | null;
+  net_weight_kg: number | null;
+  ship_to_address: any;
+  wo_id: string | null;
+  work_order?: {
+    wo_number: string;
+  } | null;
+}
 
 export default function Logistics() {
-  // Mock shipment data
-  const shipments = [
-    {
-      id: "SHP-001",
-      wo: "ISO-72823-001",
-      status: "in_transit",
-      transporter: "XYZ Logistics",
-      lr_no: "LR-2024-001",
-      ship_date: "2024-01-15",
-      destination: "Mumbai, India",
-      cartons: 12,
-      weight: 250
-    },
-    {
-      id: "SHP-002",
-      wo: "ISO-72823-002",
-      status: "delivered",
-      transporter: "ABC Transport",
-      lr_no: "LR-2024-002",
-      ship_date: "2024-01-10",
-      destination: "Delhi, India",
-      cartons: 8,
-      weight: 180
-    }
-  ];
+  const [loading, setLoading] = useState(true);
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [stats, setStats] = useState({
+    active: 0,
+    inTransit: 0,
+    deliveredThisMonth: 0,
+    pendingDocs: 0
+  });
 
-  const getStatusBadge = (status: string) => {
+  useEffect(() => {
+    loadShipments();
+  }, []);
+
+  const loadShipments = async () => {
+    setLoading(true);
+    try {
+      // Load shipments with work order info
+      const { data, error } = await supabase
+        .from('shipments')
+        .select(`
+          *,
+          work_order:wo_id(wo_number)
+        `)
+        .order('ship_date', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      setShipments(data || []);
+
+      // Calculate stats
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      const active = (data || []).filter(s => s.status !== 'delivered' && s.status !== 'cancelled').length;
+      const inTransit = (data || []).filter(s => s.status === 'in_transit').length;
+      const deliveredThisMonth = (data || []).filter(s => 
+        s.status === 'delivered' && 
+        s.delivered_date && 
+        new Date(s.delivered_date) >= thirtyDaysAgo
+      ).length;
+      const pendingDocs = (data || []).filter(s => {
+        const docs = s.documents as Record<string, any> | null;
+        return !docs?.invoice_uploaded || !docs?.packing_list_uploaded;
+      }).length;
+
+      setStats({ active, inTransit, deliveredThisMonth, pendingDocs });
+    } catch (error) {
+      console.error('Error loading shipments:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status: string | null) => {
     const variants: Record<string, { variant: any; label: string }> = {
       pending: { variant: "secondary", label: "Pending" },
       picked: { variant: "outline", label: "Picked" },
       in_transit: { variant: "default", label: "In Transit" },
       delivered: { variant: "default", label: "Delivered" },
-      exception: { variant: "destructive", label: "Exception" }
+      exception: { variant: "destructive", label: "Exception" },
+      cancelled: { variant: "destructive", label: "Cancelled" }
     };
 
-    const config = variants[status] || { variant: "secondary", label: status };
+    const config = variants[status || 'pending'] || { variant: "secondary", label: status || 'Unknown' };
     return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const getDestination = (shipment: Shipment) => {
+    if (shipment.ship_to_address) {
+      const addr = shipment.ship_to_address;
+      return [addr.city, addr.state, addr.country].filter(Boolean).join(', ') || 'N/A';
+    }
+    return 'N/A';
   };
 
   return (
@@ -67,6 +124,10 @@ export default function Logistics() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+          <Button variant="outline" size="sm" onClick={loadShipments} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
 
         {/* KPI Cards */}
@@ -77,8 +138,8 @@ export default function Logistics() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">2</div>
-              <p className="text-xs text-muted-foreground">Demo data</p>
+              <div className="text-2xl font-bold">{stats.active}</div>
+              <p className="text-xs text-muted-foreground">Not yet delivered</p>
             </CardContent>
           </Card>
 
@@ -88,7 +149,7 @@ export default function Logistics() {
               <Truck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1</div>
+              <div className="text-2xl font-bold">{stats.inTransit}</div>
               <p className="text-xs text-muted-foreground">Currently shipping</p>
             </CardContent>
           </Card>
@@ -99,7 +160,7 @@ export default function Logistics() {
               <MapPin className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1</div>
+              <div className="text-2xl font-bold">{stats.deliveredThisMonth}</div>
               <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
@@ -110,8 +171,8 @@ export default function Logistics() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">All up to date</p>
+              <div className="text-2xl font-bold">{stats.pendingDocs}</div>
+              <p className="text-xs text-muted-foreground">Missing documents</p>
             </CardContent>
           </Card>
         </div>
@@ -119,15 +180,19 @@ export default function Logistics() {
         {/* Shipment Cards */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold">Active Shipments</h2>
+            <h2 className="text-2xl font-bold">Shipments</h2>
           </div>
 
-          {shipments.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : shipments.length === 0 ? (
             <Card>
               <CardContent className="py-0">
                 <EmptyState
                   icon="partners"
-                  title="No Active Shipments"
+                  title="No Shipments"
                   description="Shipments are created when work orders are dispatched to customers. Complete a work order through packing and dispatch to create a shipment."
                   hint="Navigate to Dispatch to ship completed work orders."
                   action={{
@@ -141,39 +206,48 @@ export default function Logistics() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {shipments.map((shipment) => (
-                <Card key={shipment.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+                <Card key={shipment.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{shipment.id}</CardTitle>
+                      <CardTitle className="text-lg">{shipment.ship_id}</CardTitle>
                       {getStatusBadge(shipment.status)}
                     </div>
-                    <CardDescription>Work Order: {shipment.wo}</CardDescription>
+                    <CardDescription>
+                      {shipment.work_order?.wo_number 
+                        ? `Work Order: ${shipment.work_order.wo_number}` 
+                        : shipment.customer || 'No customer'}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Truck className="h-4 w-4 text-muted-foreground" />
-                      <span>{shipment.transporter}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span>LR: {shipment.lr_no}</span>
-                    </div>
+                    {shipment.transporter_name && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Truck className="h-4 w-4 text-muted-foreground" />
+                        <span>{shipment.transporter_name}</span>
+                      </div>
+                    )}
+                    {shipment.lr_no && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span>LR: {shipment.lr_no}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-sm">
                       <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span>{shipment.destination}</span>
+                      <span>{getDestination(shipment)}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span>Shipped: {new Date(shipment.ship_date).toLocaleDateString()}</span>
+                      <span>
+                        {shipment.shipped_at || shipment.ship_date
+                          ? `Shipped: ${new Date(shipment.shipped_at || shipment.ship_date!).toLocaleDateString()}`
+                          : 'Not shipped yet'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2 border-t">
-                      <span>{shipment.cartons} cartons</span>
+                      <span>{shipment.boxes || 0} boxes</span>
                       <span>•</span>
-                      <span>{shipment.weight} kg</span>
+                      <span>{shipment.gross_weight_kg?.toFixed(1) || 0} kg</span>
                     </div>
-                    <Button variant="outline" size="sm" className="w-full mt-2" disabled>
-                      View Timeline & Docs
-                    </Button>
                   </CardContent>
                 </Card>
               ))}
