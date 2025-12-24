@@ -6037,6 +6037,7 @@ export type Database = {
           qc_raw_material_status: string | null
           qc_status: string | null
           qty_completed: number
+          qty_dispatched: number | null
           qty_external_wip: number | null
           qty_rejected: number
           qty_remaining: number | null
@@ -6112,6 +6113,7 @@ export type Database = {
           qc_raw_material_status?: string | null
           qc_status?: string | null
           qty_completed?: number
+          qty_dispatched?: number | null
           qty_external_wip?: number | null
           qty_rejected?: number
           qty_remaining?: number | null
@@ -6187,6 +6189,7 @@ export type Database = {
           qc_raw_material_status?: string | null
           qc_status?: string | null
           qty_completed?: number
+          qty_dispatched?: number | null
           qty_external_wip?: number | null
           qty_rejected?: number
           qty_remaining?: number | null
@@ -6663,6 +6666,7 @@ export type Database = {
         Returns: number
       }
       get_user_site_id: { Args: { _user_id: string }; Returns: string }
+      get_wo_batch_status: { Args: { p_wo_id: string }; Returns: Json }
       get_wo_progress: {
         Args: { _wo_id: string }
         Returns: {
