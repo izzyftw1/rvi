@@ -134,6 +134,7 @@ export const navigationGroups: NavGroup[] = [
       { label: "Invoices", path: "/finance/invoices", icon: Receipt },
       { label: "Payments", path: "/finance/payments", icon: CreditCard },
       { label: "Receipt Allocation", path: "/finance/receipts", icon: Receipt },
+      { label: "TDS Report", path: "/finance/tds", icon: FileSpreadsheet },
       { label: "Aging", path: "/finance/aging", icon: Clock },
       { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle },
       { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet },
