@@ -7,10 +7,11 @@ import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Download, FileText, Building2, Users, IndianRupee } from "lucide-react";
+import { Loader2, Download, FileText, Building2, Users, IndianRupee, Calculator } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { getFinancialYear, getTdsQuarter, getPanEntityType } from "@/lib/tdsUtils";
+import { TdsReconciliationReport } from "@/components/finance/TdsReconciliationReport";
 
 interface TdsRecord {
   id: string;
@@ -331,7 +332,15 @@ export default function TDSReport() {
                   <TabsTrigger value="summary">
                     Quarterly Summary
                   </TabsTrigger>
+                  <TabsTrigger value="reconciliation">
+                    <Calculator className="h-4 w-4 mr-1" />
+                    ITR Reconciliation
+                  </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="reconciliation">
+                  <TdsReconciliationReport />
+                </TabsContent>
 
                 <TabsContent value="receivables">
                   <Table>
