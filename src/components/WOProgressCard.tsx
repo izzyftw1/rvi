@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { 
   Package, TrendingUp, AlertTriangle, Clock, CheckCircle2, Loader2, 
-  Truck, ClipboardCheck, Layers 
+  Truck, ClipboardCheck, Layers, BoxIcon 
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -40,6 +40,7 @@ interface BatchData {
   produced_qty: number;
   qc_approved_qty: number;
   qc_rejected_qty: number;
+  packed_qty: number;
   dispatched_qty: number;
   qc_final_status: string;
 }
@@ -48,6 +49,7 @@ interface ProgressData {
   totalProduced: number;
   totalQCApproved: number;
   totalQCRejected: number;
+  totalPacked: number; // Released quantity
   totalDispatched: number;
   remaining: number;
   progressPercent: number;
@@ -63,6 +65,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
     totalProduced: 0,
     totalQCApproved: 0,
     totalQCRejected: 0,
+    totalPacked: 0,
     totalDispatched: 0,
     remaining: orderedQuantity,
     progressPercent: 0,
@@ -96,12 +99,26 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
         .eq('wo_id', woId)
         .order('batch_number', { ascending: true });
 
+      // Get packed quantity per batch from cartons
+      const { data: cartonData } = await supabase
+        .from('cartons')
+        .select('batch_id, quantity')
+        .eq('wo_id', woId);
+
+      // Create a map of batch_id -> packed_qty
+      const packedByBatch: Record<string, number> = {};
+      (cartonData || []).forEach(c => {
+        const batchId = c.batch_id || '';
+        packedByBatch[batchId] = (packedByBatch[batchId] || 0) + (c.quantity || 0);
+      });
+
       const batches: BatchData[] = (batchData || []).map(b => ({
         id: b.id,
         batch_number: b.batch_number,
         produced_qty: b.produced_qty || 0,
         qc_approved_qty: b.qc_approved_qty || 0,
         qc_rejected_qty: b.qc_rejected_qty || 0,
+        packed_qty: packedByBatch[b.id] || 0,
         dispatched_qty: b.dispatched_qty || 0,
         qc_final_status: b.qc_final_status || 'pending'
       }));
@@ -110,6 +127,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
       const totalProduced = batches.reduce((sum, b) => sum + b.produced_qty, 0);
       const totalQCApproved = batches.reduce((sum, b) => sum + b.qc_approved_qty, 0);
       const totalQCRejected = batches.reduce((sum, b) => sum + b.qc_rejected_qty, 0);
+      const totalPacked = batches.reduce((sum, b) => sum + b.packed_qty, 0);
       const totalDispatched = batches.reduce((sum, b) => sum + b.dispatched_qty, 0);
 
       // Get today's stats
@@ -147,6 +165,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
         totalProduced,
         totalQCApproved,
         totalQCRejected,
+        totalPacked,
         totalDispatched,
         remaining,
         progressPercent,
@@ -171,6 +190,11 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${woId}` },
+        () => loadProgress()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cartons', filter: `wo_id=eq.${woId}` },
         () => loadProgress()
       )
       .on(
@@ -248,8 +272,8 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
           />
         </div>
 
-        {/* Main Stats Grid - 5 columns */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Main Stats Grid - 6 columns */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <TooltipProvider>
             {/* Ordered Qty */}
             <Tooltip>
@@ -317,6 +341,30 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
               </TooltipContent>
             </Tooltip>
 
+            {/* Packed (Released) */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <BoxIcon className="h-4 w-4" />
+                    Packed
+                  </div>
+                  <div className="text-2xl font-bold text-amber-600">
+                    {progress.totalPacked.toLocaleString()}
+                  </div>
+                  {progress.totalQCApproved > progress.totalPacked && (
+                    <div className="text-xs text-muted-foreground">
+                      {(progress.totalQCApproved - progress.totalPacked).toLocaleString()} pending
+                    </div>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Quantity packed in cartons</p>
+                <p className="text-xs">Ready for dispatch</p>
+              </TooltipContent>
+            </Tooltip>
+
             {/* Dispatched */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -328,6 +376,11 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
                   <div className="text-2xl font-bold text-purple-600">
                     {progress.totalDispatched.toLocaleString()}
                   </div>
+                  {progress.totalPacked > progress.totalDispatched && (
+                    <div className="text-xs text-muted-foreground">
+                      {(progress.totalPacked - progress.totalDispatched).toLocaleString()} ready
+                    </div>
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent>
@@ -340,13 +393,20 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
               <TooltipTrigger asChild>
                 <div className="space-y-1">
                   <div className="text-muted-foreground text-sm">Remaining</div>
-                  <div className="text-2xl font-bold text-orange-600">
+                  <div className={`text-2xl font-bold ${progress.remaining === 0 ? 'text-green-600' : 'text-orange-600'}`}>
                     {progress.remaining.toLocaleString()}
                   </div>
+                  {progress.remaining === 0 && (
+                    <div className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Complete
+                    </div>
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Ordered - Dispatched = Remaining</p>
+                {progress.remaining === 0 && <p className="text-xs text-green-500">Work Order Complete</p>}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -371,6 +431,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
                     <TableHead>Batch</TableHead>
                     <TableHead className="text-right">Produced</TableHead>
                     <TableHead className="text-right">QC Approved</TableHead>
+                    <TableHead className="text-right">Packed</TableHead>
                     <TableHead className="text-right">Dispatched</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -388,6 +449,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
                           </span>
                         )}
                       </TableCell>
+                      <TableCell className="text-right text-amber-600">{batch.packed_qty.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{batch.dispatched_qty.toLocaleString()}</TableCell>
                       <TableCell>{getBatchStatusBadge(batch.qc_final_status)}</TableCell>
                     </TableRow>
