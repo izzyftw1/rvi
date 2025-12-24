@@ -830,6 +830,71 @@ export type Database = {
         }
         Relationships: []
       }
+      dispatches: {
+        Row: {
+          batch_id: string
+          created_at: string
+          dispatched_at: string
+          dispatched_by: string | null
+          id: string
+          quantity: number
+          remarks: string | null
+          shipment_id: string | null
+          wo_id: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          dispatched_at?: string
+          dispatched_by?: string | null
+          id?: string
+          quantity: number
+          remarks?: string | null
+          shipment_id?: string | null
+          wo_id: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          dispatched_at?: string
+          dispatched_by?: string | null
+          id?: string
+          quantity?: number
+          remarks?: string | null
+          shipment_id?: string | null
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatches_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatches_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       environmental_metrics: {
         Row: {
           created_at: string
@@ -3409,6 +3474,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           dispatch_allowed: boolean | null
+          dispatched_qty: number | null
           ended_at: string | null
           id: string
           previous_batch_id: string | null
@@ -3435,6 +3501,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           dispatch_allowed?: boolean | null
+          dispatched_qty?: number | null
           ended_at?: string | null
           id?: string
           previous_batch_id?: string | null
@@ -3461,6 +3528,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           dispatch_allowed?: boolean | null
+          dispatched_qty?: number | null
           ended_at?: string | null
           id?: string
           previous_batch_id?: string | null
@@ -6565,6 +6633,10 @@ export type Database = {
       generate_raw_po_number: { Args: never; Returns: string }
       generate_rpo_number: { Args: never; Returns: string }
       generate_wo_number: { Args: never; Returns: string }
+      get_batch_dispatchable_qty: {
+        Args: { p_batch_id: string }
+        Returns: number
+      }
       get_batch_packable_qty: {
         Args: { p_batch_id: string }
         Returns: {
