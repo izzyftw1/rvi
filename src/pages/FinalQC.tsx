@@ -33,6 +33,7 @@ import { ProductionContextDisplay } from "@/components/qc/ProductionContextDispl
 import { MaterialTraceabilityBadge } from "@/components/qc/MaterialTraceabilityBadge";
 import { FinalDispatchReportGenerator } from "@/components/qc/FinalDispatchReportGenerator";
 import { FinalQCInspectionForm } from "@/components/qc/FinalQCInspectionForm";
+import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
 import { QCQuantityInput } from "@/components/qc/QCQuantityInput";
 
 interface WorkOrderData {
@@ -602,11 +603,21 @@ const FinalQC = () => {
             </CardContent>
           </Card>
 
-          {/* Report Generator */}
+          {/* Final QC Report Generator - Always visible */}
+          <FinalQCReportGenerator
+            woId={woId!}
+            woNumber={workOrder.wo_number || workOrder.display_id || ''}
+            customer={workOrder.customer}
+            itemCode={workOrder.item_code}
+            samplingPlanReference={samplingPlan}
+            inspectorRemarks={remarks}
+          />
+
+          {/* Dispatch Report Generator - Only after release */}
           {isReleased && (
             <FinalDispatchReportGenerator
               woId={woId!}
-              woNumber={workOrder.wo_number}
+              woNumber={workOrder.wo_number || ''}
               customer={workOrder.customer}
               itemCode={workOrder.item_code}
               quantity={workOrder.quantity}
