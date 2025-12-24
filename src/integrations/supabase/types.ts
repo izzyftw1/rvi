@@ -3766,6 +3766,11 @@ export type Database = {
           batch_status: Database["public"]["Enums"]["batch_status"] | null
           created_at: string
           created_by: string | null
+          current_location_ref: string | null
+          current_location_type:
+            | Database["public"]["Enums"]["batch_location_type"]
+            | null
+          current_process: string | null
           dispatch_allowed: boolean | null
           dispatched_qty: number | null
           ended_at: string | null
@@ -3795,6 +3800,7 @@ export type Database = {
           stage_type: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at: string
           trigger_reason: string
+          unit: Database["public"]["Enums"]["batch_unit"] | null
           wo_id: string
         }
         Insert: {
@@ -3803,6 +3809,11 @@ export type Database = {
           batch_status?: Database["public"]["Enums"]["batch_status"] | null
           created_at?: string
           created_by?: string | null
+          current_location_ref?: string | null
+          current_location_type?:
+            | Database["public"]["Enums"]["batch_location_type"]
+            | null
+          current_process?: string | null
           dispatch_allowed?: boolean | null
           dispatched_qty?: number | null
           ended_at?: string | null
@@ -3832,6 +3843,7 @@ export type Database = {
           stage_type?: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at?: string
           trigger_reason?: string
+          unit?: Database["public"]["Enums"]["batch_unit"] | null
           wo_id: string
         }
         Update: {
@@ -3840,6 +3852,11 @@ export type Database = {
           batch_status?: Database["public"]["Enums"]["batch_status"] | null
           created_at?: string
           created_by?: string | null
+          current_location_ref?: string | null
+          current_location_type?:
+            | Database["public"]["Enums"]["batch_location_type"]
+            | null
+          current_process?: string | null
           dispatch_allowed?: boolean | null
           dispatched_qty?: number | null
           ended_at?: string | null
@@ -3869,6 +3886,7 @@ export type Database = {
           stage_type?: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at?: string
           trigger_reason?: string
+          unit?: Database["public"]["Enums"]["batch_unit"] | null
           wo_id?: string
         }
         Relationships: [
@@ -7280,6 +7298,12 @@ export type Database = {
         | "finance_user"
         | "ops_manager"
         | "logistics"
+      batch_location_type:
+        | "factory"
+        | "external_partner"
+        | "transit"
+        | "packed"
+        | "dispatched"
       batch_stage_type:
         | "cutting"
         | "production"
@@ -7288,6 +7312,7 @@ export type Database = {
         | "packing"
         | "dispatched"
       batch_status: "in_queue" | "in_progress" | "completed"
+      batch_unit: "pcs" | "kg"
       department_type:
         | "hr"
         | "stores"
@@ -7581,6 +7606,13 @@ export const Constants = {
         "ops_manager",
         "logistics",
       ],
+      batch_location_type: [
+        "factory",
+        "external_partner",
+        "transit",
+        "packed",
+        "dispatched",
+      ],
       batch_stage_type: [
         "cutting",
         "production",
@@ -7590,6 +7622,7 @@ export const Constants = {
         "dispatched",
       ],
       batch_status: ["in_queue", "in_progress", "completed"],
+      batch_unit: ["pcs", "kg"],
       department_type: [
         "hr",
         "stores",
