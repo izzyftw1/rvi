@@ -1,14 +1,16 @@
 /**
- * StageView - Batch-Based Stage Overview
+ * StageView - Batch-Based Stage Overview with Drilldown
  * 
  * SINGLE SOURCE OF TRUTH: All counts derived from production_batches.
  * A Work Order may have multiple active batches across different stages simultaneously.
  * Counts represent batch_quantity sums, not work order counts.
  * 
- * Shows for each stage:
- * - Queue quantity (sum of batch_quantity)
- * - Batch count
- * - Status breakdown (in_queue, in_progress, completed)
+ * Clicking a stage card opens a drilldown drawer showing:
+ * - Batch ID
+ * - Work Order link
+ * - Quantity
+ * - Partner (for external)
+ * - Age in stage
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +31,7 @@ import {
   Layers
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BatchDrilldownDrawer } from "./BatchDrilldownDrawer";
 
 interface BatchData {
   id: string;
@@ -68,6 +71,15 @@ export const StageView = () => {
   const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchData[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Drilldown drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedStage, setSelectedStage] = useState<{ key: string; label: string; processType?: string } | null>(null);
+
+  const handleStageClick = (stageKey: string, stageLabel: string, processType?: string) => {
+    setSelectedStage({ key: stageKey, label: stageLabel, processType });
+    setDrawerOpen(true);
+  };
 
   const loadBatches = useCallback(async () => {
     try {
@@ -201,7 +213,7 @@ export const StageView = () => {
                 "cursor-pointer transition-all hover:shadow-md",
                 isOverCapacity && "ring-1 ring-destructive/40"
               )}
-              onClick={() => navigate(stage.route)}
+              onClick={() => handleStageClick(stage.key, stage.label)}
             >
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center justify-between text-sm">
@@ -257,12 +269,19 @@ export const StageView = () => {
                   </Badge>
                 </div>
 
-                {/* External Process Breakdown */}
+                {/* External Process Breakdown - Clickable rows */}
                 {stage.key === 'external' && stage.externalBreakdown && stage.externalBreakdown.length > 0 && (
                   <div className="bg-muted/50 rounded-md p-2 space-y-1">
-                    <div className="text-xs text-muted-foreground mb-1">By Process:</div>
+                    <div className="text-xs text-muted-foreground mb-1">By Process (click to drill down):</div>
                     {stage.externalBreakdown.map(({ process, quantity, count }) => (
-                      <div key={process} className="flex justify-between text-xs">
+                      <div 
+                        key={process} 
+                        className="flex justify-between text-xs cursor-pointer hover:bg-muted rounded px-1 py-0.5 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStageClick('external', `External - ${process}`, process);
+                        }}
+                      >
                         <span className="capitalize">{process}</span>
                         <span className="font-medium">{quantity.toLocaleString()} pcs ({count})</span>
                       </div>
@@ -285,6 +304,17 @@ export const StageView = () => {
       <p className="text-[10px] text-muted-foreground italic text-right">
         All values derived from production_batches (batch-level source of truth)
       </p>
+
+      {/* Batch Drilldown Drawer */}
+      {selectedStage && (
+        <BatchDrilldownDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          stageType={selectedStage.key}
+          stageLabel={selectedStage.label}
+          processType={selectedStage.processType}
+        />
+      )}
     </div>
   );
 };
