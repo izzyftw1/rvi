@@ -1,11 +1,13 @@
 /**
  * FloorDashboard - PRIMARY OPERATIONAL CONTROL PAGE
  * 
- * SINGLE SOURCE OF TRUTH for all stage-level insights:
- * - Fetches work_orders, wo_external_moves, machines, daily_production_logs once
- * - Passes data to child components (StageView, MachinesView, OperatorsView, etc.)
- * - All stage counts, blockers, and status logic derive from this dataset
- * - No child component should independently fetch work order or stage data
+ * SINGLE SOURCE OF TRUTH: All stage-level counts derived from production_batches.
+ * A Work Order may have multiple active batches across different stages simultaneously.
+ * 
+ * production_batches is the source of truth for:
+ * - Stage location (cutting, production, external, qc, packing, dispatched)
+ * - Quantity in each stage (batch_quantity)
+ * - Internal vs External processing
  * 
  * Access process-specific views via:
  * - Stage cards → /work-orders?stage=<stage> or /work-orders?type=external
@@ -20,7 +22,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { StageView } from "@/components/dashboard/StageView";
 import { MachinesView } from "@/components/dashboard/MachinesView";
-import { OperatorsView } from "@/components/dashboard/OperatorsView";
 import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
 import { BlockedWorkOrdersTable } from "@/components/dashboard/BlockedWorkOrdersTable";
 import { ThresholdAlerts } from "@/components/dashboard/ThresholdAlerts";
@@ -28,25 +29,31 @@ import { NCRBlockerAlert } from "@/components/ncr/NCRBlockerAlert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Factory, 
-  Users, 
   AlertTriangle, 
   Clock, 
   ArrowRight,
   CheckCircle,
-  XCircle,
   RefreshCw,
-  Layers
+  Layers,
+  Package,
+  Truck
 } from "lucide-react";
-import { differenceInHours, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
+
+interface BatchStageSummary {
+  stage: string;
+  totalQuantity: number;
+  batchCount: number;
+  inProgress: number;
+}
 
 const FloorDashboard = () => {
   const navigate = useNavigate();
-  const [workOrders, setWorkOrders] = useState<any[]>([]);
-  const [externalMoves, setExternalMoves] = useState<any[]>([]);
+  const [batchSummary, setBatchSummary] = useState<BatchStageSummary[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
   const [productionLogs, setProductionLogs] = useState<any[]>([]);
-  const [operators, setOperators] = useState<any[]>([]);
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [externalMoves, setExternalMoves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
 
@@ -56,44 +63,19 @@ const FloorDashboard = () => {
       
       const today = new Date().toISOString().split('T')[0];
       
-      const [woResult, machinesResult, externalResult, logsResult, operatorsResult] = await Promise.all([
+      const [batchResult, machinesResult, logsResult, woResult, externalResult] = await Promise.all([
+        // Fetch batch stage summary - SOURCE OF TRUTH
         supabase
-          .from("work_orders")
-          .select(`
-            id,
-            wo_id,
-            wo_number,
-            display_id,
-            customer,
-            item_code,
-            quantity,
-            qty_completed,
-            qty_rejected,
-            qty_remaining,
-            completion_pct,
-            status,
-            current_stage,
-            due_date,
-            created_at,
-            stage_entered_at,
-            qc_material_passed,
-            qc_first_piece_passed,
-            machine_id
-          `)
-          .in("status", ["pending", "in_progress"])
-          .order("due_date", { ascending: true }),
+          .from("production_batches")
+          .select("id, wo_id, batch_quantity, stage_type, batch_status, external_process_type")
+          .is("ended_at", null), // Only active batches
         
         supabase
           .from("machines")
           .select("id, machine_id, name, status, current_wo_id")
           .order("machine_id", { ascending: true }),
 
-        supabase
-          .from("wo_external_moves")
-          .select("id, work_order_id, process, status, expected_return_date")
-          .eq("status", "sent"),
-
-        // Fetch today's production logs for live metrics
+        // Fetch today's production logs for machine metrics
         supabase
           .from("daily_production_logs")
           .select(`
@@ -110,25 +92,62 @@ const FloorDashboard = () => {
           `)
           .eq("log_date", today),
 
-        // Fetch operators
+        // Still need work orders for blocker calculations (QC states)
         supabase
-          .from("people")
-          .select("id, full_name, name")
-          .eq("role", "operator")
-          .eq("is_active", true)
+          .from("work_orders")
+          .select(`
+            id,
+            wo_id,
+            display_id,
+            customer,
+            item_code,
+            quantity,
+            status,
+            current_stage,
+            due_date,
+            qc_material_passed,
+            qc_first_piece_passed,
+            machine_id
+          `)
+          .in("status", ["pending", "in_progress"]),
+
+        supabase
+          .from("wo_external_moves")
+          .select("id, work_order_id, process, status, expected_return_date")
+          .eq("status", "sent")
       ]);
 
-      if (woResult.error) throw woResult.error;
+      if (batchResult.error) throw batchResult.error;
       if (machinesResult.error) throw machinesResult.error;
-      if (externalResult.error) throw externalResult.error;
       if (logsResult.error) throw logsResult.error;
-      if (operatorsResult.error) throw operatorsResult.error;
+      if (woResult.error) throw woResult.error;
+      if (externalResult.error) throw externalResult.error;
 
-      setWorkOrders(woResult.data || []);
+      // Aggregate batch data by stage
+      const batches = batchResult.data || [];
+      const stageMap = new Map<string, BatchStageSummary>();
+      
+      batches.forEach((batch: any) => {
+        const stage = batch.stage_type || 'production';
+        const existing = stageMap.get(stage) || {
+          stage,
+          totalQuantity: 0,
+          batchCount: 0,
+          inProgress: 0
+        };
+        existing.totalQuantity += batch.batch_quantity || 0;
+        existing.batchCount += 1;
+        if (batch.batch_status === 'in_progress') {
+          existing.inProgress += 1;
+        }
+        stageMap.set(stage, existing);
+      });
+
+      setBatchSummary(Array.from(stageMap.values()));
       setMachines(machinesResult.data || []);
-      setExternalMoves(externalResult.data || []);
       setProductionLogs(logsResult.data || []);
-      setOperators(operatorsResult.data || []);
+      setWorkOrders(woResult.data || []);
+      setExternalMoves(externalResult.data || []);
     } catch (error: any) {
       console.error("Error loading dashboard data:", error);
     } finally {
@@ -143,15 +162,11 @@ const FloorDashboard = () => {
     let timeout: NodeJS.Timeout;
     const channel = supabase
       .channel("floor-dashboard-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "production_batches" }, () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "machines" }, () => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
@@ -172,33 +187,37 @@ const FloorDashboard = () => {
     if (lastUpdate > 0) loadData();
   }, [lastUpdate, loadData]);
 
-  // Calculate blocker stats - LIVE STATE ONLY
-  const blockerStats = useMemo(() => {
-    const total = workOrders.length;
-    const materialQcBlocked = workOrders.filter(wo => !wo.qc_material_passed).length;
-    const firstPieceBlocked = workOrders.filter(wo => wo.qc_material_passed && !wo.qc_first_piece_passed).length;
-    const externalBlocked = externalMoves.length;
-    const ready = total - materialQcBlocked - firstPieceBlocked - externalBlocked;
+  // Calculate stats from batch-level data - SOURCE OF TRUTH
+  const batchStats = useMemo(() => {
+    const totalQuantity = batchSummary.reduce((sum, s) => sum + s.totalQuantity, 0);
+    const totalBatches = batchSummary.reduce((sum, s) => sum + s.batchCount, 0);
+    const inProgressBatches = batchSummary.reduce((sum, s) => sum + s.inProgress, 0);
     
+    const productionStage = batchSummary.find(s => s.stage === 'production');
+    const externalStage = batchSummary.find(s => s.stage === 'external');
+    const qcStage = batchSummary.find(s => s.stage === 'qc');
+    const packingStage = batchSummary.find(s => s.stage === 'packing');
+
     const activeMachines = machines.filter(m => m.status === 'running' || m.current_wo_id).length;
     const idleMachines = machines.filter(m => m.status === 'idle' && !m.current_wo_id).length;
 
-    // Active operators today (from today's logs for context)
-    const activeOperators = new Set(productionLogs.map(l => l.operator_id).filter(Boolean)).size;
-
     return {
-      total,
-      materialQcBlocked,
-      firstPieceBlocked,
-      externalBlocked,
-      ready: Math.max(0, ready),
+      totalQuantity,
+      totalBatches,
+      inProgressBatches,
+      productionQty: productionStage?.totalQuantity || 0,
+      productionBatches: productionStage?.batchCount || 0,
+      externalQty: externalStage?.totalQuantity || 0,
+      externalBatches: externalStage?.batchCount || 0,
+      qcQty: qcStage?.totalQuantity || 0,
+      qcBatches: qcStage?.batchCount || 0,
+      packingQty: packingStage?.totalQuantity || 0,
+      packingBatches: packingStage?.batchCount || 0,
       activeMachines,
       idleMachines,
-      totalMachines: machines.length,
-      blockedTotal: materialQcBlocked + firstPieceBlocked + externalBlocked,
-      activeOperators
+      totalMachines: machines.length
     };
-  }, [workOrders, externalMoves, machines, productionLogs]);
+  }, [batchSummary, machines]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -208,14 +227,12 @@ const FloorDashboard = () => {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
               Floor Dashboard
-              {blockerStats.blockedTotal > 0 && (
-                <Badge variant="destructive" className="text-sm">
-                  {blockerStats.blockedTotal} Blocked
-                </Badge>
-              )}
+              <Badge variant="outline" className="text-sm font-normal">
+                {batchStats.totalBatches} batches
+              </Badge>
             </h1>
             <p className="text-sm text-muted-foreground">
-              Live operational state: blockers, machine status, queue depth
+              Batch-level view: quantities tracked per stage from production_batches
             </p>
           </div>
 
@@ -230,89 +247,89 @@ const FloorDashboard = () => {
           </Button>
         </div>
 
-        {/* Live State Cards - Current Status Only (NOT historical) */}
+        {/* Batch-Based Stage Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <Card className="border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Production</span>
+                <Factory className="h-4 w-4 text-blue-500" />
+              </div>
+              <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                {batchStats.productionQty.toLocaleString()}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{batchStats.productionBatches} batches</p>
+            </CardContent>
+          </Card>
+
           <Card className={cn(
             "border-l-4",
-            blockerStats.materialQcBlocked > 0 ? "border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-l-muted"
+            batchStats.externalBatches > 0 ? "border-l-purple-500 bg-purple-50/50 dark:bg-purple-950/20" : "border-l-muted"
           )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Material QC</span>
-                <XCircle className={cn("h-4 w-4", blockerStats.materialQcBlocked > 0 ? "text-amber-500" : "text-muted-foreground/30")} />
+                <span className="text-xs text-muted-foreground">External</span>
+                <Truck className={cn("h-4 w-4", batchStats.externalBatches > 0 ? "text-purple-500" : "text-muted-foreground/30")} />
               </div>
-              <p className={cn("text-xl font-bold", blockerStats.materialQcBlocked > 0 && "text-amber-700 dark:text-amber-400")}>
-                {blockerStats.materialQcBlocked}
+              <p className={cn("text-xl font-bold", batchStats.externalBatches > 0 && "text-purple-700 dark:text-purple-400")}>
+                {batchStats.externalQty.toLocaleString()}
               </p>
-              <p className="text-[10px] text-muted-foreground">Owner: Quality</p>
+              <p className="text-[10px] text-muted-foreground">{batchStats.externalBatches} batches</p>
             </CardContent>
           </Card>
 
           <Card className={cn(
             "border-l-4",
-            blockerStats.firstPieceBlocked > 0 ? "border-l-orange-500 bg-orange-50/50 dark:bg-orange-950/20" : "border-l-muted"
+            batchStats.qcBatches > 0 ? "border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20" : "border-l-muted"
           )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">First Piece QC</span>
-                <XCircle className={cn("h-4 w-4", blockerStats.firstPieceBlocked > 0 ? "text-orange-500" : "text-muted-foreground/30")} />
+                <span className="text-xs text-muted-foreground">QC</span>
+                <CheckCircle className={cn("h-4 w-4", batchStats.qcBatches > 0 ? "text-amber-500" : "text-muted-foreground/30")} />
               </div>
-              <p className={cn("text-xl font-bold", blockerStats.firstPieceBlocked > 0 && "text-orange-700 dark:text-orange-400")}>
-                {blockerStats.firstPieceBlocked}
+              <p className={cn("text-xl font-bold", batchStats.qcBatches > 0 && "text-amber-700 dark:text-amber-400")}>
+                {batchStats.qcQty.toLocaleString()}
               </p>
-              <p className="text-[10px] text-muted-foreground">Owner: QC / Production</p>
+              <p className="text-[10px] text-muted-foreground">{batchStats.qcBatches} batches</p>
             </CardContent>
           </Card>
 
           <Card className={cn(
             "border-l-4",
-            blockerStats.externalBlocked > 0 ? "border-l-purple-500 bg-purple-50/50 dark:bg-purple-950/20" : "border-l-muted"
+            batchStats.packingBatches > 0 ? "border-l-green-500 bg-green-50/50 dark:bg-green-950/20" : "border-l-muted"
           )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">At External</span>
-                <Clock className={cn("h-4 w-4", blockerStats.externalBlocked > 0 ? "text-purple-500" : "text-muted-foreground/30")} />
+                <span className="text-xs text-muted-foreground">Packing</span>
+                <Package className={cn("h-4 w-4", batchStats.packingBatches > 0 ? "text-green-500" : "text-muted-foreground/30")} />
               </div>
-              <p className={cn("text-xl font-bold", blockerStats.externalBlocked > 0 && "text-purple-700 dark:text-purple-400")}>
-                {blockerStats.externalBlocked}
+              <p className={cn("text-xl font-bold", batchStats.packingBatches > 0 && "text-green-700 dark:text-green-400")}>
+                {batchStats.packingQty.toLocaleString()}
               </p>
-              <p className="text-[10px] text-muted-foreground">Owner: External Ops</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Ready to Run</span>
-                <CheckCircle className="h-4 w-4 text-green-500" />
-              </div>
-              <p className="text-xl font-bold text-green-700 dark:text-green-400">
-                {blockerStats.ready}
-              </p>
-              <p className="text-[10px] text-muted-foreground">Owner: Production</p>
+              <p className="text-[10px] text-muted-foreground">{batchStats.packingBatches} batches</p>
             </CardContent>
           </Card>
 
           <Card className={cn(
             "border-l-4",
-            blockerStats.idleMachines > 0 && blockerStats.ready > 0 ? "border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20" : "border-l-muted"
+            batchStats.idleMachines > 0 && batchStats.productionBatches > 0 ? "border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20" : "border-l-muted"
           )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Machines</span>
-                <Factory className={cn("h-4 w-4", blockerStats.activeMachines > 0 ? "text-blue-500" : "text-muted-foreground/30")} />
+                <Factory className={cn("h-4 w-4", batchStats.activeMachines > 0 ? "text-blue-500" : "text-muted-foreground/30")} />
               </div>
               <p className="text-xl font-bold">
-                <span className="text-green-600">{blockerStats.activeMachines}</span>
-                <span className="text-muted-foreground text-sm"> / {blockerStats.totalMachines}</span>
+                <span className="text-green-600">{batchStats.activeMachines}</span>
+                <span className="text-muted-foreground text-sm"> / {batchStats.totalMachines}</span>
               </p>
-              <p className="text-[10px] text-muted-foreground">{blockerStats.idleMachines} idle</p>
+              <p className="text-[10px] text-muted-foreground">{batchStats.idleMachines} idle</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Priority Action Alert */}
-        {blockerStats.idleMachines > 0 && blockerStats.ready > 0 && (
+        {batchStats.idleMachines > 0 && batchStats.productionBatches > 0 && (
           <Card className="border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30">
             <CardContent className="py-3 px-4">
               <div className="flex items-center justify-between">
@@ -320,7 +337,7 @@ const FloorDashboard = () => {
                   <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   <div>
                     <p className="font-medium text-blue-800 dark:text-blue-200">
-                      {blockerStats.idleMachines} machine{blockerStats.idleMachines > 1 ? 's' : ''} idle with {blockerStats.ready} ready WOs
+                      {batchStats.idleMachines} machine{batchStats.idleMachines > 1 ? 's' : ''} idle with {batchStats.productionBatches} batches in production queue
                     </p>
                     <p className="text-xs text-blue-700 dark:text-blue-300">
                       Assign machines to start production
@@ -354,11 +371,6 @@ const FloorDashboard = () => {
             <TabsTrigger value="blockers" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
               Blockers
-              {blockerStats.blockedTotal > 0 && (
-                <Badge variant="destructive" className="h-5 text-[10px] px-1.5">
-                  {blockerStats.blockedTotal}
-                </Badge>
-              )}
             </TabsTrigger>
           </TabsList>
 
@@ -374,11 +386,7 @@ const FloorDashboard = () => {
                 </div>
               </div>
             ) : (
-              <StageView
-                workOrders={workOrders}
-                externalMoves={externalMoves}
-                productionLogs={productionLogs}
-              />
+              <StageView />
             )}
           </TabsContent>
 
