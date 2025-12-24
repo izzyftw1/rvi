@@ -442,11 +442,42 @@ const WorkOrderRow = memo(({
           )}
         </div>
 
-        {/* Quantity */}
-        <div className="hidden sm:block text-right min-w-[50px]">
-          <span className="font-medium text-foreground text-[11px]">{wo.quantity?.toLocaleString()}</span>
-          <p className="text-[9px] text-muted-foreground">pcs</p>
-        </div>
+        {/* Quantity Breakdown with Tooltip */}
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="hidden sm:block text-right min-w-[50px] cursor-help">
+                <span className="font-medium text-foreground text-[11px]">{wo.quantity?.toLocaleString()}</span>
+                <p className="text-[9px] text-muted-foreground">pcs</p>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-[200px]">
+              <p className="font-medium text-xs mb-1">Quantity Breakdown</p>
+              <div className="space-y-0.5 text-[10px]">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Total:</span>
+                  <span>{wo.quantity?.toLocaleString() || 0}</span>
+                </div>
+                {externalWipTotal > 0 && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-purple-500">At External:</span>
+                    <span>{externalWipTotal.toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4">
+                  <span className="text-green-500">OK Qty:</span>
+                  <span>{(wo.ok_qty || 0).toLocaleString()}</span>
+                </div>
+                {wo.total_rejection > 0 && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-red-500">Rejected:</span>
+                    <span>{wo.total_rejection.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {/* Due Date */}
         <div className="hidden md:block">
