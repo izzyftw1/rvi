@@ -3,13 +3,39 @@ import { NavigationHeader } from "@/components/NavigationHeader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Package, Truck, FileText, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, Package, Truck, FileText, AlertTriangle, CheckCircle2, Edit2, ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useUserRole } from "@/hooks/useUserRole";
+
+interface DispatchNoteItem {
+  id: string;
+  dispatch_note_no: string;
+  work_order_id: string;
+  sales_order_id: string | null;
+  shipment_id: string | null;
+  dispatch_id: string | null;
+  item_code: string;
+  item_description: string | null;
+  so_ordered_qty: number | null;
+  packed_qty: number;
+  dispatched_qty: number;
+  rejected_qty: number | null;
+  dispatch_date: string;
+  unit_rate: number | null;
+  currency: string | null;
+  invoiced: boolean;
+  invoice_id: string | null;
+  // Override fields
+  override_qty?: number;
+  override_reason?: string;
+}
 
 interface InvoiceableShipment {
   id: string;
@@ -22,17 +48,9 @@ interface InvoiceableShipment {
   status: string;
   total_dispatched_qty: number;
   total_packed_qty: number;
+  total_so_qty: number;
   qty_mismatch: boolean;
-  dispatches: {
-    id: string;
-    wo_id: string;
-    wo_number: string;
-    item_code: string;
-    quantity: number;
-    packed_qty: number;
-    rate: number;
-    currency: string;
-  }[];
+  dispatch_notes: DispatchNoteItem[];
   currency: string;
   payment_terms_days: number;
   already_invoiced: boolean;
@@ -44,6 +62,11 @@ export default function CreateInvoices() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState("ready");
+  const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
+  const { hasAnyRole, loading: roleLoading } = useUserRole();
+  
+  // Only finance_admin or admin can override invoice quantities
+  const canOverrideQty = hasAnyRole(['finance_admin', 'admin', 'super_admin']);
 
   useEffect(() => {
     loadInvoiceableShipments();
@@ -51,11 +74,11 @@ export default function CreateInvoices() {
 
   const loadInvoiceableShipments = async () => {
     try {
-      // Get all shipments - simplified query to avoid type recursion
+      // Get all shipments with dispatch_notes (source of truth for invoicing)
       const { data: shipmentsData, error: shipError } = await supabase
         .from("shipments")
         .select("id, ship_id, customer, so_id, ship_date, status")
-        .in("status", ["delivered", "in_transit", "shipped"])
+        .in("status", ["delivered", "in_transit", "shipped", "dispatched"])
         .order("ship_date", { ascending: false });
 
       if (shipError) throw shipError;
@@ -94,74 +117,49 @@ export default function CreateInvoices() {
         .select("shipment_id, so_id");
 
       const invoicedShipmentIds = new Set(existingInvoices?.filter(i => i.shipment_id).map(i => i.shipment_id));
-      const invoicedSOIds = new Set(existingInvoices?.filter(i => i.so_id).map(i => i.so_id));
 
-      // Process each shipment
+      // Process each shipment using dispatch_notes as source of truth
       const processedShipments: InvoiceableShipment[] = [];
 
       for (const shipment of shipmentsData || []) {
-        // Get dispatches for this shipment - simplified query
-        const { data: dispatchesData } = await supabase
-          .from("dispatches")
-          .select("id, wo_id, quantity, carton_id")
-          .eq("shipment_id", shipment.id);
+        // Get dispatch_notes for this shipment (SOURCE OF TRUTH FOR INVOICING)
+        const { data: dispatchNotesData } = await supabase
+          .from("dispatch_notes")
+          .select("*")
+          .eq("shipment_id", shipment.id)
+          .eq("invoiced", false);
 
-        if (!dispatchesData || dispatchesData.length === 0) continue;
+        if (!dispatchNotesData || dispatchNotesData.length === 0) continue;
 
-        // Get work orders and cartons for these dispatches
-        const woIds = dispatchesData.map(d => d.wo_id).filter(Boolean);
-        const cartonIds = dispatchesData.map(d => d.carton_id).filter(Boolean);
-
-        const { data: workOrdersData } = woIds.length > 0
-          ? await supabase
-              .from("work_orders")
-              .select("id, wo_number, item_code, customer_id, so_id, financial_snapshot")
-              .in("id", woIds)
-          : { data: [] };
-
-        const { data: cartonsData } = cartonIds.length > 0
-          ? await supabase
-              .from("cartons")
-              .select("id, quantity")
-              .in("id", cartonIds)
-          : { data: [] };
-
-        const workOrderMap: Record<string, any> = {};
-        (workOrdersData || []).forEach((wo: any) => {
-          workOrderMap[wo.id] = wo;
-        });
-
-        const cartonMap: Record<string, number> = {};
-        (cartonsData || []).forEach((c: any) => {
-          cartonMap[c.id] = c.quantity || 0;
-        });
-
-        // Calculate totals and check for mismatches
+        // Calculate totals from dispatch notes
         let totalDispatchedQty = 0;
         let totalPackedQty = 0;
-        const dispatches: InvoiceableShipment["dispatches"] = [];
+        let totalSoQty = 0;
+        const dispatchNotes: DispatchNoteItem[] = [];
 
-        for (const dispatch of dispatchesData) {
-          const wo = workOrderMap[dispatch.wo_id] || {};
-          const packedQty = dispatch.carton_id ? (cartonMap[dispatch.carton_id] || 0) : 0;
-          
-          // Get pricing from financial_snapshot or default
-          const financialSnapshot = wo.financial_snapshot as any;
-          const rate = financialSnapshot?.line_item?.price_per_pc || 0;
-          const currency = financialSnapshot?.currency || "USD";
+        for (const note of dispatchNotesData) {
+          totalDispatchedQty += note.dispatched_qty || 0;
+          totalPackedQty += note.packed_qty || 0;
+          totalSoQty += note.so_ordered_qty || 0;
 
-          totalDispatchedQty += dispatch.quantity;
-          totalPackedQty += packedQty;
-
-          dispatches.push({
-            id: dispatch.id,
-            wo_id: dispatch.wo_id,
-            wo_number: wo.wo_number || "N/A",
-            item_code: wo.item_code || "N/A",
-            quantity: dispatch.quantity,
-            packed_qty: packedQty,
-            rate,
-            currency
+          dispatchNotes.push({
+            id: note.id,
+            dispatch_note_no: note.dispatch_note_no,
+            work_order_id: note.work_order_id,
+            sales_order_id: note.sales_order_id,
+            shipment_id: note.shipment_id,
+            dispatch_id: note.dispatch_id,
+            item_code: note.item_code,
+            item_description: note.item_description,
+            so_ordered_qty: note.so_ordered_qty,
+            packed_qty: note.packed_qty,
+            dispatched_qty: note.dispatched_qty,
+            rejected_qty: note.rejected_qty,
+            dispatch_date: note.dispatch_date,
+            unit_rate: note.unit_rate,
+            currency: note.currency,
+            invoiced: note.invoiced,
+            invoice_id: note.invoice_id,
           });
         }
 
@@ -179,11 +177,12 @@ export default function CreateInvoices() {
           status: shipment.status || "unknown",
           total_dispatched_qty: totalDispatchedQty,
           total_packed_qty: totalPackedQty,
+          total_so_qty: totalSoQty,
           qty_mismatch: totalDispatchedQty !== totalPackedQty,
-          dispatches,
-          currency: salesOrder?.currency || "USD",
+          dispatch_notes: dispatchNotes,
+          currency: dispatchNotes[0]?.currency || salesOrder?.currency || "USD",
           payment_terms_days: customer?.payment_terms_days || salesOrder?.payment_terms_days || 30,
-          already_invoiced: invoicedShipmentIds.has(shipment.id) || (shipment.so_id && invoicedSOIds.has(shipment.so_id))
+          already_invoiced: invoicedShipmentIds.has(shipment.id),
         });
       }
 
@@ -229,7 +228,10 @@ export default function CreateInvoices() {
   };
 
   const calculateShipmentTotal = (shipment: InvoiceableShipment) => {
-    return shipment.dispatches.reduce((sum, d) => sum + (d.quantity * d.rate), 0);
+    return shipment.dispatch_notes.reduce((sum, note) => {
+      const qty = qtyOverrides[note.id] ?? note.dispatched_qty;
+      return sum + (qty * (note.unit_rate || 0));
+    }, 0);
   };
 
   const createInvoices = async () => {
@@ -303,27 +305,41 @@ export default function CreateInvoices() {
 
         if (invoiceError) throw invoiceError;
 
-        // Create invoice items from dispatch records (not SO items)
-        for (const dispatch of shipment.dispatches) {
-          const itemSubtotal = dispatch.quantity * dispatch.rate;
+        // Create invoice items from dispatch_notes (SOURCE OF TRUTH - not SO items)
+        const dispatchNoteIds: string[] = [];
+        for (const note of shipment.dispatch_notes) {
+          const invoiceQty = qtyOverrides[note.id] ?? note.dispatched_qty;
+          const itemSubtotal = invoiceQty * (note.unit_rate || 0);
           const itemGst = (itemSubtotal * gstPercent) / 100;
 
           await supabase
             .from("invoice_items")
             .insert({
               invoice_id: invoice.id,
-              dispatch_id: dispatch.id,
-              wo_id: dispatch.wo_id,
-              item_code: dispatch.item_code,
-              description: `${dispatch.item_code} - WO: ${dispatch.wo_number}`,
-              quantity: dispatch.quantity, // This is DISPATCHED quantity
-              rate: dispatch.rate,
+              dispatch_id: note.dispatch_id,
+              dispatch_note_id: note.id,
+              wo_id: note.work_order_id,
+              item_code: note.item_code,
+              description: note.item_description || note.item_code,
+              quantity: invoiceQty, // DISPATCHED qty from dispatch_notes (or override)
+              so_ordered_qty: note.so_ordered_qty, // Original SO qty for reference
+              rate: note.unit_rate || 0,
               amount: itemSubtotal,
               gst_percent: gstPercent,
               gst_amount: itemGst,
-              total_line: itemSubtotal + itemGst
+              total_line: itemSubtotal + itemGst,
+              qty_override_by: qtyOverrides[note.id] ? user?.id : null,
+              qty_override_at: qtyOverrides[note.id] ? new Date().toISOString() : null,
             });
+
+          dispatchNoteIds.push(note.id);
         }
+
+        // Mark dispatch notes as invoiced
+        await supabase
+          .from("dispatch_notes")
+          .update({ invoiced: true, invoice_id: invoice.id })
+          .in("id", dispatchNoteIds);
       }
 
       toast.success(`Created ${selected.size} invoice(s) from dispatched quantities`);
