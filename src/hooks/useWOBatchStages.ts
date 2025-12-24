@@ -2,24 +2,31 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * WO Batch Stages Hook
+ * WO Batch Stages Hook - REFACTORED
  * 
- * Derives stage breakdown from:
- * 1. production_batches - for batches with actual batch_quantity
- * 2. wo_external_moves - for external processing quantities
- * 3. work_orders.quantity - fallback when batch_quantity is 0
+ * SINGLE SOURCE OF TRUTH: production_batches
+ * Uses: current_location_type, current_process, batch_quantity
  * 
- * This is the SINGLE SOURCE OF TRUTH for stage distribution.
+ * NO DEPENDENCY on work_order.stage
  */
 
 export interface WOBatchStageBreakdown {
+  // Factory processes
+  cutting: number;
   production: number;
-  cutting: number;  // Internal cutting process
-  external: number;
-  externalBreakdown: Record<string, number>; // by process type (includes Cutting if tracked externally)
   qc: number;
   packing: number;
+  
+  // External
+  external: number;
+  externalBreakdown: Record<string, number>; // by process type
+  
+  // Other locations
+  transit: number;
+  packed: number;
   dispatched: number;
+  
+  // Totals
   totalActive: number;
   stageCount: number;
   isSplitFlow: boolean;
@@ -34,27 +41,22 @@ export interface WOBatchStagesData {
 interface BatchRecord {
   wo_id: string;
   batch_quantity: number;
-  stage_type: string;
-  external_process_type: string | null;
+  current_location_type: string;
+  current_process: string | null;
+  batch_status: string;
   ended_at: string | null;
-  wo_quantity?: number; // from joined work_orders
-}
-
-interface ExternalMoveRecord {
-  work_order_id: string;
-  process: string;
-  quantity_sent: number;
-  quantity_returned: number;
-  status: string;
+  wo_quantity?: number;
 }
 
 const EMPTY_BREAKDOWN: WOBatchStageBreakdown = {
-  production: 0,
   cutting: 0,
-  external: 0,
-  externalBreakdown: {},
+  production: 0,
   qc: 0,
   packing: 0,
+  external: 0,
+  externalBreakdown: {},
+  transit: 0,
+  packed: 0,
   dispatched: 0,
   totalActive: 0,
   stageCount: 0,
@@ -63,59 +65,40 @@ const EMPTY_BREAKDOWN: WOBatchStageBreakdown = {
 
 export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
   const [batches, setBatches] = useState<BatchRecord[]>([]);
-  const [externalMoves, setExternalMoves] = useState<ExternalMoveRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Build base query for production_batches with work_orders join for fallback quantity
-      let batchQuery = supabase
+      let query = supabase
         .from('production_batches')
         .select(`
           wo_id, 
           batch_quantity, 
-          stage_type, 
-          external_process_type, 
+          current_location_type,
+          current_process,
+          batch_status,
           ended_at,
           work_orders!inner(quantity)
         `);
       
-      let externalQuery = supabase
-        .from('wo_external_moves')
-        .select('work_order_id, process, quantity_sent, quantity_returned, status')
-        .not('status', 'in', '("received_full","cancelled")');
-      
-      // If specific WO IDs provided, filter to those
       if (woIds && woIds.length > 0) {
-        batchQuery = batchQuery.in('wo_id', woIds);
-        externalQuery = externalQuery.in('work_order_id', woIds);
+        query = query.in('wo_id', woIds);
       }
 
-      const [batchResult, externalResult] = await Promise.all([
-        batchQuery,
-        externalQuery
-      ]);
+      const { data, error } = await query;
 
-      if (batchResult.error) throw batchResult.error;
-      if (externalResult.error) throw externalResult.error;
+      if (error) throw error;
       
-      setBatches((batchResult.data || []).map((b: any) => ({
+      setBatches((data || []).map((b: any) => ({
         wo_id: b.wo_id,
         batch_quantity: b.batch_quantity || 0,
-        stage_type: b.stage_type || 'production',
-        external_process_type: b.external_process_type,
+        current_location_type: b.current_location_type || 'factory',
+        current_process: b.current_process,
+        batch_status: b.batch_status || 'active',
         ended_at: b.ended_at,
         wo_quantity: b.work_orders?.quantity || 0,
-      })));
-      
-      setExternalMoves((externalResult.data || []).map((m: any) => ({
-        work_order_id: m.work_order_id,
-        process: m.process || 'Unknown',
-        quantity_sent: m.quantity_sent || 0,
-        quantity_returned: m.quantity_returned || 0,
-        status: m.status,
       })));
     } catch (error) {
       console.error('Error loading WO batch stages:', error);
@@ -127,17 +110,11 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
   useEffect(() => {
     loadData();
 
-    // Real-time subscription
     const channel = supabase
       .channel('wo-batch-stages-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'production_batches' },
-        () => loadData()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'wo_external_moves' },
         () => loadData()
       )
       .subscribe();
@@ -147,36 +124,21 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
     };
   }, [loadData]);
 
-  // Compute stage breakdown per WO
+  // Compute stage breakdown per WO from production_batches
   const stagesByWO = useMemo<Record<string, WOBatchStageBreakdown>>(() => {
     const result: Record<string, WOBatchStageBreakdown> = {};
     
-    // First, process external moves (these are the definitive source for external quantities)
-    const externalByWO: Record<string, { total: number; byProcess: Record<string, number> }> = {};
-    externalMoves.forEach(move => {
-      const woId = move.work_order_id;
-      if (!externalByWO[woId]) {
-        externalByWO[woId] = { total: 0, byProcess: {} };
-      }
-      // External WIP = sent - returned
-      const wip = move.quantity_sent - move.quantity_returned;
-      if (wip > 0) {
-        externalByWO[woId].total += wip;
-        externalByWO[woId].byProcess[move.process] = 
-          (externalByWO[woId].byProcess[move.process] || 0) + wip;
-      }
-    });
-    
-    // Now process batches
     batches.forEach(batch => {
       if (!result[batch.wo_id]) {
         result[batch.wo_id] = {
-          production: 0,
           cutting: 0,
-          external: 0,
-          externalBreakdown: {},
+          production: 0,
           qc: 0,
           packing: 0,
+          external: 0,
+          externalBreakdown: {},
+          transit: 0,
+          packed: 0,
           dispatched: 0,
           totalActive: 0,
           stageCount: 0,
@@ -185,94 +147,71 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
       }
       
       const breakdown = result[batch.wo_id];
-      // Use batch_quantity if set, otherwise fall back to WO quantity
       const qty = batch.batch_quantity > 0 ? batch.batch_quantity : batch.wo_quantity || 0;
-      const isActive = !batch.ended_at;
+      const isActive = !batch.ended_at && batch.batch_status !== 'completed';
+      const locationType = batch.current_location_type;
+      const process = batch.current_process || 'unknown';
       
-      switch (batch.stage_type) {
-        case 'production':
-          breakdown.production += qty;
+      switch (locationType) {
+        case 'factory':
+          // Map process to stage
+          if (process === 'cutting') {
+            breakdown.cutting += qty;
+          } else if (process === 'production') {
+            breakdown.production += qty;
+          } else if (process === 'qc' || process === 'post_external_qc') {
+            breakdown.qc += qty;
+          } else if (process === 'packing') {
+            breakdown.packing += qty;
+          } else {
+            // Default to production for unknown factory processes
+            breakdown.production += qty;
+          }
           if (isActive) breakdown.totalActive += qty;
           break;
-        case 'cutting':
-          breakdown.cutting += qty;
-          if (isActive) breakdown.totalActive += qty;
-          break;
-        case 'external':
-          // External from batches - but prefer external moves data
+          
+        case 'external_partner':
           breakdown.external += qty;
-          if (isActive) breakdown.totalActive += qty;
-          const process = batch.external_process_type || 'Unknown';
           breakdown.externalBreakdown[process] = (breakdown.externalBreakdown[process] || 0) + qty;
-          break;
-        case 'qc':
-          breakdown.qc += qty;
           if (isActive) breakdown.totalActive += qty;
           break;
-        case 'packing':
-          breakdown.packing += qty;
+          
+        case 'transit':
+          breakdown.transit += qty;
           if (isActive) breakdown.totalActive += qty;
           break;
+          
+        case 'packed':
+          breakdown.packed += qty;
+          break;
+          
         case 'dispatched':
-        case 'dispatch':
           breakdown.dispatched += qty;
           break;
+          
         default:
+          // Default to production
           breakdown.production += qty;
           if (isActive) breakdown.totalActive += qty;
       }
-    });
-    
-    // Apply external moves data - this overrides/supplements batch-based external data
-    // Note: Cutting is tracked in externalBreakdown when sent via wo_external_moves
-    Object.entries(externalByWO).forEach(([woId, externalData]) => {
-      if (!result[woId]) {
-        result[woId] = {
-          production: 0,
-          cutting: 0,
-          external: 0,
-          externalBreakdown: {},
-          qc: 0,
-          packing: 0,
-          dispatched: 0,
-          totalActive: 0,
-          stageCount: 0,
-          isSplitFlow: false,
-        };
-      }
-      
-      // Separate Cutting from external - it's an internal process
-      const cuttingQty = externalData.byProcess['Cutting'] || 0;
-      const externalQty = externalData.total - cuttingQty;
-      
-      // Add cutting quantity to cutting stage
-      result[woId].cutting += cuttingQty;
-      result[woId].totalActive += cuttingQty;
-      
-      // Use external moves as the source of truth for external WIP (excluding Cutting)
-      const externalBreakdown = { ...externalData.byProcess };
-      delete externalBreakdown['Cutting']; // Remove cutting from external breakdown
-      
-      result[woId].external = externalQty;
-      result[woId].externalBreakdown = externalBreakdown;
-      result[woId].totalActive += externalQty;
     });
     
     // Calculate stage count and isSplitFlow for each WO
     Object.values(result).forEach(breakdown => {
       let activeStages = 0;
-      if (breakdown.production > 0) activeStages++;
       if (breakdown.cutting > 0) activeStages++;
-      if (breakdown.external > 0) activeStages++;
+      if (breakdown.production > 0) activeStages++;
       if (breakdown.qc > 0) activeStages++;
       if (breakdown.packing > 0) activeStages++;
+      if (breakdown.external > 0) activeStages++;
+      if (breakdown.transit > 0) activeStages++;
       
       breakdown.stageCount = activeStages;
       breakdown.isSplitFlow = activeStages > 1;
     });
     
     return result;
-  }, [batches, externalMoves]);
+  }, [batches]);
 
   return {
     stagesByWO,
@@ -281,7 +220,6 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
   };
 }
 
-// Helper to get breakdown for a single WO
 export function getEmptyBreakdown(): WOBatchStageBreakdown {
   return { ...EMPTY_BREAKDOWN, externalBreakdown: {} };
 }
