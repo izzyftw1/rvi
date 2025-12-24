@@ -156,10 +156,9 @@ export const navigationGroups: NavGroup[] = [
     icon: Handshake,
     allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
     items: [
-      { label: "External Partners", path: "/partners", icon: Handshake },
-      { label: "External Efficiency", path: "/external-efficiency", icon: BarChart3 },
-      { label: "External Moves", path: "/logistics", icon: Truck },
-      { label: "Partner Performance", path: "/partner-performance", icon: PackageCheck },
+      // External Partners management is in Admin Panel - this links to partner dashboard
+      { label: "Partner Dashboard", path: "/partner-dashboard", icon: Handshake },
+      { label: "External Analytics", path: "/external-efficiency", icon: BarChart3 },
     ]
   }
 ];
