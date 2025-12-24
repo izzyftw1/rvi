@@ -3,7 +3,6 @@
  * to make them accessible in the navigation menu!
  */
 import { Toaster } from "@/components/ui/toaster";
-import PartnerPerformance from "@/pages/PartnerPerformance";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -76,14 +75,15 @@ import DailyProductionLog from "./pages/DailyProductionLog";
 import MachineUtilisation from "./pages/MachineUtilisation";
 import OperatorEfficiency from "./pages/OperatorEfficiency";
 import SetterEfficiency from "./pages/SetterEfficiency";
-// CNCProgrammerActivity merged into SetterEfficiency
 import FinalQCList from "./pages/FinalQCList";
 import FinalQC from "./pages/FinalQC";
 import QualityTraceability from "./pages/QualityTraceability";
 import QualityDocuments from "./pages/QualityDocuments";
 import QualityAnalytics from "./pages/QualityAnalytics";
 import DowntimeAnalytics from "./pages/DowntimeAnalytics";
-import ExternalEfficiency from "./pages/ExternalEfficiency";
+// Merged External Efficiency + Partner Performance into unified data model
+import PartnerDashboard from "./pages/PartnerDashboard";
+import ExternalAnalytics from "./pages/ExternalAnalytics";
 
 
 const App = () => (
@@ -165,8 +165,11 @@ const App = () => (
           <Route path="/logistics" element={<Logistics />} />
           <Route path="/logistics-dashboard" element={<LogisticsDashboard />} />
           <Route path="/partners" element={<Partners />} />
-          <Route path="/partner-performance" element={<PartnerPerformance />} />
-          <Route path="/external-efficiency" element={<ExternalEfficiency />} />
+          <Route path="/partner-dashboard" element={<PartnerDashboard />} />
+          <Route path="/external-analytics" element={<ExternalAnalytics />} />
+          {/* Legacy routes redirect to new pages */}
+          <Route path="/partner-performance" element={<PartnerDashboard />} />
+          <Route path="/external-efficiency" element={<ExternalAnalytics />} />
           <Route path="/external-processing/:processName" element={<ExternalProcessingDetail />} />
           <Route path="/ncr" element={<NCRManagement />} />
           <Route path="/ncr/:id" element={<NCRDetail />} />
