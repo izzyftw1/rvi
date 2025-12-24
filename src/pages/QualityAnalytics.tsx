@@ -15,7 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { BarChart3, Target, AlertTriangle, TrendingUp, Percent, Clock, Info, FileWarning } from "lucide-react";
+import { BarChart3, Target, AlertTriangle, TrendingUp, Percent, Clock, Info, FileWarning, DollarSign } from "lucide-react";
+import { NCRCostDashboard } from "@/components/quality/NCRCostDashboard";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -503,13 +504,30 @@ export default function QualityAnalytics() {
         </CardContent>
       </Card>
 
+      {/* NCR Cost Impact Dashboard */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-destructive" />
+            NCR Cost Impact Analysis
+          </CardTitle>
+          <CardDescription>
+            Live rejection cost derived from NCR quantity × Sales Order per-piece rate
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <NCRCostDashboard />
+        </CardContent>
+      </Card>
+
       {/* Footer */}
       <div className="bg-muted/30 border rounded-lg p-4">
         <h4 className="text-sm font-medium mb-2">Calculation Formulas</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-muted-foreground font-mono">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs text-muted-foreground font-mono">
           <div>FPY = (OK Qty ÷ Total Produced) × 100</div>
           <div>Rejection Rate = (Rejected ÷ Total) × 100</div>
           <div>Scrap % = (Rejections ÷ Actual Qty) × 100</div>
+          <div>NCR Cost = Qty Affected × Price/pc</div>
         </div>
       </div>
     </PageContainer>

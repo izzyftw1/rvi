@@ -34,6 +34,7 @@ const QualityReports = () => {
         <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
           <li>First Pass Yield (FPY) and rejection rates by machine, operator, programmer</li>
           <li>NCR rates, repeat NCR analysis, and aging metrics</li>
+          <li><strong>NCR Cost Impact</strong> - Live rejection cost by customer, item, and reason</li>
           <li>IPQC compliance and First Piece Right (FPR) rates</li>
           <li>Supplier defect rates from Incoming QC</li>
           <li>Quality loss indicators (scrap, rework, NCR-linked scrap)</li>
