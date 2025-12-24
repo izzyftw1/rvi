@@ -3,39 +3,42 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, ClipboardCheck, Package, Send } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, Box } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { DispatchBatchSelector } from "@/components/dispatch/DispatchBatchSelector";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-interface WorkOrder {
+interface PackingBatch {
   id: string;
+  carton_id: string;
   wo_id: string;
-  customer: string;
-  item_code: string;
   quantity: number;
+  num_cartons: number;
+  num_pallets: number | null;
+  status: string;
+  built_at: string;
+  work_orders?: { 
+    wo_number: string; 
+    item_code: string; 
+    customer: string;
+  } | null;
 }
 
-interface Dispatch {
+interface Shipment {
   id: string;
-  quantity: number;
-  dispatched_at: string;
-  batch_id: string;
-  wo_id: string;
-  remarks: string | null;
-  work_orders?: { wo_id: string; customer: string; item_code: string } | null;
-  production_batches?: { batch_number: number } | null;
-  shipments?: { ship_id: string } | null;
+  ship_id: string;
+  created_at: string;
+  dispatches: {
+    id: string;
+    quantity: number;
+    cartons?: { carton_id: string } | null;
+    work_orders?: { wo_number: string } | null;
+  }[];
 }
 
 export default function Dispatch() {
@@ -44,99 +47,148 @@ export default function Dispatch() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [selectedWoId, setSelectedWoId] = useState<string | null>(null);
+  // Ready for dispatch batches
+  const [readyBatches, setReadyBatches] = useState<PackingBatch[]>([]);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set());
   
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [dispatchableQty, setDispatchableQty] = useState(0);
-  
-  const [dispatchQty, setDispatchQty] = useState<number>(0);
+  // Shipment form
+  const [shipmentId, setShipmentId] = useState("");
   const [remarks, setRemarks] = useState("");
   
-  const [dispatches, setDispatches] = useState<Dispatch[]>([]);
+  // Recent shipments
+  const [recentShipments, setRecentShipments] = useState<Shipment[]>([]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-    loadWorkOrders();
-    loadDispatches();
+    loadReadyBatches();
+    loadRecentShipments();
   }, []);
 
-  const loadWorkOrders = async () => {
+  const loadReadyBatches = async () => {
     const { data } = await supabase
-      .from("work_orders")
-      .select("id, wo_id, customer, item_code, quantity")
-      .in("status", ["in_progress", "qc", "packing"])
-      .order("created_at", { ascending: false });
-    
-    if (data) setWorkOrders(data);
-  };
-
-  const loadDispatches = async () => {
-    const { data } = await supabase
-      .from("dispatches")
+      .from("cartons")
       .select(`
-        *,
-        work_orders(wo_id, customer, item_code),
-        production_batches(batch_number),
-        shipments(ship_id)
+        id, carton_id, wo_id, quantity, num_cartons, num_pallets, status, built_at,
+        work_orders(wo_number, item_code, customer)
       `)
-      .order("dispatched_at", { ascending: false })
+      .eq("status", "ready_for_dispatch")
+      .order("built_at", { ascending: true });
+
+    setReadyBatches((data as unknown as PackingBatch[]) || []);
+  };
+
+  const loadRecentShipments = async () => {
+    const { data } = await supabase
+      .from("shipments")
+      .select(`
+        id, ship_id, created_at,
+        dispatches(id, quantity, work_orders(wo_number))
+      `)
+      .order("created_at", { ascending: false })
       .limit(20);
+
+    setRecentShipments((data as unknown as Shipment[]) || []);
+  };
+
+  const handleToggleBatch = (batchId: string) => {
+    const newSelected = new Set(selectedBatchIds);
+    if (newSelected.has(batchId)) {
+      newSelected.delete(batchId);
+    } else {
+      newSelected.add(batchId);
+    }
+    setSelectedBatchIds(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedBatchIds.size === readyBatches.length) {
+      setSelectedBatchIds(new Set());
+    } else {
+      setSelectedBatchIds(new Set(readyBatches.map(b => b.id)));
+    }
+  };
+
+  const getSelectedSummary = () => {
+    const selected = readyBatches.filter(b => selectedBatchIds.has(b.id));
+    return {
+      count: selected.length,
+      totalQty: selected.reduce((sum, b) => sum + b.quantity, 0),
+      totalCartons: selected.reduce((sum, b) => sum + (b.num_cartons || 1), 0),
+      totalPallets: selected.reduce((sum, b) => sum + (b.num_pallets || 0), 0),
+    };
+  };
+
+  const handleCreateShipment = async () => {
+    if (selectedBatchIds.size === 0) {
+      toast({ variant: "destructive", description: "Please select at least one packing batch" });
+      return;
+    }
+
+    const generatedShipId = shipmentId.trim() || `SHIP-${Date.now().toString().slice(-8)}`;
+    const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
     
-    if (data) setDispatches(data);
-  };
-
-  const handleWoChange = (woId: string) => {
-    setSelectedWoId(woId);
-    setSelectedBatchId(null);
-    setDispatchableQty(0);
-    setDispatchQty(0);
-  };
-
-  const handleBatchSelect = (batchId: string | null, availableQty: number) => {
-    setSelectedBatchId(batchId);
-    setDispatchableQty(availableQty);
-    setDispatchQty(Math.min(dispatchQty, availableQty));
-  };
-
-  const handleCreateDispatch = async () => {
-    if (!selectedWoId || !selectedBatchId || dispatchQty <= 0) {
-      toast({ variant: "destructive", description: "Please select WO, batch and enter quantity" });
-      return;
-    }
-
-    if (dispatchQty > dispatchableQty) {
-      toast({ variant: "destructive", description: `Cannot dispatch more than ${dispatchableQty} pcs` });
-      return;
-    }
+    // Get customer from first selected batch
+    const primaryCustomer = selectedBatches[0]?.work_orders?.customer || "Unknown";
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("dispatches")
+      // 1. Create shipment
+      const { data: shipmentData, error: shipmentError } = await supabase
+        .from("shipments")
         .insert({
-          wo_id: selectedWoId,
-          batch_id: selectedBatchId,
-          quantity: dispatchQty,
-          dispatched_by: user?.id,
-          remarks: remarks || null
-        });
+          ship_id: generatedShipId,
+          customer: primaryCustomer,
+          status: "dispatched",
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (shipmentError) throw shipmentError;
 
-      toast({ description: `Dispatched ${dispatchQty} pcs successfully` });
+      // 2. Create dispatch records for each selected batch (without modifying production_batches)
       
-      setDispatchQty(0);
+      // Get production batch IDs for dispatch records (we need a valid batch_id for FK)
+      const { data: prodBatches } = await supabase
+        .from("production_batches")
+        .select("id, wo_id")
+        .in("wo_id", [...new Set(selectedBatches.map(b => b.wo_id))]);
+
+      const batchMap = new Map((prodBatches || []).map(pb => [pb.wo_id, pb.id]));
+
+      const dispatchRecords = selectedBatches.map(batch => ({
+        wo_id: batch.wo_id,
+        batch_id: batchMap.get(batch.wo_id) || batch.wo_id, // Fallback to wo_id if no batch
+        quantity: batch.quantity,
+        shipment_id: shipmentData.id,
+        dispatched_by: user?.id,
+        remarks: remarks || `Packing batch: ${batch.carton_id}`,
+      }));
+
+      const { error: dispatchError } = await supabase
+        .from("dispatches")
+        .insert(dispatchRecords);
+
+      if (dispatchError) throw dispatchError;
+
+      // 3. Update packing batches status to "dispatched"
+      const { error: updateError } = await supabase
+        .from("cartons")
+        .update({ status: "dispatched" })
+        .in("id", Array.from(selectedBatchIds));
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: "Shipment Created",
+        description: `${generatedShipId} with ${selectedBatchIds.size} packing batch(es) dispatched.`,
+      });
+
+      // Reset form
+      setSelectedBatchIds(new Set());
+      setShipmentId("");
       setRemarks("");
-      setSelectedBatchId(null);
-      setDispatchableQty(0);
-      
-      loadDispatches();
-      
-      const woId = selectedWoId;
-      setSelectedWoId(null);
-      setTimeout(() => setSelectedWoId(woId), 100);
-      
+      loadReadyBatches();
+      loadRecentShipments();
     } catch (error: any) {
       toast({ variant: "destructive", description: error.message });
     } finally {
@@ -144,183 +196,241 @@ export default function Dispatch() {
     }
   };
 
-  const selectedWo = workOrders.find(wo => wo.id === selectedWoId);
+  const summary = getSelectedSummary();
 
   return (
     <div className="min-h-screen bg-background">
-      <PageContainer maxWidth="2xl">
+      <PageContainer maxWidth="xl">
         <div className="space-y-6">
           <PageHeader
-            title="Goods Dispatch"
-            description="Create batch-based dispatches for work orders"
+            title="Dispatch"
+            description="Create shipments from packing batches"
             icon={<Truck className="h-6 w-6" />}
           />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Send className="h-5 w-5" />
-                  Create Dispatch
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Work Order</Label>
-                  <Select value={selectedWoId || undefined} onValueChange={handleWoChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Work Order..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workOrders.map(wo => (
-                        <SelectItem key={wo.id} value={wo.id}>
-                          {wo.wo_id} - {wo.customer} ({wo.item_code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+          <Tabs defaultValue="dispatch" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="dispatch">
+                <Send className="h-4 w-4 mr-2" />
+                Create Shipment
+              </TabsTrigger>
+              <TabsTrigger value="history">
+                <History className="h-4 w-4 mr-2" />
+                Shipment History
+              </TabsTrigger>
+            </TabsList>
 
-                {selectedWo && (
-                  <Card className="bg-muted/50">
-                    <CardContent className="py-3">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Customer</p>
-                          <p className="font-medium">{selectedWo.customer}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Item Code</p>
-                          <p className="font-medium">{selectedWo.item_code}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Order Qty</p>
-                          <p className="font-medium">{selectedWo.quantity} pcs</p>
-                        </div>
+            <TabsContent value="dispatch" className="space-y-4 mt-6">
+              {/* Ready for Dispatch List */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Box className="h-5 w-5" />
+                        Ready for Dispatch
+                      </CardTitle>
+                      <CardDescription>
+                        Select packing batches to include in a shipment
+                      </CardDescription>
+                    </div>
+                    {readyBatches.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={handleSelectAll}>
+                        {selectedBatchIds.size === readyBatches.length ? "Deselect All" : "Select All"}
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {readyBatches.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <Package className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                      <p className="text-lg font-medium">No Batches Ready</p>
+                      <p className="text-sm text-muted-foreground">
+                        Packing batches will appear here when marked as ready for dispatch
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12"></TableHead>
+                          <TableHead>Packing Batch</TableHead>
+                          <TableHead>Work Order</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-right">Cartons</TableHead>
+                          <TableHead className="text-right">Pallets</TableHead>
+                          <TableHead>Packed At</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {readyBatches.map((batch) => (
+                          <TableRow 
+                            key={batch.id}
+                            className={selectedBatchIds.has(batch.id) ? "bg-primary/5" : ""}
+                          >
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedBatchIds.has(batch.id)}
+                                onCheckedChange={() => handleToggleBatch(batch.id)}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{batch.carton_id}</TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{batch.work_orders?.wo_number || "—"}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {batch.work_orders?.item_code} • {batch.work_orders?.customer}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">{batch.quantity}</TableCell>
+                            <TableCell className="text-right">{batch.num_cartons || 1}</TableCell>
+                            <TableCell className="text-right">{batch.num_pallets || "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(batch.built_at).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Selected Summary & Shipment Creation */}
+              {selectedBatchIds.size > 0 && (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      Create Shipment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Summary */}
+                    <div className="grid grid-cols-4 gap-4 p-4 rounded-lg bg-background border">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-primary">{summary.count}</p>
+                        <p className="text-sm text-muted-foreground">Batches</p>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                <DispatchBatchSelector
-                  workOrderId={selectedWoId || ""}
-                  onBatchSelect={handleBatchSelect}
-                />
-
-                {selectedBatchId && dispatchableQty > 0 && (
-                  <div className="space-y-4 border-t pt-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label>Quantity to Dispatch</Label>
-                        <Badge variant="outline">Max: {dispatchableQty} pcs</Badge>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{summary.totalQty}</p>
+                        <p className="text-sm text-muted-foreground">Total Qty</p>
                       </div>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={dispatchableQty}
-                        value={dispatchQty || ""}
-                        onChange={(e) => setDispatchQty(parseInt(e.target.value) || 0)}
-                        placeholder={`Enter qty (max ${dispatchableQty})`}
-                      />
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{summary.totalCartons}</p>
+                        <p className="text-sm text-muted-foreground">Cartons</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{summary.totalPallets || 0}</p>
+                        <p className="text-sm text-muted-foreground">Pallets</p>
+                      </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Remarks (optional)</Label>
-                      <Input
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                        placeholder="e.g., Shipment reference, transporter..."
-                      />
+                    {/* Shipment Form */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="shipmentId">Shipment ID (optional)</Label>
+                        <Input
+                          id="shipmentId"
+                          value={shipmentId}
+                          onChange={(e) => setShipmentId(e.target.value)}
+                          placeholder="Auto-generated if empty"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="remarks">Remarks (optional)</Label>
+                        <Input
+                          id="remarks"
+                          value={remarks}
+                          onChange={(e) => setRemarks(e.target.value)}
+                          placeholder="Transporter, vehicle no..."
+                        />
+                      </div>
                     </div>
 
                     <Button 
-                      onClick={handleCreateDispatch} 
-                      disabled={loading || dispatchQty <= 0 || dispatchQty > dispatchableQty}
-                      className="w-full"
+                      onClick={handleCreateShipment} 
+                      disabled={loading}
+                      className="w-full gap-2"
+                      size="lg"
                     >
-                      <Truck className="mr-2 h-4 w-4" />
-                      Dispatch {dispatchQty > 0 ? `${dispatchQty} pcs` : ""}
+                      <Truck className="h-5 w-5" />
+                      Create Shipment & Dispatch
                     </Button>
-                  </div>
-                )}
-
-                {selectedBatchId && dispatchableQty === 0 && (
-                  <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
-                    <CardContent className="py-4 text-center">
-                      <p className="text-orange-700 dark:text-orange-400 font-medium">
-                        No quantity available for dispatch
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        All QC-approved quantity has been dispatched
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold">Recent Dispatches</h2>
-              {dispatches.length === 0 ? (
-                <Card>
-                  <CardContent className="py-12 text-center space-y-3">
-                    <Package className="h-12 w-12 mx-auto text-muted-foreground/50" />
-                    <div>
-                      <p className="text-lg font-medium">No Dispatches Yet</p>
-                      <p className="text-sm text-muted-foreground">
-                        Dispatches will appear here after creating them
-                      </p>
-                    </div>
                   </CardContent>
                 </Card>
-              ) : (
-                <div className="space-y-3">
-                  {dispatches.map((dispatch) => (
-                    <Card key={dispatch.id}>
-                      <CardContent className="py-4">
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold">
-                                {dispatch.work_orders?.wo_id || "N/A"}
-                              </p>
-                              <Badge variant="outline">
-                                Batch #{dispatch.production_batches?.batch_number || "?"}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {dispatch.work_orders?.customer} - {dispatch.work_orders?.item_code}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium text-green-600">{dispatch.quantity} pcs</span>
-                              {" dispatched on "}
-                              {new Date(dispatch.dispatched_at).toLocaleDateString()}
-                            </p>
-                            {dispatch.remarks && (
-                              <p className="text-xs text-muted-foreground">{dispatch.remarks}</p>
-                            )}
-                            {dispatch.shipments && (
-                              <Badge variant="secondary" className="mt-1">
-                                {dispatch.shipments.ship_id}
-                              </Badge>
-                            )}
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/work-orders/${dispatch.wo_id}`)}
-                          >
-                            <ClipboardCheck className="h-4 w-4 mr-1" />
-                            View WO
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
               )}
-            </div>
-          </div>
+            </TabsContent>
+
+            <TabsContent value="history" className="space-y-4 mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Shipments</CardTitle>
+                  <CardDescription>Dispatched shipments and their contents</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {recentShipments.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <Truck className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                      <p className="text-lg font-medium">No Shipments Yet</p>
+                      <p className="text-sm text-muted-foreground">
+                        Shipments will appear here after dispatch
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Shipment ID</TableHead>
+                          <TableHead>Work Orders</TableHead>
+                          <TableHead className="text-right">Total Qty</TableHead>
+                          <TableHead className="text-right">Batches</TableHead>
+                          <TableHead>Created At</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {recentShipments.map((shipment) => {
+                          const totalQty = shipment.dispatches?.reduce((sum, d) => sum + d.quantity, 0) || 0;
+                          const workOrders = [...new Set(shipment.dispatches?.map(d => d.work_orders?.wo_number).filter(Boolean))];
+                          
+                          return (
+                            <TableRow key={shipment.id}>
+                              <TableCell>
+                                <Badge variant="outline" className="font-mono">
+                                  {shipment.ship_id}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {workOrders.slice(0, 3).map(wo => (
+                                    <Badge key={wo} variant="secondary" className="text-xs">
+                                      {wo}
+                                    </Badge>
+                                  ))}
+                                  {workOrders.length > 3 && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      +{workOrders.length - 3} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">{totalQty}</TableCell>
+                              <TableCell className="text-right">{shipment.dispatches?.length || 0}</TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {new Date(shipment.created_at).toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </PageContainer>
     </div>
