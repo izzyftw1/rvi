@@ -37,7 +37,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { ProductionReleaseSection } from "@/components/ProductionReleaseSection";
 import { OEEWidget } from "@/components/OEEWidget";
 import { QCStageCard } from "@/components/qc/QCStageCard";
-import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
+import { FinalQCStatusCard } from "@/components/qc/FinalQCStatusCard";
 import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
 import { RouteProgressView } from "@/components/routing/RouteProgressView";
@@ -1003,26 +1003,19 @@ const WorkOrderDetail = () => {
                     isLocked={unifiedMaterialStatus !== 'passed' && unifiedMaterialStatus !== 'waived'}
                   />
                   
-                  <QCStageCard
-                    woId={id || ''}
-                    qcType="final"
-                    status={wo.qc_final_status || 'pending'}
-                    approvedAt={wo.qc_final_approved_at}
-                    approvedByName={wo.qc_final_approved_by ? qcApprovers[wo.qc_final_approved_by] : undefined}
-                    remarks={wo.qc_final_remarks}
-                    onUpdate={loadWorkOrderData}
-                  />
-                </div>
-
-                {/* Final QC Report Generator */}
-                {wo.status === 'completed' && (
-                  <FinalQCReportGenerator
+                  {/* Final QC - Read-only status card (inspection done in Quality > Final QC) */}
+                  <FinalQCStatusCard
                     woId={id || ''}
                     woNumber={wo.wo_number}
                     customer={wo.customer}
                     itemCode={wo.item_code}
+                    status={wo.qc_final_status || 'pending'}
+                    qualityReleased={wo.quality_released}
+                    qualityReleasedAt={wo.quality_released_at}
+                    qualityReleasedByName={wo.quality_released_by ? qcApprovers[wo.quality_released_by] : undefined}
+                    remarks={wo.qc_final_remarks}
                   />
-                )}
+                </div>
 
                 {/* Legacy QC Records Display */}
                 <EnhancedQCRecords qcRecords={qcRecords} workOrder={wo} />
