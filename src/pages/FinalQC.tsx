@@ -25,12 +25,14 @@ import {
   Package,
   Activity,
   Shield,
-  Loader2
+  Loader2,
+  Plus
 } from "lucide-react";
 import { format } from "date-fns";
 import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
 import { MaterialTraceabilityBadge } from "@/components/qc/MaterialTraceabilityBadge";
 import { FinalDispatchReportGenerator } from "@/components/qc/FinalDispatchReportGenerator";
+import { QCQuantityInput } from "@/components/qc/QCQuantityInput";
 
 interface WorkOrderData {
   id: string;
@@ -84,8 +86,14 @@ const FinalQC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showReleaseDialog, setShowReleaseDialog] = useState(false);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
+  const [showQCDialog, setShowQCDialog] = useState(false);
   const [samplingPlan, setSamplingPlan] = useState("");
   const [remarks, setRemarks] = useState("");
+  
+  // QC Quantity state
+  const [qcQuantity, setQcQuantity] = useState(0);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [qcResult, setQcResult] = useState<'pass' | 'fail'>('pass');
 
   const loadData = useCallback(async () => {
     if (!woId) return;
@@ -243,6 +251,60 @@ const FinalQC = () => {
     } catch (error: any) {
       console.error("Error blocking WO:", error);
       toast.error("Failed to block work order: " + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle quantity-based QC submission
+  const handleQCSubmit = async () => {
+    if (!woId || !selectedBatchId || qcQuantity <= 0) {
+      toast.error('Please select a batch and enter a valid quantity');
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Generate QC ID
+      const qcId = `FQC-${Date.now().toString(36).toUpperCase()}`;
+      
+      // Create QC record with inspected_quantity
+      const { error } = await supabase
+        .from('qc_records')
+        .insert([{
+          wo_id: woId,
+          batch_id: selectedBatchId,
+          qc_id: qcId,
+          qc_type: 'final' as const,
+          result: qcResult,
+          inspected_quantity: qcQuantity,
+          approved_by: user?.id,
+          approved_at: new Date().toISOString(),
+          remarks: remarks,
+          qc_date_time: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+
+      // The sync_batch_qc_quantities trigger will automatically update
+      // production_batches.qc_approved_qty or qc_rejected_qty
+
+      toast.success(
+        qcResult === 'pass'
+          ? `${qcQuantity.toLocaleString()} pcs approved in Final QC`
+          : `${qcQuantity.toLocaleString()} pcs rejected in Final QC`
+      );
+      
+      setShowQCDialog(false);
+      setQcQuantity(0);
+      setSelectedBatchId(null);
+      setRemarks('');
+      loadData();
+    } catch (error: any) {
+      console.error('Error submitting QC:', error);
+      toast.error('Failed to submit QC: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -478,12 +540,43 @@ const FinalQC = () => {
 
         {/* Right Column - Final Inspection Actions */}
         <div className="space-y-6">
+          {/* Quantity-Based QC Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Quantity-Based QC
+              </CardTitle>
+              <CardDescription>
+                Inspect and approve/reject specific quantities from production batches
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!isReleased && workOrder.final_qc_result !== 'blocked' && (
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => setShowQCDialog(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Perform QC Inspection
+                </Button>
+              )}
+              
+              {isReleased && (
+                <div className="text-center text-sm text-muted-foreground">
+                  Quality released - no further QC inspections allowed
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Final Inspection Card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ClipboardCheck className="h-5 w-5" />
-                Final Inspection
+                Final Release
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -665,6 +758,98 @@ const FinalQC = () => {
                 <>
                   <XCircle className="h-4 w-4 mr-2" />
                   Block Work Order
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* QC Quantity Dialog */}
+      <Dialog open={showQCDialog} onOpenChange={setShowQCDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5" />
+              Final QC Inspection
+            </DialogTitle>
+            <DialogDescription>
+              Select a batch and enter the quantity to inspect
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-6">
+            <QCQuantityInput
+              woId={woId!}
+              qcType="final"
+              value={qcQuantity}
+              onChange={(qty, batchId) => {
+                setQcQuantity(qty);
+                if (batchId) setSelectedBatchId(batchId);
+              }}
+              selectedBatchId={selectedBatchId}
+              onBatchChange={setSelectedBatchId}
+              disabled={submitting}
+            />
+
+            <div>
+              <Label htmlFor="qc-remarks">Inspection Remarks</Label>
+              <Textarea
+                id="qc-remarks"
+                placeholder="Enter inspection notes..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                className="flex-1"
+                variant={qcResult === 'pass' ? 'default' : 'outline'}
+                onClick={() => setQcResult('pass')}
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Pass
+              </Button>
+              <Button
+                className="flex-1"
+                variant={qcResult === 'fail' ? 'destructive' : 'outline'}
+                onClick={() => setQcResult('fail')}
+              >
+                <XCircle className="h-4 w-4 mr-2" />
+                Fail
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowQCDialog(false);
+              setQcQuantity(0);
+              setSelectedBatchId(null);
+              setRemarks('');
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleQCSubmit} 
+              disabled={submitting || qcQuantity <= 0 || !selectedBatchId}
+              variant={qcResult === 'pass' ? 'default' : 'destructive'}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  {qcResult === 'pass' ? (
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                  ) : (
+                    <XCircle className="h-4 w-4 mr-2" />
+                  )}
+                  {qcResult === 'pass' ? 'Approve' : 'Reject'} {qcQuantity > 0 ? `${qcQuantity} pcs` : 'Quantity'}
                 </>
               )}
             </Button>
