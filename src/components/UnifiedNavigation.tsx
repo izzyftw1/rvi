@@ -3,12 +3,9 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Menu,
   LogOut,
-  Settings,
   Shield,
-  UserCog,
   ChevronDown,
   Factory,
-  Wrench,
   Calendar,
   MoreHorizontal,
   Users,
@@ -265,7 +262,7 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                       );
                     })}
 
-                    {/* Mobile: Admin Menu */}
+                    {/* Mobile: Admin Menu - matches desktop Admin menu */}
                     {isAdmin && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground px-2">
@@ -275,39 +272,28 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
                         <div className="space-y-1">
                           <button
                             onClick={() => handleNavigate("/admin")}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors text-left",
+                              location.pathname === '/admin'
+                                ? "bg-primary text-primary-foreground font-medium"
+                                : "hover:bg-muted"
+                            )}
                           >
                             <Users className="h-4 w-4" />
-                            Users
-                          </button>
-                          <button
-                            onClick={() => handleNavigate("/admin")}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
-                          >
-                            <UserCog className="h-4 w-4" />
-                            Roles & Permissions
+                            Admin Panel
                           </button>
                           <div className="px-2 py-1 text-xs text-muted-foreground">Factory Tools</div>
                           <button
-                            onClick={() => handleNavigate("/maintenance")}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
-                          >
-                            <Wrench className="h-4 w-4" />
-                            Maintenance
-                          </button>
-                          <button
                             onClick={() => handleNavigate("/factory-calendar")}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors text-left",
+                              location.pathname === '/factory-calendar'
+                                ? "bg-primary text-primary-foreground font-medium"
+                                : "hover:bg-muted"
+                            )}
                           >
                             <Calendar className="h-4 w-4" />
                             Factory Calendar
-                          </button>
-                          <button
-                            onClick={() => handleNavigate("/admin")}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-left"
-                          >
-                            <Settings className="h-4 w-4" />
-                            Settings
                           </button>
                         </div>
                         <Separator />
