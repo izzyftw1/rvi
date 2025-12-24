@@ -7137,6 +7137,53 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          payment_date: string
+          payment_method: string
+          reference_no: string | null
+          supplier_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: string
+          reference_no?: string | null
+          supplier_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: string
+          reference_no?: string | null
+          supplier_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_payments_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           contact_name: string | null
@@ -7149,6 +7196,7 @@ export type Database = {
           notes: string | null
           pan_number: string | null
           phone: string | null
+          tds_rate: number | null
           updated_at: string
         }
         Insert: {
@@ -7162,6 +7210,7 @@ export type Database = {
           notes?: string | null
           pan_number?: string | null
           phone?: string | null
+          tds_rate?: number | null
           updated_at?: string
         }
         Update: {
@@ -7175,6 +7224,7 @@ export type Database = {
           notes?: string | null
           pan_number?: string | null
           phone?: string | null
+          tds_rate?: number | null
           updated_at?: string
         }
         Relationships: []
