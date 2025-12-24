@@ -97,6 +97,28 @@ const Packing = () => {
     loadPackableBatches();
     loadPackingWorkOrders();
     loadPackingHistory();
+
+    // Real-time subscriptions for live data updates
+    const channel = supabase
+      .channel('packing-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => {
+        loadPackableBatches();
+        loadPackingWorkOrders();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cartons' }, () => {
+        loadPackableBatches();
+        loadPackingWorkOrders();
+        loadPackingHistory();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        loadPackableBatches();
+        loadPackingWorkOrders();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
