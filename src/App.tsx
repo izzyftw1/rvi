@@ -64,6 +64,7 @@ import Aging from "./pages/finance/Aging";
 import FinanceSettings from "./pages/finance/FinanceSettings";
 import FinanceReports from "./pages/finance/FinanceReports";
 import CreateInvoices from "./pages/finance/CreateInvoices";
+import ReceiptAllocation from "./pages/finance/ReceiptAllocation";
 import MachineRuntime from "./pages/reports/MachineRuntime";
 import WorkerEfficiency from "./pages/reports/WorkerEfficiency";
 import Cutting from "./pages/Cutting";
@@ -157,6 +158,7 @@ const App = () => (
           <Route path="/finance/invoices/create" element={<CreateInvoices />} />
           <Route path="/finance/invoices/:id" element={<InvoiceDetail />} />
           <Route path="/finance/payments" element={<Payments />} />
+          <Route path="/finance/receipts" element={<ReceiptAllocation />} />
           <Route path="/finance/aging" element={<Aging />} />
           <Route path="/finance/reports" element={<FinanceReports />} />
           <Route path="/reports/machine-runtime" element={<MachineRuntime />} />
