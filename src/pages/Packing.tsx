@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, Layers } from "lucide-react";
+import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, Layers, ClipboardList, XCircle, Clock } from "lucide-react";
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,23 @@ interface PackableBatch {
   production_complete: boolean;
 }
 
+// Work orders with packing status (for the overview)
+interface PackingWorkOrder {
+  id: string;
+  wo_number: string;
+  item_code: string;
+  customer: string;
+  wo_quantity: number;
+  production_complete: boolean;
+  production_complete_qty: number;
+  qc_approved_qty: number;
+  packed_qty: number;
+  available_for_packing: number;
+  remaining_qty: number;
+  status: 'ready' | 'blocked';
+  blocking_reason: string | null;
+}
+
 interface PackingRecord {
   id: string;
   carton_id: string;
@@ -60,6 +77,7 @@ const Packing = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [packableBatches, setPackableBatches] = useState<PackableBatch[]>([]);
+  const [packingWorkOrders, setPackingWorkOrders] = useState<PackingWorkOrder[]>([]);
   const [packingHistory, setPackingHistory] = useState<PackingRecord[]>([]);
   
   // Form state
@@ -77,6 +95,7 @@ const Packing = () => {
 
   useEffect(() => {
     loadPackableBatches();
+    loadPackingWorkOrders();
     loadPackingHistory();
   }, []);
 
@@ -176,6 +195,108 @@ const Packing = () => {
     setPackableBatches(enriched);
   };
 
+  const loadPackingWorkOrders = async () => {
+    // Load work orders that have production batches for packing visibility
+    const { data: woData, error: woError } = await supabase
+      .from("work_orders")
+      .select(`
+        id,
+        display_id,
+        item_code,
+        customer,
+        quantity,
+        production_complete,
+        production_complete_qty,
+        status
+      `)
+      .in("status", ["pending", "in_progress"])
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (woError) {
+      console.error("Error loading work orders:", woError);
+      return;
+    }
+
+    const woIds = (woData || []).map(w => w.id);
+    if (woIds.length === 0) {
+      setPackingWorkOrders([]);
+      return;
+    }
+
+    // Get batch data for these WOs
+    const { data: batchData } = await supabase
+      .from("production_batches")
+      .select("wo_id, qc_approved_qty, qc_final_status")
+      .in("wo_id", woIds);
+
+    // Get packed quantities
+    const { data: cartonData } = await supabase
+      .from("cartons")
+      .select("wo_id, quantity")
+      .in("wo_id", woIds);
+
+    // Aggregate by WO
+    const batchAggMap: Record<string, { qcApproved: number; hasPassedQC: boolean }> = {};
+    (batchData || []).forEach(b => {
+      if (!batchAggMap[b.wo_id]) {
+        batchAggMap[b.wo_id] = { qcApproved: 0, hasPassedQC: false };
+      }
+      if (b.qc_final_status === "passed") {
+        batchAggMap[b.wo_id].qcApproved += b.qc_approved_qty || 0;
+        batchAggMap[b.wo_id].hasPassedQC = true;
+      }
+    });
+
+    const packedQtyMap: Record<string, number> = {};
+    (cartonData || []).forEach(c => {
+      packedQtyMap[c.wo_id] = (packedQtyMap[c.wo_id] || 0) + c.quantity;
+    });
+
+    // Build WO list with status
+    const workOrders: PackingWorkOrder[] = (woData || []).map(wo => {
+      const batchAgg = batchAggMap[wo.id] || { qcApproved: 0, hasPassedQC: false };
+      const packedQty = packedQtyMap[wo.id] || 0;
+      const availableForPacking = Math.max(0, batchAgg.qcApproved - packedQty);
+      const remainingQty = wo.quantity - packedQty;
+
+      let status: 'ready' | 'blocked' = 'ready';
+      let blockingReason: string | null = null;
+
+      if (!wo.production_complete) {
+        status = 'blocked';
+        blockingReason = 'Production not complete';
+      } else if (!batchAgg.hasPassedQC) {
+        status = 'blocked';
+        blockingReason = 'Final QC pending';
+      } else if (batchAgg.qcApproved === 0) {
+        status = 'blocked';
+        blockingReason = 'No QC-approved quantity';
+      } else if (availableForPacking === 0) {
+        status = 'blocked';
+        blockingReason = 'Fully packed';
+      }
+
+      return {
+        id: wo.id,
+        wo_number: wo.display_id || '',
+        item_code: wo.item_code || '',
+        customer: wo.customer || '',
+        wo_quantity: wo.quantity || 0,
+        production_complete: wo.production_complete || false,
+        production_complete_qty: wo.production_complete_qty || 0,
+        qc_approved_qty: batchAgg.qcApproved,
+        packed_qty: packedQty,
+        available_for_packing: availableForPacking,
+        remaining_qty: remainingQty,
+        status,
+        blocking_reason: blockingReason,
+      };
+    });
+
+    setPackingWorkOrders(workOrders);
+  };
+
   const loadPackingHistory = async () => {
     const { data } = await supabase
       .from("cartons")
@@ -267,6 +388,7 @@ const Packing = () => {
       setForm({ quantity: "", numCartons: "", numPallets: "" });
       setSelectedBatchId("");
       loadPackableBatches();
+      loadPackingWorkOrders();
       loadPackingHistory();
     } catch (error: any) {
       toast({
@@ -287,6 +409,7 @@ const Packing = () => {
       if (error) throw error;
       toast({ description: `${cartonId} deleted` });
       loadPackableBatches();
+      loadPackingWorkOrders();
       loadPackingHistory();
     } catch (error: any) {
       toast({ variant: "destructive", description: error.message });
@@ -325,8 +448,12 @@ const Packing = () => {
             icon={<Box className="h-6 w-6" />}
           />
 
-          <Tabs defaultValue="create" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="overview">
+                <ClipboardList className="h-4 w-4 mr-2" />
+                Ready for Packing
+              </TabsTrigger>
               <TabsTrigger value="create">
                 <Package className="h-4 w-4 mr-2" />
                 Create Packing Batch
@@ -336,6 +463,145 @@ const Packing = () => {
                 History
               </TabsTrigger>
             </TabsList>
+
+            {/* Ready for Packing Overview Tab */}
+            <TabsContent value="overview" className="space-y-4 mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardList className="h-5 w-5" />
+                    Work Orders - Packing Status
+                  </CardTitle>
+                  <CardDescription>
+                    Overview of work orders and their packing eligibility
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {packingWorkOrders.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No active work orders found
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Work Order</TableHead>
+                            <TableHead>Item / Customer</TableHead>
+                            <TableHead className="text-right">Ordered</TableHead>
+                            <TableHead className="text-right">QC Approved</TableHead>
+                            <TableHead className="text-right">Packed</TableHead>
+                            <TableHead className="text-right">Available</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {packingWorkOrders.map((wo) => (
+                            <TableRow key={wo.id} className={wo.status === 'blocked' ? 'opacity-60' : ''}>
+                              <TableCell className="font-mono font-medium">
+                                {wo.wo_number}
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-sm font-medium">{wo.item_code}</div>
+                                <div className="text-xs text-muted-foreground">{wo.customer}</div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {wo.wo_quantity.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {wo.qc_approved_qty > 0 ? (
+                                  <span className="text-green-600 font-medium">{wo.qc_approved_qty.toLocaleString()}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">0</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {wo.packed_qty > 0 ? wo.packed_qty.toLocaleString() : '—'}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {wo.available_for_packing > 0 ? (
+                                  <span className="text-primary">{wo.available_for_packing.toLocaleString()}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">0</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {wo.status === 'ready' ? (
+                                  <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Ready
+                                  </Badge>
+                                ) : (
+                                  <div className="flex flex-col gap-1">
+                                    <Badge variant="outline" className="text-amber-600 border-amber-500/30 gap-1">
+                                      {wo.blocking_reason === 'Production not complete' && <Clock className="h-3 w-3" />}
+                                      {wo.blocking_reason === 'Final QC pending' && <AlertTriangle className="h-3 w-3" />}
+                                      {wo.blocking_reason === 'Fully packed' && <CheckCircle2 className="h-3 w-3" />}
+                                      {wo.blocking_reason === 'No QC-approved quantity' && <XCircle className="h-3 w-3" />}
+                                      Blocked
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">{wo.blocking_reason}</span>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Summary Cards */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-green-500/10">
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold">
+                          {packingWorkOrders.filter(wo => wo.status === 'ready').length}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Ready for Packing</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-amber-500/10">
+                        <Clock className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold">
+                          {packingWorkOrders.filter(wo => wo.blocking_reason === 'Production not complete').length}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Awaiting Production</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-500/10">
+                        <AlertTriangle className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold">
+                          {packingWorkOrders.filter(wo => wo.blocking_reason === 'Final QC pending').length}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Awaiting Final QC</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
 
             <TabsContent value="create" className="space-y-4 mt-6">
               {packableBatches.length === 0 ? (
