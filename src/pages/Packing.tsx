@@ -1,251 +1,192 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, Printer, Eye, History, Trash2 } from "lucide-react";
-
+import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
-import { cartonSchema, palletSchema } from "@/lib/validationSchemas";
-import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BatchSelector } from "@/components/packing/BatchSelector";
+import { Badge } from "@/components/ui/badge";
+import { WorkOrderSelect } from "@/components/ui/work-order-select";
+import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
+
+interface WorkOrder {
+  id: string;
+  wo_id: string;
+  wo_number: string;
+  item_code: string;
+  quantity: number;
+  customer_master?: { customer_name: string } | null;
+}
+
+interface PackingBatch {
+  id: string;
+  carton_id: string;
+  wo_id: string;
+  quantity: number;
+  num_cartons: number;
+  num_pallets: number | null;
+  status: string;
+  built_at: string;
+  work_orders?: { wo_number: string; item_code: string } | null;
+}
 
 const Packing = () => {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [packingBatches, setPackingBatches] = useState<PackingBatch[]>([]);
+  
+  // Form state
+  const [selectedWoId, setSelectedWoId] = useState<string>("");
+  const [selectedWo, setSelectedWo] = useState<WorkOrder | null>(null);
+  const [availableQty, setAvailableQty] = useState(0);
+  const [form, setForm] = useState({
+    quantity: "",
+    numCartons: "",
+    numPallets: "",
+  });
 
-  const [cartons, setCartons] = useState<any[]>([]);
-  const [pallets, setPallets] = useState<any[]>([]);
+  // View dialog
   const [viewOpen, setViewOpen] = useState(false);
   const [viewData, setViewData] = useState<any>(null);
-  const [viewType, setViewType] = useState<"carton" | "pallet">("carton");
-
-  // Carton Form
-  const [woId, setWoId] = useState("");
-  const [wo, setWo] = useState<any>(null);
-  const [materialIssues, setMaterialIssues] = useState<any[]>([]);
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [availableToPackQty, setAvailableToPackQty] = useState(0);
-  const [cartonForm, setCartonForm] = useState({
-    carton_id: "",
-    quantity: "",
-    net_weight: "",
-    gross_weight: "",
-  });
-
-  // Pallet Form
-  const [palletForm, setPalletForm] = useState({
-    pallet_id: "",
-    carton_ids: "",
-  });
 
   useEffect(() => {
-    loadHistory();
+    loadWorkOrders();
+    loadPackingBatches();
   }, []);
 
-  const loadHistory = async () => {
-    const { data: cartonsData } = await supabase
-      .from("cartons")
-      .select("*")
-      .order("built_at", { ascending: false })
-      .limit(50);
-    setCartons(cartonsData || []);
-
-    const { data: palletsData } = await supabase
-      .from("pallets")
-      .select("*")
-      .order("built_at", { ascending: false })
-      .limit(50);
-    setPallets(palletsData || []);
-  };
-
-  const openView = (data: any, type: "carton" | "pallet") => {
-    setViewData(data);
-    setViewType(type);
-    setViewOpen(true);
-  };
-
-  const handleDeleteCarton = async (cartonId: string, cartonName: string) => {
-    if (!confirm(`Are you sure you want to delete carton ${cartonName}? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from("cartons")
-        .delete()
-        .eq("id", cartonId);
-
-      if (error) throw error;
-
-      toast({ description: `Carton ${cartonName} deleted successfully` });
-      loadHistory();
-    } catch (err: any) {
-      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
-    }
-  };
-
-  const handleDeletePallet = async (palletId: string, palletName: string) => {
-    if (!confirm(`Are you sure you want to delete pallet ${palletName}? This will also remove carton associations.`)) {
-      return;
-    }
-
-    try {
-      // Delete pallet_cartons relationships first
-      const { error: relationError } = await supabase
-        .from("pallet_cartons")
-        .delete()
-        .eq("pallet_id", palletId);
-
-      if (relationError) throw relationError;
-
-      // Delete pallet
-      const { error } = await supabase
-        .from("pallets")
-        .delete()
-        .eq("id", palletId);
-
-      if (error) throw error;
-
-      toast({ description: `Pallet ${palletName} deleted successfully` });
-      loadHistory();
-    } catch (err: any) {
-      toast({ variant: "destructive", description: `Delete failed: ${err.message}` });
-    }
-  };
-
-  const handleFindWO = async () => {
-    try {
-      const { data: woData, error: woError } = await supabase
-        .from("work_orders")
-        .select("*")
-        .eq("wo_id", woId)
-        .single();
-
-      if (woError) throw woError;
-
-      if (woData) {
-        setWo(woData);
-
-        // Get heat numbers from material issues
-        const { data: issuesData } = await supabase
-          .from("wo_material_issues")
-          .select("*, material_lots(heat_no)")
-          .eq("wo_id", woData.id);
-
-        setMaterialIssues(issuesData || []);
-
-        // Auto-generate carton ID
-        setCartonForm({
-          ...cartonForm,
-          carton_id: `CTN-${woId}-${Date.now().toString().slice(-6)}`,
-        });
+  useEffect(() => {
+    if (selectedWoId) {
+      const wo = workOrders.find(w => w.id === selectedWoId);
+      setSelectedWo(wo || null);
+      if (wo) {
+        loadAvailableQty(wo.id);
       }
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
+    } else {
+      setSelectedWo(null);
+      setAvailableQty(0);
     }
+  }, [selectedWoId, workOrders]);
+
+  const loadWorkOrders = async () => {
+    const { data } = await supabase
+      .from("work_orders")
+      .select("id, wo_id, wo_number, item_code, quantity, customer_master(customer_name)")
+      .in("status", ["in_progress", "packing", "qc"])
+      .order("created_at", { ascending: false });
+    
+    setWorkOrders(data || []);
   };
 
-  const handleCreateCarton = async (e: React.FormEvent) => {
+  const loadAvailableQty = async (woId: string) => {
+    // Get QC approved qty from production batches
+    const { data: batches } = await supabase
+      .from("production_batches")
+      .select("qc_approved_qty")
+      .eq("wo_id", woId);
+
+    const totalApproved = (batches || []).reduce((sum, b) => sum + (b.qc_approved_qty || 0), 0);
+
+    // Get already packed qty
+    const { data: packed } = await supabase
+      .from("cartons")
+      .select("quantity")
+      .eq("wo_id", woId);
+
+    const totalPacked = (packed || []).reduce((sum, c) => sum + (c.quantity || 0), 0);
+
+    setAvailableQty(Math.max(0, totalApproved - totalPacked));
+  };
+
+  const loadPackingBatches = async () => {
+    const { data } = await supabase
+      .from("cartons")
+      .select("id, carton_id, wo_id, quantity, num_cartons, num_pallets, status, built_at, work_orders(wo_number, item_code)")
+      .order("built_at", { ascending: false })
+      .limit(50);
+
+    setPackingBatches((data as unknown as PackingBatch[]) || []);
+  };
+
+  const handleCreatePackingBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!wo) return;
+    if (!selectedWo) return;
 
-    // Validate batch selection
-    if (!selectedBatchId) {
-      toast({
-        variant: "destructive",
-        title: "Batch Required",
-        description: "Please select a production batch before packing.",
+    const qty = parseInt(form.quantity);
+    const numCartons = parseInt(form.numCartons);
+    const numPallets = form.numPallets ? parseInt(form.numPallets) : null;
+
+    // Validation
+    if (!qty || qty <= 0) {
+      toast({ variant: "destructive", description: "Please enter a valid quantity" });
+      return;
+    }
+
+    if (qty > availableQty) {
+      toast({ 
+        variant: "destructive", 
+        description: `Cannot pack ${qty} pcs. Only ${availableQty} pcs available from QC-approved stock.` 
       });
       return;
     }
 
-    const qty = parseInt(cartonForm.quantity);
-    
-    // Validate quantity against available
-    if (qty > availableToPackQty) {
-      toast({
-        variant: "destructive",
-        title: "Quantity Exceeded",
-        description: `Cannot pack ${qty} pcs. Only ${availableToPackQty} pcs available from QC-approved balance.`,
-      });
-      return;
-    }
-
-    if (availableToPackQty === 0) {
-      toast({
-        variant: "destructive",
-        title: "No Available Quantity",
-        description: "No QC-approved quantity available for packing in this batch.",
-      });
+    if (!numCartons || numCartons <= 0) {
+      toast({ variant: "destructive", description: "Please enter number of cartons" });
       return;
     }
 
     setLoading(true);
 
     try {
-      // Validate carton data
-      const validationResult = cartonSchema.safeParse(cartonForm);
-      if (!validationResult.success) {
-        toast({
-          variant: "destructive",
-          title: "Validation Error",
-          description: validationResult.error.errors[0].message,
-        });
-        setLoading(false);
-        return;
-      }
-
       const { data: { user } } = await supabase.auth.getUser();
+      
+      // Generate packing batch ID
+      const batchId = `PKB-${selectedWo.wo_id}-${Date.now().toString().slice(-6)}`;
 
-      // Extract heat numbers
-      const heatNos = materialIssues.map((issue: any) => issue?.material_lots?.heat_no).filter(Boolean);
+      // Get heat numbers from material issues
+      const { data: issues } = await supabase
+        .from("wo_material_issues")
+        .select("material_lots(heat_no)")
+        .eq("wo_id", selectedWo.id);
 
+      const heatNos = (issues || [])
+        .map((i: any) => i?.material_lots?.heat_no)
+        .filter(Boolean);
+
+      // Create packing batch
       const { error } = await supabase.from("cartons").insert({
-        carton_id: cartonForm.carton_id,
-        wo_id: wo.id,
-        batch_id: selectedBatchId,
+        carton_id: batchId,
+        wo_id: selectedWo.id,
         quantity: qty,
-        net_weight: parseFloat(cartonForm.net_weight),
-        gross_weight: parseFloat(cartonForm.gross_weight),
-        heat_nos: heatNos,
+        num_cartons: numCartons,
+        num_pallets: numPallets,
+        net_weight: 0, // Will be updated when physical packing happens
+        gross_weight: 0,
+        heat_nos: heatNos.length > 0 ? heatNos : [],
+        status: "ready_for_dispatch",
         built_by: user?.id,
       });
 
       if (error) throw error;
 
       toast({
-        title: "Carton created",
-        description: `${cartonForm.carton_id} with ${qty} pcs from Batch`,
+        title: "Packing Complete",
+        description: `${batchId} created with ${qty} pcs in ${numCartons} carton(s). Ready for dispatch.`,
       });
 
-      loadHistory();
-
-      // Reset form but keep WO and batch selected
-      setCartonForm({
-        carton_id: `CTN-${woId}-${Date.now().toString().slice(-6)}`,
-        quantity: "",
-        net_weight: "",
-        gross_weight: "",
-      });
-      
-      // Refresh available quantity
-      setSelectedBatchId(null);
-      setTimeout(() => setSelectedBatchId(selectedBatchId), 100);
+      // Reset form and refresh
+      setForm({ quantity: "", numCartons: "", numPallets: "" });
+      setSelectedWoId("");
+      loadPackingBatches();
+      loadWorkOrders();
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Failed to create carton",
+        title: "Failed to create packing batch",
         description: error.message,
       });
     } finally {
@@ -253,84 +194,37 @@ const Packing = () => {
     }
   };
 
-  const handleCreatePallet = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const handleDelete = async (id: string, batchId: string) => {
+    if (!confirm(`Delete packing batch ${batchId}?`)) return;
 
     try {
-      // Validate pallet data
-      const validationResult = palletSchema.safeParse(palletForm);
-      if (!validationResult.success) {
-        toast({
-          variant: "destructive",
-          title: "Validation Error",
-          description: validationResult.error.errors[0].message,
-        });
-        setLoading(false);
-        return;
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Create pallet
-      const { data: palletData, error: palletError } = await supabase
-        .from("pallets")
-        .insert({
-          pallet_id: palletForm.pallet_id,
-          built_by: user?.id,
-        })
-        .select()
-        .single();
-
-      if (palletError) throw palletError;
-
-      // Find cartons
-      const cartonIds = palletForm.carton_ids
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
-
-      const { data: cartonsData } = await supabase
-        .from("cartons")
-        .select("id")
-        .in("carton_id", cartonIds);
-
-      if (cartonsData && cartonsData.length > 0) {
-        // Link cartons to pallet
-        const palletCartons = cartonsData.map((carton) => ({
-          pallet_id: palletData.id,
-          carton_id: carton.id,
-        }));
-
-        const { error: linkError } = await supabase
-          .from("pallet_cartons")
-          .insert(palletCartons);
-
-        if (linkError) throw linkError;
-      }
-
-      toast({
-        title: "Pallet created",
-        description: `${palletForm.pallet_id} with ${cartonsData?.length || 0} cartons`,
-      });
-
-      loadHistory();
-
-      // Reset
-      setPalletForm({
-        pallet_id: "",
-        carton_ids: "",
-      });
+      const { error } = await supabase.from("cartons").delete().eq("id", id);
+      if (error) throw error;
+      toast({ description: `${batchId} deleted` });
+      loadPackingBatches();
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to create pallet",
-        description: error.message,
-      });
-    } finally {
-      setLoading(false);
+      toast({ variant: "destructive", description: error.message });
     }
   };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "ready_for_dispatch":
+        return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Ready for Dispatch</Badge>;
+      case "dispatched":
+        return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">Dispatched</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  const woOptions = workOrders.map(wo => ({
+    id: wo.id,
+    wo_number: wo.wo_number,
+    item_code: wo.item_code,
+    customer: wo.customer_master?.customer_name || "",
+    quantity: wo.quantity,
+  }));
 
   return (
     <div className="min-h-screen bg-background">
@@ -338,174 +232,129 @@ const Packing = () => {
         <div className="space-y-6">
           <PageHeader
             title="Packing"
-            description="Build cartons and pallets from QC-approved batches"
+            description="Create packing batches from QC-approved production"
             icon={<Box className="h-6 w-6" />}
           />
 
-          <Tabs defaultValue="carton" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="carton">Build Carton</TabsTrigger>
-              <TabsTrigger value="pallet">Build Pallet</TabsTrigger>
+          <Tabs defaultValue="create" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="create">
+                <Package className="h-4 w-4 mr-2" />
+                Create Packing Batch
+              </TabsTrigger>
               <TabsTrigger value="history">
                 <History className="h-4 w-4 mr-2" />
                 History
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="carton" className="space-y-4 mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Find Work Order</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Enter WO ID..."
-                      value={woId}
-                      onChange={(e) => setWoId(e.target.value)}
-                      onKeyPress={(e) => e.key === "Enter" && handleFindWO()}
-                    />
-                    <Button onClick={handleFindWO}>Find</Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {wo && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Box className="h-5 w-5" />
-                      Build Carton for {wo.wo_number}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <form onSubmit={handleCreateCarton} className="space-y-4">
-                      <div className="p-3 bg-secondary rounded-lg mb-4">
-                        <p className="text-sm font-medium">Heat Numbers:</p>
-                        <p className="text-sm text-muted-foreground">
-                          {materialIssues.map((i: any) => i?.material_lots?.heat_no).filter(Boolean).join(", ") || "None"}
-                        </p>
-                      </div>
-
-                      {/* Batch Selection */}
-                      <BatchSelector
-                        woId={wo.id}
-                        selectedBatchId={selectedBatchId}
-                        onBatchSelect={(batchId, availableQty) => {
-                          setSelectedBatchId(batchId);
-                          setAvailableToPackQty(availableQty);
-                        }}
-                      />
-
-                      <div className="space-y-2">
-                        <Label htmlFor="carton_id">Carton ID</Label>
-                        <Input
-                          id="carton_id"
-                          value={cartonForm.carton_id}
-                          onChange={(e) => setCartonForm({ ...cartonForm, carton_id: e.target.value })}
-                          required
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="quantity">
-                            Quantity (pcs)
-                            {availableToPackQty > 0 && (
-                              <span className="text-muted-foreground ml-2">
-                                (max: {availableToPackQty})
-                              </span>
-                            )}
-                          </Label>
-                          <Input
-                            id="quantity"
-                            type="number"
-                            max={availableToPackQty}
-                            value={cartonForm.quantity}
-                            onChange={(e) => setCartonForm({ ...cartonForm, quantity: e.target.value })}
-                            required
-                            disabled={!selectedBatchId || availableToPackQty === 0}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="net_weight">Net Weight (kg)</Label>
-                          <Input
-                            id="net_weight"
-                            type="number"
-                            step="0.001"
-                            value={cartonForm.net_weight}
-                            onChange={(e) => setCartonForm({ ...cartonForm, net_weight: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="gross_weight">Gross Weight (kg)</Label>
-                          <Input
-                            id="gross_weight"
-                            type="number"
-                            step="0.001"
-                            value={cartonForm.gross_weight}
-                            onChange={(e) => setCartonForm({ ...cartonForm, gross_weight: e.target.value })}
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <FormActions>
-                        <Button type="button" variant="outline">
-                          <Printer className="h-4 w-4 mr-2" />
-                          Print Label
-                        </Button>
-                        <Button 
-                          type="submit" 
-                          disabled={loading || !selectedBatchId || availableToPackQty === 0}
-                        >
-                          <Box className="h-4 w-4 mr-2" />
-                          Build Carton
-                        </Button>
-                      </FormActions>
-                    </form>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-
-            <TabsContent value="pallet" className="space-y-4 mt-6">
+            <TabsContent value="create" className="space-y-4 mt-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Package className="h-5 w-5" />
-                    Build Pallet
+                    Create Packing Batch
                   </CardTitle>
+                  <CardDescription>
+                    Pack QC-approved quantities for dispatch
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleCreatePallet} className="space-y-4">
+                  <form onSubmit={handleCreatePackingBatch} className="space-y-6">
+                    {/* Work Order Selection */}
                     <div className="space-y-2">
-                      <Label htmlFor="pallet_id">Pallet ID</Label>
-                      <Input
-                        id="pallet_id"
-                        value={palletForm.pallet_id}
-                        onChange={(e) => setPalletForm({ ...palletForm, pallet_id: e.target.value })}
-                        placeholder="PLT-2025-001"
-                        required
+                      <Label>Work Order</Label>
+                      <WorkOrderSelect
+                        value={selectedWoId}
+                        onValueChange={setSelectedWoId}
+                        workOrders={woOptions}
+                        placeholder="Select work order..."
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="carton_ids">Carton IDs (comma-separated)</Label>
-                      <Input
-                        id="carton_ids"
-                        value={palletForm.carton_ids}
-                        onChange={(e) => setPalletForm({ ...palletForm, carton_ids: e.target.value })}
-                        placeholder="CTN-WO-001, CTN-WO-002"
-                        required
-                      />
+                    {/* Selected WO Info */}
+                    {selectedWo && (
+                      <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">{selectedWo.wo_number}</p>
+                            <p className="text-sm text-muted-foreground">{selectedWo.item_code}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground">Available to Pack</p>
+                            <p className={`text-xl font-bold ${availableQty > 0 ? 'text-green-600' : 'text-destructive'}`}>
+                              {availableQty} pcs
+                            </p>
+                          </div>
+                        </div>
+
+                        {availableQty === 0 && (
+                          <div className="flex items-center gap-2 text-amber-600 bg-amber-500/10 px-3 py-2 rounded">
+                            <AlertCircle className="h-4 w-4" />
+                            <span className="text-sm">No QC-approved quantity available for packing</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Quantity Inputs */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="quantity">
+                          Quantity to Pack (pcs)
+                          {availableQty > 0 && (
+                            <span className="text-muted-foreground ml-1">(max: {availableQty})</span>
+                          )}
+                        </Label>
+                        <Input
+                          id="quantity"
+                          type="number"
+                          min="1"
+                          max={availableQty}
+                          value={form.quantity}
+                          onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                          placeholder="Enter quantity"
+                          disabled={!selectedWo || availableQty === 0}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="numCartons">Number of Cartons</Label>
+                        <Input
+                          id="numCartons"
+                          type="number"
+                          min="1"
+                          value={form.numCartons}
+                          onChange={(e) => setForm({ ...form, numCartons: e.target.value })}
+                          placeholder="Enter cartons"
+                          disabled={!selectedWo || availableQty === 0}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="numPallets">Number of Pallets (optional)</Label>
+                        <Input
+                          id="numPallets"
+                          type="number"
+                          min="0"
+                          value={form.numPallets}
+                          onChange={(e) => setForm({ ...form, numPallets: e.target.value })}
+                          placeholder="Optional"
+                          disabled={!selectedWo || availableQty === 0}
+                        />
+                      </div>
                     </div>
 
                     <FormActions>
-                      <Button type="submit" disabled={loading}>
-                        <Package className="h-4 w-4 mr-2" />
-                        Build Pallet
+                      <Button 
+                        type="submit" 
+                        disabled={loading || !selectedWo || availableQty === 0}
+                        className="gap-2"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Complete Packing
                       </Button>
                     </FormActions>
                   </form>
@@ -513,89 +362,69 @@ const Packing = () => {
               </Card>
             </TabsContent>
 
-            <TabsContent value="history" className="space-y-6 mt-6">
+            <TabsContent value="history" className="space-y-4 mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Cartons</CardTitle>
+                  <CardTitle>Packing Batches</CardTitle>
+                  <CardDescription>Recent packing batches and their status</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Carton ID</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Net Weight (kg)</TableHead>
-                        <TableHead>Gross Weight (kg)</TableHead>
-                        <TableHead>Built At</TableHead>
+                        <TableHead>Batch ID</TableHead>
+                        <TableHead>Work Order</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Cartons</TableHead>
+                        <TableHead className="text-right">Pallets</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Packed At</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {cartons.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center">No cartons</TableCell></TableRow>
+                      {packingBatches.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                            No packing batches found
+                          </TableCell>
+                        </TableRow>
                       ) : (
-                        cartons.map((carton) => (
-                          <TableRow key={carton?.id ?? Math.random()}>
-                            <TableCell className="font-medium">{carton?.carton_id ?? "N/A"}</TableCell>
-                            <TableCell>{carton?.quantity ?? 0}</TableCell>
-                            <TableCell>{Number(carton?.net_weight ?? 0).toFixed(3)}</TableCell>
-                            <TableCell>{Number(carton?.gross_weight ?? 0).toFixed(3)}</TableCell>
-                            <TableCell>{carton?.built_at ? new Date(carton.built_at).toLocaleString() : "—"}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button variant="outline" size="sm" onClick={() => openView(carton, "carton")}>
-                                  <Eye className="h-3 w-3" />
-                                </Button>
-                                <Button 
-                                  variant="destructive" 
-                                  size="sm" 
-                                  onClick={() => handleDeleteCarton(carton.id, carton.carton_id)}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                        packingBatches.map((batch) => (
+                          <TableRow key={batch.id}>
+                            <TableCell className="font-medium">{batch.carton_id}</TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{batch.work_orders?.wo_number || "—"}</p>
+                                <p className="text-xs text-muted-foreground">{batch.work_orders?.item_code || ""}</p>
                               </div>
                             </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Pallets</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Pallet ID</TableHead>
-                        <TableHead>Built At</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pallets.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="text-center">No pallets</TableCell></TableRow>
-                      ) : (
-                        pallets.map((pallet) => (
-                          <TableRow key={pallet?.id ?? Math.random()}>
-                            <TableCell className="font-medium">{pallet?.pallet_id ?? "N/A"}</TableCell>
-                            <TableCell>{pallet?.built_at ? new Date(pallet.built_at).toLocaleString() : "—"}</TableCell>
+                            <TableCell className="text-right">{batch.quantity}</TableCell>
+                            <TableCell className="text-right">{batch.num_cartons || 1}</TableCell>
+                            <TableCell className="text-right">{batch.num_pallets || "—"}</TableCell>
+                            <TableCell>{getStatusBadge(batch.status)}</TableCell>
+                            <TableCell>{new Date(batch.built_at).toLocaleString()}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                <Button variant="outline" size="sm" onClick={() => openView(pallet, "pallet")}>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setViewData(batch);
+                                    setViewOpen(true);
+                                  }}
+                                >
                                   <Eye className="h-3 w-3" />
                                 </Button>
-                                <Button 
-                                  variant="destructive" 
-                                  size="sm" 
-                                  onClick={() => handleDeletePallet(pallet.id, pallet.pallet_id)}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                                {batch.status !== "dispatched" && (
+                                  <Button 
+                                    variant="destructive" 
+                                    size="sm"
+                                    onClick={() => handleDelete(batch.id, batch.carton_id)}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -610,12 +439,11 @@ const Packing = () => {
         </div>
       </PageContainer>
 
-      {/* View Dialog */}
       <HistoricalDataDialog
         open={viewOpen}
         onOpenChange={setViewOpen}
         data={viewData}
-        type={viewType}
+        type="carton"
       />
     </div>
   );

@@ -161,7 +161,10 @@ export type Database = {
           id: string
           labels: Json | null
           net_weight: number
+          num_cartons: number | null
+          num_pallets: number | null
           quantity: number
+          status: string
           wo_id: string
         }
         Insert: {
@@ -174,7 +177,10 @@ export type Database = {
           id?: string
           labels?: Json | null
           net_weight: number
+          num_cartons?: number | null
+          num_pallets?: number | null
           quantity: number
+          status?: string
           wo_id: string
         }
         Update: {
@@ -187,7 +193,10 @@ export type Database = {
           id?: string
           labels?: Json | null
           net_weight?: number
+          num_cartons?: number | null
+          num_pallets?: number | null
           quantity?: number
+          status?: string
           wo_id?: string
         }
         Relationships: [
