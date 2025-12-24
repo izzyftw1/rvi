@@ -157,6 +157,7 @@ export type Database = {
           built_by: string | null
           carton_id: string
           dispatch_qc_batch_id: string | null
+          dispatched_qty: number | null
           gross_weight: number
           heat_nos: string[]
           id: string
@@ -175,6 +176,7 @@ export type Database = {
           built_by?: string | null
           carton_id: string
           dispatch_qc_batch_id?: string | null
+          dispatched_qty?: number | null
           gross_weight: number
           heat_nos: string[]
           id?: string
@@ -193,6 +195,7 @@ export type Database = {
           built_by?: string | null
           carton_id?: string
           dispatch_qc_batch_id?: string | null
+          dispatched_qty?: number | null
           gross_weight?: number
           heat_nos?: string[]
           id?: string
@@ -240,6 +243,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "production_batches"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartons_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "cartons_wo_id_fkey"
@@ -353,6 +363,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "people"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cnc_programmer_activity_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "cnc_programmer_activity_wo_id_fkey"
@@ -483,6 +500,13 @@ export type Database = {
           work_order_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cutting_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
           {
             foreignKeyName: "cutting_records_work_order_id_fkey"
             columns: ["work_order_id"]
@@ -743,6 +767,13 @@ export type Database = {
             foreignKeyName: "daily_production_logs_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -831,6 +862,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "design_files_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
           {
             foreignKeyName: "design_files_wo_id_fkey"
             columns: ["wo_id"]
@@ -942,6 +980,13 @@ export type Database = {
             foreignKeyName: "dispatch_qc_batches_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "dispatch_qc_batches_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -957,6 +1002,7 @@ export type Database = {
       dispatches: {
         Row: {
           batch_id: string
+          carton_id: string | null
           created_at: string
           dispatched_at: string
           dispatched_by: string | null
@@ -968,6 +1014,7 @@ export type Database = {
         }
         Insert: {
           batch_id: string
+          carton_id?: string | null
           created_at?: string
           dispatched_at?: string
           dispatched_by?: string | null
@@ -979,6 +1026,7 @@ export type Database = {
         }
         Update: {
           batch_id?: string
+          carton_id?: string | null
           created_at?: string
           dispatched_at?: string
           dispatched_by?: string | null
@@ -1004,11 +1052,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "dispatches_carton_id_fkey"
+            columns: ["carton_id"]
+            isOneToOne: false
+            referencedRelation: "cartons"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "dispatches_shipment_id_fkey"
             columns: ["shipment_id"]
             isOneToOne: false
             referencedRelation: "shipments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "dispatches_wo_id_fkey"
@@ -1151,6 +1213,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "operation_routes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "execution_records_work_order_id_fkey"
@@ -1352,6 +1421,13 @@ export type Database = {
             foreignKeyName: "forging_records_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "forging_records_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -1529,6 +1605,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_machine_daily"
             referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "hourly_qc_checks_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "hourly_qc_checks_wo_id_fkey"
@@ -1757,6 +1840,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "invoices_wo_id_fkey"
@@ -2105,6 +2195,13 @@ export type Database = {
             foreignKeyName: "machines_current_wo_id_fkey"
             columns: ["current_wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "machines_current_wo_id_fkey"
+            columns: ["current_wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -2279,6 +2376,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "material_lots"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_issues_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "material_issues_wo_id_fkey"
@@ -2459,6 +2563,13 @@ export type Database = {
             foreignKeyName: "material_movements_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "material_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -2574,6 +2685,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_v2_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "material_requirements_v2_wo_id_fkey"
@@ -2893,6 +3011,13 @@ export type Database = {
             foreignKeyName: "ncrs_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "ncrs_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -2950,6 +3075,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "non_consumables"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "non_consumable_usage_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "non_consumable_usage_wo_id_fkey"
@@ -3116,6 +3248,13 @@ export type Database = {
             foreignKeyName: "operation_routes_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "operation_routes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -3276,6 +3415,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "daily_production_logs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_production_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "operator_production_ledger_work_order_id_fkey"
@@ -3594,6 +3740,13 @@ export type Database = {
             foreignKeyName: "processing_costs_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "processing_costs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -3751,6 +3904,13 @@ export type Database = {
             foreignKeyName: "production_batches_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "production_batches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -3845,6 +4005,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_machine_daily"
             referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "production_logs_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "production_logs_wo_id_fkey"
@@ -4090,6 +4257,13 @@ export type Database = {
             foreignKeyName: "qc_final_reports_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "qc_final_reports_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -4287,6 +4461,13 @@ export type Database = {
             foreignKeyName: "qc_records_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "qc_records_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -4372,6 +4553,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_machine_daily"
             referencedColumns: ["machine_id"]
+          },
+          {
+            foreignKeyName: "qc_summary_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "qc_summary_wo_id_fkey"
@@ -4695,6 +4883,13 @@ export type Database = {
             foreignKeyName: "raw_purchase_orders_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -4823,6 +5018,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "departments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routing_steps_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "routing_steps_wo_id_fkey"
@@ -4977,6 +5179,13 @@ export type Database = {
             foreignKeyName: "sales_order_items_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -5104,6 +5313,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_line_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "sales_order_line_items_work_order_id_fkey"
@@ -5377,6 +5593,13 @@ export type Database = {
             foreignKeyName: "setter_activity_ledger_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "setter_activity_ledger_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -5618,6 +5841,13 @@ export type Database = {
             foreignKeyName: "shipments_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "shipments_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -5822,6 +6052,13 @@ export type Database = {
             foreignKeyName: "wo_actions_log_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "wo_actions_log_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -5903,6 +6140,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "wo_external_partners"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_moves_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
           },
           {
             foreignKeyName: "wo_external_moves_work_order_id_fkey"
@@ -6065,6 +6309,13 @@ export type Database = {
             foreignKeyName: "wo_machine_assignments_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "wo_machine_assignments_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -6120,6 +6371,13 @@ export type Database = {
             foreignKeyName: "wo_material_issues_wo_id_fkey"
             columns: ["wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "wo_material_issues_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -6167,6 +6425,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "wo_stage_history_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
           {
             foreignKeyName: "wo_stage_history_wo_id_fkey"
             columns: ["wo_id"]
@@ -6549,6 +6814,13 @@ export type Database = {
             foreignKeyName: "machines_current_wo_id_fkey"
             columns: ["current_wo_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "machines_current_wo_id_fkey"
+            columns: ["current_wo_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -6616,6 +6888,13 @@ export type Database = {
             foreignKeyName: "operation_routes_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "operation_routes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
@@ -6651,6 +6930,13 @@ export type Database = {
           wo_quantity: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "production_batches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
           {
             foreignKeyName: "production_batches_wo_id_fkey"
             columns: ["wo_id"]
@@ -6712,6 +6998,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      wo_dispatch_summary_vw: {
+        Row: {
+          customer: string | null
+          dispatch_count: number | null
+          dispatch_status: string | null
+          item_code: string | null
+          last_dispatch_at: string | null
+          ordered_qty: number | null
+          remaining_qty: number | null
+          total_dispatched: number | null
+          wo_id: string | null
+          wo_number: string | null
+        }
+        Relationships: []
       }
       wo_external_partners: {
         Row: {
