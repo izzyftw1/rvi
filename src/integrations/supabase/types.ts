@@ -164,6 +164,7 @@ export type Database = {
           net_weight: number
           num_cartons: number | null
           num_pallets: number | null
+          production_batch_id: string | null
           quantity: number
           status: string
           wo_id: string
@@ -181,6 +182,7 @@ export type Database = {
           net_weight: number
           num_cartons?: number | null
           num_pallets?: number | null
+          production_batch_id?: string | null
           quantity: number
           status?: string
           wo_id: string
@@ -198,11 +200,19 @@ export type Database = {
           net_weight?: number
           num_cartons?: number | null
           num_pallets?: number | null
+          production_batch_id?: string | null
           quantity?: number
           status?: string
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cartons_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cartons_batch_id_fkey"
             columns: ["batch_id"]
@@ -215,6 +225,20 @@ export type Database = {
             columns: ["dispatch_qc_batch_id"]
             isOneToOne: false
             referencedRelation: "dispatch_qc_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartons_production_batch_id_fkey"
+            columns: ["production_batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartons_production_batch_id_fkey"
+            columns: ["production_batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
             referencedColumns: ["id"]
           },
           {
@@ -649,6 +673,13 @@ export type Database = {
             foreignKeyName: "daily_production_logs_batch_id_fkey"
             columns: ["batch_id"]
             isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_production_logs_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
             referencedRelation: "production_batches"
             referencedColumns: ["id"]
           },
@@ -897,6 +928,13 @@ export type Database = {
             foreignKeyName: "dispatch_qc_batches_production_batch_id_fkey"
             columns: ["production_batch_id"]
             isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_qc_batches_production_batch_id_fkey"
+            columns: ["production_batch_id"]
+            isOneToOne: false
             referencedRelation: "production_batches"
             referencedColumns: ["id"]
           },
@@ -951,6 +989,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "dispatches_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "dispatches_batch_id_fkey"
             columns: ["batch_id"]
@@ -1443,6 +1488,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "hourly_qc_checks_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "hourly_qc_checks_batch_id_fkey"
             columns: ["batch_id"]
@@ -3685,6 +3737,13 @@ export type Database = {
             foreignKeyName: "production_batches_previous_batch_id_fkey"
             columns: ["previous_batch_id"]
             isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_batches_previous_batch_id_fkey"
+            columns: ["previous_batch_id"]
+            isOneToOne: false
             referencedRelation: "production_batches"
             referencedColumns: ["id"]
           },
@@ -4189,6 +4248,13 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_records_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qc_records_batch_id_fkey"
             columns: ["batch_id"]
@@ -5531,6 +5597,13 @@ export type Database = {
             foreignKeyName: "shipments_batch_id_fkey"
             columns: ["batch_id"]
             isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipments_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
             referencedRelation: "production_batches"
             referencedColumns: ["id"]
           },
@@ -6549,6 +6622,45 @@ export type Database = {
           {
             foreignKeyName: "operation_routes_work_order_id_fkey"
             columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      packable_batches_vw: {
+        Row: {
+          available_for_packing: number | null
+          batch_number: number | null
+          batch_quantity: number | null
+          batch_status: Database["public"]["Enums"]["batch_status"] | null
+          created_at: string | null
+          customer: string | null
+          dispatched_qty: number | null
+          id: string | null
+          item_code: string | null
+          packed_qty: number | null
+          produced_qty: number | null
+          qc_approved_qty: number | null
+          qc_final_approved_at: string | null
+          qc_final_status: string | null
+          qc_rejected_qty: number | null
+          stage_type: Database["public"]["Enums"]["batch_stage_type"] | null
+          wo_id: string | null
+          wo_number: string | null
+          wo_quantity: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_batches_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_batches_wo_id_fkey"
+            columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]

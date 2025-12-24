@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, Layers } from "lucide-react";
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -19,44 +19,51 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface DispatchQCBatchWithContext {
+// Packable batch - a production batch with Final QC approval
+interface PackableBatch {
   id: string;
-  qc_batch_id: string;
-  work_order_id: string;
-  qc_approved_quantity: number;
-  consumed_quantity: number;
-  qc_date: string;
-  status: string;
-  work_order?: {
-    wo_number: string;
-    item_code: string;
-    customer: string;
-  } | null;
+  wo_id: string;
+  batch_number: number;
+  batch_quantity: number;
+  produced_qty: number;
+  qc_approved_qty: number;
+  qc_rejected_qty: number;
+  dispatched_qty: number;
+  packed_qty: number;
+  available_for_packing: number;
+  qc_final_status: string;
+  qc_final_approved_at: string | null;
+  stage_type: string;
+  batch_status: string;
+  wo_number: string;
+  item_code: string;
+  customer: string;
+  wo_quantity: number;
 }
 
-interface PackingBatch {
+interface PackingRecord {
   id: string;
   carton_id: string;
   wo_id: string;
+  production_batch_id: string | null;
   quantity: number;
   num_cartons: number | null;
   num_pallets: number | null;
   status: string;
   built_at: string;
-  dispatch_qc_batch_id: string | null;
-  work_orders?: { wo_number: string; item_code: string } | null;
-  dispatch_qc_batches?: { qc_batch_id: string } | null;
+  work_orders?: { display_id: string; item_code: string } | null;
+  production_batches?: { batch_number: number } | null;
 }
 
 const Packing = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [qcBatches, setQcBatches] = useState<DispatchQCBatchWithContext[]>([]);
-  const [packingBatches, setPackingBatches] = useState<PackingBatch[]>([]);
+  const [packableBatches, setPackableBatches] = useState<PackableBatch[]>([]);
+  const [packingHistory, setPackingHistory] = useState<PackingRecord[]>([]);
   
   // Form state
-  const [selectedQCBatchId, setSelectedQCBatchId] = useState<string>("");
-  const [selectedQCBatch, setSelectedQCBatch] = useState<DispatchQCBatchWithContext | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+  const [selectedBatch, setSelectedBatch] = useState<PackableBatch | null>(null);
   const [form, setForm] = useState({
     quantity: "",
     numCartons: "",
@@ -68,88 +75,135 @@ const Packing = () => {
   const [viewData, setViewData] = useState<any>(null);
 
   useEffect(() => {
-    loadQCBatches();
-    loadPackingBatches();
+    loadPackableBatches();
+    loadPackingHistory();
   }, []);
 
   useEffect(() => {
-    if (selectedQCBatchId) {
-      const batch = qcBatches.find(b => b.id === selectedQCBatchId);
-      setSelectedQCBatch(batch || null);
+    if (selectedBatchId) {
+      const batch = packableBatches.find(b => b.id === selectedBatchId);
+      setSelectedBatch(batch || null);
     } else {
-      setSelectedQCBatch(null);
+      setSelectedBatch(null);
     }
-  }, [selectedQCBatchId, qcBatches]);
+  }, [selectedBatchId, packableBatches]);
 
-  const loadQCBatches = async () => {
-    // Load only Dispatch QC batches with remaining quantity
-    const { data } = await supabase
-      .from("dispatch_qc_batches")
+  const loadPackableBatches = async () => {
+    // Load production batches with Final QC approval that have remaining packable quantity
+    const { data, error } = await supabase
+      .from("production_batches")
       .select(`
         id,
-        qc_batch_id,
-        work_order_id,
-        qc_approved_quantity,
-        consumed_quantity,
-        qc_date,
-        status,
-        work_orders(wo_number, item_code, customer)
+        wo_id,
+        batch_number,
+        batch_quantity,
+        produced_qty,
+        qc_approved_qty,
+        qc_rejected_qty,
+        dispatched_qty,
+        qc_final_status,
+        qc_final_approved_at,
+        stage_type,
+        batch_status,
+        work_orders!inner(display_id, item_code, customer, quantity)
       `)
-      .neq("status", "consumed")
-      .order("qc_date", { ascending: false });
+      .eq("qc_final_status", "passed")
+      .not("batch_status", "eq", "completed")
+      .not("stage_type", "eq", "dispatched")
+      .order("qc_final_approved_at", { ascending: false });
+
+    if (error) {
+      console.error("Error loading packable batches:", error);
+      return;
+    }
+
+    // Get packed quantities for each batch
+    const batchIds = (data || []).map(b => b.id);
     
-    // Filter to only those with remaining quantity
-    const batchesWithRemaining = (data || []).filter(
-      b => (b.qc_approved_quantity - b.consumed_quantity) > 0
-    ) as unknown as DispatchQCBatchWithContext[];
-    
-    setQcBatches(batchesWithRemaining);
+    let packedQtyMap: Record<string, number> = {};
+    if (batchIds.length > 0) {
+      const { data: cartonData } = await supabase
+        .from("cartons")
+        .select("production_batch_id, quantity")
+        .in("production_batch_id", batchIds);
+      
+      (cartonData || []).forEach(c => {
+        if (c.production_batch_id) {
+          packedQtyMap[c.production_batch_id] = (packedQtyMap[c.production_batch_id] || 0) + c.quantity;
+        }
+      });
+    }
+
+    // Enrich with packed qty and available for packing
+    const enriched: PackableBatch[] = (data || []).map(b => {
+      const wo = b.work_orders as any;
+      const packedQty = packedQtyMap[b.id] || 0;
+      const availableForPacking = Math.max(0, (b.qc_approved_qty || 0) - packedQty);
+      
+      return {
+        id: b.id,
+        wo_id: b.wo_id,
+        batch_number: b.batch_number,
+        batch_quantity: b.batch_quantity || 0,
+        produced_qty: b.produced_qty || 0,
+        qc_approved_qty: b.qc_approved_qty || 0,
+        qc_rejected_qty: b.qc_rejected_qty || 0,
+        dispatched_qty: b.dispatched_qty || 0,
+        packed_qty: packedQty,
+        available_for_packing: availableForPacking,
+        qc_final_status: b.qc_final_status || "",
+        qc_final_approved_at: b.qc_final_approved_at,
+        stage_type: b.stage_type || "",
+        batch_status: b.batch_status || "",
+        wo_number: wo?.display_id || "",
+        item_code: wo?.item_code || "",
+        customer: wo?.customer || "",
+        wo_quantity: wo?.quantity || 0,
+      };
+    }).filter(b => b.available_for_packing > 0);
+
+    setPackableBatches(enriched);
   };
 
-  const loadPackingBatches = async () => {
+  const loadPackingHistory = async () => {
     const { data } = await supabase
       .from("cartons")
       .select(`
         id, 
         carton_id, 
         wo_id, 
+        production_batch_id,
         quantity, 
         num_cartons, 
         num_pallets, 
         status, 
-        built_at, 
-        dispatch_qc_batch_id,
-        work_orders(wo_number, item_code),
-        dispatch_qc_batches(qc_batch_id)
+        built_at,
+        work_orders(display_id, item_code),
+        production_batches(batch_number)
       `)
       .order("built_at", { ascending: false })
       .limit(50);
 
-    setPackingBatches((data as unknown as PackingBatch[]) || []);
-  };
-
-  const getRemainingPackable = (batch: DispatchQCBatchWithContext) => {
-    return batch.qc_approved_quantity - batch.consumed_quantity;
+    setPackingHistory((data as unknown as PackingRecord[]) || []);
   };
 
   const handleCreatePackingBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedQCBatch) return;
+    if (!selectedBatch) return;
 
     const qty = parseInt(form.quantity);
     const numCartons = form.numCartons ? parseInt(form.numCartons) : null;
     const numPallets = form.numPallets ? parseInt(form.numPallets) : null;
-    const remainingPackable = getRemainingPackable(selectedQCBatch);
 
     if (!qty || qty <= 0) {
       toast({ variant: "destructive", description: "Please enter a valid quantity" });
       return;
     }
 
-    if (qty > remainingPackable) {
+    if (qty > selectedBatch.available_for_packing) {
       toast({ 
         variant: "destructive", 
-        description: `Cannot pack ${qty} pcs. Only ${remainingPackable} pcs remaining in this QC batch.` 
+        description: `Cannot pack ${qty} pcs. Only ${selectedBatch.available_for_packing} pcs available in this batch.` 
       });
       return;
     }
@@ -159,24 +213,24 @@ const Packing = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Generate packing batch ID
-      const batchId = `PKB-${selectedQCBatch.qc_batch_id}-${Date.now().toString().slice(-6)}`;
+      // Generate packing batch ID: PKB-{WO}-{BatchNum}-{timestamp}
+      const batchId = `PKB-${selectedBatch.wo_number}-B${selectedBatch.batch_number}-${Date.now().toString().slice(-6)}`;
 
       // Get heat numbers from material issues
       const { data: issues } = await supabase
         .from("wo_material_issues")
         .select("material_lots(heat_no)")
-        .eq("wo_id", selectedQCBatch.work_order_id);
+        .eq("wo_id", selectedBatch.wo_id);
 
       const heatNos = (issues || [])
         .map((i: any) => i?.material_lots?.heat_no)
         .filter(Boolean);
 
-      // Create packing batch with dispatch_qc_batch_id link
+      // Create packing record linked to production batch
       const { error } = await supabase.from("cartons").insert({
         carton_id: batchId,
-        wo_id: selectedQCBatch.work_order_id,
-        dispatch_qc_batch_id: selectedQCBatch.id,
+        wo_id: selectedBatch.wo_id,
+        production_batch_id: selectedBatch.id, // Link to source batch
         quantity: qty,
         num_cartons: numCartons,
         num_pallets: numPallets,
@@ -189,20 +243,20 @@ const Packing = () => {
 
       if (error) throw error;
 
-      // Check if QC batch is now fully consumed
-      const newConsumed = selectedQCBatch.consumed_quantity + qty;
-      const isFullyPacked = newConsumed >= selectedQCBatch.qc_approved_quantity;
+      // Check if batch is now fully packed
+      const newPackedQty = selectedBatch.packed_qty + qty;
+      const isFullyPacked = newPackedQty >= selectedBatch.qc_approved_qty;
 
       toast({
         title: "Packing Complete",
-        description: `${batchId} created with ${qty} pcs.${isFullyPacked ? " QC batch fully packed." : ""}`,
+        description: `${batchId} created with ${qty} pcs from Batch #${selectedBatch.batch_number}.${isFullyPacked ? " Batch fully packed." : ""}`,
       });
 
       // Reset form and refresh
       setForm({ quantity: "", numCartons: "", numPallets: "" });
-      setSelectedQCBatchId("");
-      loadQCBatches();
-      loadPackingBatches();
+      setSelectedBatchId("");
+      loadPackableBatches();
+      loadPackingHistory();
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -214,15 +268,15 @@ const Packing = () => {
     }
   };
 
-  const handleDelete = async (id: string, batchId: string) => {
-    if (!confirm(`Delete packing batch ${batchId}?`)) return;
+  const handleDelete = async (id: string, cartonId: string) => {
+    if (!confirm(`Delete packing record ${cartonId}?`)) return;
 
     try {
       const { error } = await supabase.from("cartons").delete().eq("id", id);
       if (error) throw error;
-      toast({ description: `${batchId} deleted` });
-      loadQCBatches();
-      loadPackingBatches();
+      toast({ description: `${cartonId} deleted` });
+      loadPackableBatches();
+      loadPackingHistory();
     } catch (error: any) {
       toast({ variant: "destructive", description: error.message });
     }
@@ -239,16 +293,14 @@ const Packing = () => {
     }
   };
 
-  const getQCBatchStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Open</Badge>;
-      case "partially_consumed":
-        return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">Partially Packed</Badge>;
-      case "consumed":
-        return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">Fully Packed</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
+  const getBatchProgressBadge = (batch: PackableBatch) => {
+    const progress = (batch.packed_qty / batch.qc_approved_qty) * 100;
+    if (progress === 0) {
+      return <Badge variant="outline">Not Started</Badge>;
+    } else if (progress >= 100) {
+      return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Fully Packed</Badge>;
+    } else {
+      return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">{Math.round(progress)}% Packed</Badge>;
     }
   };
 
@@ -258,7 +310,7 @@ const Packing = () => {
         <div className="space-y-6">
           <PageHeader
             title="Packing"
-            description="Pack QC-approved batches for dispatch"
+            description="Pack QC-approved production batches for dispatch"
             icon={<Box className="h-6 w-6" />}
           />
 
@@ -275,47 +327,48 @@ const Packing = () => {
             </TabsList>
 
             <TabsContent value="create" className="space-y-4 mt-6">
-              {qcBatches.length === 0 ? (
+              {packableBatches.length === 0 ? (
                 <Card>
                   <CardContent className="py-12">
                     <div className="flex flex-col items-center justify-center text-center">
                       <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
                       <h3 className="text-lg font-semibold mb-2">No Batches Ready for Packing</h3>
                       <p className="text-muted-foreground max-w-md">
-                        There are no Dispatch QC-approved batches with remaining quantity. 
-                        Complete Dispatch QC approval in Final QC to create packable batches.
+                        There are no production batches with Final QC approval that have remaining quantity. 
+                        Complete Final QC approval to make batches eligible for packing.
                       </p>
                     </div>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="grid gap-6 lg:grid-cols-2">
-                  {/* QC Batch Selection */}
+                  {/* Batch Selection */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Package className="h-5 w-5" />
-                        Select QC Batch
+                        <Layers className="h-5 w-5" />
+                        Select Production Batch
                       </CardTitle>
                       <CardDescription>
-                        Choose a Dispatch QC-approved batch to pack
+                        Choose a Final QC-approved batch to pack
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <Select
-                        value={selectedQCBatchId}
-                        onValueChange={setSelectedQCBatchId}
+                        value={selectedBatchId}
+                        onValueChange={setSelectedBatchId}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select QC batch..." />
+                          <SelectValue placeholder="Select batch..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {qcBatches.map((batch) => (
+                          {packableBatches.map((batch) => (
                             <SelectItem key={batch.id} value={batch.id}>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono">{batch.qc_batch_id}</span>
+                                <span className="font-mono">{batch.wo_number}</span>
+                                <span className="text-muted-foreground">Batch #{batch.batch_number}</span>
                                 <span className="text-muted-foreground">
-                                  ({getRemainingPackable(batch)} pcs available)
+                                  ({batch.available_for_packing} pcs available)
                                 </span>
                               </div>
                             </SelectItem>
@@ -323,20 +376,20 @@ const Packing = () => {
                         </SelectContent>
                       </Select>
 
-                      {selectedQCBatch && (
+                      {selectedBatch && (
                         <form onSubmit={handleCreatePackingBatch} className="space-y-4 pt-4 border-t">
                           <div className="space-y-2">
                             <Label htmlFor="quantity">
                               Quantity to Pack
                               <span className="text-muted-foreground ml-1">
-                                (max: {getRemainingPackable(selectedQCBatch)})
+                                (max: {selectedBatch.available_for_packing})
                               </span>
                             </Label>
                             <Input
                               id="quantity"
                               type="number"
                               min="1"
-                              max={getRemainingPackable(selectedQCBatch)}
+                              max={selectedBatch.available_for_packing}
                               value={form.quantity}
                               onChange={(e) => setForm({ ...form, quantity: e.target.value })}
                               placeholder="Enter quantity"
@@ -385,78 +438,88 @@ const Packing = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Read-only Context Panel */}
+                  {/* Batch Context Panel */}
                   <Card>
                     <CardHeader>
                       <CardTitle>Batch Context</CardTitle>
                       <CardDescription>
-                        {selectedQCBatch 
-                          ? "Details of the selected QC batch" 
-                          : "Select a QC batch to view details"}
+                        {selectedBatch 
+                          ? "Details of the selected production batch" 
+                          : "Select a batch to view details"}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      {selectedQCBatch ? (
+                      {selectedBatch ? (
                         <div className="space-y-4">
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                               <p className="text-xs text-muted-foreground uppercase tracking-wide">Work Order</p>
-                              <p className="font-medium">{selectedQCBatch.work_order?.wo_number || "—"}</p>
+                              <p className="font-medium">{selectedBatch.wo_number}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Item</p>
-                              <p className="font-medium">{selectedQCBatch.work_order?.item_code || "—"}</p>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Batch #</p>
+                              <p className="font-medium">{selectedBatch.batch_number}</p>
                             </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Customer</p>
-                            <p className="font-medium">{selectedQCBatch.work_order?.customer || "—"}</p>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">QC Batch ID</p>
-                              <p className="font-mono font-medium">{selectedQCBatch.qc_batch_id}</p>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Item</p>
+                              <p className="font-medium">{selectedBatch.item_code}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Status</p>
-                              {getQCBatchStatusBadge(selectedQCBatch.status)}
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Customer</p>
+                              <p className="font-medium">{selectedBatch.customer}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">QC Status</p>
+                              <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                                Final QC Passed
+                              </Badge>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Packing Status</p>
+                              {getBatchProgressBadge(selectedBatch)}
                             </div>
                           </div>
 
                           <div className="border-t pt-4">
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">Quantities</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">Batch Quantities</p>
                             <div className="grid grid-cols-3 gap-4 text-center">
                               <div className="p-3 rounded-lg bg-muted/50">
                                 <p className="text-2xl font-bold text-primary">
-                                  {selectedQCBatch.qc_approved_quantity}
+                                  {selectedBatch.qc_approved_qty}
                                 </p>
                                 <p className="text-xs text-muted-foreground">QC Approved</p>
                               </div>
                               <div className="p-3 rounded-lg bg-muted/50">
                                 <p className="text-2xl font-bold text-blue-600">
-                                  {selectedQCBatch.consumed_quantity}
+                                  {selectedBatch.packed_qty}
                                 </p>
                                 <p className="text-xs text-muted-foreground">Already Packed</p>
                               </div>
                               <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
                                 <p className="text-2xl font-bold text-green-600">
-                                  {getRemainingPackable(selectedQCBatch)}
+                                  {selectedBatch.available_for_packing}
                                 </p>
-                                <p className="text-xs text-muted-foreground">Remaining</p>
+                                <p className="text-xs text-muted-foreground">Available</p>
                               </div>
                             </div>
                           </div>
 
-                          <div className="text-xs text-muted-foreground pt-2">
-                            QC Date: {new Date(selectedQCBatch.qc_date).toLocaleDateString()}
-                          </div>
+                          {selectedBatch.qc_final_approved_at && (
+                            <div className="pt-2 text-xs text-muted-foreground">
+                              QC Approved: {new Date(selectedBatch.qc_final_approved_at).toLocaleString()}
+                            </div>
+                          )}
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
                           <Package className="h-12 w-12 mb-4 opacity-50" />
-                          <p>Select a QC batch to view its details</p>
+                          <p>Select a production batch to view its details and create packing records.</p>
                         </div>
                       )}
                     </CardContent>
@@ -468,67 +531,62 @@ const Packing = () => {
             <TabsContent value="history" className="space-y-4 mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Packing Batches</CardTitle>
-                  <CardDescription>Recent packing batches and their status</CardDescription>
+                  <CardTitle>Packing History</CardTitle>
+                  <CardDescription>Recent packing batches across all work orders</CardDescription>
                 </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Packing Batch</TableHead>
-                        <TableHead>QC Batch</TableHead>
-                        <TableHead>Work Order</TableHead>
-                        <TableHead className="text-right">Quantity</TableHead>
-                        <TableHead className="text-right">Cartons</TableHead>
-                        <TableHead className="text-right">Pallets</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Packed At</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {packingBatches.length === 0 ? (
+                <CardContent>
+                  {packingHistory.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                      <p className="text-muted-foreground">No packing history yet</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                            No packing batches found
-                          </TableCell>
+                          <TableHead>Packing ID</TableHead>
+                          <TableHead>Work Order</TableHead>
+                          <TableHead>Source Batch</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-center">Cartons</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Packed At</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ) : (
-                        packingBatches.map((batch) => (
-                          <TableRow key={batch.id}>
-                            <TableCell className="font-mono font-medium">{batch.carton_id}</TableCell>
-                            <TableCell className="font-mono text-muted-foreground">
-                              {batch.dispatch_qc_batches?.qc_batch_id || "—"}
-                            </TableCell>
+                      </TableHeader>
+                      <TableBody>
+                        {packingHistory.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell className="font-mono text-sm">{record.carton_id}</TableCell>
+                            <TableCell>{record.work_orders?.display_id || "—"}</TableCell>
                             <TableCell>
-                              <div>
-                                <p className="font-medium">{batch.work_orders?.wo_number || "—"}</p>
-                                <p className="text-xs text-muted-foreground">{batch.work_orders?.item_code || ""}</p>
-                              </div>
+                              {record.production_batches 
+                                ? `Batch #${record.production_batches.batch_number}` 
+                                : <span className="text-muted-foreground">Legacy</span>
+                              }
                             </TableCell>
-                            <TableCell className="text-right font-medium">{batch.quantity}</TableCell>
-                            <TableCell className="text-right">{batch.num_cartons || "—"}</TableCell>
-                            <TableCell className="text-right">{batch.num_pallets || "—"}</TableCell>
-                            <TableCell>{getStatusBadge(batch.status)}</TableCell>
-                            <TableCell>{new Date(batch.built_at).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-medium">{record.quantity}</TableCell>
+                            <TableCell className="text-center">{record.num_cartons || "—"}</TableCell>
+                            <TableCell>{getStatusBadge(record.status)}</TableCell>
+                            <TableCell>{new Date(record.built_at).toLocaleDateString()}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   onClick={() => {
-                                    setViewData(batch);
+                                    setViewData(record);
                                     setViewOpen(true);
                                   }}
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
-                                {batch.status !== "dispatched" && (
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="text-destructive"
-                                    onClick={() => handleDelete(batch.id, batch.carton_id)}
+                                {record.status !== "dispatched" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => handleDelete(record.id, record.carton_id)}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -536,24 +594,23 @@ const Packing = () => {
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
         </div>
-      </PageContainer>
 
-      {/* View Dialog */}
-      <HistoricalDataDialog
-        open={viewOpen}
-        onOpenChange={setViewOpen}
-        type="carton"
-        data={viewData}
-      />
+        <HistoricalDataDialog
+          open={viewOpen}
+          onOpenChange={setViewOpen}
+          type="carton"
+          data={viewData}
+        />
+      </PageContainer>
     </div>
   );
 };
