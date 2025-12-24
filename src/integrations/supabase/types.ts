@@ -456,6 +456,78 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_receipts: {
+        Row: {
+          allocated_amount: number
+          bank_name: string | null
+          bank_reference: string | null
+          created_at: string
+          created_by: string | null
+          currency: string | null
+          customer_id: string
+          id: string
+          notes: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          receipt_date: string
+          receipt_no: string
+          status: string
+          total_amount: number
+          unallocated_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          allocated_amount?: number
+          bank_name?: string | null
+          bank_reference?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          customer_id: string
+          id?: string
+          notes?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_date?: string
+          receipt_no: string
+          status?: string
+          total_amount: number
+          unallocated_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          allocated_amount?: number
+          bank_name?: string | null
+          bank_reference?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_date?: string
+          receipt_no?: string
+          status?: string
+          total_amount?: number
+          unallocated_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_receipts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "customer_receipts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cutting_records: {
         Row: {
           created_at: string
@@ -5293,6 +5365,54 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipt_allocations: {
+        Row: {
+          allocated_amount: number
+          allocated_by: string | null
+          allocation_date: string
+          created_at: string
+          id: string
+          invoice_id: string
+          notes: string | null
+          receipt_id: string
+        }
+        Insert: {
+          allocated_amount: number
+          allocated_by?: string | null
+          allocation_date?: string
+          created_at?: string
+          id?: string
+          invoice_id: string
+          notes?: string | null
+          receipt_id: string
+        }
+        Update: {
+          allocated_amount?: number
+          allocated_by?: string | null
+          allocation_date?: string
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          notes?: string | null
+          receipt_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipt_allocations_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipt_allocations_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "customer_receipts"
             referencedColumns: ["id"]
           },
         ]
