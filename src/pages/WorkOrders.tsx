@@ -183,6 +183,7 @@ const getExternalStatus = (wo: any): { status: 'none' | 'in' | 'partial' | 'over
 // Batch Stage Summary Component - shows multi-stage breakdown
 const BatchStageSummary = memo(({ breakdown, className }: { breakdown: WOBatchStageBreakdown; className?: string }) => {
   const stages = [
+    { key: 'cutting', label: 'Cutting', qty: breakdown.cutting, color: 'bg-blue-500', icon: Scissors },
     { key: 'production', label: 'Prod', qty: breakdown.production, color: 'bg-indigo-500', icon: Factory },
     { key: 'external', label: 'Ext', qty: breakdown.external, color: 'bg-purple-500', icon: ExternalLink },
     { key: 'qc', label: 'QC', qty: breakdown.qc, color: 'bg-emerald-500', icon: CheckCircle2 },
@@ -221,6 +222,12 @@ const BatchStageSummary = memo(({ breakdown, className }: { breakdown: WOBatchSt
         <TooltipContent side="right" className="max-w-[200px]">
           <p className="font-medium text-xs mb-1">Batch Distribution</p>
           <div className="space-y-0.5 text-[10px]">
+            {breakdown.cutting > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Cutting:</span>
+                <span>{breakdown.cutting.toLocaleString()} pcs</span>
+              </div>
+            )}
             {breakdown.production > 0 && (
               <div className="flex justify-between gap-4">
                 <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Production:</span>
@@ -855,6 +862,8 @@ const WorkOrders = () => {
         filtered = filtered.filter(wo => {
           const breakdown = getBatchBreakdown(wo.id);
           switch (stageFilter) {
+            case 'cutting': 
+            case 'cutting_queue': return breakdown.cutting > 0;
             case 'production': return breakdown.production > 0;
             case 'qc': return breakdown.qc > 0;
             case 'packing': return breakdown.packing > 0;
@@ -886,6 +895,7 @@ const WorkOrders = () => {
     
     if (primaryFilter === 'internal') {
       // Count by batch presence, not work_orders.current_stage
+      counts['cutting_queue'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).cutting > 0).length;
       counts['production'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).production > 0).length;
       counts['qc'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).qc > 0).length;
       counts['packing'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).packing > 0).length;

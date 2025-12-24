@@ -173,24 +173,56 @@ export const StageView = () => {
 
   const stages = useMemo<StageData[]>(() => {
     // Compute external WIP from moves (source of truth for external)
+    // Cutting is internal, tracked separately
     const externalWipByProcess = new Map<string, { quantity: number; count: number }>();
     let totalExternalWip = 0;
     let totalExternalMoveCount = 0;
+    let cuttingWip = 0;
+    let cuttingCount = 0;
     
     externalMoves.forEach(move => {
       const wip = move.quantity_sent - move.quantity_returned;
       if (wip > 0) {
-        totalExternalWip += wip;
-        totalExternalMoveCount += 1;
-        const existing = externalWipByProcess.get(move.process) || { quantity: 0, count: 0 };
-        existing.quantity += wip;
-        existing.count += 1;
-        externalWipByProcess.set(move.process, existing);
+        // Cutting is internal, not external
+        if (move.process === 'Cutting') {
+          cuttingWip += wip;
+          cuttingCount += 1;
+        } else {
+          totalExternalWip += wip;
+          totalExternalMoveCount += 1;
+          const existing = externalWipByProcess.get(move.process) || { quantity: 0, count: 0 };
+          existing.quantity += wip;
+          existing.count += 1;
+          externalWipByProcess.set(move.process, existing);
+        }
       }
     });
 
     return STAGE_CONFIG.map(config => {
-      // For external, use external moves data instead of batch stage_type
+      // For cutting, combine batches + external moves (internal process tracked via wo_external_moves)
+      if (config.key === 'cutting') {
+        const stageBatches = batches.filter(b => b.stage_type === 'cutting');
+        const batchQty = stageBatches.reduce((sum, b) => {
+          const qty = b.batch_quantity > 0 ? b.batch_quantity : b.wo_quantity || 0;
+          return sum + qty;
+        }, 0);
+        
+        return {
+          key: config.key,
+          label: config.label,
+          icon: config.icon,
+          totalQuantity: batchQty + cuttingWip,
+          batchCount: stageBatches.length + cuttingCount,
+          inQueue: 0,
+          inProgress: stageBatches.length + cuttingCount,
+          completed: 0,
+          capacity: config.capacity,
+          route: config.route,
+          externalBreakdown: []
+        };
+      }
+      
+      // For external, use external moves data (excluding Cutting)
       if (config.key === 'external') {
         const externalBreakdown = Array.from(externalWipByProcess.entries()).map(([process, data]) => ({
           process,

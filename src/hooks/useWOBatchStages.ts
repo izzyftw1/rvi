@@ -14,8 +14,9 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface WOBatchStageBreakdown {
   production: number;
+  cutting: number;  // Internal cutting process
   external: number;
-  externalBreakdown: Record<string, number>; // by process type
+  externalBreakdown: Record<string, number>; // by process type (includes Cutting if tracked externally)
   qc: number;
   packing: number;
   dispatched: number;
@@ -49,6 +50,7 @@ interface ExternalMoveRecord {
 
 const EMPTY_BREAKDOWN: WOBatchStageBreakdown = {
   production: 0,
+  cutting: 0,
   external: 0,
   externalBreakdown: {},
   qc: 0,
@@ -170,6 +172,7 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
       if (!result[batch.wo_id]) {
         result[batch.wo_id] = {
           production: 0,
+          cutting: 0,
           external: 0,
           externalBreakdown: {},
           qc: 0,
@@ -188,8 +191,11 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
       
       switch (batch.stage_type) {
         case 'production':
-        case 'cutting':
           breakdown.production += qty;
+          if (isActive) breakdown.totalActive += qty;
+          break;
+        case 'cutting':
+          breakdown.cutting += qty;
           if (isActive) breakdown.totalActive += qty;
           break;
         case 'external':
@@ -218,10 +224,12 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
     });
     
     // Apply external moves data - this overrides/supplements batch-based external data
+    // Note: Cutting is tracked in externalBreakdown when sent via wo_external_moves
     Object.entries(externalByWO).forEach(([woId, externalData]) => {
       if (!result[woId]) {
         result[woId] = {
           production: 0,
+          cutting: 0,
           external: 0,
           externalBreakdown: {},
           qc: 0,
@@ -232,16 +240,29 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
           isSplitFlow: false,
         };
       }
-      // Use external moves as the source of truth for external WIP
-      result[woId].external = externalData.total;
-      result[woId].externalBreakdown = { ...externalData.byProcess };
-      result[woId].totalActive += externalData.total;
+      
+      // Separate Cutting from external - it's an internal process
+      const cuttingQty = externalData.byProcess['Cutting'] || 0;
+      const externalQty = externalData.total - cuttingQty;
+      
+      // Add cutting quantity to cutting stage
+      result[woId].cutting += cuttingQty;
+      result[woId].totalActive += cuttingQty;
+      
+      // Use external moves as the source of truth for external WIP (excluding Cutting)
+      const externalBreakdown = { ...externalData.byProcess };
+      delete externalBreakdown['Cutting']; // Remove cutting from external breakdown
+      
+      result[woId].external = externalQty;
+      result[woId].externalBreakdown = externalBreakdown;
+      result[woId].totalActive += externalQty;
     });
     
     // Calculate stage count and isSplitFlow for each WO
     Object.values(result).forEach(breakdown => {
       let activeStages = 0;
       if (breakdown.production > 0) activeStages++;
+      if (breakdown.cutting > 0) activeStages++;
       if (breakdown.external > 0) activeStages++;
       if (breakdown.qc > 0) activeStages++;
       if (breakdown.packing > 0) activeStages++;
