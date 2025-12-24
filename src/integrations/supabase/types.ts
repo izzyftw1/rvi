@@ -156,6 +156,7 @@ export type Database = {
           built_at: string
           built_by: string | null
           carton_id: string
+          dispatch_qc_batch_id: string | null
           gross_weight: number
           heat_nos: string[]
           id: string
@@ -172,6 +173,7 @@ export type Database = {
           built_at?: string
           built_by?: string | null
           carton_id: string
+          dispatch_qc_batch_id?: string | null
           gross_weight: number
           heat_nos: string[]
           id?: string
@@ -188,6 +190,7 @@ export type Database = {
           built_at?: string
           built_by?: string | null
           carton_id?: string
+          dispatch_qc_batch_id?: string | null
           gross_weight?: number
           heat_nos?: string[]
           id?: string
@@ -205,6 +208,13 @@ export type Database = {
             columns: ["batch_id"]
             isOneToOne: false
             referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartons_dispatch_qc_batch_id_fkey"
+            columns: ["dispatch_qc_batch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_qc_batches"
             referencedColumns: ["id"]
           },
           {
@@ -838,6 +848,73 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      dispatch_qc_batches: {
+        Row: {
+          approved_by: string | null
+          consumed_quantity: number
+          created_at: string
+          id: string
+          production_batch_id: string | null
+          qc_approved_quantity: number
+          qc_batch_id: string
+          qc_date: string
+          remarks: string | null
+          status: string
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          approved_by?: string | null
+          consumed_quantity?: number
+          created_at?: string
+          id?: string
+          production_batch_id?: string | null
+          qc_approved_quantity: number
+          qc_batch_id: string
+          qc_date?: string
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          approved_by?: string | null
+          consumed_quantity?: number
+          created_at?: string
+          id?: string
+          production_batch_id?: string | null
+          qc_approved_quantity?: number
+          qc_batch_id?: string
+          qc_date?: string
+          remarks?: string | null
+          status?: string
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_qc_batches_production_batch_id_fkey"
+            columns: ["production_batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_qc_batches_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_qc_batches_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dispatches: {
         Row: {
@@ -6640,6 +6717,7 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
+      generate_dispatch_qc_batch_id: { Args: never; Returns: string }
       generate_grn_number: { Args: never; Returns: string }
       generate_ncr_number: { Args: never; Returns: string }
       generate_raw_po_number: { Args: never; Returns: string }
