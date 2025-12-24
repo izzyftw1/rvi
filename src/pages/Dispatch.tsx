@@ -7,10 +7,21 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Link } from "react-router-dom";
+
+// Final QC status for a work order
+interface FinalQCStatus {
+  hasQC: boolean;
+  passed: boolean;
+  hasPDF: boolean;
+  pdfUrl?: string;
+  inspectedAt?: string;
+}
 
 // Packing batch ready for dispatch
 interface PackingBatch {
@@ -33,6 +44,7 @@ interface PackingBatch {
   production_batches?: {
     batch_number: number;
   } | null;
+  finalQCStatus?: FinalQCStatus;
 }
 
 interface Shipment {
@@ -90,11 +102,48 @@ export default function Dispatch() {
       .order("built_at", { ascending: true });
 
     // Calculate available quantity for each batch
-    const enriched: PackingBatch[] = ((data || []) as any[]).map(batch => ({
+    const baseBatches: PackingBatch[] = ((data || []) as any[]).map(batch => ({
       ...batch,
       dispatched_qty: batch.dispatched_qty || 0,
       available_qty: batch.quantity - (batch.dispatched_qty || 0),
     })).filter(b => b.available_qty > 0);
+
+    // Get unique work order IDs to check Final QC status
+    const woIds = [...new Set(baseBatches.map(b => b.wo_id))];
+    
+    // Fetch Final QC records for these work orders
+    const { data: qcRecords } = await supabase
+      .from("qc_records")
+      .select("wo_id, qc_type, result, qc_date_time")
+      .in("wo_id", woIds)
+      .eq("qc_type", "final");
+
+    // Fetch Final QC reports (PDFs) for these work orders
+    const { data: qcReports } = await supabase
+      .from("qc_final_reports")
+      .select("work_order_id, file_url")
+      .in("work_order_id", woIds);
+
+    // Build Final QC status map
+    const qcStatusMap = new Map<string, FinalQCStatus>();
+    woIds.forEach(woId => {
+      const qcRecord = (qcRecords || []).find(r => r.wo_id === woId);
+      const qcReport = (qcReports || []).find(r => r.work_order_id === woId);
+      
+      qcStatusMap.set(woId, {
+        hasQC: !!qcRecord,
+        passed: qcRecord?.result === "pass",
+        hasPDF: !!qcReport?.file_url,
+        pdfUrl: qcReport?.file_url || undefined,
+        inspectedAt: qcRecord?.qc_date_time || undefined,
+      });
+    });
+
+    // Enrich batches with Final QC status
+    const enriched: PackingBatch[] = baseBatches.map(batch => ({
+      ...batch,
+      finalQCStatus: qcStatusMap.get(batch.wo_id) || { hasQC: false, passed: false, hasPDF: false },
+    }));
 
     setReadyBatches(enriched);
   };
@@ -155,13 +204,32 @@ export default function Dispatch() {
 
   const getSelectedSummary = () => {
     const selected = readyBatches.filter(b => selectedBatchIds.has(b.id));
+    const blockedBatches = selected.filter(b => !canDispatch(b));
     return {
       count: selected.length,
       totalQty: selected.reduce((sum, b) => sum + getDispatchQty(b), 0),
       totalCartons: selected.reduce((sum, b) => sum + (b.num_cartons || 0), 0),
       totalPallets: selected.reduce((sum, b) => sum + (b.num_pallets || 0), 0),
       hasPartial: selected.some(b => getDispatchQty(b) < b.available_qty),
+      blockedCount: blockedBatches.length,
+      blockedBatches,
     };
+  };
+
+  // Check if a batch can be dispatched (Final QC must be passed with PDF)
+  const canDispatch = (batch: PackingBatch): boolean => {
+    const status = batch.finalQCStatus;
+    if (!status) return false;
+    return status.hasQC && status.passed && status.hasPDF;
+  };
+
+  // Get the reason why a batch cannot be dispatched
+  const getBlockReason = (batch: PackingBatch): string => {
+    const status = batch.finalQCStatus;
+    if (!status?.hasQC) return "Final QC not completed";
+    if (!status.passed) return "Final QC failed";
+    if (!status.hasPDF) return "Final QC report not generated";
+    return "";
   };
 
   const notifyLogisticsTeam = async (shipId: string, batchCount: number, totalQty: number) => {
@@ -193,8 +261,23 @@ export default function Dispatch() {
       return;
     }
 
-    const generatedShipId = shipmentId.trim() || `SHIP-${Date.now().toString().slice(-8)}`;
     const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
+    
+    // Validate Final QC for all selected batches
+    const blockedBatches = selectedBatches.filter(b => !canDispatch(b));
+    if (blockedBatches.length > 0) {
+      const reasons = blockedBatches.map(b => 
+        `${b.work_orders?.display_id || b.carton_id}: ${getBlockReason(b)}`
+      ).join(", ");
+      toast({ 
+        variant: "destructive", 
+        title: "Dispatch Blocked",
+        description: `Cannot dispatch - ${reasons}` 
+      });
+      return;
+    }
+
+    const generatedShipId = shipmentId.trim() || `SHIP-${Date.now().toString().slice(-8)}`;
     
     // Get customer from first selected batch
     const primaryCustomer = selectedBatches[0]?.work_orders?.customer || "Unknown";
@@ -379,6 +462,7 @@ export default function Dispatch() {
                             <TableHead>Packing Batch</TableHead>
                             <TableHead>Source Batch</TableHead>
                             <TableHead>Work Order</TableHead>
+                            <TableHead>Final QC</TableHead>
                             <TableHead className="text-right">Available</TableHead>
                             <TableHead className="text-right">Dispatch Qty</TableHead>
                             <TableHead>Packed At</TableHead>
@@ -389,11 +473,13 @@ export default function Dispatch() {
                             const isSelected = selectedBatchIds.has(batch.id);
                             const dispatchQty = getDispatchQty(batch);
                             const isPartial = isSelected && dispatchQty < batch.available_qty;
+                            const isBlocked = !canDispatch(batch);
+                            const blockReason = getBlockReason(batch);
                             
                             return (
                               <TableRow 
                                 key={batch.id}
-                                className={isSelected ? "bg-primary/5" : ""}
+                                className={`${isSelected ? "bg-primary/5" : ""} ${isBlocked && isSelected ? "bg-destructive/5" : ""}`}
                               >
                                 <TableCell>
                                   <Checkbox
@@ -422,6 +508,51 @@ export default function Dispatch() {
                                       {batch.work_orders?.item_code} • {batch.work_orders?.customer}
                                     </p>
                                   </div>
+                                </TableCell>
+                                <TableCell>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        {batch.finalQCStatus?.hasQC && batch.finalQCStatus?.passed && batch.finalQCStatus?.hasPDF ? (
+                                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
+                                            <FileCheck className="h-3 w-3" />
+                                            Approved
+                                          </Badge>
+                                        ) : batch.finalQCStatus?.hasQC && batch.finalQCStatus?.passed ? (
+                                          <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1">
+                                            <AlertTriangle className="h-3 w-3" />
+                                            No PDF
+                                          </Badge>
+                                        ) : batch.finalQCStatus?.hasQC ? (
+                                          <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
+                                            <XCircle className="h-3 w-3" />
+                                            Failed
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="outline" className="gap-1 text-muted-foreground">
+                                            <ShieldAlert className="h-3 w-3" />
+                                            Pending
+                                          </Badge>
+                                        )}
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {isBlocked ? (
+                                          <div className="flex flex-col gap-1">
+                                            <span className="font-medium text-red-500">Dispatch blocked</span>
+                                            <span>{blockReason}</span>
+                                            <Link 
+                                              to={`/quality/final-qc?wo=${batch.wo_id}`}
+                                              className="text-primary underline text-xs"
+                                            >
+                                              Go to Final QC
+                                            </Link>
+                                          </div>
+                                        ) : (
+                                          <span>Final QC approved with PDF report</span>
+                                        )}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </TableCell>
                                 <TableCell className="text-right font-medium">{batch.available_qty}</TableCell>
                                 <TableCell className="text-right">
@@ -482,6 +613,31 @@ export default function Dispatch() {
                           </div>
                         </div>
 
+                        {summary.blockedCount > 0 && (
+                          <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                            <ShieldAlert className="h-4 w-4 text-destructive mt-0.5" />
+                            <div className="text-sm">
+                              <p className="font-medium text-destructive">
+                                {summary.blockedCount} batch(es) blocked from dispatch
+                              </p>
+                              <ul className="text-muted-foreground mt-1 space-y-1">
+                                {summary.blockedBatches.map(b => (
+                                  <li key={b.id} className="flex items-center gap-2">
+                                    <span>{b.work_orders?.display_id || b.carton_id}:</span>
+                                    <span className="text-destructive">{getBlockReason(b)}</span>
+                                    <Link 
+                                      to={`/quality/final-qc?wo=${b.wo_id}`}
+                                      className="text-primary underline text-xs"
+                                    >
+                                      Complete Final QC
+                                    </Link>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+
                         {summary.hasPartial && (
                           <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                             <Info className="h-4 w-4 text-amber-600" />
@@ -515,12 +671,21 @@ export default function Dispatch() {
 
                         <Button
                           onClick={handleCreateShipment}
-                          disabled={loading}
+                          disabled={loading || summary.blockedCount > 0}
                           className="w-full gap-2"
                           size="lg"
                         >
-                          <Send className="h-4 w-4" />
-                          Create Shipment ({summary.count} batches, {summary.totalQty} pcs)
+                          {summary.blockedCount > 0 ? (
+                            <>
+                              <ShieldAlert className="h-4 w-4" />
+                              Cannot Dispatch - {summary.blockedCount} Blocked
+                            </>
+                          ) : (
+                            <>
+                              <Send className="h-4 w-4" />
+                              Create Shipment ({summary.count} batches, {summary.totalQty} pcs)
+                            </>
+                          )}
                         </Button>
                       </CardContent>
                     </Card>
