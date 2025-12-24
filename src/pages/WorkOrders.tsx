@@ -434,8 +434,57 @@ const WorkOrderRow = memo(({
           </div>
         </div>
 
-        {/* Operational Signals - Progress, Scrap, NCR, External, Aging */}
+        {/* Operational Signals - Batch Status Rollup + Progress, Scrap, NCR, External, Aging */}
         <div className="hidden lg:flex items-center gap-3 text-[10px]">
+          {/* Batch Status Rollup Chips - calculated per batch */}
+          {batchBreakdown.statusRollup.late > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-destructive/50 text-destructive bg-destructive/10">
+                    <Clock className="h-2.5 w-2.5 mr-0.5" />
+                    {batchBreakdown.statusRollup.late} Late
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">{batchBreakdown.statusRollup.late} batch(es) past due date</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {batchBreakdown.statusRollup.qcPending > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-emerald-500/50 text-emerald-600 bg-emerald-500/10">
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                    {batchBreakdown.statusRollup.qcPending} QC
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">{batchBreakdown.statusRollup.qcPending} batch(es) awaiting QC inspection</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {batchBreakdown.statusRollup.blocked > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-amber-500/50 text-amber-600 bg-amber-500/10">
+                    <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                    {batchBreakdown.statusRollup.blocked} Blocked
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">{batchBreakdown.statusRollup.blocked} batch(es) blocked</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
           {/* Progress % with mini bar */}
           <TooltipProvider delayDuration={200}>
             <Tooltip>
@@ -637,12 +686,16 @@ const WorkOrders = () => {
   const { stagesByWO, loading: batchLoading } = useWOBatchStages(woIds.length > 0 ? woIds : undefined);
   
   const [searchQuery, setSearchQuery] = useState("");
-  // Level 1: Primary toggle - 'internal' or 'external'
-  const [primaryFilter, setPrimaryFilter] = useState<'internal' | 'external'>(() => {
-    const urlPrimary = searchParams.get('type');
-    return urlPrimary === 'external' ? 'external' : 'internal';
+  // Level 1: Location-based filter - 'internal', 'external', or 'transit'
+  // WOs can appear in multiple filters if their batches span locations
+  const [locationFilter, setLocationFilter] = useState<'all' | 'internal' | 'external' | 'transit'>(() => {
+    const urlLoc = searchParams.get('location');
+    if (urlLoc === 'external') return 'external';
+    if (urlLoc === 'transit') return 'transit';
+    if (urlLoc === 'internal') return 'internal';
+    return 'all';
   });
-  // Level 2: Contextual stage filter based on primary selection
+  // Level 2: Contextual stage/process filter based on location selection
   const [stageFilter, setStageFilter] = useState<string>(() => searchParams.get('stage') || 'all');
   // Issue filter for blocked/delayed
   const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>('all');
@@ -783,9 +836,9 @@ const WorkOrders = () => {
     if (lastUpdate > 0) loadWorkOrders();
   }, [lastUpdate, loadWorkOrders]);
 
-  // Compute KPIs - derived from batch data
+  // Compute KPIs - derived from batch data, location-aware
   const kpis = useMemo(() => {
-    let blocked = 0, delayed = 0, internalCount = 0, externalCount = 0, splitFlowCount = 0;
+    let blocked = 0, delayed = 0, internalCount = 0, externalCount = 0, transitCount = 0, splitFlowCount = 0;
     
     workOrders.forEach(wo => {
       const breakdown = getBatchBreakdown(wo.id);
@@ -800,12 +853,14 @@ const WorkOrders = () => {
       );
       if (hasExternalOverdue) blocked++;
       
-      // Count by batch ownership (external WIP derived from batches)
-      if (breakdown.external > 0) {
-        externalCount++;
-      } else {
-        internalCount++;
-      }
+      // Count by batch location - WOs can appear in multiple counts if batches span locations
+      const hasInternalBatches = (breakdown.cutting + breakdown.production + breakdown.qc + breakdown.packing) > 0;
+      const hasExternalBatches = breakdown.external > 0;
+      const hasTransitBatches = breakdown.transit > 0;
+      
+      if (hasInternalBatches) internalCount++;
+      if (hasExternalBatches) externalCount++;
+      if (hasTransitBatches) transitCount++;
       
       // Count split flow WOs
       if (breakdown.isSplitFlow) {
@@ -813,10 +868,10 @@ const WorkOrders = () => {
       }
     });
     
-    return { total: workOrders.length, blocked, delayed, internalCount, externalCount, splitFlowCount };
+    return { total: workOrders.length, blocked, delayed, internalCount, externalCount, transitCount, splitFlowCount };
   }, [workOrders, getBatchBreakdown]);
 
-  // Filtered orders with two-level filtering - using BATCH PRESENCE not work_orders.current_stage
+  // Filtered orders with location-based filtering - WOs appear in multiple filters if batches span locations
   const filteredOrders = useMemo(() => {
     let filtered = [...workOrders];
 
@@ -832,32 +887,15 @@ const WorkOrders = () => {
       );
     }
 
-    // Level 1: Primary filter (Internal vs External) - based on BATCH data
-    if (primaryFilter === 'external') {
-      // Show only WOs with external batches
+    // Level 1: Location filter - based on BATCH location
+    if (locationFilter === 'internal') {
+      // Show WOs with batches in factory (cutting, production, qc, packing)
       filtered = filtered.filter(wo => {
         const breakdown = getBatchBreakdown(wo.id);
-        return breakdown.external > 0;
+        return (breakdown.cutting + breakdown.production + breakdown.qc + breakdown.packing) > 0;
       });
       
-      // Level 2: External stage filter by process type
-      if (stageFilter !== 'all') {
-        const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
-        if (externalStage) {
-          filtered = filtered.filter(wo => {
-            const breakdown = getBatchBreakdown(wo.id);
-            return (breakdown.externalBreakdown[externalStage.process] || 0) > 0;
-          });
-        }
-      }
-    } else {
-      // Internal: Show only WOs without external batches (or all if viewing internal)
-      filtered = filtered.filter(wo => {
-        const breakdown = getBatchBreakdown(wo.id);
-        return breakdown.external === 0;
-      });
-      
-      // Level 2: Internal stage filter - based on BATCH presence
+      // Level 2: Internal stage filter
       if (stageFilter !== 'all') {
         filtered = filtered.filter(wo => {
           const breakdown = getBatchBreakdown(wo.id);
@@ -872,7 +910,31 @@ const WorkOrders = () => {
           }
         });
       }
+    } else if (locationFilter === 'external') {
+      // Show WOs with batches at external partners
+      filtered = filtered.filter(wo => {
+        const breakdown = getBatchBreakdown(wo.id);
+        return breakdown.external > 0;
+      });
+      
+      // Level 2: External process filter
+      if (stageFilter !== 'all') {
+        const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
+        if (externalStage) {
+          filtered = filtered.filter(wo => {
+            const breakdown = getBatchBreakdown(wo.id);
+            return (breakdown.externalBreakdown[externalStage.process] || 0) > 0;
+          });
+        }
+      }
+    } else if (locationFilter === 'transit') {
+      // Show WOs with batches in transit
+      filtered = filtered.filter(wo => {
+        const breakdown = getBatchBreakdown(wo.id);
+        return breakdown.transit > 0;
+      });
     }
+    // 'all' shows everything - no location filter
 
     // Issue filter (blocked/delayed)
     if (issueFilter === 'delayed') {
@@ -887,20 +949,20 @@ const WorkOrders = () => {
     }
 
     return filtered;
-  }, [workOrders, searchQuery, primaryFilter, stageFilter, issueFilter, blockReasonFilter]);
+  }, [workOrders, searchQuery, locationFilter, stageFilter, issueFilter, blockReasonFilter, getBatchBreakdown]);
 
   // Stage counts for filter bar - based on BATCH presence
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { all: filteredOrders.length };
     
-    if (primaryFilter === 'internal') {
+    if (locationFilter === 'internal') {
       // Count by batch presence, not work_orders.current_stage
       counts['cutting_queue'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).cutting > 0).length;
       counts['production'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).production > 0).length;
       counts['qc'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).qc > 0).length;
       counts['packing'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).packing > 0).length;
       counts['dispatch'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).dispatched > 0).length;
-    } else {
+    } else if (locationFilter === 'external') {
       Object.entries(EXTERNAL_STAGES).forEach(([key, config]) => {
         counts[key] = filteredOrders.filter(wo => {
           const breakdown = getBatchBreakdown(wo.id);
@@ -908,9 +970,10 @@ const WorkOrders = () => {
         }).length;
       });
     }
+    // transit has no sub-filters
     
     return counts;
-  }, [filteredOrders, primaryFilter, getBatchBreakdown]);
+  }, [filteredOrders, locationFilter, getBatchBreakdown]);
 
   // Block reason counts for filter dropdown
   const blockReasonCounts = useMemo(() => {
@@ -952,67 +1015,97 @@ const WorkOrders = () => {
         </div>
 
         {/* KPI Summary Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <KPICard 
-            label="In Progress" 
+            label="Total Active" 
             count={kpis.total} 
             icon={Factory} 
-            onClick={() => { setIssueFilter('all'); setStageFilter('all'); }}
+            onClick={() => { setLocationFilter('all'); setIssueFilter('all'); setStageFilter('all'); }}
           />
           <KPICard 
-            label="Needs Action" 
-            count={kpis.blocked} 
-            icon={AlertTriangle} 
-            variant={kpis.blocked > 0 ? 'danger' : 'default'}
-            onClick={() => setIssueFilter('blocked')}
+            label="In Factory" 
+            count={kpis.internalCount} 
+            icon={Factory} 
+            onClick={() => { setLocationFilter('internal'); setStageFilter('all'); }}
           />
           <KPICard 
-            label="Running Late" 
-            count={kpis.delayed} 
-            icon={Clock} 
-            variant={kpis.delayed > 0 ? 'warning' : 'default'}
-            onClick={() => setIssueFilter('delayed')}
-          />
-          <KPICard 
-            label="With Partners" 
+            label="At Partners" 
             count={kpis.externalCount} 
             icon={ExternalLink} 
-            onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
+            onClick={() => { setLocationFilter('external'); setStageFilter('all'); }}
+          />
+          <KPICard 
+            label="In Transit" 
+            count={kpis.transitCount} 
+            icon={Truck}
+            onClick={() => { setLocationFilter('transit'); setStageFilter('all'); }}
+          />
+          <KPICard 
+            label="Needs Attention" 
+            count={kpis.blocked + kpis.delayed} 
+            icon={AlertTriangle} 
+            variant={(kpis.blocked + kpis.delayed) > 0 ? 'danger' : 'default'}
+            onClick={() => setIssueFilter('blocked')}
           />
         </div>
 
         {/* Filter Bar - Clear and Always Visible */}
         <Card className="p-3 bg-muted/20">
           <div className="flex flex-col gap-3">
-            {/* Row 1: Primary Toggle + Search */}
+            {/* Row 1: Location Toggle + Search */}
             <div className="flex items-center gap-3 flex-wrap">
-              {/* Primary Toggle - Prominent */}
+              {/* Location Toggle - WOs can appear in multiple */}
               <div className="inline-flex rounded-lg border border-border p-1 bg-background">
                 <button
-                  onClick={() => { setPrimaryFilter('internal'); setStageFilter('all'); }}
+                  onClick={() => { setLocationFilter('all'); setStageFilter('all'); }}
                   className={cn(
-                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
-                    primaryFilter === 'internal' 
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all",
+                    locationFilter === 'all' 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  All
+                  <Badge variant="secondary" className="ml-1 text-xs">{kpis.total}</Badge>
+                </button>
+                <button
+                  onClick={() => { setLocationFilter('internal'); setStageFilter('all'); }}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all",
+                    locationFilter === 'internal' 
                       ? "bg-primary text-primary-foreground shadow-sm" 
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
                   <Factory className="h-4 w-4" />
-                  In-House
+                  Internal
                   <Badge variant="secondary" className="ml-1 text-xs">{kpis.internalCount}</Badge>
                 </button>
                 <button
-                  onClick={() => { setPrimaryFilter('external'); setStageFilter('all'); }}
+                  onClick={() => { setLocationFilter('external'); setStageFilter('all'); }}
                   className={cn(
-                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
-                    primaryFilter === 'external' 
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all",
+                    locationFilter === 'external' 
                       ? "bg-purple-600 text-white shadow-sm" 
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
-                  <Truck className="h-4 w-4" />
-                  With Partners
+                  <ExternalLink className="h-4 w-4" />
+                  External
                   <Badge variant="secondary" className="ml-1 text-xs">{kpis.externalCount}</Badge>
+                </button>
+                <button
+                  onClick={() => { setLocationFilter('transit'); setStageFilter('all'); }}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all",
+                    locationFilter === 'transit' 
+                      ? "bg-amber-600 text-white shadow-sm" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  <Truck className="h-4 w-4" />
+                  Transit
+                  <Badge variant="secondary" className="ml-1 text-xs">{kpis.transitCount}</Badge>
                 </button>
               </div>
 
@@ -1031,10 +1124,10 @@ const WorkOrders = () => {
               </div>
             </div>
 
-            {/* Row 2: Stage Pills + Issue Filters */}
+            {/* Row 2: Stage Pills + Issue Filters - only show when location filter is set */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Stage Pills - Always show all */}
-              {primaryFilter === 'internal' ? (
+              {/* Stage Pills - context depends on location filter */}
+              {locationFilter === 'internal' && (
                 <>
                   <span className="text-xs text-muted-foreground mr-1">Stage:</span>
                   <button
@@ -1074,7 +1167,9 @@ const WorkOrders = () => {
                     );
                   })}
                 </>
-              ) : (
+              )}
+              
+              {locationFilter === 'external' && (
                 <>
                   <span className="text-xs text-muted-foreground mr-1">Process:</span>
                   <button
@@ -1263,7 +1358,7 @@ const WorkOrders = () => {
                   icon = "calendar";
                   title = "On schedule";
                   description = "No late jobs. Everything is running on time.";
-                } else if (primaryFilter === 'external') {
+                } else if (locationFilter === 'external') {
                   icon = "partners";
                   if (stageFilter !== 'all') {
                     const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
@@ -1273,13 +1368,17 @@ const WorkOrders = () => {
                     title = "Nothing with partners";
                     description = "All jobs are in-house. Send work out when ready.";
                   }
-                } else if (stageFilter !== 'all') {
+                } else if (locationFilter === 'transit') {
+                  icon = "partners";
+                  title = "Nothing in transit";
+                  description = "No jobs currently moving between locations.";
+                } else if (locationFilter === 'internal' && stageFilter !== 'all') {
                   const internalStage = INTERNAL_STAGES[stageFilter as keyof typeof INTERNAL_STAGES];
                   title = `${internalStage?.label || 'Stage'} is clear`;
                   description = `No jobs waiting in ${internalStage?.label || 'this stage'}. Check other queues.`;
                 } else {
-                  title = "In-house queue empty";
-                  description = "Jobs may be with partners, or create a new one to start.";
+                  title = "Queue empty";
+                  description = "No matching jobs found. Adjust filters or create a new one.";
                 }
 
                 return (
