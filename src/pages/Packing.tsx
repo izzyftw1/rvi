@@ -218,57 +218,72 @@ const Packing = () => {
   };
 
   const loadPackingWorkOrders = async () => {
-    // Load work orders that have production batches for packing visibility
-    const { data: woData, error: woError } = await supabase
-      .from("work_orders")
+    // ONLY load work orders that have:
+    // 1. Production complete = true (or significant production qty)
+    // 2. AND dispatch QC approved batches with available quantity
+    // This prevents showing irrelevant work orders to the packing department
+    
+    // First, find work orders with QC-approved batches ready for packing
+    const { data: batchData, error: batchError } = await supabase
+      .from("production_batches")
       .select(`
-        id,
-        display_id,
-        item_code,
-        customer,
-        quantity,
-        production_complete,
-        production_complete_qty,
-        status
+        wo_id,
+        qc_approved_qty,
+        qc_final_status,
+        work_orders!inner(
+          id,
+          display_id,
+          item_code,
+          customer,
+          quantity,
+          production_complete,
+          production_complete_qty,
+          status
+        )
       `)
-      .in("status", ["pending", "in_progress"])
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .eq("qc_final_status", "passed")
+      .gt("qc_approved_qty", 0);
 
-    if (woError) {
-      console.error("Error loading work orders:", woError);
+    if (batchError) {
+      console.error("Error loading packing-ready batches:", batchError);
       return;
     }
 
-    const woIds = (woData || []).map(w => w.id);
+    // Build unique WO map from batches
+    const woMap = new Map<string, {
+      wo: any;
+      qcApproved: number;
+    }>();
+
+    (batchData || []).forEach(b => {
+      const wo = b.work_orders as any;
+      if (!wo) return;
+      
+      // Only include if production_complete is true
+      if (!wo.production_complete) return;
+      
+      const existing = woMap.get(wo.id);
+      if (existing) {
+        existing.qcApproved += b.qc_approved_qty || 0;
+      } else {
+        woMap.set(wo.id, {
+          wo,
+          qcApproved: b.qc_approved_qty || 0,
+        });
+      }
+    });
+
+    const woIds = Array.from(woMap.keys());
     if (woIds.length === 0) {
       setPackingWorkOrders([]);
       return;
     }
 
-    // Get batch data for these WOs
-    const { data: batchData } = await supabase
-      .from("production_batches")
-      .select("wo_id, qc_approved_qty, qc_final_status")
-      .in("wo_id", woIds);
-
-    // Get packed quantities
+    // Get packed quantities for these WOs
     const { data: cartonData } = await supabase
       .from("cartons")
       .select("wo_id, quantity")
       .in("wo_id", woIds);
-
-    // Aggregate by WO
-    const batchAggMap: Record<string, { qcApproved: number; hasPassedQC: boolean }> = {};
-    (batchData || []).forEach(b => {
-      if (!batchAggMap[b.wo_id]) {
-        batchAggMap[b.wo_id] = { qcApproved: 0, hasPassedQC: false };
-      }
-      if (b.qc_final_status === "passed") {
-        batchAggMap[b.wo_id].qcApproved += b.qc_approved_qty || 0;
-        batchAggMap[b.wo_id].hasPassedQC = true;
-      }
-    });
 
     const packedQtyMap: Record<string, number> = {};
     (cartonData || []).forEach(c => {
@@ -276,25 +291,15 @@ const Packing = () => {
     });
 
     // Build WO list with status
-    const workOrders: PackingWorkOrder[] = (woData || []).map(wo => {
-      const batchAgg = batchAggMap[wo.id] || { qcApproved: 0, hasPassedQC: false };
+    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved }) => {
       const packedQty = packedQtyMap[wo.id] || 0;
-      const availableForPacking = Math.max(0, batchAgg.qcApproved - packedQty);
+      const availableForPacking = Math.max(0, qcApproved - packedQty);
       const remainingQty = wo.quantity - packedQty;
 
       let status: 'ready' | 'blocked' = 'ready';
       let blockingReason: string | null = null;
 
-      if (!wo.production_complete) {
-        status = 'blocked';
-        blockingReason = 'Production not complete';
-      } else if (!batchAgg.hasPassedQC) {
-        status = 'blocked';
-        blockingReason = 'Final QC pending';
-      } else if (batchAgg.qcApproved === 0) {
-        status = 'blocked';
-        blockingReason = 'No QC-approved quantity';
-      } else if (availableForPacking === 0) {
+      if (availableForPacking === 0) {
         status = 'blocked';
         blockingReason = 'Fully packed';
       }
@@ -307,13 +312,17 @@ const Packing = () => {
         wo_quantity: wo.quantity || 0,
         production_complete: wo.production_complete || false,
         production_complete_qty: wo.production_complete_qty || 0,
-        qc_approved_qty: batchAgg.qcApproved,
+        qc_approved_qty: qcApproved,
         packed_qty: packedQty,
         available_for_packing: availableForPacking,
         remaining_qty: remainingQty,
         status,
         blocking_reason: blockingReason,
       };
+    }).sort((a, b) => {
+      // Sort ready items first, then by available quantity
+      if (a.status !== b.status) return a.status === 'ready' ? -1 : 1;
+      return b.available_for_packing - a.available_for_packing;
     });
 
     setPackingWorkOrders(workOrders);
