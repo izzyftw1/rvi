@@ -1085,6 +1085,144 @@ export type Database = {
         }
         Relationships: []
       }
+      dispatch_notes: {
+        Row: {
+          carton_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string | null
+          dispatch_date: string
+          dispatch_id: string | null
+          dispatch_note_no: string
+          dispatched_qty: number
+          gross_weight_kg: number | null
+          id: string
+          invoice_id: string | null
+          invoiced: boolean | null
+          item_code: string
+          item_description: string | null
+          net_weight_kg: number | null
+          packed_qty: number
+          rejected_qty: number | null
+          remarks: string | null
+          sales_order_id: string | null
+          shipment_id: string | null
+          so_ordered_qty: number | null
+          unit_rate: number | null
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          carton_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          dispatch_date?: string
+          dispatch_id?: string | null
+          dispatch_note_no: string
+          dispatched_qty?: number
+          gross_weight_kg?: number | null
+          id?: string
+          invoice_id?: string | null
+          invoiced?: boolean | null
+          item_code: string
+          item_description?: string | null
+          net_weight_kg?: number | null
+          packed_qty?: number
+          rejected_qty?: number | null
+          remarks?: string | null
+          sales_order_id?: string | null
+          shipment_id?: string | null
+          so_ordered_qty?: number | null
+          unit_rate?: number | null
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          carton_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          dispatch_date?: string
+          dispatch_id?: string | null
+          dispatch_note_no?: string
+          dispatched_qty?: number
+          gross_weight_kg?: number | null
+          id?: string
+          invoice_id?: string | null
+          invoiced?: boolean | null
+          item_code?: string
+          item_description?: string | null
+          net_weight_kg?: number | null
+          packed_qty?: number
+          rejected_qty?: number | null
+          remarks?: string | null
+          sales_order_id?: string | null
+          shipment_id?: string | null
+          so_ordered_qty?: number | null
+          unit_rate?: number | null
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_notes_carton_id_fkey"
+            columns: ["carton_id"]
+            isOneToOne: false
+            referencedRelation: "cartons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dispatch_qc_batches: {
         Row: {
           approved_by: string | null
@@ -2341,14 +2479,19 @@ export type Database = {
           created_at: string | null
           description: string
           dispatch_id: string | null
+          dispatch_note_id: string | null
           gst_amount: number | null
           gst_percent: number | null
           id: string
           invoice_id: string
           item_code: string | null
+          qty_override_at: string | null
+          qty_override_by: string | null
+          qty_override_reason: string | null
           quantity: number
           rate: number
           so_item_id: string | null
+          so_ordered_qty: number | null
           total_line: number
           wo_id: string | null
         }
@@ -2357,14 +2500,19 @@ export type Database = {
           created_at?: string | null
           description: string
           dispatch_id?: string | null
+          dispatch_note_id?: string | null
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
           invoice_id: string
           item_code?: string | null
+          qty_override_at?: string | null
+          qty_override_by?: string | null
+          qty_override_reason?: string | null
           quantity: number
           rate: number
           so_item_id?: string | null
+          so_ordered_qty?: number | null
           total_line: number
           wo_id?: string | null
         }
@@ -2373,14 +2521,19 @@ export type Database = {
           created_at?: string | null
           description?: string
           dispatch_id?: string | null
+          dispatch_note_id?: string | null
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
           invoice_id?: string
           item_code?: string | null
+          qty_override_at?: string | null
+          qty_override_by?: string | null
+          qty_override_reason?: string | null
           quantity?: number
           rate?: number
           so_item_id?: string | null
+          so_ordered_qty?: number | null
           total_line?: number
           wo_id?: string | null
         }
@@ -2390,6 +2543,13 @@ export type Database = {
             columns: ["dispatch_id"]
             isOneToOne: false
             referencedRelation: "dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_dispatch_note_id_fkey"
+            columns: ["dispatch_note_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_notes"
             referencedColumns: ["id"]
           },
           {

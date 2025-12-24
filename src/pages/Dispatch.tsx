@@ -425,27 +425,96 @@ export default function Dispatch() {
         });
       }
 
-      // 3. Create dispatch records
-      const dispatchRecords = selectedBatches.map(batch => {
+      // 3. Create dispatch records and dispatch notes
+      for (const batch of selectedBatches) {
         const dispatchQty = getDispatchQty(batch);
         const isPartial = dispatchQty < batch.available_qty;
+        const batchId = batch.production_batch_id || batchMap.get(batch.wo_id) || batch.wo_id;
         
-        return {
-          wo_id: batch.wo_id,
-          batch_id: batch.production_batch_id || batchMap.get(batch.wo_id) || batch.wo_id,
+        // Create dispatch record
+        const { data: dispatchData, error: dispatchError } = await supabase
+          .from("dispatches")
+          .insert({
+            wo_id: batch.wo_id,
+            batch_id: batchId,
+            carton_id: batch.id,
+            quantity: dispatchQty,
+            shipment_id: shipmentData.id,
+            dispatched_by: user?.id,
+            remarks: `[PRODUCTION] ${batch.carton_id}${batch.production_batches ? ` | Batch #${batch.production_batches.batch_number}` : ""}${isPartial ? ` | Partial: ${dispatchQty}/${batch.available_qty}` : ""}${remarks ? ` | ${remarks}` : ""}`,
+          })
+          .select()
+          .single();
+
+        if (dispatchError) throw dispatchError;
+
+        // Get WO and SO details for dispatch note
+        const { data: woData } = await supabase
+          .from("work_orders")
+          .select("item_code, so_id, quantity, gross_weight_per_pc, net_weight_per_pc, financial_snapshot, customer")
+          .eq("id", batch.wo_id)
+          .single();
+
+        // Get SO ordered qty for reference
+        let soOrderedQty = null;
+        if (woData?.so_id) {
+          const { data: soData } = await supabase
+            .from("sales_orders")
+            .select("items")
+            .eq("id", woData.so_id)
+            .single();
+          
+          if (soData?.items && Array.isArray(soData.items)) {
+            const matchingItem = (soData.items as any[]).find(
+              (item: any) => item.item_code === woData.item_code
+            );
+            soOrderedQty = matchingItem?.quantity || woData.quantity;
+          }
+        }
+
+        // Get unit rate from financial_snapshot
+        const financialSnapshot = woData?.financial_snapshot as any;
+        const unitRate = financialSnapshot?.line_item?.price_per_pc || 0;
+        const currency = financialSnapshot?.currency || "USD";
+
+        // Create dispatch note (source of truth for invoicing)
+        const { data: existingNotes } = await supabase
+          .from("dispatch_notes")
+          .select("dispatch_note_no")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        let noteNo = "DN-0001";
+        if (existingNotes && existingNotes.length > 0) {
+          const lastNo = existingNotes[0].dispatch_note_no;
+          const numMatch = lastNo.match(/DN-(\d+)/);
+          if (numMatch) {
+            const lastNum = parseInt(numMatch[1]);
+            noteNo = `DN-${String(lastNum + 1).padStart(4, "0")}`;
+          }
+        }
+
+        await supabase.from("dispatch_notes").insert({
+          dispatch_note_no: noteNo,
+          work_order_id: batch.wo_id,
+          sales_order_id: woData?.so_id,
           carton_id: batch.id,
-          quantity: dispatchQty,
           shipment_id: shipmentData.id,
-          dispatched_by: user?.id,
-          remarks: `[PRODUCTION] ${batch.carton_id}${batch.production_batches ? ` | Batch #${batch.production_batches.batch_number}` : ""}${isPartial ? ` | Partial: ${dispatchQty}/${batch.available_qty}` : ""}${remarks ? ` | ${remarks}` : ""}`,
-        };
-      });
-
-      const { error: dispatchError } = await supabase
-        .from("dispatches")
-        .insert(dispatchRecords);
-
-      if (dispatchError) throw dispatchError;
+          dispatch_id: dispatchData.id,
+          item_code: woData?.item_code || batch.work_orders?.item_code || "N/A",
+          item_description: `${woData?.item_code || batch.work_orders?.item_code} - ${batch.work_orders?.customer || woData?.customer}`,
+          so_ordered_qty: soOrderedQty,
+          packed_qty: batch.quantity,
+          dispatched_qty: dispatchQty,
+          rejected_qty: 0,
+          unit_rate: unitRate,
+          currency: currency,
+          gross_weight_kg: woData?.gross_weight_per_pc ? (dispatchQty * woData.gross_weight_per_pc / 1000) : null,
+          net_weight_kg: woData?.net_weight_per_pc ? (dispatchQty * woData.net_weight_per_pc / 1000) : null,
+          created_by: user?.id,
+          remarks: isPartial ? `Partial dispatch: ${dispatchQty}/${batch.available_qty}` : null,
+        });
+      }
 
       // 4. Notify
       const summary = getSelectedSummary();
@@ -523,8 +592,9 @@ export default function Dispatch() {
 
         // If no work_order_id, we need to handle this case
         // Create dispatch record with inventory source noted in remarks
+        let dispatchId: string | null = null;
         if (item.work_order_id && batchId) {
-          const { error: dispatchError } = await supabase
+          const { data: dispatchData, error: dispatchError } = await supabase
             .from("dispatches")
             .insert({
               wo_id: item.work_order_id,
@@ -533,9 +603,67 @@ export default function Dispatch() {
               shipment_id: shipmentData.id,
               dispatched_by: user?.id,
               remarks: `[INVENTORY] ${item.item_code} | From Stock | Source: ${item.source_type}${remarks ? ` | ${remarks}` : ""}`,
-            });
+            })
+            .select()
+            .single();
 
-          if (dispatchError) console.error("Dispatch record error:", dispatchError);
+          if (dispatchError) {
+            console.error("Dispatch record error:", dispatchError);
+          } else {
+            dispatchId = dispatchData?.id;
+          }
+        }
+
+        // Create dispatch note for inventory dispatch (source of truth for invoicing)
+        if (item.work_order_id) {
+          // Get WO details
+          const { data: woData } = await supabase
+            .from("work_orders")
+            .select("so_id, quantity, gross_weight_per_pc, net_weight_per_pc, financial_snapshot, customer")
+            .eq("id", item.work_order_id)
+            .single();
+
+          // Get unit rate from financial_snapshot
+          const financialSnapshot = woData?.financial_snapshot as any;
+          const unitRate = financialSnapshot?.line_item?.price_per_pc || 0;
+          const currency = financialSnapshot?.currency || "USD";
+
+          // Generate dispatch note number
+          const { data: existingNotes } = await supabase
+            .from("dispatch_notes")
+            .select("dispatch_note_no")
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          let noteNo = "DN-0001";
+          if (existingNotes && existingNotes.length > 0) {
+            const lastNo = existingNotes[0].dispatch_note_no;
+            const numMatch = lastNo.match(/DN-(\d+)/);
+            if (numMatch) {
+              const lastNum = parseInt(numMatch[1]);
+              noteNo = `DN-${String(lastNum + 1).padStart(4, "0")}`;
+            }
+          }
+
+          await supabase.from("dispatch_notes").insert({
+            dispatch_note_no: noteNo,
+            work_order_id: item.work_order_id,
+            sales_order_id: woData?.so_id,
+            shipment_id: shipmentData.id,
+            dispatch_id: dispatchId,
+            item_code: item.item_code,
+            item_description: `${item.item_code} - Stock Dispatch (${item.source_type})`,
+            so_ordered_qty: woData?.quantity,
+            packed_qty: dispatchQty,
+            dispatched_qty: dispatchQty,
+            rejected_qty: 0,
+            unit_rate: unitRate,
+            currency: currency,
+            gross_weight_kg: woData?.gross_weight_per_pc ? (dispatchQty * woData.gross_weight_per_pc / 1000) : null,
+            net_weight_kg: woData?.net_weight_per_pc ? (dispatchQty * woData.net_weight_per_pc / 1000) : null,
+            created_by: user?.id,
+            remarks: `From inventory: ${item.source_type}`,
+          });
         }
 
         // Create inventory movement record
