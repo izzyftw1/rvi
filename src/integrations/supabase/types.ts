@@ -3566,7 +3566,10 @@ export type Database = {
           ended_at: string | null
           external_partner_id: string | null
           external_process_type: string | null
+          external_returned_at: string | null
+          external_sent_at: string | null
           id: string
+          post_external_qc_status: string | null
           previous_batch_id: string | null
           produced_qty: number | null
           production_allowed: boolean | null
@@ -3582,6 +3585,7 @@ export type Database = {
           qc_material_status: string | null
           qc_pending_qty: number | null
           qc_rejected_qty: number | null
+          requires_qc_on_return: boolean | null
           stage_entered_at: string | null
           stage_type: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at: string
@@ -3599,7 +3603,10 @@ export type Database = {
           ended_at?: string | null
           external_partner_id?: string | null
           external_process_type?: string | null
+          external_returned_at?: string | null
+          external_sent_at?: string | null
           id?: string
+          post_external_qc_status?: string | null
           previous_batch_id?: string | null
           produced_qty?: number | null
           production_allowed?: boolean | null
@@ -3615,6 +3622,7 @@ export type Database = {
           qc_material_status?: string | null
           qc_pending_qty?: number | null
           qc_rejected_qty?: number | null
+          requires_qc_on_return?: boolean | null
           stage_entered_at?: string | null
           stage_type?: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at?: string
@@ -3632,7 +3640,10 @@ export type Database = {
           ended_at?: string | null
           external_partner_id?: string | null
           external_process_type?: string | null
+          external_returned_at?: string | null
+          external_sent_at?: string | null
           id?: string
+          post_external_qc_status?: string | null
           previous_batch_id?: string | null
           produced_qty?: number | null
           production_allowed?: boolean | null
@@ -3648,6 +3659,7 @@ export type Database = {
           qc_material_status?: string | null
           qc_pending_qty?: number | null
           qc_rejected_qty?: number | null
+          requires_qc_on_return?: boolean | null
           stage_entered_at?: string | null
           stage_type?: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at?: string
@@ -6927,8 +6939,13 @@ export type Database = {
         | "other"
       person_role: "operator" | "programmer" | "qc_inspector"
       production_release_status: "NOT_RELEASED" | "RELEASED"
-      qc_result: "pass" | "fail" | "rework" | "pending"
-      qc_type: "first_piece" | "in_process" | "final" | "incoming"
+      qc_result: "pass" | "fail" | "rework" | "pending" | "waived"
+      qc_type:
+        | "first_piece"
+        | "in_process"
+        | "final"
+        | "incoming"
+        | "post_external"
       reconciliation_reason:
         | "short_supply"
         | "excess_supply"
@@ -7219,8 +7236,14 @@ export const Constants = {
       ],
       person_role: ["operator", "programmer", "qc_inspector"],
       production_release_status: ["NOT_RELEASED", "RELEASED"],
-      qc_result: ["pass", "fail", "rework", "pending"],
-      qc_type: ["first_piece", "in_process", "final", "incoming"],
+      qc_result: ["pass", "fail", "rework", "pending", "waived"],
+      qc_type: [
+        "first_piece",
+        "in_process",
+        "final",
+        "incoming",
+        "post_external",
+      ],
       reconciliation_reason: [
         "short_supply",
         "excess_supply",
