@@ -1834,42 +1834,58 @@ export type Database = {
           amount: number
           created_at: string | null
           description: string
+          dispatch_id: string | null
           gst_amount: number | null
           gst_percent: number | null
           id: string
           invoice_id: string
+          item_code: string | null
           quantity: number
           rate: number
           so_item_id: string | null
           total_line: number
+          wo_id: string | null
         }
         Insert: {
           amount: number
           created_at?: string | null
           description: string
+          dispatch_id?: string | null
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
           invoice_id: string
+          item_code?: string | null
           quantity: number
           rate: number
           so_item_id?: string | null
           total_line: number
+          wo_id?: string | null
         }
         Update: {
           amount?: number
           created_at?: string | null
           description?: string
+          dispatch_id?: string | null
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
           invoice_id?: string
+          item_code?: string | null
           quantity?: number
           rate?: number
           so_item_id?: string | null
           total_line?: number
+          wo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoice_items_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoice_items_invoice_id_fkey"
             columns: ["invoice_id"]
@@ -1882,6 +1898,27 @@ export type Database = {
             columns: ["so_item_id"]
             isOneToOne: false
             referencedRelation: "sales_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "invoice_items_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -1904,6 +1941,7 @@ export type Database = {
           payment_terms_days: number | null
           pdf_url: string | null
           recovery_stage: Database["public"]["Enums"]["recovery_stage"] | null
+          shipment_id: string | null
           so_id: string | null
           status: Database["public"]["Enums"]["invoice_status"] | null
           subtotal: number
@@ -1928,6 +1966,7 @@ export type Database = {
           payment_terms_days?: number | null
           pdf_url?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
+          shipment_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["invoice_status"] | null
           subtotal?: number
@@ -1952,6 +1991,7 @@ export type Database = {
           payment_terms_days?: number | null
           pdf_url?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
+          shipment_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["invoice_status"] | null
           subtotal?: number
@@ -1972,6 +2012,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
             referencedColumns: ["id"]
           },
           {
