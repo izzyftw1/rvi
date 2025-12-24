@@ -1,15 +1,19 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useBatchQuantities, BatchQuantities } from "./useBatchQuantities";
 
 /**
  * Derived Work Order Quantity Summary
  * 
- * Uses EXISTING data only - no new schema fields:
+ * DEPRECATED: Use useBatchQuantities instead for new code.
+ * This hook is maintained for backwards compatibility.
+ * 
+ * All quantities derive from batch records:
  * - ordered_qty: from work_orders.quantity
  * - produced_qty: SUM of production_batches.produced_qty
  * - qc_approved_qty: SUM of production_batches.qc_approved_qty
  * - packed_qty (released_qty): SUM of cartons.quantity
- * - dispatched_qty: SUM of dispatches.quantity
+ * - dispatched_qty: SUM of cartons with status='dispatched'
  * - remaining_qty: ordered_qty - dispatched_qty
  */
 
@@ -33,112 +37,30 @@ interface UseWorkOrderQuantitiesResult {
   refresh: () => Promise<void>;
 }
 
+/**
+ * Hook for Work Order quantities - wraps useBatchQuantities for backwards compatibility
+ */
 export function useWorkOrderQuantities(woId: string | undefined): UseWorkOrderQuantitiesResult {
-  const [quantities, setQuantities] = useState<WorkOrderQuantities>({
-    orderedQty: 0,
-    producedQty: 0,
-    qcApprovedQty: 0,
-    qcRejectedQty: 0,
-    packedQty: 0,
-    dispatchedQty: 0,
-    remainingQty: 0,
-    pendingPackQty: 0,
-    pendingDispatchQty: 0,
-    completionPct: 0,
-    isComplete: false
-  });
-  const [loading, setLoading] = useState(true);
-
-  const loadQuantities = useCallback(async () => {
-    if (!woId) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      // Get ordered quantity from work order
-      const { data: wo } = await supabase
-        .from('work_orders')
-        .select('quantity')
-        .eq('id', woId)
-        .single();
-
-      const orderedQty = wo?.quantity || 0;
-
-      // Get production batch totals
-      const { data: batches } = await supabase
-        .from('production_batches')
-        .select('produced_qty, qc_approved_qty, qc_rejected_qty')
-        .eq('wo_id', woId);
-
-      const producedQty = batches?.reduce((sum, b) => sum + (b.produced_qty || 0), 0) || 0;
-      const qcApprovedQty = batches?.reduce((sum, b) => sum + (b.qc_approved_qty || 0), 0) || 0;
-      const qcRejectedQty = batches?.reduce((sum, b) => sum + (b.qc_rejected_qty || 0), 0) || 0;
-
-      // Get packed quantity from cartons
-      const { data: cartons } = await supabase
-        .from('cartons')
-        .select('quantity')
-        .eq('wo_id', woId);
-
-      const packedQty = cartons?.reduce((sum, c) => sum + (c.quantity || 0), 0) || 0;
-
-      // Get dispatched quantity from dispatches
-      const { data: dispatches } = await supabase
-        .from('dispatches')
-        .select('quantity')
-        .eq('wo_id', woId);
-
-      const dispatchedQty = dispatches?.reduce((sum, d) => sum + (d.quantity || 0), 0) || 0;
-
-      // Derived calculations
-      const remainingQty = Math.max(0, orderedQty - dispatchedQty);
-      const pendingPackQty = Math.max(0, qcApprovedQty - packedQty);
-      const pendingDispatchQty = Math.max(0, packedQty - dispatchedQty);
-      const completionPct = orderedQty > 0 ? Math.min(100, (dispatchedQty / orderedQty) * 100) : 0;
-      const isComplete = remainingQty === 0 && orderedQty > 0;
-
-      setQuantities({
-        orderedQty,
-        producedQty,
-        qcApprovedQty,
-        qcRejectedQty,
-        packedQty,
-        dispatchedQty,
-        remainingQty,
-        pendingPackQty,
-        pendingDispatchQty,
-        completionPct,
-        isComplete
-      });
-    } catch (error) {
-      console.error('Error loading work order quantities:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [woId]);
-
-  useEffect(() => {
-    loadQuantities();
-
-    if (!woId) return;
-
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel(`wo_quantities_${woId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${woId}` }, loadQuantities)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cartons', filter: `wo_id=eq.${woId}` }, loadQuantities)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches', filter: `wo_id=eq.${woId}` }, loadQuantities)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [woId, loadQuantities]);
+  const { quantities: bq, loading, refresh } = useBatchQuantities(woId);
+  
+  // Map BatchQuantities to WorkOrderQuantities format
+  const quantities: WorkOrderQuantities = {
+    orderedQty: bq.orderedQty,
+    producedQty: bq.producedQty,
+    qcApprovedQty: bq.qcApprovedQty,
+    qcRejectedQty: bq.qcRejectedQty,
+    packedQty: bq.packedQty,
+    dispatchedQty: bq.dispatchedQty,
+    remainingQty: Math.max(0, bq.orderedQty - bq.dispatchedQty),
+    pendingPackQty: bq.remainingToPackQty,
+    pendingDispatchQty: bq.remainingToDispatchQty,
+    completionPct: bq.dispatchPct,
+    isComplete: bq.isComplete,
+  };
 
   return {
     quantities,
     loading,
-    refresh: loadQuantities
+    refresh
   };
 }

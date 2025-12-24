@@ -21,6 +21,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchBatchQuantitiesMultiple, BatchQuantities } from "@/hooks/useBatchQuantities";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -278,36 +279,8 @@ export default function ProductionProgress() {
 
       const woIds = woData.map(wo => wo.id);
 
-      // 2. Load production logs aggregated by WO - SINGLE SOURCE OF TRUTH
-      const { data: logData, error: logError } = await supabase
-        .from("daily_production_logs")
-        .select("wo_id, target_quantity, actual_quantity, ok_quantity, total_rejection_quantity")
-        .in("wo_id", woIds);
-
-      if (logError) throw logError;
-
-      // Aggregate production log data by WO
-      const logAggregates = new Map<string, { 
-        target_qty: number; 
-        actual_qty: number; 
-        ok_qty: number; 
-        scrap_qty: number 
-      }>();
-      
-      (logData || []).forEach((log: any) => {
-        if (!log.wo_id) return;
-        const existing = logAggregates.get(log.wo_id) || { 
-          target_qty: 0, 
-          actual_qty: 0, 
-          ok_qty: 0, 
-          scrap_qty: 0 
-        };
-        existing.target_qty += log.target_quantity ?? 0;
-        existing.actual_qty += log.actual_quantity ?? 0;
-        existing.ok_qty += log.ok_quantity ?? 0;
-        existing.scrap_qty += log.total_rejection_quantity ?? 0;
-        logAggregates.set(log.wo_id, existing);
-      });
+      // 2. Load batch quantities - SINGLE SOURCE OF TRUTH from production_batches
+      const batchQuantities = await fetchBatchQuantitiesMultiple(woIds);
 
       // 3. Load external moves status
       const { data: externalData } = await supabase
@@ -321,24 +294,19 @@ export default function ProductionProgress() {
         externalStatus.set(m.work_order_id, m.status);
       });
 
-      // 4. Enrich work orders with production log derived metrics
+      // 4. Enrich work orders with batch-derived metrics
       const enriched: WorkOrder[] = woData.map((wo) => {
-        const logAggregate = logAggregates.get(wo.id) || { 
-          target_qty: 0, 
-          actual_qty: 0, 
-          ok_qty: 0, 
-          scrap_qty: 0 
-        };
-        const target_qty = logAggregate.target_qty;
-        const actual_qty = logAggregate.actual_qty;
-        const ok_qty = logAggregate.ok_qty;
-        const scrap_qty = logAggregate.scrap_qty;
+        const bq = batchQuantities.get(wo.id);
+        const target_qty = wo.quantity; // Use ordered as target for progress
+        const actual_qty = bq?.producedQty || 0;
+        const ok_qty = bq?.qcApprovedQty || 0;
+        const scrap_qty = bq?.qcRejectedQty || 0;
         const remaining_qty = Math.max(0, wo.quantity - ok_qty);
         const progress_pct = wo.quantity > 0 
           ? Math.min(100, Math.round((ok_qty / wo.quantity) * 100)) 
           : 0;
-        const efficiency_pct = target_qty > 0
-          ? Math.round((ok_qty / target_qty) * 100)
+        const efficiency_pct = actual_qty > 0
+          ? Math.round((ok_qty / actual_qty) * 100)
           : 0;
 
         return {
@@ -368,8 +336,8 @@ export default function ProductionProgress() {
     const channel = supabase
       .channel("production_progress_realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "production_batches" }, () => loadWorkOrders())
+      .on("postgres_changes", { event: "*", schema: "public", table: "cartons" }, () => loadWorkOrders())
       .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => loadWorkOrders())
       .subscribe();
 
