@@ -16,6 +16,7 @@ import WorkOrders from "./pages/WorkOrders";
 import NewWorkOrder from "./pages/NewWorkOrder";
 import WorkOrderDetail from "./pages/WorkOrderDetail";
 import MaterialInwards from "./pages/MaterialInwards";
+import GoodsInwards from "./pages/GoodsInwards";
 import QCIncoming from "./pages/QCIncoming";
 import Quality from "./pages/Quality";
 import Packing from "./pages/Packing";
@@ -114,6 +115,7 @@ const App = () => (
           <Route path="/reports/reconciliation" element={<ReconciliationReport />} />
           <Route path="/suppliers/:id/ledger" element={<SupplierLedger />} />
           <Route path="/materials/inwards" element={<MaterialInwards />} />
+          <Route path="/goods-inwards" element={<GoodsInwards />} />
           <Route path="/qc/incoming" element={<QCIncoming />} />
           <Route path="/work-orders" element={<WorkOrders />} />
           <Route path="/work-orders/new" element={<NewWorkOrder />} />

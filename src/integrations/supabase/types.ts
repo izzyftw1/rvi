@@ -2722,6 +2722,196 @@ export type Database = {
           },
         ]
       }
+      material_receipts: {
+        Row: {
+          batch_id: string | null
+          challan_no: string | null
+          created_at: string
+          dc_number: string | null
+          destination_partner_id: string | null
+          external_movement_id: string | null
+          heat_no: string | null
+          id: string
+          invoice_date: string | null
+          invoice_no: string | null
+          lr_no: string | null
+          material_grade: string | null
+          process_type: string | null
+          qc_approved_at: string | null
+          qc_approved_by: string | null
+          qc_status: string | null
+          quantity_ok: number | null
+          quantity_received: number
+          quantity_rejected: number | null
+          receipt_date: string
+          receipt_no: string
+          receipt_type: Database["public"]["Enums"]["material_receipt_type"]
+          received_by: string | null
+          remarks: string | null
+          requires_qc: boolean | null
+          rpo_id: string | null
+          source_partner_id: string | null
+          source_supplier_id: string | null
+          transporter: string | null
+          unit: Database["public"]["Enums"]["batch_unit"]
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          challan_no?: string | null
+          created_at?: string
+          dc_number?: string | null
+          destination_partner_id?: string | null
+          external_movement_id?: string | null
+          heat_no?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_no?: string | null
+          lr_no?: string | null
+          material_grade?: string | null
+          process_type?: string | null
+          qc_approved_at?: string | null
+          qc_approved_by?: string | null
+          qc_status?: string | null
+          quantity_ok?: number | null
+          quantity_received: number
+          quantity_rejected?: number | null
+          receipt_date?: string
+          receipt_no: string
+          receipt_type: Database["public"]["Enums"]["material_receipt_type"]
+          received_by?: string | null
+          remarks?: string | null
+          requires_qc?: boolean | null
+          rpo_id?: string | null
+          source_partner_id?: string | null
+          source_supplier_id?: string | null
+          transporter?: string | null
+          unit?: Database["public"]["Enums"]["batch_unit"]
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          challan_no?: string | null
+          created_at?: string
+          dc_number?: string | null
+          destination_partner_id?: string | null
+          external_movement_id?: string | null
+          heat_no?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_no?: string | null
+          lr_no?: string | null
+          material_grade?: string | null
+          process_type?: string | null
+          qc_approved_at?: string | null
+          qc_approved_by?: string | null
+          qc_status?: string | null
+          quantity_ok?: number | null
+          quantity_received?: number
+          quantity_rejected?: number | null
+          receipt_date?: string
+          receipt_no?: string
+          receipt_type?: Database["public"]["Enums"]["material_receipt_type"]
+          received_by?: string | null
+          remarks?: string | null
+          requires_qc?: boolean | null
+          rpo_id?: string | null
+          source_partner_id?: string | null
+          source_supplier_id?: string | null
+          transporter?: string | null
+          unit?: Database["public"]["Enums"]["batch_unit"]
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_receipts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_destination_partner_id_fkey"
+            columns: ["destination_partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_destination_partner_id_fkey"
+            columns: ["destination_partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_external_movement_id_fkey"
+            columns: ["external_movement_id"]
+            isOneToOne: false
+            referencedRelation: "external_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_source_partner_id_fkey"
+            columns: ["source_partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_source_partner_id_fkey"
+            columns: ["source_partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_source_supplier_id_fkey"
+            columns: ["source_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "material_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_requirements: {
         Row: {
           created_at: string | null
@@ -7019,6 +7209,137 @@ export type Database = {
           },
         ]
       }
+      material_receipts_ledger: {
+        Row: {
+          batch_id: string | null
+          batch_number: number | null
+          challan_no: string | null
+          created_at: string | null
+          customer: string | null
+          dc_number: string | null
+          destination_partner_id: string | null
+          destination_partner_name: string | null
+          external_movement_id: string | null
+          heat_no: string | null
+          id: string | null
+          invoice_date: string | null
+          invoice_no: string | null
+          item_code: string | null
+          lr_no: string | null
+          material_grade: string | null
+          process_type: string | null
+          qc_approved_at: string | null
+          qc_approved_by: string | null
+          qc_status: string | null
+          quantity_ok: number | null
+          quantity_received: number | null
+          quantity_rejected: number | null
+          receipt_date: string | null
+          receipt_no: string | null
+          receipt_type:
+            | Database["public"]["Enums"]["material_receipt_type"]
+            | null
+          received_by: string | null
+          remarks: string | null
+          requires_qc: boolean | null
+          rpo_id: string | null
+          source_partner_id: string | null
+          source_partner_name: string | null
+          source_supplier_id: string | null
+          source_supplier_name: string | null
+          transporter: string | null
+          unit: Database["public"]["Enums"]["batch_unit"] | null
+          updated_at: string | null
+          work_order_display_id: string | null
+          work_order_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_receipts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_destination_partner_id_fkey"
+            columns: ["destination_partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_destination_partner_id_fkey"
+            columns: ["destination_partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_external_movement_id_fkey"
+            columns: ["external_movement_id"]
+            isOneToOne: false
+            referencedRelation: "external_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_source_partner_id_fkey"
+            columns: ["source_partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_source_partner_id_fkey"
+            columns: ["source_partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_source_supplier_id_fkey"
+            columns: ["source_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "material_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operation_route_progress_vw: {
         Row: {
           actual_ok_qty: number | null
@@ -7336,6 +7657,12 @@ export type Database = {
       generate_grn_number: { Args: never; Returns: string }
       generate_ncr_number: { Args: never; Returns: string }
       generate_raw_po_number: { Args: never; Returns: string }
+      generate_receipt_number: {
+        Args: {
+          receipt_type: Database["public"]["Enums"]["material_receipt_type"]
+        }
+        Returns: string
+      }
       generate_rpo_number: { Args: never; Returns: string }
       generate_wo_number: { Args: never; Returns: string }
       get_batch_dispatchable_qty: {
@@ -7488,6 +7815,11 @@ export type Database = {
         | "overdue"
         | "void"
       material_qc_status: "not_required" | "pending" | "passed" | "failed"
+      material_receipt_type:
+        | "supplier_to_factory"
+        | "partner_to_factory"
+        | "partner_to_partner"
+        | "partner_to_packing"
       material_status: "received" | "issued" | "in_use" | "consumed"
       ncr_disposition: "REWORK" | "SCRAP" | "USE_AS_IS" | "RETURN_TO_SUPPLIER"
       ncr_status:
@@ -7808,6 +8140,12 @@ export const Constants = {
         "void",
       ],
       material_qc_status: ["not_required", "pending", "passed", "failed"],
+      material_receipt_type: [
+        "supplier_to_factory",
+        "partner_to_factory",
+        "partner_to_partner",
+        "partner_to_packing",
+      ],
       material_status: ["received", "issued", "in_use", "consumed"],
       ncr_disposition: ["REWORK", "SCRAP", "USE_AS_IS", "RETURN_TO_SUPPLIER"],
       ncr_status: [
