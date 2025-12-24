@@ -14,7 +14,8 @@ import {
   Download, 
   AlertTriangle,
   CheckCircle2,
-  Clock
+  Clock,
+  Info as InfoIcon
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -169,7 +170,7 @@ export const FinalQCStatusCard = ({
             </div>
             <div>
               <CardTitle className="text-base">Final Dispatch QC</CardTitle>
-              <CardDescription>Final inspection before packing and dispatch</CardDescription>
+              <CardDescription>Read-only status view</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -185,6 +186,19 @@ export const FinalQCStatusCard = ({
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Info Banner */}
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-blue-800 dark:text-blue-300">
+              Final QC is performed in Quality → Final QC
+            </p>
+            <p className="text-blue-600 dark:text-blue-400 mt-1">
+              This section displays read-only status and summary. All inspection actions must be completed in the dedicated Final QC page.
+            </p>
+          </div>
+        </div>
+
         {/* Summary Stats */}
         <div className="grid grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
           <div className="text-center">
@@ -235,8 +249,8 @@ export const FinalQCStatusCard = ({
           </div>
         )}
 
-        {/* Latest Report */}
-        {latestReport && (
+        {/* Latest Report & Download */}
+        {latestReport ? (
           <div className="p-3 border rounded-lg space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -244,37 +258,39 @@ export const FinalQCStatusCard = ({
                 <span className="text-sm font-medium">Final QC Report</span>
                 <Badge variant="secondary" className="text-xs">v{latestReport.version_number}</Badge>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => window.open(latestReport.file_url, '_blank')}
-              >
-                <Download className="h-4 w-4 mr-1" />
-                Download
-              </Button>
             </div>
             <div className="text-xs text-muted-foreground">
               Generated {format(new Date(latestReport.generated_at), 'PPp')}
               {latestReport.generated_by_name && ` by ${latestReport.generated_by_name}`}
             </div>
+            <Button
+              size="sm"
+              variant="default"
+              className="w-full gap-2"
+              onClick={() => window.open(latestReport.file_url, '_blank')}
+            >
+              <Download className="h-4 w-4" />
+              Download Final QC PDF
+            </Button>
+          </div>
+        ) : (
+          <div className="p-3 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>No Final QC report generated yet</p>
+            <p className="text-xs mt-1">Complete Final QC inspection to generate report</p>
           </div>
         )}
 
-        {/* Action Button - Navigate to Final QC Page */}
-        <div className="pt-2 border-t">
+        {/* Action Buttons */}
+        <div className="pt-2 border-t space-y-2">
           <Button
-            variant={qualityReleased ? "outline" : "default"}
-            className="w-full"
-            onClick={() => navigate(`/final-qc/${woId}`)}
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => navigate(`/quality/final-qc?wo=${woId}`)}
           >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            {qualityReleased ? 'View Full Inspection Details' : 'Go to Final QC Inspection'}
+            <ExternalLink className="h-4 w-4" />
+            View Final QC
           </Button>
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            {qualityReleased 
-              ? 'Final QC inspection completed. View details or regenerate report.'
-              : 'Perform final inspection in Quality > Final QC'}
-          </p>
         </div>
       </CardContent>
     </Card>
