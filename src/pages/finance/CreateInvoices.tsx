@@ -279,7 +279,38 @@ export default function CreateInvoices() {
         const gstAmount = (subtotal * gstPercent) / 100;
         const totalAmount = subtotal + gstAmount;
 
+        // Check for open customer adjustments to auto-apply (INTERNAL ONLY - not on PDF)
+        let internalAdjustmentTotal = 0;
+        let internalAdjustmentNotes = '';
+        const appliedAdjustmentIds: string[] = [];
+
+        if (shipment.customer_id) {
+          const { data: openAdjustments } = await supabase
+            .from("customer_credit_adjustments")
+            .select("*")
+            .eq("customer_id", shipment.customer_id)
+            .eq("status", "pending")
+            .gt("remaining_amount", 0)
+            .order("created_at", { ascending: true });
+
+          if (openAdjustments && openAdjustments.length > 0) {
+            let remainingToApply = totalAmount;
+            
+            for (const adj of openAdjustments) {
+              if (remainingToApply <= 0) break;
+              
+              const applyAmount = Math.min(adj.remaining_amount, remainingToApply);
+              internalAdjustmentTotal += applyAmount;
+              remainingToApply -= applyAmount;
+              
+              internalAdjustmentNotes += `${adj.adjustment_type}: ${adj.currency} ${applyAmount.toLocaleString()} (from ${adj.reason}); `;
+              appliedAdjustmentIds.push(adj.id);
+            }
+          }
+        }
+
         // Create invoice linked to shipment
+        // Note: total_amount and balance_amount remain unchanged for PDF - adjustment is internal only
         const { data: invoice, error: invoiceError } = await supabase
           .from("invoices")
           .insert({
@@ -292,18 +323,35 @@ export default function CreateInvoices() {
             subtotal,
             gst_percent: gstPercent,
             gst_amount: gstAmount,
-            total_amount: totalAmount,
-            balance_amount: totalAmount,
-            paid_amount: 0,
+            total_amount: totalAmount, // PDF total remains full amount
+            balance_amount: totalAmount - internalAdjustmentTotal, // Balance reduced by internal adjustment
+            paid_amount: internalAdjustmentTotal, // Internal adjustment counts as "paid"
             status: 'issued',
             currency: shipment.currency,
             payment_terms_days: shipment.payment_terms_days,
-            created_by: user?.id
+            created_by: user?.id,
+            internal_adjustment_total: internalAdjustmentTotal > 0 ? internalAdjustmentTotal : null,
+            internal_adjustment_notes: internalAdjustmentNotes || null
           })
           .select()
           .single();
 
         if (invoiceError) throw invoiceError;
+
+        // Mark adjustments as applied
+        if (appliedAdjustmentIds.length > 0 && invoice) {
+          for (const adjId of appliedAdjustmentIds) {
+            await supabase
+              .from("customer_credit_adjustments")
+              .update({
+                status: 'applied',
+                applied_to_invoice_id: invoice.id,
+                applied_at: new Date().toISOString(),
+                remaining_amount: 0
+              })
+              .eq("id", adjId);
+          }
+        }
 
         // Create invoice items from dispatch_notes (SOURCE OF TRUTH - not SO items)
         const dispatchNoteIds: string[] = [];
@@ -340,6 +388,11 @@ export default function CreateInvoices() {
           .from("dispatch_notes")
           .update({ invoiced: true, invoice_id: invoice.id })
           .in("id", dispatchNoteIds);
+
+        // Show info if adjustments were applied
+        if (internalAdjustmentTotal > 0) {
+          toast.info(`Applied ${shipment.currency} ${internalAdjustmentTotal.toLocaleString()} customer adjustment to ${invoiceNo}`);
+        }
       }
 
       toast.success(`Created ${selected.size} invoice(s) from dispatched quantities`);

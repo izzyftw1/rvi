@@ -390,6 +390,9 @@ export type Database = {
       customer_credit_adjustments: {
         Row: {
           adjustment_type: string
+          applied_at: string | null
+          applied_to_invoice_id: string | null
+          closure_adjustment_id: string | null
           created_at: string
           created_by: string | null
           currency: string
@@ -409,6 +412,9 @@ export type Database = {
         }
         Insert: {
           adjustment_type?: string
+          applied_at?: string | null
+          applied_to_invoice_id?: string | null
+          closure_adjustment_id?: string | null
           created_at?: string
           created_by?: string | null
           currency?: string
@@ -428,6 +434,9 @@ export type Database = {
         }
         Update: {
           adjustment_type?: string
+          applied_at?: string | null
+          applied_to_invoice_id?: string | null
+          closure_adjustment_id?: string | null
           created_at?: string
           created_by?: string | null
           currency?: string
@@ -446,6 +455,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "customer_credit_adjustments_applied_to_invoice_id_fkey"
+            columns: ["applied_to_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_adjustments_closure_adjustment_id_fkey"
+            columns: ["closure_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_closure_adjustments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "customer_credit_adjustments_customer_id_fkey"
             columns: ["customer_id"]
@@ -2653,6 +2676,8 @@ export type Database = {
           gst_amount: number | null
           gst_percent: number | null
           id: string
+          internal_adjustment_notes: string | null
+          internal_adjustment_total: number | null
           invoice_date: string
           invoice_no: string
           net_payable: number | null
@@ -2688,6 +2713,8 @@ export type Database = {
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
+          internal_adjustment_notes?: string | null
+          internal_adjustment_total?: number | null
           invoice_date?: string
           invoice_no: string
           net_payable?: number | null
@@ -2723,6 +2750,8 @@ export type Database = {
           gst_amount?: number | null
           gst_percent?: number | null
           id?: string
+          internal_adjustment_notes?: string | null
+          internal_adjustment_total?: number | null
           invoice_date?: string
           invoice_no?: string
           net_payable?: number | null
