@@ -272,6 +272,13 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
   const [pendingLogId, setPendingLogId] = useState<string | null>(null);
   const [ncrPrefillData, setNcrPrefillData] = useState<any>(null);
   
+  // Batch-level production complete state (to check if current batch is complete)
+  const [currentBatchComplete, setCurrentBatchComplete] = useState<{
+    isComplete: boolean;
+    batchNumber: number | null;
+    completeQty: number | null;
+  }>({ isComplete: false, batchNumber: null, completeQty: null });
+  
   const {
     register,
     handleSubmit,
@@ -455,6 +462,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     loadPeople();
     loadMachines();
     loadRouteSteps();
+    loadCurrentBatchStatus();
   }, [propWorkOrder]);
 
   const loadPeople = async () => {
@@ -528,6 +536,43 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       }
     } catch (error) {
       console.error("Error loading route steps:", error);
+    }
+  };
+
+  // Load current batch status to check if production is complete at BATCH level
+  const loadCurrentBatchStatus = async () => {
+    if (!propWorkOrder?.id) {
+      setCurrentBatchComplete({ isComplete: false, batchNumber: null, completeQty: null });
+      return;
+    }
+    
+    try {
+      // Get the current active batch (not ended) or the most recent batch
+      const { data, error } = await supabase
+        .from("production_batches")
+        .select("id, batch_number, production_complete, production_complete_qty, ended_at")
+        .eq("wo_id", propWorkOrder.id)
+        .order("batch_number", { ascending: false })
+        .limit(1);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const batch = data[0];
+        // If the batch is complete, block logging for THIS batch
+        // But if batch has ended_at set, a new batch may be created
+        const isComplete = batch.production_complete === true && !batch.ended_at;
+        setCurrentBatchComplete({
+          isComplete,
+          batchNumber: batch.batch_number,
+          completeQty: batch.production_complete_qty,
+        });
+      } else {
+        setCurrentBatchComplete({ isComplete: false, batchNumber: null, completeQty: null });
+      }
+    } catch (error) {
+      console.error("Error loading current batch status:", error);
+      setCurrentBatchComplete({ isComplete: false, batchNumber: null, completeQty: null });
     }
   };
 
@@ -767,10 +812,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     toast.success("NCR created and linked to production log");
   };
 
-  // Check if production is complete (locked)
-  const isProductionComplete = propWorkOrder?.production_complete === true;
+  // Check if production is complete at BATCH level (not WO level)
+  // This allows other batches to continue while one batch is complete
+  const isCurrentBatchComplete = currentBatchComplete.isComplete;
 
-  if (isProductionComplete) {
+  if (isCurrentBatchComplete) {
     return (
       <Card className="border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20">
         <CardContent className="p-4">
@@ -778,11 +824,14 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
             <Lock className="h-5 w-5 text-emerald-600 mt-0.5" />
             <div className="space-y-1">
               <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
-                Production is complete.
+                Batch #{currentBatchComplete.batchNumber} production is complete.
               </p>
               <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                Production was marked complete with {(propWorkOrder?.production_complete_qty || 0).toLocaleString()} pcs. 
-                Further logging is locked. Packing & dispatch can proceed.
+                Production was marked complete with {(currentBatchComplete.completeQty || 0).toLocaleString()} pcs. 
+                This batch can now proceed to QC → Packing → Dispatch.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                To log more production, create a new batch or reopen this batch from the Batch Status panel.
               </p>
             </div>
           </div>
