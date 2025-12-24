@@ -4001,6 +4001,7 @@ export type Database = {
           action_completed_by: string | null
           action_due_date: string | null
           action_notes: string | null
+          adjustment_created: boolean | null
           assigned_at: string | null
           assigned_by: string | null
           assigned_to: string | null
@@ -4008,14 +4009,18 @@ export type Database = {
           closed_by: string | null
           closure_notes: string | null
           corrective_action: string | null
+          cost_impact: number | null
           created_at: string
           created_by: string | null
           disposition: Database["public"]["Enums"]["ncr_disposition"] | null
           due_date: string | null
           effectiveness_check: string | null
           effectiveness_verified: boolean | null
+          financial_impact_type: string | null
           id: string
           issue_description: string
+          linked_dispatch_id: string | null
+          linked_invoice_id: string | null
           machine_id: string | null
           material_lot_id: string | null
           ncr_number: string
@@ -4040,6 +4045,7 @@ export type Database = {
           action_completed_by?: string | null
           action_due_date?: string | null
           action_notes?: string | null
+          adjustment_created?: boolean | null
           assigned_at?: string | null
           assigned_by?: string | null
           assigned_to?: string | null
@@ -4047,14 +4053,18 @@ export type Database = {
           closed_by?: string | null
           closure_notes?: string | null
           corrective_action?: string | null
+          cost_impact?: number | null
           created_at?: string
           created_by?: string | null
           disposition?: Database["public"]["Enums"]["ncr_disposition"] | null
           due_date?: string | null
           effectiveness_check?: string | null
           effectiveness_verified?: boolean | null
+          financial_impact_type?: string | null
           id?: string
           issue_description: string
+          linked_dispatch_id?: string | null
+          linked_invoice_id?: string | null
           machine_id?: string | null
           material_lot_id?: string | null
           ncr_number: string
@@ -4079,6 +4089,7 @@ export type Database = {
           action_completed_by?: string | null
           action_due_date?: string | null
           action_notes?: string | null
+          adjustment_created?: boolean | null
           assigned_at?: string | null
           assigned_by?: string | null
           assigned_to?: string | null
@@ -4086,14 +4097,18 @@ export type Database = {
           closed_by?: string | null
           closure_notes?: string | null
           corrective_action?: string | null
+          cost_impact?: number | null
           created_at?: string
           created_by?: string | null
           disposition?: Database["public"]["Enums"]["ncr_disposition"] | null
           due_date?: string | null
           effectiveness_check?: string | null
           effectiveness_verified?: boolean | null
+          financial_impact_type?: string | null
           id?: string
           issue_description?: string
+          linked_dispatch_id?: string | null
+          linked_invoice_id?: string | null
           machine_id?: string | null
           material_lot_id?: string | null
           ncr_number?: string
@@ -4114,6 +4129,20 @@ export type Database = {
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ncrs_linked_dispatch_id_fkey"
+            columns: ["linked_dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ncrs_linked_invoice_id_fkey"
+            columns: ["linked_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ncrs_machine_id_fkey"
             columns: ["machine_id"]

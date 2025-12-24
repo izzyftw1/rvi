@@ -44,7 +44,12 @@ interface NCR {
   material_lot_id: string | null;
   production_log_id: string | null;
   closure_notes: string | null;
-  work_orders?: { wo_number: string; display_id: string } | null;
+  financial_impact_type: 'SCRAP' | 'REWORK' | 'CUSTOMER_REJECTION' | null;
+  linked_invoice_id: string | null;
+  linked_dispatch_id: string | null;
+  cost_impact: number | null;
+  adjustment_created: boolean;
+  work_orders?: { wo_number: string; display_id: string; customer_id: string; financial_snapshot: any } | null;
 }
 
 const STATUS_CONFIG = {
@@ -66,6 +71,7 @@ export default function NCRDetail() {
   
   const [formData, setFormData] = useState<{
     disposition: 'REWORK' | 'SCRAP' | 'USE_AS_IS' | 'RETURN_TO_SUPPLIER' | '';
+    financial_impact_type: 'SCRAP' | 'REWORK' | 'CUSTOMER_REJECTION' | '';
     root_cause: string;
     corrective_action: string;
     preventive_action: string;
@@ -74,6 +80,7 @@ export default function NCRDetail() {
     closure_notes: string;
   }>({
     disposition: '',
+    financial_impact_type: '',
     root_cause: '',
     corrective_action: '',
     preventive_action: '',
@@ -92,7 +99,7 @@ export default function NCRDetail() {
         .from('ncrs')
         .select(`
           *,
-          work_orders (wo_number, display_id)
+          work_orders (wo_number, display_id, customer_id, financial_snapshot)
         `)
         .eq('id', id)
         .single();
@@ -101,6 +108,7 @@ export default function NCRDetail() {
       setNCR(data as NCR);
       setFormData({
         disposition: data.disposition || '',
+        financial_impact_type: (data.financial_impact_type as 'SCRAP' | 'REWORK' | 'CUSTOMER_REJECTION' | '') || '',
         root_cause: data.root_cause || '',
         corrective_action: data.corrective_action || '',
         preventive_action: data.preventive_action || '',
@@ -139,6 +147,67 @@ export default function NCRDetail() {
     return missing;
   };
 
+  // Calculate cost impact based on disposition and work order pricing
+  const calculateCostImpact = (): number => {
+    if (!ncr?.work_orders?.financial_snapshot) return 0;
+    const snapshot = ncr.work_orders.financial_snapshot;
+    const pricePerPc = snapshot?.line_item?.price_per_pc || 0;
+    return ncr.quantity_affected * pricePerPc;
+  };
+
+  // Auto-create customer adjustment when NCR is customer rejection
+  const createCustomerAdjustment = async () => {
+    if (!ncr || formData.financial_impact_type !== 'CUSTOMER_REJECTION') return;
+    if (ncr.adjustment_created) return; // Already created
+    
+    const customerId = ncr.work_orders?.customer_id;
+    if (!customerId) {
+      toast.error('Cannot create adjustment: No customer linked to work order');
+      return;
+    }
+
+    const costImpact = calculateCostImpact();
+    const snapshot = ncr.work_orders?.financial_snapshot;
+    const currency = snapshot?.currency || 'USD';
+
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      
+      const { error } = await supabase
+        .from('customer_credit_adjustments')
+        .insert({
+          customer_id: customerId,
+          ncr_id: ncr.id,
+          source_invoice_id: ncr.linked_invoice_id,
+          adjustment_type: 'rejection',
+          original_amount: costImpact,
+          remaining_amount: costImpact,
+          currency,
+          reason: `Customer Rejection - NCR ${ncr.ncr_number}: ${ncr.issue_description.substring(0, 100)}`,
+          rejection_qty: ncr.quantity_affected,
+          unit_rate: snapshot?.line_item?.price_per_pc || 0,
+          status: 'pending',
+          created_by: user?.user?.id,
+          notes: `Auto-created from NCR ${ncr.ncr_number}`,
+        });
+
+      if (error) throw error;
+      
+      // Mark NCR as having adjustment created
+      await supabase
+        .from('ncrs')
+        .update({ adjustment_created: true, cost_impact: costImpact } as any)
+        .eq('id', ncr.id);
+      
+      toast.success('Customer adjustment created automatically');
+      return true;
+    } catch (error) {
+      console.error('Error creating customer adjustment:', error);
+      toast.error('Failed to create customer adjustment');
+      return false;
+    }
+  };
+
   const handleSave = async () => {
     if (!ncr) return;
     
@@ -155,21 +224,30 @@ export default function NCRDetail() {
         newStatus = 'ACTION_IN_PROGRESS';
       }
 
+      const costImpact = calculateCostImpact();
+
       const { error } = await supabase
         .from('ncrs')
         .update({
           disposition: formData.disposition || null,
+          financial_impact_type: formData.financial_impact_type || null,
           root_cause: formData.root_cause || null,
           corrective_action: formData.corrective_action || null,
           preventive_action: formData.preventive_action || null,
           effectiveness_check: formData.effectiveness_check || null,
           effectiveness_verified: formData.effectiveness_verified,
           closure_notes: formData.closure_notes || null,
+          cost_impact: costImpact,
           status: newStatus,
         } as any)
         .eq('id', ncr.id);
 
       if (error) throw error;
+
+      // Auto-create customer adjustment if financial impact is customer rejection
+      if (formData.financial_impact_type === 'CUSTOMER_REJECTION' && !ncr.adjustment_created) {
+        await createCustomerAdjustment();
+      }
       
       toast.success('NCR updated successfully');
       loadNCR();
@@ -395,6 +473,46 @@ export default function NCRDetail() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <Label>Financial Impact Classification</Label>
+                  <Select 
+                    value={formData.financial_impact_type} 
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, financial_impact_type: v as 'SCRAP' | 'REWORK' | 'CUSTOMER_REJECTION' | '' }))}
+                    disabled={isClosed}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select financial impact..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SCRAP">Scrap (Company Loss)</SelectItem>
+                      <SelectItem value="REWORK">Rework (WIP)</SelectItem>
+                      <SelectItem value="CUSTOMER_REJECTION">Customer Rejection (Adjustment)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formData.financial_impact_type === 'CUSTOMER_REJECTION' && !ncr.adjustment_created && (
+                    <p className="text-xs text-amber-600">
+                      ⚠️ A customer adjustment will be auto-created when you save
+                    </p>
+                  )}
+                  {ncr.adjustment_created && (
+                    <Badge variant="outline" className="text-green-600 border-green-600">
+                      ✓ Customer adjustment created
+                    </Badge>
+                  )}
+                </div>
+
+                {ncr.cost_impact && ncr.cost_impact > 0 && (
+                  <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+                    <Label className="text-muted-foreground">Estimated Cost Impact</Label>
+                    <p className="text-xl font-bold text-destructive">
+                      ${ncr.cost_impact.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {ncr.quantity_affected} pcs × unit price
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
