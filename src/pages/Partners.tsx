@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ interface Partner {
 }
 
 const Partners = () => {
+  const [searchParams] = useSearchParams();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -52,6 +54,10 @@ const Partners = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [processFilter, setProcessFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  
+  // Read filter from URL params for overdue filtering
+  const urlFilter = searchParams.get('filter');
+  const [showOverdueOnly, setShowOverdueOnly] = useState(() => urlFilter === 'overdue');
   
   // Form state
   const [formData, setFormData] = useState({
