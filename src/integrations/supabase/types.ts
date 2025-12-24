@@ -1237,6 +1237,146 @@ export type Database = {
           },
         ]
       }
+      external_movements: {
+        Row: {
+          actual_return_date: string | null
+          batch_id: string
+          challan_no: string | null
+          created_at: string | null
+          created_by: string | null
+          dc_number: string | null
+          expected_return_date: string | null
+          forwarded_from_movement_id: string | null
+          forwarded_to_movement_id: string | null
+          id: string
+          partner_id: string | null
+          process_type: string
+          quantity_rejected: number | null
+          quantity_returned: number | null
+          quantity_sent: number
+          remarks: string | null
+          sent_date: string
+          status: Database["public"]["Enums"]["external_movement_status"] | null
+          unit: Database["public"]["Enums"]["batch_unit"] | null
+          updated_at: string | null
+          work_order_id: string
+        }
+        Insert: {
+          actual_return_date?: string | null
+          batch_id: string
+          challan_no?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dc_number?: string | null
+          expected_return_date?: string | null
+          forwarded_from_movement_id?: string | null
+          forwarded_to_movement_id?: string | null
+          id?: string
+          partner_id?: string | null
+          process_type: string
+          quantity_rejected?: number | null
+          quantity_returned?: number | null
+          quantity_sent: number
+          remarks?: string | null
+          sent_date?: string
+          status?:
+            | Database["public"]["Enums"]["external_movement_status"]
+            | null
+          unit?: Database["public"]["Enums"]["batch_unit"] | null
+          updated_at?: string | null
+          work_order_id: string
+        }
+        Update: {
+          actual_return_date?: string | null
+          batch_id?: string
+          challan_no?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dc_number?: string | null
+          expected_return_date?: string | null
+          forwarded_from_movement_id?: string | null
+          forwarded_to_movement_id?: string | null
+          id?: string
+          partner_id?: string | null
+          process_type?: string
+          quantity_rejected?: number | null
+          quantity_returned?: number | null
+          quantity_sent?: number
+          remarks?: string | null
+          sent_date?: string
+          status?:
+            | Database["public"]["Enums"]["external_movement_status"]
+            | null
+          unit?: Database["public"]["Enums"]["batch_unit"] | null
+          updated_at?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_movements_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_forwarded_from_movement_id_fkey"
+            columns: ["forwarded_from_movement_id"]
+            isOneToOne: false
+            referencedRelation: "external_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_forwarded_to_movement_id_fkey"
+            columns: ["forwarded_to_movement_id"]
+            isOneToOne: false
+            referencedRelation: "external_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "external_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_partners: {
         Row: {
           address: string | null
@@ -7330,6 +7470,13 @@ export type Database = {
         | "packing"
       employment_type: "internal" | "agency"
       execution_direction: "IN" | "OUT" | "COMPLETE"
+      external_movement_status:
+        | "sent"
+        | "in_transit"
+        | "at_partner"
+        | "partially_returned"
+        | "returned"
+        | "forwarded"
       first_piece_qc_status: "not_required" | "pending" | "approved" | "failed"
       followup_channel: "phone" | "email" | "whatsapp" | "in_person"
       gst_type: "domestic" | "export" | "not_applicable"
@@ -7641,6 +7788,14 @@ export const Constants = {
       ],
       employment_type: ["internal", "agency"],
       execution_direction: ["IN", "OUT", "COMPLETE"],
+      external_movement_status: [
+        "sent",
+        "in_transit",
+        "at_partner",
+        "partially_returned",
+        "returned",
+        "forwarded",
+      ],
       first_piece_qc_status: ["not_required", "pending", "approved", "failed"],
       followup_channel: ["phone", "email", "whatsapp", "in_person"],
       gst_type: ["domestic", "export", "not_applicable"],
