@@ -4,147 +4,139 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Download, ClipboardCheck, FileText, MapPin } from "lucide-react";
-import { QRCodeDisplay } from "@/components/QRCodeDisplay";
-
+import { Truck, ClipboardCheck, Package, Send } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
-import { ShipmentTimeline } from "@/components/ShipmentTimeline";
-import { ShipmentDetailsDialog } from "@/components/ShipmentDetailsDialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DispatchBatchSelector } from "@/components/dispatch/DispatchBatchSelector";
+
+interface WorkOrder {
+  id: string;
+  wo_id: string;
+  customer: string;
+  item_code: string;
+  quantity: number;
+}
+
+interface Dispatch {
+  id: string;
+  quantity: number;
+  dispatched_at: string;
+  batch_id: string;
+  wo_id: string;
+  remarks: string | null;
+  work_orders?: { wo_id: string; customer: string; item_code: string } | null;
+  production_batches?: { batch_number: number } | null;
+  shipments?: { ship_id: string } | null;
+}
 
 export default function Dispatch() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [palletId, setPalletId] = useState("");
-  const [palletData, setPalletData] = useState<any>(null);
-  const [shipments, setShipments] = useState<any[]>([]);
-  const [selectedShipment, setSelectedShipment] = useState<string | null>(null);
-  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [selectedWoId, setSelectedWoId] = useState<string | null>(null);
+  
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [dispatchableQty, setDispatchableQty] = useState(0);
+  
+  const [dispatchQty, setDispatchQty] = useState<number>(0);
+  const [remarks, setRemarks] = useState("");
+  
+  const [dispatches, setDispatches] = useState<Dispatch[]>([]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-    loadShipments();
+    loadWorkOrders();
+    loadDispatches();
   }, []);
 
-  const loadShipments = async () => {
+  const loadWorkOrders = async () => {
     const { data } = await supabase
-      .from("shipments")
-      .select(`
-        *,
-        shipment_pallets(
-          pallets(
-            pallet_id,
-            pallet_cartons(
-              cartons(
-                work_orders(id, wo_id)
-              )
-            )
-          )
-        )
-      `)
+      .from("work_orders")
+      .select("id, wo_id, customer, item_code, quantity")
+      .in("status", ["in_progress", "qc", "packing"])
       .order("created_at", { ascending: false });
     
-    if (data) setShipments(data);
+    if (data) setWorkOrders(data);
   };
 
-  const handleFindPallet = async () => {
+  const loadDispatches = async () => {
     const { data } = await supabase
-      .from("pallets")
+      .from("dispatches")
       .select(`
         *,
-        pallet_cartons(
-          cartons(
-            carton_id,
-            heat_nos,
-            work_orders(wo_id, customer, item_code, dispatch_allowed)
-          )
-        )
+        work_orders(wo_id, customer, item_code),
+        production_batches(batch_number),
+        shipments(ship_id)
       `)
-      .eq("pallet_id", palletId)
-      .maybeSingle();
+      .order("dispatched_at", { ascending: false })
+      .limit(20);
     
-    if (data) {
-      setPalletData(data);
-      
-      // Check if all WOs are dispatch allowed
-      const allWOs = data?.pallet_cartons?.map((pc: any) => pc?.cartons?.work_orders).filter(Boolean) || [];
-      const allAllowed = allWOs.every((wo: any) => wo?.dispatch_allowed === true);
-      
-      if (!allAllowed) {
-        // Check which WOs are missing QC approval
-        const missingQC = allWOs
-          .filter((wo: any) => !wo?.dispatch_allowed)
-          .map((wo: any) => wo?.wo_id ?? "Unknown")
-          .filter(Boolean);
-        toast({ 
-          variant: "destructive", 
-          description: `⚠️ Pre-Dispatch QC Summary not approved for: ${missingQC.join(", ")}. Dispatch blocked.` 
-        });
-      }
-    } else {
-      toast({ variant: "destructive", description: "Pallet not found" });
-    }
+    if (data) setDispatches(data);
   };
 
-  const handleCreateShipment = async () => {
-    if (!palletData) return;
+  const handleWoChange = (woId: string) => {
+    setSelectedWoId(woId);
+    setSelectedBatchId(null);
+    setDispatchableQty(0);
+    setDispatchQty(0);
+  };
 
-    // Verify dispatch allowed
-    const allAllowed = palletData?.pallet_cartons?.every((pc: any) => 
-      pc?.cartons?.work_orders?.dispatch_allowed === true
-    ) ?? false;
+  const handleBatchSelect = (batchId: string | null, availableQty: number) => {
+    setSelectedBatchId(batchId);
+    setDispatchableQty(availableQty);
+    setDispatchQty(Math.min(dispatchQty, availableQty));
+  };
 
-    if (!allAllowed) {
-      const missingQC = palletData?.pallet_cartons
-        ?.map((pc: any) => pc?.cartons?.work_orders)
-        .filter(Boolean)
-        .filter((wo: any) => !wo?.dispatch_allowed)
-        .map((wo: any) => wo?.wo_id ?? "Unknown")
-        .filter(Boolean) || [];
-      toast({ 
-        variant: "destructive", 
-        description: `Cannot dispatch: Pre-Dispatch QC Summary not approved for ${missingQC.join(", ")}` 
-      });
+  const handleCreateDispatch = async () => {
+    if (!selectedWoId || !selectedBatchId || dispatchQty <= 0) {
+      toast({ variant: "destructive", description: "Please select WO, batch and enter quantity" });
+      return;
+    }
+
+    if (dispatchQty > dispatchableQty) {
+      toast({ variant: "destructive", description: `Cannot dispatch more than ${dispatchableQty} pcs` });
       return;
     }
 
     setLoading(true);
-
     try {
-      const customer = palletData?.pallet_cartons?.[0]?.cartons?.work_orders?.customer ?? "N/A";
-      
-      const { data: shipment, error } = await supabase
-        .from("shipments")
+      const { error } = await supabase
+        .from("dispatches")
         .insert({
-          ship_id: `SHIP-${Date.now()}`,
-          customer,
-          incoterm: "EXW",
-          ship_date: new Date().toISOString()
-        })
-        .select()
-        .single();
+          wo_id: selectedWoId,
+          batch_id: selectedBatchId,
+          quantity: dispatchQty,
+          dispatched_by: user?.id,
+          remarks: remarks || null
+        });
 
       if (error) throw error;
 
-      await supabase.from("shipment_pallets").insert({
-        shipment_id: shipment.id,
-        pallet_id: palletData.id
-      });
-
-      await supabase.from("scan_events").insert({
-        entity_type: "pallet",
-        entity_id: palletData.pallet_id,
-        to_stage: "dispatched",
-        owner_id: user?.id,
-        remarks: `Shipment: ${shipment.ship_id}`
-      });
-
-      toast({ description: `✅ Shipment created: ${shipment.ship_id}` });
-      setPalletId("");
-      setPalletData(null);
-      loadShipments();
+      toast({ description: `Dispatched ${dispatchQty} pcs successfully` });
+      
+      setDispatchQty(0);
+      setRemarks("");
+      setSelectedBatchId(null);
+      setDispatchableQty(0);
+      
+      loadDispatches();
+      
+      const woId = selectedWoId;
+      setSelectedWoId(null);
+      setTimeout(() => setSelectedWoId(woId), 100);
+      
     } catch (error: any) {
       toast({ variant: "destructive", description: error.message });
     } finally {
@@ -152,152 +144,7 @@ export default function Dispatch() {
     }
   };
 
-  const generateDocuments = async (shipment: any) => {
-    setLoading(true);
-    
-    try {
-      // Fetch full shipment data with all related information
-      const { data: fullShipment } = await supabase
-        .from("shipments")
-        .select(`
-          *,
-          shipment_pallets(
-            pallets(
-              pallet_id,
-              pallet_cartons(
-                cartons(
-                  carton_id,
-                  quantity,
-                  net_weight,
-                  gross_weight,
-                  heat_nos,
-                  work_orders(
-                    wo_id,
-                    customer,
-                    item_code,
-                    sales_orders(
-                      so_id,
-                      po_number,
-                      po_date,
-                      items
-                    )
-                  )
-                )
-              )
-            )
-          )
-        `)
-        .eq("id", shipment.id)
-        .single();
-
-      if (!fullShipment) {
-        toast({ variant: "destructive", description: "Shipment data not found" });
-        return;
-      }
-
-      // Extract data for document generation
-      const pallets = fullShipment?.shipment_pallets || [];
-      const allCartons = pallets.flatMap((sp: any) => 
-        sp?.pallets?.pallet_cartons?.map((pc: any) => pc?.cartons).filter(Boolean) || []
-      );
-      
-      const firstCarton = allCartons[0];
-      const salesOrder = firstCarton?.work_orders?.sales_orders;
-      
-      // Generate invoice number and date
-      const invoiceNo = fullShipment?.ship_id?.replace('SHIP-', 'EXPRV') ?? 'EXPRV-UNKNOWN';
-      const currentDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
-      
-      // Prepare invoice data
-      const invoiceData = {
-        invoiceNo,
-        date: currentDate,
-        piNo: salesOrder?.so_id ?? 'N/A',
-        piDate: salesOrder?.po_date ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-') : currentDate,
-        consignee: {
-          name: fullShipment?.customer ?? "N/A",
-          address: 'UNIT B-380, COURTNEY PARK, DRIVE E\nMISSISSAUGA, ON L5T 2S5\nCANADA'
-        },
-        notifyParty: {
-          name: fullShipment.customer,
-          address: 'UNIT 104 - 2945, 190TH STREET\nSURREY, BC V3Z 0W5\nCANADA'
-        },
-        portOfLoading: 'JNPT',
-        portOfDischarge: 'TORONTO',
-        finalDestination: 'TORONTO - CANADA',
-        paymentTerms: '30% ADVANCE & BALANCE AGAINST COPY OF BL',
-        marks: 'GRVL',
-        kindOfPackages: `${allCartons.length} BOXES IN ${pallets.length} PALLET${pallets.length > 1 ? 'S' : ''}`,
-        grossWeight: allCartons.reduce((sum: number, c: any) => sum + (Number(c?.gross_weight) || 0), 0),
-        lineItems: allCartons.map((carton: any, idx: number) => ({
-          srNo: idx + 1,
-          description: `${carton?.work_orders?.item_code ?? 'ITEM'}`,
-          hsCode: 'CETH-74153390',
-          quantity: carton?.quantity ?? 0,
-          rate: 4.0,
-          total: (carton?.quantity ?? 0) * 4.0
-        })),
-        advance: 6000,
-        currency: 'USD'
-      };
-
-      // Prepare packing list data
-      const packingListData = {
-        invoiceNo,
-        date: currentDate,
-        piNo: salesOrder?.so_id || 'N/A',
-        piDate: salesOrder?.po_date ? new Date(salesOrder.po_date).toLocaleDateString('en-GB').replace(/\//g, '-') : currentDate,
-        consignee: invoiceData.consignee,
-        notifyParty: invoiceData.notifyParty,
-        portOfLoading: 'JNPT',
-        portOfDischarge: 'TORONTO',
-        finalDestination: 'TORONTO - CANADA',
-        paymentTerms: '30% ADVANCE & BALANCE AGAINST COPY OF BL',
-        vessel: 'BY SEA',
-        marks: 'GRVL',
-        description: 'NUTS/SCREW/WASHERS MADE OF BRASS (CETH-74153390)',
-        kindOfPackages: invoiceData.kindOfPackages,
-        lineItems: pallets.map((pallet: any, idx: number) => {
-          const palletCartons = pallet.pallets?.pallet_cartons || [];
-          const totalPcs = palletCartons.reduce((sum: number, pc: any) => 
-            sum + (pc.cartons?.quantity || 0), 0);
-          const totalWeight = palletCartons.reduce((sum: number, pc: any) => 
-            sum + (pc.cartons?.gross_weight || 0), 0);
-          const firstCarton = palletCartons[0]?.cartons;
-          
-          return {
-            palletNo: (idx + 1).toString(),
-            boxNos: palletCartons.map((pc: any, i: number) => i + 1).join(', '),
-            totalBoxes: palletCartons.length,
-            pcsPerBox: firstCarton ? Math.round(firstCarton.quantity / palletCartons.length) : 0,
-            totalPcs,
-            itemName: firstCarton?.work_orders?.item_code || 'ITEM',
-            grossWeight: totalWeight
-          };
-        })
-      };
-
-      // Generate PDFs
-      const { generateCommercialInvoice, generatePackingList } = await import('@/lib/documentGenerator');
-      
-      const invoicePdf = generateCommercialInvoice(invoiceData);
-      const packingListPdf = generatePackingList(packingListData);
-      
-      // Download both documents
-      invoicePdf.save(`${invoiceNo}-Commercial-Invoice.pdf`);
-      packingListPdf.save(`${invoiceNo}-Packing-List.pdf`);
-
-      // Note: Document storage in shipments.documents will be available after migration
-      // For now, documents are downloaded locally
-      
-      toast({ description: "✅ Commercial Invoice & Packing List generated successfully" });
-    } catch (error: any) {
-      console.error('Document generation error:', error);
-      toast({ variant: "destructive", description: "Failed to generate documents: " + error.message });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const selectedWo = workOrders.find(wo => wo.id === selectedWoId);
 
   return (
     <div className="min-h-screen bg-background">
@@ -305,140 +152,172 @@ export default function Dispatch() {
         <div className="space-y-6">
           <PageHeader
             title="Goods Dispatch"
-            description="Create shipments and dispatch pallets"
+            description="Create batch-based dispatches for work orders"
             icon={<Truck className="h-6 w-6" />}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Create Shipment</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Send className="h-5 w-5" />
+                  Create Dispatch
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Scan or enter Pallet ID"
-                    value={palletId}
-                    onChange={(e) => setPalletId(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleFindPallet()}
-                  />
-                  <Button onClick={handleFindPallet}>Find</Button>
+                <div className="space-y-2">
+                  <Label>Work Order</Label>
+                  <Select value={selectedWoId || undefined} onValueChange={handleWoChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Work Order..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workOrders.map(wo => (
+                        <SelectItem key={wo.id} value={wo.id}>
+                          {wo.wo_id} - {wo.customer} ({wo.item_code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {palletData && (
-                  <div className="space-y-4 border-t pt-4">
-                    <h3 className="font-semibold">Pallet: {palletData.pallet_id}</h3>
-                  <div className="space-y-2">
-                    {palletData?.pallet_cartons && palletData.pallet_cartons.length > 0 ? (
-                      palletData.pallet_cartons.map((pc: any) => (
-                        <div key={pc?.cartons?.carton_id ?? Math.random()} className="text-sm border-l-4 border-primary pl-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p><strong>Carton:</strong> {pc?.cartons?.carton_id ?? "N/A"}</p>
-                              <p><strong>WO:</strong> {pc?.cartons?.work_orders?.wo_id ?? "N/A"}</p>
-                              <p><strong>Heat Nos:</strong> {pc?.cartons?.heat_nos?.join(", ") ?? "N/A"}</p>
-                              <p className={pc?.cartons?.work_orders?.dispatch_allowed ? "text-green-600" : "text-red-600"}>
-                                {pc?.cartons?.work_orders?.dispatch_allowed ? "✅ Dispatch Allowed" : "❌ QC Final Pending"}
-                              </p>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => navigate(`/dispatch-qc-report/${pc?.cartons?.work_orders?.id ?? ''}`)}
-                              disabled={!pc?.cartons?.work_orders?.id}
-                            >
-                              <ClipboardCheck className="h-4 w-4 mr-1" />
-                              QC Report
-                            </Button>
-                          </div>
+                {selectedWo && (
+                  <Card className="bg-muted/50">
+                    <CardContent className="py-3">
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Customer</p>
+                          <p className="font-medium">{selectedWo.customer}</p>
                         </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">No cartons in this pallet</p>
-                    )}
-                  </div>
+                        <div>
+                          <p className="text-muted-foreground">Item Code</p>
+                          <p className="font-medium">{selectedWo.item_code}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Order Qty</p>
+                          <p className="font-medium">{selectedWo.quantity} pcs</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
-                    <QRCodeDisplay 
-                      value={palletData.pallet_id}
-                      title="Pallet QR Code"
-                      entityInfo={`${palletData.pallet_cartons?.length || 0} cartons`}
-                      size={150}
-                    />
+                <DispatchBatchSelector
+                  workOrderId={selectedWoId || ""}
+                  onBatchSelect={handleBatchSelect}
+                />
+
+                {selectedBatchId && dispatchableQty > 0 && (
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Quantity to Dispatch</Label>
+                        <Badge variant="outline">Max: {dispatchableQty} pcs</Badge>
+                      </div>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={dispatchableQty}
+                        value={dispatchQty || ""}
+                        onChange={(e) => setDispatchQty(parseInt(e.target.value) || 0)}
+                        placeholder={`Enter qty (max ${dispatchableQty})`}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Remarks (optional)</Label>
+                      <Input
+                        value={remarks}
+                        onChange={(e) => setRemarks(e.target.value)}
+                        placeholder="e.g., Shipment reference, transporter..."
+                      />
+                    </div>
 
                     <Button 
-                      onClick={handleCreateShipment} 
-                      disabled={loading}
+                      onClick={handleCreateDispatch} 
+                      disabled={loading || dispatchQty <= 0 || dispatchQty > dispatchableQty}
                       className="w-full"
                     >
                       <Truck className="mr-2 h-4 w-4" />
-                      Create Shipment & Generate Docs
+                      Dispatch {dispatchQty > 0 ? `${dispatchQty} pcs` : ""}
                     </Button>
                   </div>
+                )}
+
+                {selectedBatchId && dispatchableQty === 0 && (
+                  <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+                    <CardContent className="py-4 text-center">
+                      <p className="text-orange-700 dark:text-orange-400 font-medium">
+                        No quantity available for dispatch
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        All QC-approved quantity has been dispatched
+                      </p>
+                    </CardContent>
+                  </Card>
                 )}
               </CardContent>
             </Card>
 
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold">Recent Shipments</h2>
-              {shipments.length === 0 ? (
+              <h2 className="text-lg font-semibold">Recent Dispatches</h2>
+              {dispatches.length === 0 ? (
                 <Card>
                   <CardContent className="py-12 text-center space-y-3">
-                    <Truck className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                    <Package className="h-12 w-12 mx-auto text-muted-foreground/50" />
                     <div>
-                      <p className="text-lg font-medium">No Shipments Yet</p>
-                      <p className="text-sm text-muted-foreground mb-1">
-                        <span className="font-medium">Why:</span> No pallets have been dispatched to customers.
-                      </p>
+                      <p className="text-lg font-medium">No Dispatches Yet</p>
                       <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">How to populate:</span> Complete packing for a work order, then dispatch the pallet.
+                        Dispatches will appear here after creating them
                       </p>
                     </div>
                   </CardContent>
                 </Card>
               ) : (
-                shipments.map((shipment) => (
-                  <Card key={shipment?.id ?? Math.random()}>
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                          <p className="font-semibold">{shipment?.ship_id ?? "N/A"}</p>
-                          <p className="text-sm text-muted-foreground">{shipment?.customer ?? "N/A"}</p>
-                          <p className="text-xs">
-                            {shipment?.ship_date ? new Date(shipment.ship_date).toLocaleDateString() : "—"}
-                          </p>
-                          <p className="text-xs">
-                            Pallets: {shipment?.shipment_pallets?.map((sp: any) => sp?.pallets?.pallet_id ?? "N/A").join(", ") || "N/A"}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <QRCodeDisplay 
-                            value={shipment?.ship_id ?? "N/A"}
-                            title="Shipment"
-                            size={100}
-                          />
-                          <div className="flex flex-col gap-1">
-                            <Button size="sm" variant="outline" onClick={() => generateDocuments(shipment)}>
-                              <Download className="h-4 w-4 mr-2" />
-                              Docs
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => {
-                                const woId = shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id;
-                                if (woId) navigate(`/dispatch-qc-report/${woId}`);
-                              }}
-                              disabled={!shipment?.shipment_pallets?.[0]?.pallets?.pallet_cartons?.[0]?.cartons?.work_orders?.id}
-                            >
-                              <ClipboardCheck className="h-4 w-4 mr-2" />
-                              QC Report
-                            </Button>
+                <div className="space-y-3">
+                  {dispatches.map((dispatch) => (
+                    <Card key={dispatch.id}>
+                      <CardContent className="py-4">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">
+                                {dispatch.work_orders?.wo_id || "N/A"}
+                              </p>
+                              <Badge variant="outline">
+                                Batch #{dispatch.production_batches?.batch_number || "?"}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {dispatch.work_orders?.customer} - {dispatch.work_orders?.item_code}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium text-green-600">{dispatch.quantity} pcs</span>
+                              {" dispatched on "}
+                              {new Date(dispatch.dispatched_at).toLocaleDateString()}
+                            </p>
+                            {dispatch.remarks && (
+                              <p className="text-xs text-muted-foreground">{dispatch.remarks}</p>
+                            )}
+                            {dispatch.shipments && (
+                              <Badge variant="secondary" className="mt-1">
+                                {dispatch.shipments.ship_id}
+                              </Badge>
+                            )}
                           </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/work-orders/${dispatch.wo_id}`)}
+                          >
+                            <ClipboardCheck className="h-4 w-4 mr-1" />
+                            View WO
+                          </Button>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               )}
             </div>
           </div>
