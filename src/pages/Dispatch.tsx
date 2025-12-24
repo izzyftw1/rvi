@@ -76,7 +76,7 @@ interface Shipment {
     quantity: number;
     remarks: string | null;
     carton_id: string | null;
-    cartons?: { carton_id: string } | null;
+    cartons?: { carton_id: string; quantity?: number } | null;
     work_orders?: { display_id: string } | null;
   }[];
 }
@@ -193,7 +193,7 @@ export default function Dispatch() {
       .from("shipments")
       .select(`
         id, ship_id, customer, status, created_at,
-        dispatches(id, quantity, remarks, carton_id, cartons(carton_id), work_orders(display_id))
+        dispatches(id, quantity, remarks, carton_id, cartons(carton_id, quantity), work_orders(display_id))
       `)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -1200,7 +1200,7 @@ export default function Dispatch() {
               <Card>
                 <CardHeader>
                   <CardTitle>Recent Shipments</CardTitle>
-                  <CardDescription>Dispatch history showing source type</CardDescription>
+                  <CardDescription>Dispatch history with quantity layers (Packed → Dispatched → Invoiced)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {recentShipments.length === 0 ? (
@@ -1215,8 +1215,18 @@ export default function Dispatch() {
                           <TableHead>Shipment ID</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Source</TableHead>
-                          <TableHead>Items</TableHead>
-                          <TableHead className="text-right">Total Qty</TableHead>
+                          <TableHead className="text-center">
+                            <div className="flex flex-col items-center">
+                              <Package className="h-4 w-4 mb-1 text-blue-500" />
+                              <span className="text-xs">Packed</span>
+                            </div>
+                          </TableHead>
+                          <TableHead className="text-center">
+                            <div className="flex flex-col items-center">
+                              <Truck className="h-4 w-4 mb-1 text-green-500" />
+                              <span className="text-xs">Dispatched</span>
+                            </div>
+                          </TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
                         </TableRow>
@@ -1225,28 +1235,28 @@ export default function Dispatch() {
                         {recentShipments.map((shipment) => {
                           // Determine source from first dispatch remarks
                           const firstRemarks = shipment.dispatches[0]?.remarks;
+                          const totalDispatched = shipment.dispatches.reduce((sum, d) => sum + d.quantity, 0);
+                          // Packed qty from cartons if available
+                          const totalPacked = shipment.dispatches.reduce((sum, d) => sum + (d.cartons?.quantity || d.quantity), 0);
                           
                           return (
                             <TableRow key={shipment.id}>
                               <TableCell className="font-mono font-medium">{shipment.ship_id}</TableCell>
                               <TableCell>{shipment.customer || "—"}</TableCell>
                               <TableCell>{getDispatchSourceBadge(firstRemarks)}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-1">
-                                  {shipment.dispatches.slice(0, 3).map((d, i) => (
-                                    <Badge key={i} variant="outline" className="text-xs">
-                                      {d.cartons?.carton_id || d.work_orders?.display_id || "—"}
-                                    </Badge>
-                                  ))}
-                                  {shipment.dispatches.length > 3 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{shipment.dispatches.length - 3} more
-                                    </Badge>
-                                  )}
-                                </div>
+                              <TableCell className="text-center font-medium text-blue-600">
+                                {totalPacked.toLocaleString()}
                               </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {shipment.dispatches.reduce((sum, d) => sum + d.quantity, 0)}
+                              <TableCell className="text-center font-medium text-green-600">
+                                {totalDispatched.toLocaleString()}
+                                {totalPacked !== totalDispatched && (
+                                  <Badge 
+                                    variant="outline" 
+                                    className={`ml-1 text-xs ${totalDispatched < totalPacked ? 'text-amber-600' : 'text-red-600'}`}
+                                  >
+                                    {totalDispatched > totalPacked ? '+' : ''}{totalDispatched - totalPacked}
+                                  </Badge>
+                                )}
                               </TableCell>
                               <TableCell>{getStatusBadge(shipment.status)}</TableCell>
                               <TableCell className="text-muted-foreground">

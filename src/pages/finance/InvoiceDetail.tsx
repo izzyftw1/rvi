@@ -4,15 +4,37 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle, Package, Truck, ClipboardList } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { QuantityLayersDisplay } from "@/components/finance/QuantityLayersDisplay";
+
+interface InvoiceItem {
+  id: string;
+  item_code: string;
+  description: string;
+  quantity: number;
+  so_ordered_qty: number | null;
+  rate: number;
+  amount: number;
+  gst_percent: number;
+  gst_amount: number;
+  total_line: number;
+  dispatch_note_id: string | null;
+  dispatch_notes?: {
+    packed_qty: number;
+    dispatched_qty: number;
+    so_ordered_qty: number | null;
+  } | null;
+}
 
 export default function InvoiceDetail() {
   const { id } = useParams();
   const [invoice, setInvoice] = useState<any>(null);
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [adjustments, setAdjustments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +57,17 @@ export default function InvoiceDetail() {
 
       setInvoice(invData);
 
+      // Load invoice items with dispatch notes for quantity layers
+      const { data: itemsData } = await supabase
+        .from("invoice_items")
+        .select(`
+          *,
+          dispatch_notes!dispatch_note_id(packed_qty, dispatched_qty, so_ordered_qty)
+        `)
+        .eq("invoice_id", id)
+        .order("created_at", { ascending: true });
+
+      setInvoiceItems((itemsData || []) as InvoiceItem[]);
       // Load invoice adjustments
       const { data: adjData } = await supabase
         .from("invoice_adjustments")
@@ -327,8 +360,121 @@ export default function InvoiceDetail() {
             </Card>
           </div>
 
-          {/* Right: Timeline */}
-          <div className="lg:col-span-2">
+          {/* Right: Invoice Items with Quantity Layers */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Quantity Summary */}
+            {invoiceItems.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Quantity Layers Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <QuantityLayersDisplay
+                    soQty={invoiceItems.reduce((sum, item) => sum + (item.so_ordered_qty || item.dispatch_notes?.so_ordered_qty || 0), 0)}
+                    packedQty={invoiceItems.reduce((sum, item) => sum + (item.dispatch_notes?.packed_qty || item.quantity), 0)}
+                    dispatchedQty={invoiceItems.reduce((sum, item) => sum + (item.dispatch_notes?.dispatched_qty || item.quantity), 0)}
+                    invoicedQty={invoiceItems.reduce((sum, item) => sum + item.quantity, 0)}
+                    showSoQty={true}
+                    showInvoicedQty={true}
+                  />
+                  <p className="text-xs text-muted-foreground mt-4">
+                    <strong>Rule:</strong> Invoice qty always equals Dispatched qty. SO qty is contractual reference only.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Invoice Line Items */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Invoice Line Items</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {invoiceItems.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No line items found
+                  </div>
+                ) : (
+                  <div className="rounded-md border overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-center">
+                            <div className="flex flex-col items-center">
+                              <ClipboardList className="h-4 w-4 mb-1 text-muted-foreground" />
+                              <span className="text-xs">SO Qty</span>
+                            </div>
+                          </TableHead>
+                          <TableHead className="text-center">
+                            <div className="flex flex-col items-center">
+                              <Package className="h-4 w-4 mb-1 text-blue-500" />
+                              <span className="text-xs">Packed</span>
+                            </div>
+                          </TableHead>
+                          <TableHead className="text-center">
+                            <div className="flex flex-col items-center">
+                              <Truck className="h-4 w-4 mb-1 text-green-500" />
+                              <span className="text-xs">Dispatched</span>
+                            </div>
+                          </TableHead>
+                          <TableHead className="text-center">
+                            <div className="flex flex-col items-center">
+                              <FileText className="h-4 w-4 mb-1 text-purple-500" />
+                              <span className="text-xs">Invoiced</span>
+                            </div>
+                          </TableHead>
+                          <TableHead className="text-right">Rate</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invoiceItems.map((item) => {
+                          const soQty = item.so_ordered_qty || item.dispatch_notes?.so_ordered_qty || null;
+                          const packedQty = item.dispatch_notes?.packed_qty || item.quantity;
+                          const dispatchedQty = item.dispatch_notes?.dispatched_qty || item.quantity;
+                          const invoicedQty = item.quantity;
+                          
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{item.item_code}</p>
+                                  <p className="text-xs text-muted-foreground">{item.description}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center text-muted-foreground">
+                                {soQty !== null ? soQty.toLocaleString() : "—"}
+                              </TableCell>
+                              <TableCell className="text-center font-medium text-blue-600">
+                                {packedQty.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-center font-medium text-green-600">
+                                {dispatchedQty.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-center font-medium text-purple-600">
+                                {invoicedQty.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {invoice.currency} {item.rate?.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {invoice.currency} {item.amount?.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Activity Timeline */}
             <Card>
               <CardHeader>
                 <CardTitle>Activity Timeline</CardTitle>
