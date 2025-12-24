@@ -6,12 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertCircle, ClipboardCheck } from "lucide-react";
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { WorkOrderSelect } from "@/components/ui/work-order-select";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
+import { DispatchQCBatchSelector } from "@/components/packing/DispatchQCBatchSelector";
+import { getRemainingUnQCdQuantity } from "@/hooks/useDispatchQCBatches";
 
 interface WorkOrder {
   id: string;
@@ -31,7 +33,15 @@ interface PackingBatch {
   num_pallets: number | null;
   status: string;
   built_at: string;
+  dispatch_qc_batch_id: string | null;
   work_orders?: { wo_number: string; item_code: string } | null;
+}
+
+interface WOQuantitySummary {
+  orderedQty: number;
+  producedQty: number;
+  dispatchQCApprovedQty: number;
+  remainingForQC: number;
 }
 
 const Packing = () => {
@@ -43,7 +53,9 @@ const Packing = () => {
   // Form state
   const [selectedWoId, setSelectedWoId] = useState<string>("");
   const [selectedWo, setSelectedWo] = useState<WorkOrder | null>(null);
+  const [selectedDispatchQCBatchId, setSelectedDispatchQCBatchId] = useState<string | null>(null);
   const [availableQty, setAvailableQty] = useState(0);
+  const [woQuantitySummary, setWoQuantitySummary] = useState<WOQuantitySummary | null>(null);
   const [form, setForm] = useState({
     quantity: "",
     numCartons: "",
@@ -63,14 +75,28 @@ const Packing = () => {
     if (selectedWoId) {
       const wo = workOrders.find(w => w.id === selectedWoId);
       setSelectedWo(wo || null);
+      setSelectedDispatchQCBatchId(null);
+      setAvailableQty(0);
       if (wo) {
-        loadAvailableQty(wo.id);
+        loadWOQuantitySummary(wo.id);
       }
     } else {
       setSelectedWo(null);
+      setSelectedDispatchQCBatchId(null);
       setAvailableQty(0);
+      setWoQuantitySummary(null);
     }
   }, [selectedWoId, workOrders]);
+
+  const loadWOQuantitySummary = async (woId: string) => {
+    const summary = await getRemainingUnQCdQuantity(woId);
+    setWoQuantitySummary(summary);
+  };
+
+  const handleDispatchQCBatchSelect = (batchId: string | null, availableQty: number) => {
+    setSelectedDispatchQCBatchId(batchId);
+    setAvailableQty(availableQty);
+  };
 
   const loadWorkOrders = async () => {
     const { data } = await supabase
@@ -82,35 +108,16 @@ const Packing = () => {
     setWorkOrders(data || []);
   };
 
-  const loadAvailableQty = async (woId: string) => {
-    // Get QC approved qty from production batches
-    const { data: batches } = await supabase
-      .from("production_batches")
-      .select("qc_approved_qty")
-      .eq("wo_id", woId);
-
-    const totalApproved = (batches || []).reduce((sum, b) => sum + (b.qc_approved_qty || 0), 0);
-
-    // Get already packed qty
-    const { data: packed } = await supabase
-      .from("cartons")
-      .select("quantity")
-      .eq("wo_id", woId);
-
-    const totalPacked = (packed || []).reduce((sum, c) => sum + (c.quantity || 0), 0);
-
-    setAvailableQty(Math.max(0, totalApproved - totalPacked));
-  };
-
   const loadPackingBatches = async () => {
     const { data } = await supabase
       .from("cartons")
-      .select("id, carton_id, wo_id, quantity, num_cartons, num_pallets, status, built_at, work_orders(wo_number, item_code)")
+      .select("id, carton_id, wo_id, quantity, num_cartons, num_pallets, status, built_at, dispatch_qc_batch_id, work_orders(wo_number, item_code)")
       .order("built_at", { ascending: false })
       .limit(50);
 
     setPackingBatches((data as unknown as PackingBatch[]) || []);
   };
+
 
   const handleCreatePackingBatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +127,15 @@ const Packing = () => {
     const numCartons = parseInt(form.numCartons);
     const numPallets = form.numPallets ? parseInt(form.numPallets) : null;
 
-    // Validation
+    // Validation - MUST have Dispatch QC batch selected
+    if (!selectedDispatchQCBatchId) {
+      toast({ 
+        variant: "destructive", 
+        description: "Please select a Dispatch QC batch. Packing requires QC approval." 
+      });
+      return;
+    }
+
     if (!qty || qty <= 0) {
       toast({ variant: "destructive", description: "Please enter a valid quantity" });
       return;
@@ -129,7 +144,7 @@ const Packing = () => {
     if (qty > availableQty) {
       toast({ 
         variant: "destructive", 
-        description: `Cannot pack ${qty} pcs. Only ${availableQty} pcs available from QC-approved stock.` 
+        description: `Cannot pack ${qty} pcs. Only ${availableQty} pcs available from this QC batch.` 
       });
       return;
     }
@@ -157,14 +172,15 @@ const Packing = () => {
         .map((i: any) => i?.material_lots?.heat_no)
         .filter(Boolean);
 
-      // Create packing batch
+      // Create packing batch with dispatch_qc_batch_id link
       const { error } = await supabase.from("cartons").insert({
         carton_id: batchId,
         wo_id: selectedWo.id,
+        dispatch_qc_batch_id: selectedDispatchQCBatchId,
         quantity: qty,
         num_cartons: numCartons,
         num_pallets: numPallets,
-        net_weight: 0, // Will be updated when physical packing happens
+        net_weight: 0,
         gross_weight: 0,
         heat_nos: heatNos.length > 0 ? heatNos : [],
         status: "ready_for_dispatch",
@@ -272,28 +288,44 @@ const Packing = () => {
                       />
                     </div>
 
-                    {/* Selected WO Info */}
+                    {/* Selected WO Info with Remaining Un-QC'd Quantity */}
                     {selectedWo && (
-                      <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{selectedWo.wo_number}</p>
-                            <p className="text-sm text-muted-foreground">{selectedWo.item_code}</p>
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{selectedWo.wo_number}</p>
+                              <p className="text-sm text-muted-foreground">{selectedWo.item_code}</p>
+                            </div>
+                            {woQuantitySummary && (
+                              <div className="text-right">
+                                <p className="text-sm text-muted-foreground">Order Progress</p>
+                                <p className="text-sm">
+                                  <span className="font-bold">{woQuantitySummary.dispatchQCApprovedQty}</span>
+                                  <span className="text-muted-foreground"> / {woQuantitySummary.orderedQty} QC'd</span>
+                                </p>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm text-muted-foreground">Available to Pack</p>
-                            <p className={`text-xl font-bold ${availableQty > 0 ? 'text-green-600' : 'text-destructive'}`}>
-                              {availableQty} pcs
-                            </p>
-                          </div>
+
+                          {/* Show remaining un-QC'd quantity */}
+                          {woQuantitySummary && woQuantitySummary.remainingForQC > 0 && (
+                            <div className="flex items-center gap-2 text-blue-600 bg-blue-500/10 px-3 py-2 rounded">
+                              <ClipboardCheck className="h-4 w-4" />
+                              <span className="text-sm">
+                                {woQuantitySummary.remainingForQC} pcs still pending Dispatch QC 
+                                (Produced: {woQuantitySummary.producedQty})
+                              </span>
+                            </div>
+                          )}
                         </div>
 
-                        {availableQty === 0 && (
-                          <div className="flex items-center gap-2 text-amber-600 bg-amber-500/10 px-3 py-2 rounded">
-                            <AlertCircle className="h-4 w-4" />
-                            <span className="text-sm">No QC-approved quantity available for packing</span>
-                          </div>
-                        )}
+                        {/* Dispatch QC Batch Selector - REQUIRED for packing */}
+                        <DispatchQCBatchSelector
+                          woId={selectedWo.id}
+                          selectedBatchId={selectedDispatchQCBatchId}
+                          onBatchSelect={handleDispatchQCBatchSelect}
+                        />
                       </div>
                     )}
 
