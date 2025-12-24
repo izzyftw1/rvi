@@ -2473,6 +2473,53 @@ export type Database = {
           },
         ]
       }
+      invoice_closure_adjustments: {
+        Row: {
+          adjustment_amount: number
+          adjustment_reason: string
+          closed_at: string
+          closed_by: string | null
+          created_at: string
+          id: string
+          invoice_id: string
+          reference_id: string | null
+          reference_note: string | null
+          reference_type: string | null
+        }
+        Insert: {
+          adjustment_amount: number
+          adjustment_reason: string
+          closed_at?: string
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          invoice_id: string
+          reference_id?: string | null
+          reference_note?: string | null
+          reference_type?: string | null
+        }
+        Update: {
+          adjustment_amount?: number
+          adjustment_reason?: string
+          closed_at?: string
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          reference_id?: string | null
+          reference_note?: string | null
+          reference_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_closure_adjustments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_items: {
         Row: {
           amount: number
@@ -2593,6 +2640,9 @@ export type Database = {
         Row: {
           adjustment_amount: number
           balance_amount: number
+          closed_adjusted_at: string | null
+          closed_adjusted_by: string | null
+          closure_adjustment_total: number | null
           created_at: string | null
           created_by: string | null
           currency: string | null
@@ -2625,6 +2675,9 @@ export type Database = {
         Insert: {
           adjustment_amount?: number
           balance_amount?: number
+          closed_adjusted_at?: string | null
+          closed_adjusted_by?: string | null
+          closure_adjustment_total?: number | null
           created_at?: string | null
           created_by?: string | null
           currency?: string | null
@@ -2657,6 +2710,9 @@ export type Database = {
         Update: {
           adjustment_amount?: number
           balance_amount?: number
+          closed_adjusted_at?: string | null
+          closed_adjusted_by?: string | null
+          closure_adjustment_total?: number | null
           created_at?: string | null
           created_by?: string | null
           currency?: string | null
@@ -8818,6 +8874,7 @@ export type Database = {
         | "overdue"
         | "void"
         | "short_closed"
+        | "closed_adjusted"
       material_qc_status: "not_required" | "pending" | "passed" | "failed"
       material_receipt_type:
         | "supplier_to_factory"
@@ -9143,6 +9200,7 @@ export const Constants = {
         "overdue",
         "void",
         "short_closed",
+        "closed_adjusted",
       ],
       material_qc_status: ["not_required", "pending", "passed", "failed"],
       material_receipt_type: [

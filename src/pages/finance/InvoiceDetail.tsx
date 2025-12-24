@@ -5,12 +5,14 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle, Package, Truck, ClipboardList } from "lucide-react";
+import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle, Package, Truck, ClipboardList, Lock } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { QuantityLayersDisplay } from "@/components/finance/QuantityLayersDisplay";
+import { CloseAdjustedDialog } from "@/components/finance/CloseAdjustedDialog";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface InvoiceItem {
   id: string;
@@ -33,11 +35,16 @@ interface InvoiceItem {
 
 export default function InvoiceDetail() {
   const { id } = useParams();
+  const { hasAnyRole } = useUserRole();
   const [invoice, setInvoice] = useState<any>(null);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [adjustments, setAdjustments] = useState<any[]>([]);
+  const [closureAdjustments, setClosureAdjustments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCloseDialog, setShowCloseDialog] = useState(false);
+
+  const canCloseAdjusted = hasAnyRole(['finance_admin', 'admin', 'super_admin']);
 
   useEffect(() => {
     loadInvoiceData();
@@ -85,6 +92,14 @@ export default function InvoiceDetail() {
 
       setAdjustments(adjData || []);
 
+      // Load closure adjustments (immutable audit trail)
+      const { data: closureData } = await supabase
+        .from("invoice_closure_adjustments")
+        .select("*")
+        .eq("invoice_id", id)
+        .order("closed_at", { ascending: false });
+
+      setClosureAdjustments(closureData || []);
       // Build timeline from payments and follow-ups
       const timelineEvents: any[] = [];
 
@@ -161,17 +176,18 @@ export default function InvoiceDetail() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any; label: string }> = {
+    const variants: Record<string, { variant: any; label: string; className?: string }> = {
       draft: { variant: "secondary", label: "Draft" },
       issued: { variant: "default", label: "Issued" },
       part_paid: { variant: "outline", label: "Part Paid" },
       paid: { variant: "default", label: "Paid" },
       overdue: { variant: "destructive", label: "Overdue" },
-      short_closed: { variant: "outline", label: "Short Closed" }
+      short_closed: { variant: "outline", label: "Short Closed" },
+      closed_adjusted: { variant: "outline", label: "Closed – Adjusted", className: "border-amber-500 text-amber-700 bg-amber-50" }
     };
 
     const config = variants[status] || { variant: "secondary", label: status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return <Badge variant={config.variant} className={config.className}>{config.label}</Badge>;
   };
 
   const totalAdjustments = adjustments.reduce((sum, adj) => sum + Number(adj.amount), 0);
@@ -319,6 +335,57 @@ export default function InvoiceDetail() {
                       <span className="font-medium">Short Closed:</span> {invoice.short_close_reason}
                     </AlertDescription>
                   </Alert>
+                )}
+
+                {/* Closed Adjusted Section */}
+                {invoice.status === 'closed_adjusted' && closureAdjustments.length > 0 && (
+                  <div className="p-4 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-amber-600" />
+                      <span className="font-medium text-amber-700 dark:text-amber-300">Closed with Adjustment</span>
+                    </div>
+                    {closureAdjustments.map((adj: any) => (
+                      <div key={adj.id} className="text-sm space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Adjustment Amount:</span>
+                          <span className="font-medium text-amber-600">{invoice.currency} {Number(adj.adjustment_amount).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Reason:</span>
+                          <Badge variant="outline" className="capitalize">{adj.adjustment_reason}</Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Reference:</span>
+                          <span>{adj.reference_type?.replace('_', ' ')}</span>
+                        </div>
+                        {adj.reference_note && (
+                          <p className="text-xs text-muted-foreground mt-2 p-2 bg-background rounded">
+                            {adj.reference_note}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Closed on {format(new Date(adj.closed_at), 'MMM dd, yyyy h:mm a')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Close Adjusted Button - Only for finance admin on unpaid invoices */}
+                {canCloseAdjusted && 
+                 invoice.balance_amount > 0 && 
+                 !['paid', 'closed_adjusted', 'void'].includes(invoice.status) && (
+                  <>
+                    <Separator />
+                    <Button 
+                      variant="outline" 
+                      className="w-full border-amber-500 text-amber-700 hover:bg-amber-50"
+                      onClick={() => setShowCloseDialog(true)}
+                    >
+                      <Lock className="h-4 w-4 mr-2" />
+                      Close with Adjustment
+                    </Button>
+                  </>
                 )}
 
                 {invoice.expected_payment_date && (
@@ -535,6 +602,23 @@ export default function InvoiceDetail() {
           </div>
         </div>
       </div>
+
+      {/* Close Adjusted Dialog */}
+      {invoice && (
+        <CloseAdjustedDialog
+          open={showCloseDialog}
+          onOpenChange={setShowCloseDialog}
+          invoice={{
+            id: invoice.id,
+            invoice_no: invoice.invoice_no,
+            total_amount: invoice.total_amount || 0,
+            paid_amount: invoice.paid_amount || 0,
+            balance_amount: invoice.balance_amount || 0,
+            currency: invoice.currency || 'INR'
+          }}
+          onSuccess={loadInvoiceData}
+        />
+      )}
     </div>
   );
 }

@@ -43,16 +43,18 @@ export default function Invoices() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any; label: string }> = {
+    const variants: Record<string, { variant: any; label: string; className?: string }> = {
       draft: { variant: "secondary", label: "Draft" },
       issued: { variant: "default", label: "Issued" },
       part_paid: { variant: "outline", label: "Part Paid" },
       paid: { variant: "default", label: "Paid" },
-      overdue: { variant: "destructive", label: "Overdue" }
+      overdue: { variant: "destructive", label: "Overdue" },
+      short_closed: { variant: "outline", label: "Short Closed" },
+      closed_adjusted: { variant: "outline", label: "Closed – Adjusted", className: "border-amber-500 text-amber-700 bg-amber-50" }
     };
 
     const config = variants[status] || { variant: "secondary", label: status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return <Badge variant={config.variant} className={config.className}>{config.label}</Badge>;
   };
 
   const filteredInvoices = invoices.filter((inv) => {
@@ -133,6 +135,7 @@ export default function Invoices() {
                   <SelectItem value="part_paid">Part Paid</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="overdue">Overdue</SelectItem>
+                  <SelectItem value="closed_adjusted">Closed – Adjusted</SelectItem>
                 </SelectContent>
               </Select>
             </div>
