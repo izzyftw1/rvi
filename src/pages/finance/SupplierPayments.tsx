@@ -63,25 +63,42 @@ export default function SupplierPayments() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load suppliers first
-      const { data: suppliersData } = await supabase
-        .from('suppliers')
-        .select('id, name, pan_number')
-        .eq('is_active', true)
-        .order('name');
+      const session = await supabase.auth.getSession();
+      const headers = {
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${session.data.session?.access_token || ''}`,
+        'Content-Type': 'application/json',
+      };
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-      const typedSuppliers = (suppliersData || []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        pan_number: s.pan_number,
+      // Load suppliers
+      const suppliersRes = await fetch(
+        `${baseUrl}/rest/v1/suppliers?select=id,name,pan_number&is_active=eq.true&order=name`,
+        { headers }
+      );
+      const suppliersData: any[] = suppliersRes.ok ? await suppliersRes.json() : [];
+
+      const typedSuppliers = suppliersData.map(s => ({
+        id: s.id as string,
+        name: s.name as string,
+        pan_number: s.pan_number as string | null,
         tds_rate: 0
-      })) as Supplier[];
+      }));
 
-      // Load payments via RPC or direct fetch
-      const { data: paymentsData } = await supabase.rpc('get_supplier_payments' as any).catch(() => ({ data: [] }));
+      // Load payments
+      let paymentsData: any[] = [];
+      try {
+        const paymentsRes = await fetch(
+          `${baseUrl}/rest/v1/supplier_payments?select=*&order=payment_date.desc&limit=100`,
+          { headers }
+        );
+        if (paymentsRes.ok) paymentsData = await paymentsRes.json();
+      } catch (e) {
+        console.log('Payments table may not exist yet');
+      }
       
       const supplierMap = new Map(typedSuppliers.map(s => [s.id, s.name]));
-      const enrichedPayments = ((paymentsData as any[]) || []).map(p => ({
+      const enrichedPayments = paymentsData.map(p => ({
         ...p,
         supplier_name: supplierMap.get(p.supplier_id) || 'Unknown'
       })) as SupplierPayment[];
@@ -105,20 +122,34 @@ export default function SupplierPayments() {
     setSaving(true);
     try {
       const { data: user } = await supabase.auth.getUser();
+      const session = await supabase.auth.getSession();
       
-      const { error } = await (supabase
-        .from('supplier_payments' as any)
-        .insert({
-          supplier_id: formData.supplier_id,
-          payment_date: formData.payment_date,
-          amount: parseFloat(formData.amount),
-          payment_method: formData.payment_method,
-          reference_no: formData.reference_no || null,
-          notes: formData.notes || null,
-          created_by: user?.user?.id,
-        }) as any);
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/supplier_payments`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            'Authorization': `Bearer ${session.data.session?.access_token || ''}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({
+            supplier_id: formData.supplier_id,
+            payment_date: formData.payment_date,
+            amount: parseFloat(formData.amount),
+            payment_method: formData.payment_method,
+            reference_no: formData.reference_no || null,
+            notes: formData.notes || null,
+            created_by: user?.user?.id,
+          }),
+        }
+      );
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to save');
+      }
 
       // Create TDS record if applicable
       if (tdsRate > 0 && selectedSupplier?.pan_number) {
