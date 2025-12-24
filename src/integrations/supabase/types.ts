@@ -400,7 +400,9 @@ export type Database = {
           gst_number: string | null
           gst_type: Database["public"]["Enums"]["gst_type"] | null
           id: string
+          is_export_customer: boolean | null
           last_used: string | null
+          pan_number: string | null
           party_code: string | null
           payment_terms_days: number | null
           pincode: string | null
@@ -422,7 +424,9 @@ export type Database = {
           gst_number?: string | null
           gst_type?: Database["public"]["Enums"]["gst_type"] | null
           id?: string
+          is_export_customer?: boolean | null
           last_used?: string | null
+          pan_number?: string | null
           party_code?: string | null
           payment_terms_days?: number | null
           pincode?: string | null
@@ -444,7 +448,9 @@ export type Database = {
           gst_number?: string | null
           gst_type?: Database["public"]["Enums"]["gst_type"] | null
           id?: string
+          is_export_customer?: boolean | null
           last_used?: string | null
+          pan_number?: string | null
           party_code?: string | null
           payment_terms_days?: number | null
           pincode?: string | null
@@ -5375,30 +5381,39 @@ export type Database = {
           allocated_by: string | null
           allocation_date: string
           created_at: string
+          gross_amount: number | null
           id: string
           invoice_id: string
+          net_amount: number | null
           notes: string | null
           receipt_id: string
+          tds_amount: number | null
         }
         Insert: {
           allocated_amount: number
           allocated_by?: string | null
           allocation_date?: string
           created_at?: string
+          gross_amount?: number | null
           id?: string
           invoice_id: string
+          net_amount?: number | null
           notes?: string | null
           receipt_id: string
+          tds_amount?: number | null
         }
         Update: {
           allocated_amount?: number
           allocated_by?: string | null
           allocation_date?: string
           created_at?: string
+          gross_amount?: number | null
           id?: string
           invoice_id?: string
+          net_amount?: number | null
           notes?: string | null
           receipt_id?: string
+          tds_amount?: number | null
         }
         Relationships: [
           {
@@ -6409,6 +6424,7 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          pan_number: string | null
           phone: string | null
           updated_at: string
         }
@@ -6421,6 +6437,7 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          pan_number?: string | null
           phone?: string | null
           updated_at?: string
         }
@@ -6433,10 +6450,126 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          pan_number?: string | null
           phone?: string | null
           updated_at?: string
         }
         Relationships: []
+      }
+      tds_records: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          entity_type: string
+          financial_year: string
+          gross_amount: number
+          id: string
+          invoice_id: string | null
+          net_amount: number
+          pan_number: string
+          po_id: string | null
+          quarter: string
+          receipt_id: string | null
+          record_type: string
+          remarks: string | null
+          status: string
+          supplier_id: string | null
+          tds_amount: number
+          tds_rate: number
+          transaction_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          entity_type: string
+          financial_year: string
+          gross_amount: number
+          id?: string
+          invoice_id?: string | null
+          net_amount: number
+          pan_number: string
+          po_id?: string | null
+          quarter: string
+          receipt_id?: string | null
+          record_type: string
+          remarks?: string | null
+          status?: string
+          supplier_id?: string | null
+          tds_amount: number
+          tds_rate: number
+          transaction_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          entity_type?: string
+          financial_year?: string
+          gross_amount?: number
+          id?: string
+          invoice_id?: string | null
+          net_amount?: number
+          pan_number?: string
+          po_id?: string | null
+          quarter?: string
+          receipt_id?: string | null
+          record_type?: string
+          remarks?: string | null
+          status?: string
+          supplier_id?: string | null
+          tds_amount?: number
+          tds_rate?: number
+          transaction_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tds_records_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "tds_records_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tds_records_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tds_records_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "raw_material_po"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tds_records_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "customer_receipts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tds_records_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       training_records: {
         Row: {
@@ -7845,6 +7978,7 @@ export type Database = {
         }[]
       }
       get_current_batch_for_qc: { Args: { p_wo_id: string }; Returns: string }
+      get_financial_year: { Args: { dt: string }; Returns: string }
       get_material_links: {
         Args: { _alloy: string; _material_grade: string }
         Returns: {
@@ -7857,8 +7991,14 @@ export type Database = {
         Args: { p_gap_threshold_days?: number; p_wo_id: string }
         Returns: string
       }
+      get_pan_entity_type: { Args: { pan: string }; Returns: string }
       get_rejection_threshold: {
         Args: { rejection_type: string; total_production?: number }
+        Returns: number
+      }
+      get_tds_quarter: { Args: { dt: string }; Returns: string }
+      get_tds_rate: {
+        Args: { is_export?: boolean; pan: string }
         Returns: number
       }
       get_user_site_id: { Args: { _user_id: string }; Returns: string }

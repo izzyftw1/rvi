@@ -4,9 +4,12 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from "@/components/ui/form-layout";
+import { getTdsRate, getPanEntityType, isValidPan } from "@/lib/tdsUtils";
+import { Badge } from "@/components/ui/badge";
 
 const COUNTRIES = [
   "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain",
@@ -43,6 +46,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
     primary_contact_name: "",
     primary_contact_email: "",
     primary_contact_phone: "",
+    pan_number: "",
+    is_export_customer: false,
   });
 
   useEffect(() => {
@@ -96,6 +101,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
         primary_contact_name: formData.primary_contact_name || null,
         primary_contact_email: formData.primary_contact_email || null,
         primary_contact_phone: formData.primary_contact_phone || null,
+        pan_number: formData.pan_number || null,
+        is_export_customer: formData.is_export_customer,
       };
 
       const { data, error } = await supabase
@@ -127,6 +134,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
         primary_contact_name: "",
         primary_contact_email: "",
         primary_contact_phone: "",
+        pan_number: "",
+        is_export_customer: false,
       });
     } catch (err: any) {
       toast({ variant: "destructive", description: `Error: ${err.message}` });
@@ -193,6 +202,43 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
 
           {/* Tax Information */}
           <FormSection title="Tax Information" withSeparator>
+            <FormRow>
+              <FormField>
+                <Label>PAN Number</Label>
+                <Input
+                  value={formData.pan_number}
+                  onChange={(e) => setFormData({ ...formData, pan_number: e.target.value.toUpperCase() })}
+                  placeholder="XXXXX0000X"
+                  maxLength={10}
+                />
+                {formData.pan_number && formData.pan_number.length >= 4 && (
+                  <div className="mt-1 flex items-center gap-2 text-xs">
+                    <Badge variant="outline" className="text-xs">
+                      {getPanEntityType(formData.pan_number)}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      TDS: {getTdsRate(formData.pan_number, formData.is_export_customer)}%
+                    </span>
+                    {!isValidPan(formData.pan_number) && formData.pan_number.length === 10 && (
+                      <span className="text-destructive">Invalid format</span>
+                    )}
+                  </div>
+                )}
+              </FormField>
+              <FormField>
+                <Label>Export Customer</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <Checkbox 
+                    id="is_export"
+                    checked={formData.is_export_customer}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_export_customer: checked === true })}
+                  />
+                  <label htmlFor="is_export" className="text-sm cursor-pointer">
+                    No TDS applicable
+                  </label>
+                </div>
+              </FormField>
+            </FormRow>
             <FormRow>
               <FormField>
                 <Label>GST Type</Label>
