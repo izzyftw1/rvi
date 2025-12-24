@@ -15,6 +15,8 @@ import { supabase } from "@/integrations/supabase/client";
  */
 
 export type BatchQCStatus = 'pending' | 'passed' | 'failed' | 'waived';
+export type BatchStageType = 'cutting' | 'production' | 'external' | 'qc' | 'packing' | 'dispatched';
+export type BatchStatus = 'in_queue' | 'in_progress' | 'completed';
 
 export interface ProductionBatch {
   id: string;
@@ -25,6 +27,13 @@ export interface ProductionBatch {
   started_at: string;
   ended_at: string | null;
   created_at: string;
+  // Stage tracking - single source of truth
+  batch_quantity: number;
+  stage_type: BatchStageType;
+  external_process_type: string | null;
+  batch_status: BatchStatus;
+  stage_entered_at: string | null;
+  external_partner_id: string | null;
   // Quantity tracking
   produced_qty: number;
   qc_approved_qty: number;

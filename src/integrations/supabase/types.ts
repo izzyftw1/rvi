@@ -3557,11 +3557,15 @@ export type Database = {
       production_batches: {
         Row: {
           batch_number: number
+          batch_quantity: number | null
+          batch_status: Database["public"]["Enums"]["batch_status"] | null
           created_at: string
           created_by: string | null
           dispatch_allowed: boolean | null
           dispatched_qty: number | null
           ended_at: string | null
+          external_partner_id: string | null
+          external_process_type: string | null
           id: string
           previous_batch_id: string | null
           produced_qty: number | null
@@ -3578,17 +3582,23 @@ export type Database = {
           qc_material_status: string | null
           qc_pending_qty: number | null
           qc_rejected_qty: number | null
+          stage_entered_at: string | null
+          stage_type: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at: string
           trigger_reason: string
           wo_id: string
         }
         Insert: {
           batch_number?: number
+          batch_quantity?: number | null
+          batch_status?: Database["public"]["Enums"]["batch_status"] | null
           created_at?: string
           created_by?: string | null
           dispatch_allowed?: boolean | null
           dispatched_qty?: number | null
           ended_at?: string | null
+          external_partner_id?: string | null
+          external_process_type?: string | null
           id?: string
           previous_batch_id?: string | null
           produced_qty?: number | null
@@ -3605,17 +3615,23 @@ export type Database = {
           qc_material_status?: string | null
           qc_pending_qty?: number | null
           qc_rejected_qty?: number | null
+          stage_entered_at?: string | null
+          stage_type?: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at?: string
           trigger_reason?: string
           wo_id: string
         }
         Update: {
           batch_number?: number
+          batch_quantity?: number | null
+          batch_status?: Database["public"]["Enums"]["batch_status"] | null
           created_at?: string
           created_by?: string | null
           dispatch_allowed?: boolean | null
           dispatched_qty?: number | null
           ended_at?: string | null
+          external_partner_id?: string | null
+          external_process_type?: string | null
           id?: string
           previous_batch_id?: string | null
           produced_qty?: number | null
@@ -3632,11 +3648,27 @@ export type Database = {
           qc_material_status?: string | null
           qc_pending_qty?: number | null
           qc_rejected_qty?: number | null
+          stage_entered_at?: string | null
+          stage_type?: Database["public"]["Enums"]["batch_stage_type"] | null
           started_at?: string
           trigger_reason?: string
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "production_batches_external_partner_id_fkey"
+            columns: ["external_partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_batches_external_partner_id_fkey"
+            columns: ["external_partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "production_batches_previous_batch_id_fkey"
             columns: ["previous_batch_id"]
@@ -6823,6 +6855,14 @@ export type Database = {
         | "finance_user"
         | "ops_manager"
         | "logistics"
+      batch_stage_type:
+        | "cutting"
+        | "production"
+        | "external"
+        | "qc"
+        | "packing"
+        | "dispatched"
+      batch_status: "in_queue" | "in_progress" | "completed"
       department_type:
         | "hr"
         | "stores"
@@ -7111,6 +7151,15 @@ export const Constants = {
         "ops_manager",
         "logistics",
       ],
+      batch_stage_type: [
+        "cutting",
+        "production",
+        "external",
+        "qc",
+        "packing",
+        "dispatched",
+      ],
+      batch_status: ["in_queue", "in_progress", "completed"],
       department_type: [
         "hr",
         "stores",
