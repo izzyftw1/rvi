@@ -17,6 +17,7 @@ interface FinalQCReportGeneratorProps {
   itemCode: string;
   samplingPlanReference?: string;
   inspectorRemarks?: string;
+  onReportGenerated?: () => void;
 }
 
 interface ReportData {
@@ -52,7 +53,8 @@ export const FinalQCReportGenerator = ({
   customer,
   itemCode,
   samplingPlanReference,
-  inspectorRemarks
+  inspectorRemarks,
+  onReportGenerated
 }: FinalQCReportGeneratorProps) => {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -603,6 +605,9 @@ export const FinalQCReportGenerator = ({
       setShowSuccessModal(true);
       await loadExistingReports();
       toast.success('Final QC Report generated successfully');
+      
+      // Notify parent that report was generated
+      onReportGenerated?.();
 
     } catch (error: any) {
       console.error('Error generating report:', error);

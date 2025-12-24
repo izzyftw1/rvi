@@ -95,6 +95,15 @@ const FinalQC = () => {
   const [productionSummary, setProductionSummary] = useState<ProductionSummary | null>(null);
   const [qcRecords, setQcRecords] = useState<QCRecordSummary[]>([]);
   const [hourlyQCCount, setHourlyQCCount] = useState(0);
+  const [hourlyQCAverages, setHourlyQCAverages] = useState<Array<{
+    dimension: string;
+    operation: string;
+    avg: number;
+    min: number;
+    max: number;
+    count: number;
+  }>>([]);
+  const [hasGeneratedReport, setHasGeneratedReport] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showReleaseDialog, setShowReleaseDialog] = useState(false);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
@@ -203,12 +212,58 @@ const FinalQC = () => {
       setQcRecords(qcData || []);
 
       // Load hourly QC count
-      const { count } = await supabase
+      const { data: hourlyData, count } = await supabase
         .from("hourly_qc_checks")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "exact" })
         .eq("wo_id", woId);
 
       setHourlyQCCount(count || 0);
+
+      // Calculate hourly QC dimension averages
+      const dimStatsByOp: Record<string, Record<string, { values: number[]; min: number; max: number }>> = {};
+      
+      (hourlyData || []).forEach((check: any) => {
+        const op = check.operation;
+        if (!dimStatsByOp[op]) dimStatsByOp[op] = {};
+        
+        if (check.dimensions) {
+          Object.entries(check.dimensions).forEach(([dim, value]: [string, any]) => {
+            if (typeof value === 'number') {
+              if (!dimStatsByOp[op][dim]) {
+                dimStatsByOp[op][dim] = { values: [], min: value, max: value };
+              }
+              dimStatsByOp[op][dim].values.push(value);
+              dimStatsByOp[op][dim].min = Math.min(dimStatsByOp[op][dim].min, value);
+              dimStatsByOp[op][dim].max = Math.max(dimStatsByOp[op][dim].max, value);
+            }
+          });
+        }
+      });
+
+      // Convert to averages array
+      const averagesArray: Array<{ dimension: string; operation: string; avg: number; min: number; max: number; count: number }> = [];
+      Object.entries(dimStatsByOp).forEach(([op, dims]) => {
+        Object.entries(dims).forEach(([dim, stats]) => {
+          const avg = stats.values.reduce((a, b) => a + b, 0) / stats.values.length;
+          averagesArray.push({
+            dimension: dim,
+            operation: op,
+            min: stats.min,
+            max: stats.max,
+            avg,
+            count: stats.values.length,
+          });
+        });
+      });
+      setHourlyQCAverages(averagesArray);
+
+      // Check if a Final QC report exists
+      const { count: reportCount } = await supabase
+        .from("qc_final_reports")
+        .select("*", { count: "exact", head: true })
+        .eq("work_order_id", woId);
+      
+      setHasGeneratedReport((reportCount || 0) > 0);
 
     } catch (error: any) {
       console.error("Error loading FQC data:", error);
@@ -449,7 +504,9 @@ const FinalQC = () => {
   const allQCPassed = qcRecords.every(r => ['pass', 'waived'].includes(r.result?.toLowerCase() || ''));
   const hasIQC = qcRecords.some(r => r.qc_type === 'incoming');
   const hasFirstPiece = qcRecords.some(r => r.qc_type === 'first_piece');
-  const canRelease = allQCPassed && hasIQC && hasFirstPiece && hourlyQCCount > 0 && productionSummary && productionSummary.totalOK > 0;
+  const hasFinalQCRecord = qcRecords.some(r => r.qc_type === 'final');
+  // Require: QC passed, IQC done, First Piece done, Hourly QC done, OK qty > 0, AND report generated
+  const canRelease = allQCPassed && hasIQC && hasFirstPiece && hourlyQCCount > 0 && productionSummary && productionSummary.totalOK > 0 && hasFinalQCRecord && hasGeneratedReport;
 
   return (
     <PageContainer>
@@ -640,6 +697,49 @@ const FinalQC = () => {
             </CardContent>
           </Card>
 
+          {/* Hourly QC Dimension Averages */}
+          {hourlyQCAverages.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Hourly QC Dimension Averages
+                </CardTitle>
+                <CardDescription>
+                  Aggregated from {hourlyQCCount} in-process checks
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dimension</TableHead>
+                      <TableHead>Operation</TableHead>
+                      <TableHead className="text-right">Min</TableHead>
+                      <TableHead className="text-right">Max</TableHead>
+                      <TableHead className="text-right">Average</TableHead>
+                      <TableHead className="text-right">Samples</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {hourlyQCAverages.map((avg, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">{avg.dimension}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{avg.operation}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{avg.min.toFixed(3)}</TableCell>
+                        <TableCell className="text-right font-mono">{avg.max.toFixed(3)}</TableCell>
+                        <TableCell className="text-right font-mono font-bold">{avg.avg.toFixed(3)}</TableCell>
+                        <TableCell className="text-right">{avg.count}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Production Context (Read-Only) */}
           <ProductionContextDisplay workOrderId={woId!} showRejectionDetails />
         </div>
@@ -765,9 +865,17 @@ const FinalQC = () => {
                   )}
 
                   {!canRelease && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      All QC stages must pass, and production must have OK quantity to release.
-                    </p>
+                    <div className="text-xs text-muted-foreground text-center space-y-1">
+                      <p className="font-medium">Requirements to release:</p>
+                      <ul className="list-disc list-inside text-left">
+                        {!hasIQC && <li>Incoming Material QC must pass</li>}
+                        {!hasFirstPiece && <li>First Piece QC must pass</li>}
+                        {hourlyQCCount === 0 && <li>At least 1 Hourly QC check required</li>}
+                        {!hasFinalQCRecord && <li>Final QC inspection must be completed</li>}
+                        {!hasGeneratedReport && <li className="font-semibold text-amber-600">Final QC Report must be generated (PDF)</li>}
+                        {productionSummary && productionSummary.totalOK === 0 && <li>Production must have OK quantity</li>}
+                      </ul>
+                    </div>
                   )}
                 </div>
               )}
@@ -796,7 +904,7 @@ const FinalQC = () => {
             </CardContent>
           </Card>
 
-          {/* Final QC Report Generator - Always visible */}
+          {/* Final QC Report Generator - Always visible - MANDATORY before release */}
           <FinalQCReportGenerator
             woId={woId!}
             woNumber={workOrder.wo_number || workOrder.display_id || ''}
@@ -804,6 +912,7 @@ const FinalQC = () => {
             itemCode={workOrder.item_code}
             samplingPlanReference={samplingPlan}
             inspectorRemarks={remarks}
+            onReportGenerated={() => setHasGeneratedReport(true)}
           />
 
           {/* Dispatch Report Generator - Only after release */}

@@ -284,12 +284,12 @@ export const FinalQCStatusCard = ({
         {/* Action Buttons */}
         <div className="pt-2 border-t space-y-2">
           <Button
-            variant="outline"
+            variant={qualityReleased ? "outline" : "default"}
             className="w-full gap-2"
-            onClick={() => navigate(`/quality/final-qc?wo=${woId}`)}
+            onClick={() => navigate(`/final-qc/${woId}`)}
           >
             <ExternalLink className="h-4 w-4" />
-            View Final QC
+            {qualityReleased ? 'View Final QC' : 'Perform Final QC'}
           </Button>
         </div>
       </CardContent>
