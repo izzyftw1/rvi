@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { 
   Package, TrendingUp, AlertTriangle, Clock, CheckCircle2, Loader2, 
-  Truck, ClipboardCheck, Layers, BoxIcon 
+  Truck, ClipboardCheck, Layers, BoxIcon, Building2, Factory 
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -34,6 +34,11 @@ interface WOProgressCardProps {
   orderedQuantity: number;
 }
 
+interface ExternalBreakdown {
+  process: string;
+  quantity: number;
+}
+
 interface BatchData {
   id: string;
   batch_number: number;
@@ -43,13 +48,18 @@ interface BatchData {
   packed_qty: number;
   dispatched_qty: number;
   qc_final_status: string;
+  stage_type?: string;
+  external_process_type?: string;
 }
 
 interface ProgressData {
   totalProduced: number;
+  inProduction: number;
+  atExternal: number;
+  externalBreakdown: ExternalBreakdown[];
   totalQCApproved: number;
   totalQCRejected: number;
-  totalPacked: number; // Released quantity
+  totalPacked: number;
   totalDispatched: number;
   remaining: number;
   progressPercent: number;
@@ -63,6 +73,9 @@ interface ProgressData {
 export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
   const [progress, setProgress] = useState<ProgressData>({
     totalProduced: 0,
+    inProduction: 0,
+    atExternal: 0,
+    externalBreakdown: [],
     totalQCApproved: 0,
     totalQCRejected: 0,
     totalPacked: 0,
@@ -92,36 +105,59 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
 
       if (woError) throw woError;
 
-      // Get batch-level data
+      // Get batch-level data with stage info for external breakdown
       const { data: batchData } = await supabase
         .from('production_batches')
-        .select('id, batch_number, produced_qty, qc_approved_qty, qc_rejected_qty, dispatched_qty, qc_final_status')
+        .select('id, batch_number, produced_qty, qc_approved_qty, qc_rejected_qty, dispatched_qty, qc_final_status, stage_type, batch_status, external_process_type, batch_quantity')
         .eq('wo_id', woId)
         .order('batch_number', { ascending: true });
 
       // Get packed quantity per batch from cartons
       const { data: cartonData } = await supabase
         .from('cartons')
-        .select('batch_id, quantity')
+        .select('batch_id, production_batch_id, quantity')
         .eq('wo_id', woId);
 
       // Create a map of batch_id -> packed_qty
       const packedByBatch: Record<string, number> = {};
       (cartonData || []).forEach(c => {
-        const batchId = c.batch_id || '';
+        const batchId = c.production_batch_id || c.batch_id || '';
         packedByBatch[batchId] = (packedByBatch[batchId] || 0) + (c.quantity || 0);
       });
 
-      const batches: BatchData[] = (batchData || []).map(b => ({
-        id: b.id,
-        batch_number: b.batch_number,
-        produced_qty: b.produced_qty || 0,
-        qc_approved_qty: b.qc_approved_qty || 0,
-        qc_rejected_qty: b.qc_rejected_qty || 0,
-        packed_qty: packedByBatch[b.id] || 0,
-        dispatched_qty: b.dispatched_qty || 0,
-        qc_final_status: b.qc_final_status || 'pending'
-      }));
+      // Calculate in-production and external quantities
+      let inProduction = 0;
+      let atExternal = 0;
+      const externalMap: Record<string, number> = {};
+
+      const batches: BatchData[] = (batchData || []).map(b => {
+        const batchQty = b.batch_quantity || b.produced_qty || 0;
+        
+        if (b.stage_type === 'external') {
+          atExternal += batchQty;
+          const processType = b.external_process_type || 'Other';
+          externalMap[processType] = (externalMap[processType] || 0) + batchQty;
+        } else if (b.stage_type === 'production' && b.batch_status !== 'completed') {
+          inProduction += batchQty;
+        }
+
+        return {
+          id: b.id,
+          batch_number: b.batch_number,
+          produced_qty: b.produced_qty || 0,
+          qc_approved_qty: b.qc_approved_qty || 0,
+          qc_rejected_qty: b.qc_rejected_qty || 0,
+          packed_qty: packedByBatch[b.id] || 0,
+          dispatched_qty: b.dispatched_qty || 0,
+          qc_final_status: b.qc_final_status || 'pending',
+          stage_type: b.stage_type,
+          external_process_type: b.external_process_type,
+        };
+      });
+
+      const externalBreakdown: ExternalBreakdown[] = Object.entries(externalMap)
+        .map(([process, quantity]) => ({ process, quantity }))
+        .sort((a, b) => b.quantity - a.quantity);
 
       // Calculate totals from batches
       const totalProduced = batches.reduce((sum, b) => sum + b.produced_qty, 0);
@@ -163,6 +199,9 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
 
       setProgress({
         totalProduced,
+        inProduction,
+        atExternal,
+        externalBreakdown,
         totalQCApproved,
         totalQCRejected,
         totalPacked,
@@ -290,6 +329,55 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
                 <p>Total ordered quantity</p>
               </TooltipContent>
             </Tooltip>
+
+            {/* In Production */}
+            {progress.inProduction > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                      <Factory className="h-4 w-4" />
+                      In Production
+                    </div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {progress.inProduction.toLocaleString()}
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Quantity currently in production stage</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* At External */}
+            {progress.atExternal > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                      <Building2 className="h-4 w-4" />
+                      At External
+                    </div>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {progress.atExternal.toLocaleString()}
+                    </div>
+                    {progress.externalBreakdown.length > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        {progress.externalBreakdown[0].process}
+                        {progress.externalBreakdown.length > 1 && ` +${progress.externalBreakdown.length - 1}`}
+                      </div>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-medium">At External Partners</p>
+                  {progress.externalBreakdown.map(e => (
+                    <p key={e.process} className="text-xs">{e.process}: {e.quantity.toLocaleString()}</p>
+                  ))}
+                </TooltipContent>
+              </Tooltip>
+            )}
 
             {/* Produced */}
             <Tooltip>

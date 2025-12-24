@@ -26,6 +26,8 @@ import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalChallanTable } from "@/components/ExternalChallanTable";
 
 import { WOProgressCard } from "@/components/WOProgressCard";
+import { WOQuantityBreakdown } from "@/components/WOQuantityBreakdown";
+import { useWOBatchQuantities } from "@/hooks/useWOBatchQuantities";
 import { ProductionLogsTable } from "@/components/ProductionLogsTable";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
 import { MaterialQCApproval } from "@/components/MaterialQCApproval";
