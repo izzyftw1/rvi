@@ -10,15 +10,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Package, CheckCircle, AlertCircle } from "lucide-react";
+import { Package, CheckCircle, AlertCircle, Box } from "lucide-react";
 
 interface Batch {
   id: string;
   batch_number: number;
   qc_approved_qty: number;
-  dispatched_qty: number;
-  dispatchable_qty: number;
   qc_final_status: string;
+  packed_qty: number;
+  dispatched_qty: number;
+  dispatchable_qty: number; // packed_qty - dispatched_qty
 }
 
 interface DispatchBatchSelectorProps {
@@ -44,6 +45,7 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
   const loadBatches = async () => {
     setLoading(true);
     try {
+      // Get batches
       const { data: batchData, error } = await supabase
         .from("production_batches")
         .select("id, batch_number, qc_approved_qty, dispatched_qty, qc_final_status")
@@ -52,17 +54,42 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
 
       if (error) throw error;
 
-      const batchesWithDispatchable = (batchData || []).map(b => ({
-        ...b,
-        dispatchable_qty: Math.max(0, (b.qc_approved_qty || 0) - (b.dispatched_qty || 0))
-      }));
+      // Get packed quantities per batch from cartons
+      const { data: cartonData } = await supabase
+        .from("cartons")
+        .select("batch_id, quantity")
+        .eq("wo_id", workOrderId);
+
+      // Aggregate packed qty per batch
+      const packedByBatch: Record<string, number> = {};
+      (cartonData || []).forEach(c => {
+        if (c.batch_id) {
+          packedByBatch[c.batch_id] = (packedByBatch[c.batch_id] || 0) + c.quantity;
+        }
+      });
+
+      // Calculate dispatchable as packed_qty - dispatched_qty
+      const batchesWithDispatchable = (batchData || []).map(b => {
+        const packed_qty = packedByBatch[b.id] || 0;
+        const dispatched_qty = b.dispatched_qty || 0;
+        return {
+          ...b,
+          packed_qty,
+          dispatched_qty,
+          dispatchable_qty: Math.max(0, packed_qty - dispatched_qty)
+        };
+      });
 
       setBatches(batchesWithDispatchable);
       
+      // Auto-select first batch with dispatchable qty
       const firstDispatchable = batchesWithDispatchable.find(b => b.dispatchable_qty > 0);
       if (firstDispatchable) {
         setSelectedBatchId(firstDispatchable.id);
         onBatchSelect(firstDispatchable.id, firstDispatchable.dispatchable_qty);
+      } else {
+        setSelectedBatchId(null);
+        onBatchSelect(null, 0);
       }
     } catch (error) {
       console.error("Error loading batches:", error);
@@ -111,15 +138,22 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
   }
 
   const totalDispatchable = batches.reduce((sum, b) => sum + b.dispatchable_qty, 0);
+  const totalPacked = batches.reduce((sum, b) => sum + b.packed_qty, 0);
   const dispatchableBatches = batches.filter(b => b.dispatchable_qty > 0);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <Label>Select Batch</Label>
-        <Badge variant="outline" className="text-xs">
-          Total Dispatchable: {totalDispatchable} pcs
-        </Badge>
+        <div className="flex gap-2">
+          <Badge variant="outline" className="text-xs">
+            <Box className="h-3 w-3 mr-1" />
+            Packed: {totalPacked} pcs
+          </Badge>
+          <Badge variant="default" className="text-xs bg-green-600">
+            Ready: {totalDispatchable} pcs
+          </Badge>
+        </div>
       </div>
 
       {dispatchableBatches.length > 0 ? (
@@ -134,7 +168,8 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
                 value={batch.id}
                 disabled={batch.dispatchable_qty === 0}
               >
-                Batch #{batch.batch_number} - {batch.dispatchable_qty} pcs available
+                Batch #{batch.batch_number} - {batch.dispatchable_qty} pcs ready 
+                {batch.packed_qty === 0 && " (not packed)"}
               </SelectItem>
             ))}
           </SelectContent>
@@ -142,8 +177,13 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
       ) : (
         <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
           <CardContent className="py-4 text-center">
-            <p className="text-orange-700 dark:text-orange-400 text-sm">
-              No dispatchable quantity in any batch
+            <p className="text-orange-700 dark:text-orange-400 text-sm font-medium">
+              No packed quantity available for dispatch
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {totalPacked === 0 
+                ? "Cartons must be packed before dispatch" 
+                : "All packed cartons have been dispatched"}
             </p>
           </CardContent>
         </Card>
@@ -164,13 +204,17 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
                 <Badge variant="secondary">{selectedBatch.qc_final_status || "pending"}</Badge>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-2 text-sm">
+            <div className="grid grid-cols-4 gap-2 text-sm">
               <div>
                 <p className="text-muted-foreground">QC Approved</p>
                 <p className="font-medium">{selectedBatch.qc_approved_qty || 0} pcs</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Already Dispatched</p>
+                <p className="text-muted-foreground">Packed</p>
+                <p className="font-medium text-blue-600">{selectedBatch.packed_qty} pcs</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Dispatched</p>
                 <p className="font-medium">{selectedBatch.dispatched_qty || 0} pcs</p>
               </div>
               <div>
@@ -178,6 +222,15 @@ export function DispatchBatchSelector({ workOrderId, onBatchSelect }: DispatchBa
                 <p className="font-medium text-green-600">{selectedBatch.dispatchable_qty} pcs</p>
               </div>
             </div>
+            
+            {selectedBatch.packed_qty < selectedBatch.qc_approved_qty && (
+              <div className="flex items-center gap-2 text-amber-600 text-xs pt-1">
+                <AlertCircle className="h-3 w-3" />
+                <span>
+                  {selectedBatch.qc_approved_qty - selectedBatch.packed_qty} pcs approved but not yet packed
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

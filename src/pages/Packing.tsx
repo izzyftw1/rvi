@@ -337,8 +337,8 @@ const Packing = () => {
       <PageContainer maxWidth="xl">
         <div className="space-y-6">
           <PageHeader
-            title="Packing & Dispatch"
-            description="Build cartons and pallets for shipment"
+            title="Packing"
+            description="Build cartons and pallets from QC-approved batches"
             icon={<Box className="h-6 w-6" />}
           />
 
