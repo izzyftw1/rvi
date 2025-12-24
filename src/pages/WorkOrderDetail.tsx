@@ -45,6 +45,7 @@ import { RouteProgressView } from "@/components/routing/RouteProgressView";
 import { WorkOrderNCRList } from "@/components/ncr/WorkOrderNCRList";
 import { ProductionCompleteControl } from "@/components/ProductionCompleteControl";
 import { ProductionCompleteBadge } from "@/components/ProductionCompleteBadge";
+import { WOBatchProductionStatus } from "@/components/WOBatchProductionStatus";
 import { DispatchEligibilityCard } from "@/components/DispatchEligibilityCard";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -831,7 +832,14 @@ const WorkOrderDetail = () => {
               orderedQuantity={wo.quantity || 0}
             />
             
-            {/* Production Complete Control */}
+            {/* Batch-Level Production Status */}
+            <WOBatchProductionStatus
+              woId={id!}
+              orderedQty={wo.quantity || 0}
+              onUpdate={loadWorkOrderData}
+            />
+            
+            {/* Legacy WO-Level Production Complete Control (for manual override) */}
             <ProductionCompleteControl
               workOrder={wo}
               completedByName={productionCompletedByName}
