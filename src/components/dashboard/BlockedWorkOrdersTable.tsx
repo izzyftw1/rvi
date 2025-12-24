@@ -1,11 +1,13 @@
 /**
- * BlockedWorkOrdersTable - Action-Focused Table
+ * BlockedWorkOrdersTable - Batch-Based Implementation
  * 
- * Displays blocked work orders with:
- * - What is blocked
- * - Why it's blocked  
- * - Who can unblock it
- * - Next Action (single primary action per row)
+ * Identifies blocked work orders based on batch-level data:
+ * - QC blocks: from work_order qc flags
+ * - External blocks: from external_movements with status='sent'
+ * - Machine blocks: WOs with production batches but no machine assigned
+ * - Material blocks: batches in early stages awaiting material
+ * 
+ * Does NOT use work_orders.current_stage for classification.
  */
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -51,10 +53,18 @@ interface BlockedOrder {
   urgency: 'critical' | 'high' | 'medium';
 }
 
+interface BatchInfo {
+  wo_id: string;
+  stage_type: string;
+  batch_status: string;
+  stage_entered_at: string | null;
+}
+
 interface BlockedWorkOrdersTableProps {
   workOrders: any[];
   externalMoves?: any[];
   machines?: any[];
+  batches?: BatchInfo[];
 }
 
 // Map block types to owners and actions
@@ -94,7 +104,8 @@ const BLOCK_CONFIG = {
 export const BlockedWorkOrdersTable = ({ 
   workOrders, 
   externalMoves = [],
-  machines = []
+  machines = [],
+  batches = []
 }: BlockedWorkOrdersTableProps) => {
   const navigate = useNavigate();
 
@@ -106,7 +117,37 @@ export const BlockedWorkOrdersTable = ({
     }
   });
 
-  // Identify blocked orders with reasons
+  // Build batch lookup by WO - to determine stage from batches
+  const batchesByWO = new Map<string, BatchInfo[]>();
+  batches.forEach(b => {
+    const existing = batchesByWO.get(b.wo_id) || [];
+    existing.push(b);
+    batchesByWO.set(b.wo_id, existing);
+  });
+
+  // Helper to check if WO has batches in a specific stage
+  const hasBatchInStage = (woId: string, stages: string[]): boolean => {
+    const woBatches = batchesByWO.get(woId) || [];
+    return woBatches.some(b => stages.includes(b.stage_type));
+  };
+
+  // Helper to check if WO has batches at external
+  const hasBatchAtExternal = (woId: string): boolean => {
+    const woBatches = batchesByWO.get(woId) || [];
+    return woBatches.some(b => b.stage_type === 'external');
+  };
+
+  // Helper to get earliest batch entered_at for block age
+  const getEarliestBatchEnteredAt = (woId: string): string | null => {
+    const woBatches = batchesByWO.get(woId) || [];
+    const enteredDates = woBatches
+      .map(b => b.stage_entered_at)
+      .filter((d): d is string => d !== null)
+      .sort();
+    return enteredDates[0] || null;
+  };
+
+  // Identify blocked orders with reasons - using batch data
   const blockedOrders: BlockedOrder[] = workOrders
     .filter(wo => wo.status !== 'completed' && wo.status !== 'shipped')
     .map(wo => {
@@ -118,27 +159,37 @@ export const BlockedWorkOrdersTable = ({
       let blockReason = '';
 
       // Determine block type priority
+      // 1. Material QC pending
       if (!wo.qc_material_passed) {
         blockType = 'material_qc';
         blockReason = 'Material QC pending';
-      } else if (!wo.qc_first_piece_passed) {
+      } 
+      // 2. First piece QC pending
+      else if (!wo.qc_first_piece_passed) {
         blockType = 'first_piece_qc';
         blockReason = 'First Piece inspection needed';
-      } else if (externalMap.has(wo.id)) {
+      } 
+      // 3. External processing - check from batches OR external moves
+      else if (hasBatchAtExternal(wo.id) || externalMap.has(wo.id)) {
         const ext = externalMap.get(wo.id);
         blockType = 'external';
-        blockReason = `At external: ${ext.process || 'Processing'}`;
-      } else if (wo.current_stage === 'production' && !wo.machine_id) {
+        blockReason = `At external: ${ext?.process || 'Processing'}`;
+      } 
+      // 4. Machine needed - has production batches but no machine assigned
+      else if (hasBatchInStage(wo.id, ['production']) && !wo.machine_id) {
         blockType = 'machine_needed';
         blockReason = 'No machine assigned';
-      } else if (['goods_in', 'cutting_queue'].includes(wo.current_stage) && wo.qc_material_passed && wo.qc_first_piece_passed) {
+      } 
+      // 5. Material ready but not issued - batches in cutting/early stage with QC passed
+      else if (hasBatchInStage(wo.id, ['cutting']) && wo.qc_material_passed && wo.qc_first_piece_passed) {
         blockType = 'material_issue';
         blockReason = 'Material ready, awaiting issue';
       }
 
       if (!blockType) return null;
 
-      const stageEnteredAt = wo.stage_entered_at || wo.created_at;
+      // Calculate block age from batch data
+      const stageEnteredAt = getEarliestBatchEnteredAt(wo.id) || wo.created_at;
       const blockAgeHours = stageEnteredAt ? differenceInHours(now, parseISO(stageEnteredAt)) : 0;
       const blockAge = blockAgeHours < 24 
         ? `${blockAgeHours}h` 
@@ -279,6 +330,9 @@ export const BlockedWorkOrdersTable = ({
           })}
         </TableBody>
       </Table>
+      <p className="text-[10px] text-muted-foreground text-center mt-2">
+        Source: production_batches + external_movements
+      </p>
     </div>
   );
 };
