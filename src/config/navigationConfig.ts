@@ -148,6 +148,7 @@ export const navigationGroups: NavGroup[] = [
     items: [
       { label: "Goods Inwards", path: "/materials/inwards", icon: Box },
       { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck },
+      { label: "Finished Goods", path: "/finished-goods", icon: Package },
       { label: "Packing", path: "/packing", icon: Package },
       { label: "Dispatch", path: "/dispatch", icon: Truck },
       { label: "RPO vs Inventory", path: "/reports/rpo-inventory", icon: FileSpreadsheet },

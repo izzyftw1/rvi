@@ -86,6 +86,7 @@ import DowntimeAnalytics from "./pages/DowntimeAnalytics";
 // Merged External Efficiency + Partner Performance into unified data model
 import PartnerDashboard from "./pages/PartnerDashboard";
 import ExternalAnalytics from "./pages/ExternalAnalytics";
+import FinishedGoodsInventory from "./pages/FinishedGoodsInventory";
 
 
 const App = () => (
@@ -178,6 +179,7 @@ const App = () => (
           <Route path="/ncr" element={<NCRManagement />} />
           <Route path="/ncr/:id" element={<NCRDetail />} />
           <Route path="/instruments" element={<InstrumentManagement />} />
+          <Route path="/finished-goods" element={<FinishedGoodsInventory />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Route>

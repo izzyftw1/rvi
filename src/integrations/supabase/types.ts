@@ -1578,6 +1578,119 @@ export type Database = {
         }
         Relationships: []
       }
+      finished_goods_inventory: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string | null
+          customer_id: string | null
+          customer_name: string | null
+          heat_nos: string[] | null
+          id: string
+          item_code: string
+          last_movement_at: string | null
+          notes: string | null
+          production_batch_id: string | null
+          quantity_available: number
+          quantity_original: number
+          quantity_reserved: number
+          source_type: string
+          unit_cost: number | null
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          heat_nos?: string[] | null
+          id?: string
+          item_code: string
+          last_movement_at?: string | null
+          notes?: string | null
+          production_batch_id?: string | null
+          quantity_available?: number
+          quantity_original?: number
+          quantity_reserved?: number
+          source_type?: string
+          unit_cost?: number | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          heat_nos?: string[] | null
+          id?: string
+          item_code?: string
+          last_movement_at?: string | null
+          notes?: string | null
+          production_batch_id?: string | null
+          quantity_available?: number
+          quantity_original?: number
+          quantity_reserved?: number
+          source_type?: string
+          unit_cost?: number | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finished_goods_inventory_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_production_batch_id_fkey"
+            columns: ["production_batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_production_batch_id_fkey"
+            columns: ["production_batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       forging_records: {
         Row: {
           created_at: string
@@ -1903,6 +2016,180 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dispatch_id: string | null
+          id: string
+          inventory_id: string
+          movement_type: string
+          notes: string | null
+          quantity: number
+          shipment_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dispatch_id?: string | null
+          id?: string
+          inventory_id: string
+          movement_type: string
+          notes?: string | null
+          quantity: number
+          shipment_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dispatch_id?: string | null
+          id?: string
+          inventory_id?: string
+          movement_type?: string
+          notes?: string | null
+          quantity?: number
+          shipment_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_inventory_id_fkey"
+            columns: ["inventory_id"]
+            isOneToOne: false
+            referencedRelation: "finished_goods_inventory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_inventory_id_fkey"
+            columns: ["inventory_id"]
+            isOneToOne: false
+            referencedRelation: "finished_goods_summary_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_reservations: {
+        Row: {
+          consumed_at: string | null
+          id: string
+          inventory_id: string
+          notes: string | null
+          quantity_reserved: number
+          released_at: string | null
+          reserved_at: string
+          reserved_by: string | null
+          sales_order_id: string | null
+          status: string
+          work_order_id: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          id?: string
+          inventory_id: string
+          notes?: string | null
+          quantity_reserved: number
+          released_at?: string | null
+          reserved_at?: string
+          reserved_by?: string | null
+          sales_order_id?: string | null
+          status?: string
+          work_order_id: string
+        }
+        Update: {
+          consumed_at?: string | null
+          id?: string
+          inventory_id?: string
+          notes?: string | null
+          quantity_reserved?: number
+          released_at?: string | null
+          reserved_at?: string
+          reserved_by?: string | null
+          sales_order_id?: string | null
+          status?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_reservations_inventory_id_fkey"
+            columns: ["inventory_id"]
+            isOneToOne: false
+            referencedRelation: "finished_goods_inventory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_inventory_id_fkey"
+            columns: ["inventory_id"]
+            isOneToOne: false
+            referencedRelation: "finished_goods_summary_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
             referencedColumns: ["id"]
           },
         ]
@@ -7382,6 +7669,40 @@ export type Database = {
           process_name: string | null
         }
         Relationships: []
+      }
+      finished_goods_summary_vw: {
+        Row: {
+          age_category: string | null
+          age_days: number | null
+          created_at: string | null
+          customer_id: string | null
+          customer_name: string | null
+          id: string | null
+          item_code: string | null
+          last_movement_at: string | null
+          quantity_available: number | null
+          quantity_original: number | null
+          quantity_reserved: number | null
+          source_type: string | null
+          wo_item_code: string | null
+          wo_number: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finished_goods_inventory_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "finished_goods_inventory_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       internal_flow_summary_vw: {
         Row: {
