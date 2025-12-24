@@ -158,12 +158,15 @@ export default function TDSReport() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'deducted':
       case 'pending':
-        return <Badge variant="secondary">Pending</Badge>;
+        return <Badge variant="secondary">Deducted</Badge>;
+      case 'deposited':
       case 'filed':
-        return <Badge variant="outline" className="border-blue-500 text-blue-600">Filed</Badge>;
+        return <Badge variant="outline" className="border-blue-500 text-blue-600">Deposited</Badge>;
+      case 'claimed':
       case 'paid':
-        return <Badge className="bg-green-600">Paid</Badge>;
+        return <Badge className="bg-green-600">Claimed</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }

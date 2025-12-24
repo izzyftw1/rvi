@@ -103,8 +103,9 @@ export function TdsPreview({ customerId, grossAmount, currency = 'INR' }: TdsPre
             </div>
           </div>
 
-          <div className="text-xs text-muted-foreground pt-1 border-t">
-            PAN: {calculation.pan} • This explains the difference between invoice amount and bank receipt
+          <div className="text-xs text-muted-foreground pt-1 border-t space-y-1">
+            <div>PAN: {calculation.pan} • This explains the difference between invoice amount and bank receipt</div>
+            <div className="text-amber-600 dark:text-amber-400 font-medium">⚠️ TDS is for internal tracking only and never appears on invoice PDFs</div>
           </div>
         </div>
       </CardContent>
