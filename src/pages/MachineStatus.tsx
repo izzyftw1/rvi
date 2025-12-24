@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -19,7 +20,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, AlertTriangle, Activity, Pause, Wrench, Clock, Info } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { format, differenceInMinutes } from "date-fns";
 import { useSiteContext } from "@/hooks/useSiteContext";
 import { cn } from "@/lib/utils";
@@ -28,13 +28,20 @@ type OperationalState = "running" | "idle" | "blocked" | "maintenance" | "down" 
 
 const MachineStatus = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { currentSite } = useSiteContext();
   const [machines, setMachines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("all");
+  
+  // Read filter from URL params
+  const urlFilter = searchParams.get('filter');
+  const [filterStatus, setFilterStatus] = useState(() => {
+    if (urlFilter === 'maintenance') return 'maintenance';
+    return 'all';
+  });
 
   useEffect(() => {
     if (currentSite) {

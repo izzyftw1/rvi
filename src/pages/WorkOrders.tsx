@@ -697,10 +697,27 @@ const WorkOrders = () => {
   });
   // Level 2: Contextual stage/process filter based on location selection
   const [stageFilter, setStageFilter] = useState<string>(() => searchParams.get('stage') || 'all');
-  // Issue filter for blocked/delayed
-  const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>('all');
-  // Block reason filter
-  const [blockReasonFilter, setBlockReasonFilter] = useState<string>('all');
+  // Issue filter for blocked/delayed - read from URL params
+  const [issueFilter, setIssueFilter] = useState<'all' | 'blocked' | 'delayed'>(() => {
+    const urlBlocked = searchParams.get('blocked');
+    if (urlBlocked) return 'blocked';
+    return 'all';
+  });
+  // Block reason filter - read from URL params (production, quality, external)
+  const [blockReasonFilter, setBlockReasonFilter] = useState<string>(() => {
+    const urlBlocked = searchParams.get('blocked');
+    if (urlBlocked === 'production') return 'not_released';
+    if (urlBlocked === 'quality') return 'qc_pending';
+    if (urlBlocked === 'external') return 'ext_overdue';
+    return 'all';
+  });
+  // Due date filter - read from URL params (3days, 7days)
+  const [dueFilter, setDueFilter] = useState<'all' | '3days' | '7days'>(() => {
+    const urlDue = searchParams.get('due');
+    if (urlDue === '3days') return '3days';
+    if (urlDue === '7days') return '7days';
+    return 'all';
+  });
   
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(50);
@@ -947,9 +964,28 @@ const WorkOrders = () => {
     if (blockReasonFilter !== 'all') {
       filtered = filtered.filter(wo => getBlockReason(wo) === blockReasonFilter);
     }
+    
+    // Due date filter (from URL params like ?due=3days)
+    if (dueFilter === '3days') {
+      const in3Days = new Date();
+      in3Days.setDate(in3Days.getDate() + 3);
+      filtered = filtered.filter(wo => {
+        if (!wo.due_date) return false;
+        const dueDate = parseISO(wo.due_date);
+        return dueDate <= in3Days && !isPast(dueDate);
+      });
+    } else if (dueFilter === '7days') {
+      const in7Days = new Date();
+      in7Days.setDate(in7Days.getDate() + 7);
+      filtered = filtered.filter(wo => {
+        if (!wo.due_date) return false;
+        const dueDate = parseISO(wo.due_date);
+        return dueDate <= in7Days && !isPast(dueDate);
+      });
+    }
 
     return filtered;
-  }, [workOrders, searchQuery, locationFilter, stageFilter, issueFilter, blockReasonFilter, getBatchBreakdown]);
+  }, [workOrders, searchQuery, locationFilter, stageFilter, issueFilter, blockReasonFilter, dueFilter, getBatchBreakdown]);
 
   // Stage counts for filter bar - based on BATCH presence
   const stageCounts = useMemo(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -31,9 +31,17 @@ interface WorkOrderQCStatus {
 
 export default function QCIncoming() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<WorkOrderQCStatus[]>([]);
+  
+  // Read filter from URL params
+  const urlFilter = searchParams.get('filter');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (urlFilter === 'hold') return 'failed';
+    return 'pending';
+  });
 
   useEffect(() => {
     loadWorkOrdersQCStatus();

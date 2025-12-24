@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 
@@ -41,6 +41,7 @@ interface WorkOrderQCSummary {
 
 const Quality = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [workOrderSummaries, setWorkOrderSummaries] = useState<WorkOrderQCSummary[]>([]);
@@ -50,6 +51,15 @@ const Quality = () => {
     failed: 0,
     pending: 0,
     passRate: 0
+  });
+  
+  // Read filter and tab from URL params
+  const urlFilter = searchParams.get('filter');
+  const urlTab = searchParams.get('tab');
+  const [activeView, setActiveView] = useState<string>(() => {
+    if (urlTab === 'first-piece') return 'first-piece';
+    if (urlFilter === 'pending') return 'pending';
+    return 'all';
   });
 
   const loadData = useCallback(async () => {
