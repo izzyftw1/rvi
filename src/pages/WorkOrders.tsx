@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink, TrendingUp, Percent, FileWarning, Activity } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink, TrendingUp, Percent, FileWarning, Activity, GitBranch } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,6 +17,7 @@ import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
 import { isPast, parseISO, differenceInDays, format as formatDate } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useWOBatchStages, WOBatchStageBreakdown, getEmptyBreakdown } from "@/hooks/useWOBatchStages";
 
 // Internal stages
 const INTERNAL_STAGES = {
@@ -179,36 +180,122 @@ const getExternalStatus = (wo: any): { status: 'none' | 'in' | 'partial' | 'over
   return { status: 'in', label: 'In Process', color: 'text-purple-600 bg-purple-500/10' };
 };
 
-// Work Order Card - Stage-dominant design with quick-scan operational indicators
+// Batch Stage Summary Component - shows multi-stage breakdown
+const BatchStageSummary = memo(({ breakdown, className }: { breakdown: WOBatchStageBreakdown; className?: string }) => {
+  const stages = [
+    { key: 'production', label: 'Prod', qty: breakdown.production, color: 'bg-indigo-500', icon: Factory },
+    { key: 'external', label: 'Ext', qty: breakdown.external, color: 'bg-purple-500', icon: ExternalLink },
+    { key: 'qc', label: 'QC', qty: breakdown.qc, color: 'bg-emerald-500', icon: CheckCircle2 },
+    { key: 'packing', label: 'Pack', qty: breakdown.packing, color: 'bg-violet-500', icon: Box },
+  ].filter(s => s.qty > 0);
+  
+  if (stages.length === 0) {
+    return (
+      <div className={cn("flex items-center gap-1 px-2 py-1 bg-slate-500 text-white min-w-[72px]", className)}>
+        <Inbox className="h-3 w-3" />
+        <span className="text-[9px] font-medium">Queue</span>
+      </div>
+    );
+  }
+  
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className={cn("flex flex-col gap-0.5 px-2 py-1 min-w-[85px] bg-muted/50", className)}>
+            {stages.slice(0, 3).map(stage => {
+              const Icon = stage.icon;
+              return (
+                <div key={stage.key} className="flex items-center gap-1 text-[9px]">
+                  <div className={cn("w-1.5 h-1.5 rounded-full", stage.color)} />
+                  <span className="font-medium text-foreground">{stage.label}:</span>
+                  <span className="text-muted-foreground">{stage.qty.toLocaleString()}</span>
+                </div>
+              );
+            })}
+            {stages.length > 3 && (
+              <span className="text-[8px] text-muted-foreground">+{stages.length - 3} more</span>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-[200px]">
+          <p className="font-medium text-xs mb-1">Batch Distribution</p>
+          <div className="space-y-0.5 text-[10px]">
+            {breakdown.production > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Production:</span>
+                <span>{breakdown.production.toLocaleString()} pcs</span>
+              </div>
+            )}
+            {breakdown.external > 0 && (
+              <>
+                <div className="flex justify-between gap-4">
+                  <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-purple-500" /> External:</span>
+                  <span>{breakdown.external.toLocaleString()} pcs</span>
+                </div>
+                {Object.entries(breakdown.externalBreakdown).map(([process, qty]) => (
+                  <div key={process} className="flex justify-between gap-4 pl-3 text-muted-foreground">
+                    <span>└ {process}:</span>
+                    <span>{(qty as number).toLocaleString()}</span>
+                  </div>
+                ))}
+              </>
+            )}
+            {breakdown.qc > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> QC:</span>
+                <span>{breakdown.qc.toLocaleString()} pcs</span>
+              </div>
+            )}
+            {breakdown.packing > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-violet-500" /> Packing:</span>
+                <span>{breakdown.packing.toLocaleString()} pcs</span>
+              </div>
+            )}
+            {breakdown.dispatched > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-600" /> Dispatched:</span>
+                <span>{breakdown.dispatched.toLocaleString()} pcs</span>
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+});
+BatchStageSummary.displayName = "BatchStageSummary";
+
+// Work Order Card - Batch-based design with multi-stage support
 const WorkOrderRow = memo(({ 
   wo, 
+  batchBreakdown,
   onDelete, 
   onSendToExternal, 
   onReceiveFromExternal,
   onNavigate,
   canManageExternal
-}: any) => {
-  const stageConfig = STAGES[wo.current_stage as keyof typeof STAGES] || STAGES.goods_in;
-  const StageIcon = stageConfig.icon;
-  
+}: {
+  wo: any;
+  batchBreakdown: WOBatchStageBreakdown;
+  onDelete: any;
+  onSendToExternal: any;
+  onReceiveFromExternal: any;
+  onNavigate: any;
+  canManageExternal: boolean;
+}) => {
   const isOverdue = wo.due_date && isPast(parseISO(wo.due_date)) && wo.status !== 'completed';
   const daysUntilDue = wo.due_date ? differenceInDays(parseISO(wo.due_date), new Date()) : null;
   const daysOverdue = isOverdue && wo.due_date ? Math.abs(differenceInDays(new Date(), parseISO(wo.due_date))) : 0;
-  
-  const externalWipTotal = wo.external_wip 
-    ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
-    : 0;
   
   const hasExternalOverdue = wo.external_moves?.some((m: any) => 
     m.expected_return_date && isPast(parseISO(m.expected_return_date)) && m.status !== 'received_full'
   );
 
-  // Days in current stage calculation
-  const daysInStage = useMemo(() => {
-    const stageDate = wo.stage_entered_at || wo.updated_at || wo.created_at;
-    if (!stageDate) return null;
-    return Math.max(0, differenceInDays(new Date(), parseISO(stageDate)));
-  }, [wo.stage_entered_at, wo.updated_at, wo.created_at]);
+  // Use batch-derived external WIP
+  const externalWipTotal = batchBreakdown.external;
+  const isSplitFlow = batchBreakdown.isSplitFlow;
 
   // Derived operational signals
   const progressPct = wo.ok_qty && wo.quantity ? Math.min(100, Math.round((wo.ok_qty / wo.quantity) * 100)) : 0;
@@ -228,86 +315,70 @@ const WorkOrderRow = memo(({
     : null;
   const blockDetails = getBlockReasonDetails(wo, blockReasonKey);
 
-  // Visual severity logic:
-  // - Critical (red): overdue AND blocked
-  // - Warning (amber): overdue but progressing OR blocked but on time
-  // - Neutral: on time and not blocked
+  // Visual severity logic
   const isBlocked = !!blockReasonKey;
   const isCritical = isOverdue && isBlocked;
   const isWarning = (isOverdue && !isBlocked) || (!isOverdue && isBlocked);
   const hasIssue = isCritical || isWarning;
   const isExternal = externalWipTotal > 0;
   
-  // Human-readable WO code - wo_number is the primary identifier (WO-YYYY-XXXXX)
   const woCode = wo.wo_number;
 
   return (
     <div 
       className={cn(
         "group flex items-stretch rounded-md cursor-pointer transition-all hover:shadow-md overflow-hidden border",
-        // Background tint based on severity
         isCritical && "bg-destructive/5 border-destructive/40",
         isWarning && "bg-amber-500/5 border-amber-500/40",
-        // External ownership distinction (when no issues)
         !hasIssue && isExternal && "bg-purple-500/5 border-purple-500/30 hover:border-purple-500/50",
         !hasIssue && !isExternal && "bg-card border-border hover:border-border/80"
       )}
       onClick={() => onNavigate(wo.id)}
     >
       {/* Status Strip - Left edge indicator */}
-      {(hasIssue || isExternal) && (
+      {(hasIssue || isExternal || isSplitFlow) && (
         <div className={cn(
           "w-1 flex-shrink-0",
-          isCritical ? "bg-destructive" : isWarning ? "bg-amber-500" : "bg-purple-500"
+          isCritical ? "bg-destructive" : isWarning ? "bg-amber-500" : isSplitFlow ? "bg-gradient-to-b from-indigo-500 via-purple-500 to-emerald-500" : "bg-purple-500"
         )} />
       )}
 
-      {/* STAGE + Days indicator */}
-      <div className={cn(
-        "flex flex-col items-center justify-center px-2.5 py-1 min-w-[72px] text-white relative",
-        stageConfig.color
-      )}>
-        <div className="flex items-center gap-1">
-          <StageIcon className="h-3.5 w-3.5" />
-          <span className="text-[10px] font-bold uppercase tracking-wide">
-            {stageConfig.label}
-          </span>
-        </div>
-        {daysInStage !== null && daysInStage > 0 && (
-          <span className="text-[9px] opacity-80 font-medium">
-            {daysInStage}d
-          </span>
-        )}
-        
-        {/* Issue overlay icon on stage */}
-        {hasIssue && (
-          <div className={cn(
-            "absolute -top-0.5 -right-0.5 rounded-full p-0.5",
-            isCritical ? "bg-destructive" : "bg-amber-500"
-          )}>
-            {isCritical ? (
-              <AlertTriangle className="h-2.5 w-2.5 text-white" />
-            ) : (
-              <Timer className="h-2.5 w-2.5 text-white" />
-            )}
-          </div>
-        )}
-      </div>
+      {/* BATCH STAGE SUMMARY - replaces single stage indicator */}
+      <BatchStageSummary breakdown={batchBreakdown} />
 
       {/* Content Area */}
       <div className="flex-1 flex items-center gap-2 px-2.5 py-1">
-        {/* INT/EXT badge - compact */}
-        <Badge 
-          variant="outline" 
-          className={cn(
-            "text-[8px] px-1 py-0 h-4 font-bold tracking-wide flex-shrink-0",
-            isExternal 
-              ? "border-purple-400 text-purple-600 bg-purple-50" 
-              : "border-slate-300 text-slate-500 bg-slate-50"
-          )}
-        >
-          {isExternal ? 'EXT' : 'INT'}
-        </Badge>
+        {/* Split Flow badge - shows when batches are in multiple stages */}
+        {isSplitFlow ? (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant="outline" 
+                  className="text-[8px] px-1 py-0 h-4 font-bold tracking-wide flex-shrink-0 border-gradient-to-r from-indigo-400 to-purple-400 text-indigo-600 bg-indigo-50"
+                >
+                  <GitBranch className="h-2.5 w-2.5 mr-0.5" />
+                  SPLIT
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="text-xs">Batches in {batchBreakdown.stageCount} different stages</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <Badge 
+            variant="outline" 
+            className={cn(
+              "text-[8px] px-1 py-0 h-4 font-bold tracking-wide flex-shrink-0",
+              isExternal 
+                ? "border-purple-400 text-purple-600 bg-purple-50" 
+                : "border-slate-300 text-slate-500 bg-slate-50"
+            )}
+          >
+            {isExternal ? 'EXT' : 'INT'}
+          </Badge>
+        )}
 
         {/* Primary: WO Code / Customer */}
         <div className="flex-1 min-w-0">
@@ -550,7 +621,13 @@ const WorkOrders = () => {
   const { toast } = useToast();
   const { hasAnyRole } = useUserRole();
   
-const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
+  const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
+  
+  // Get WO IDs for batch stage loading
+  const woIds = useMemo(() => workOrders.map(wo => wo.id), [workOrders]);
+  
+  // Load batch stage breakdown - SINGLE SOURCE OF TRUTH for stage distribution
+  const { stagesByWO, loading: batchLoading } = useWOBatchStages(woIds.length > 0 ? woIds : undefined);
   
   const [searchQuery, setSearchQuery] = useState("");
   // Level 1: Primary toggle - 'internal' or 'external'
@@ -576,6 +653,11 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+  
+  // Helper to get batch breakdown for a WO
+  const getBatchBreakdown = useCallback((woId: string): WOBatchStageBreakdown => {
+    return stagesByWO[woId] || getEmptyBreakdown();
+  }, [stagesByWO]);
   
   const loadWorkOrders = useCallback(async () => {
     try {
@@ -697,11 +779,13 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
     if (lastUpdate > 0) loadWorkOrders();
   }, [lastUpdate, loadWorkOrders]);
 
-  // Compute KPIs
+  // Compute KPIs - derived from batch data
   const kpis = useMemo(() => {
-    let blocked = 0, delayed = 0, internalCount = 0, externalCount = 0;
+    let blocked = 0, delayed = 0, internalCount = 0, externalCount = 0, splitFlowCount = 0;
     
     workOrders.forEach(wo => {
+      const breakdown = getBatchBreakdown(wo.id);
+      
       // Delayed: past due date
       if (wo.due_date && isPast(parseISO(wo.due_date)) && wo.status !== 'completed') {
         delayed++;
@@ -712,21 +796,23 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
       );
       if (hasExternalOverdue) blocked++;
       
-      // Count by ownership
-      const externalWipTotal = wo.external_wip 
-        ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
-        : 0;
-      if (externalWipTotal > 0) {
+      // Count by batch ownership (external WIP derived from batches)
+      if (breakdown.external > 0) {
         externalCount++;
       } else {
         internalCount++;
       }
+      
+      // Count split flow WOs
+      if (breakdown.isSplitFlow) {
+        splitFlowCount++;
+      }
     });
     
-    return { total: workOrders.length, blocked, delayed, internalCount, externalCount };
-  }, [workOrders]);
+    return { total: workOrders.length, blocked, delayed, internalCount, externalCount, splitFlowCount };
+  }, [workOrders, getBatchBreakdown]);
 
-  // Filtered orders with two-level filtering
+  // Filtered orders with two-level filtering - using BATCH PRESENCE not work_orders.current_stage
   const filteredOrders = useMemo(() => {
     let filtered = [...workOrders];
 
@@ -742,39 +828,43 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
       );
     }
 
-    // Level 1: Primary filter (Internal vs External)
+    // Level 1: Primary filter (Internal vs External) - based on BATCH data
     if (primaryFilter === 'external') {
-      // Show only WOs with external WIP
+      // Show only WOs with external batches
       filtered = filtered.filter(wo => {
-        const total = wo.external_wip 
-          ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
-          : 0;
-        return total > 0;
+        const breakdown = getBatchBreakdown(wo.id);
+        return breakdown.external > 0;
       });
       
-      // Level 2: External stage filter
+      // Level 2: External stage filter by process type
       if (stageFilter !== 'all') {
         const externalStage = EXTERNAL_STAGES[stageFilter as keyof typeof EXTERNAL_STAGES];
         if (externalStage) {
-          filtered = filtered.filter(wo => 
-            wo.external_moves?.some((m: any) => 
-              m.process === externalStage.process && m.status !== 'received_full'
-            )
-          );
+          filtered = filtered.filter(wo => {
+            const breakdown = getBatchBreakdown(wo.id);
+            return (breakdown.externalBreakdown[externalStage.process] || 0) > 0;
+          });
         }
       }
     } else {
-      // Internal: Show only WOs without external WIP (or all if viewing internal)
+      // Internal: Show only WOs without external batches (or all if viewing internal)
       filtered = filtered.filter(wo => {
-        const total = wo.external_wip 
-          ? Object.values(wo.external_wip).reduce((sum: number, qty: any) => sum + (qty || 0), 0) as number
-          : 0;
-        return total === 0;
+        const breakdown = getBatchBreakdown(wo.id);
+        return breakdown.external === 0;
       });
       
-      // Level 2: Internal stage filter
+      // Level 2: Internal stage filter - based on BATCH presence
       if (stageFilter !== 'all') {
-        filtered = filtered.filter(wo => wo.current_stage === stageFilter);
+        filtered = filtered.filter(wo => {
+          const breakdown = getBatchBreakdown(wo.id);
+          switch (stageFilter) {
+            case 'production': return breakdown.production > 0;
+            case 'qc': return breakdown.qc > 0;
+            case 'packing': return breakdown.packing > 0;
+            case 'dispatch': return breakdown.dispatched > 0;
+            default: return true;
+          }
+        });
       }
     }
 
@@ -793,26 +883,27 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
     return filtered;
   }, [workOrders, searchQuery, primaryFilter, stageFilter, issueFilter, blockReasonFilter]);
 
-  // Stage counts for filter bar - contextual based on primary filter
+  // Stage counts for filter bar - based on BATCH presence
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { all: filteredOrders.length };
     
     if (primaryFilter === 'internal') {
-      Object.keys(INTERNAL_STAGES).forEach(stage => {
-        counts[stage] = filteredOrders.filter(wo => wo.current_stage === stage).length;
-      });
+      // Count by batch presence, not work_orders.current_stage
+      counts['production'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).production > 0).length;
+      counts['qc'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).qc > 0).length;
+      counts['packing'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).packing > 0).length;
+      counts['dispatch'] = filteredOrders.filter(wo => getBatchBreakdown(wo.id).dispatched > 0).length;
     } else {
       Object.entries(EXTERNAL_STAGES).forEach(([key, config]) => {
-        counts[key] = filteredOrders.filter(wo => 
-          wo.external_moves?.some((m: any) => 
-            m.process === config.process && m.status !== 'received_full'
-          )
-        ).length;
+        counts[key] = filteredOrders.filter(wo => {
+          const breakdown = getBatchBreakdown(wo.id);
+          return (breakdown.externalBreakdown[config.process] || 0) > 0;
+        }).length;
       });
     }
     
     return counts;
-  }, [filteredOrders, primaryFilter]);
+  }, [filteredOrders, primaryFilter, getBatchBreakdown]);
 
   // Block reason counts for filter dropdown
   const blockReasonCounts = useMemo(() => {
@@ -1136,6 +1227,7 @@ const canManageExternal = hasAnyRole(['production', 'logistics', 'admin']);
               <WorkOrderRow
                 key={wo.id}
                 wo={wo}
+                batchBreakdown={getBatchBreakdown(wo.id)}
                 onDelete={handleDeleteWorkOrder}
                 onSendToExternal={(wo: any) => { setSelectedWO(wo); setSendDialogOpen(true); }}
                 onReceiveFromExternal={(wo: any) => { setSelectedWO(wo); setReceiptDialogOpen(true); }}
