@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,19 @@ import {
   Building2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatCount, formatWeight, formatDisplayValue, isEmpty } from "@/lib/displayUtils";
+import { formatCount, isEmpty } from "@/lib/displayUtils";
+import { useBatchBasedWIP } from "@/hooks/useBatchBasedWIP";
+
+/**
+ * ExternalFlowPanel - External Processing Status
+ * 
+ * SINGLE SOURCE OF TRUTH: All external quantities derived from production_batches
+ * where stage_type='external'.
+ * 
+ * Do NOT use wo_external_moves for WIP counts.
+ * production_batches.external_partner_id links to partner.
+ */
 
 interface ProcessData {
   pcs: number;
@@ -29,27 +39,18 @@ interface ProcessData {
   overdue: number;
 }
 
-interface PartnerRisk {
-  id: string;
-  name: string;
-  process: string;
-  totalPcs: number;
-  totalMoves: number;
-  overdueMoves: number;
-  avgDaysOverdue: number;
-}
-
 interface ExternalFlowPanelProps {
-  data: Record<string, ProcessData>;
+  data?: Record<string, ProcessData>; // Legacy prop - ignored
   onProcessClick: (process: string) => void;
 }
 
 const PROCESS_CONFIG = [
-  { key: 'job_work', label: 'Job Work', icon: Factory, color: 'blue' },
-  { key: 'plating', label: 'Plating', icon: Sparkles, color: 'purple' },
-  { key: 'buffing', label: 'Buffing', icon: Wind, color: 'cyan' },
-  { key: 'blasting', label: 'Blasting', icon: Hammer, color: 'orange' },
-  { key: 'forging_ext', label: 'Forging', icon: Flame, color: 'red' }
+  { key: 'Forging', label: 'Forging', icon: Flame, color: 'red' },
+  { key: 'Job Work', label: 'Job Work', icon: Factory, color: 'blue' },
+  { key: 'Plating', label: 'Plating', icon: Sparkles, color: 'purple' },
+  { key: 'Buffing', label: 'Buffing', icon: Wind, color: 'cyan' },
+  { key: 'Blasting', label: 'Blasting', icon: Hammer, color: 'orange' },
+  { key: 'Heat Treatment', label: 'Heat Treatment', icon: Flame, color: 'amber' }
 ];
 
 // Heatmap intensity based on overdue count
@@ -62,129 +63,35 @@ const getHeatmapIntensity = (overdue: number, maxOverdue: number): string => {
   return 'bg-amber-500/30';
 };
 
-const getProcessColors = (color: string, isSelected: boolean, hasOverdue: boolean) => {
+const getProcessColors = (color: string) => {
   const colorMap: Record<string, { bg: string; border: string; text: string; activeBg: string }> = {
     blue: { bg: 'bg-blue-500/10', border: 'border-blue-500', text: 'text-blue-600', activeBg: 'bg-blue-500/20' },
     purple: { bg: 'bg-purple-500/10', border: 'border-purple-500', text: 'text-purple-600', activeBg: 'bg-purple-500/20' },
     cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500', text: 'text-cyan-600', activeBg: 'bg-cyan-500/20' },
     orange: { bg: 'bg-orange-500/10', border: 'border-orange-500', text: 'text-orange-600', activeBg: 'bg-orange-500/20' },
-    red: { bg: 'bg-red-500/10', border: 'border-red-500', text: 'text-red-600', activeBg: 'bg-red-500/20' }
+    red: { bg: 'bg-red-500/10', border: 'border-red-500', text: 'text-red-600', activeBg: 'bg-red-500/20' },
+    amber: { bg: 'bg-amber-500/10', border: 'border-amber-500', text: 'text-amber-600', activeBg: 'bg-amber-500/20' }
   };
   return colorMap[color] || colorMap.blue;
 };
 
-export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelProps) => {
+export const ExternalFlowPanel = ({ data: _legacyData, onProcessClick }: ExternalFlowPanelProps) => {
   const navigate = useNavigate();
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
-  const [partnerRisks, setPartnerRisks] = useState<PartnerRisk[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [worstProcess, setWorstProcess] = useState<string | null>(null);
-  const [worstPartner, setWorstPartner] = useState<PartnerRisk | null>(null);
+  
+  // Use batch-based WIP - single source of truth
+  const { externalProcesses, partnerMetrics, loading } = useBatchBasedWIP();
+  
+  // Find worst process and partner based on batch data
+  const worstProcess = externalProcesses.reduce((worst, p) => 
+    (p.overdueCount > (worst?.overdueCount || 0)) ? p : worst, null as typeof externalProcesses[0] | null);
+  const worstPartner = partnerMetrics.find(p => p.overdueCount > 0);
 
-  // Fetch partner-level risk data
-  useEffect(() => {
-    const fetchPartnerRisks = async () => {
-      setLoading(true);
-      
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Fetch all external moves with partner info
-      const { data: moves } = await supabase
-        .from('wo_external_moves')
-        .select(`
-          id,
-          partner_id,
-          process,
-          quantity_sent,
-          quantity_returned,
-          expected_return_date,
-          status,
-          external_partners!wo_external_moves_partner_id_fkey (
-            id,
-            name
-          )
-        `)
-        .eq('status', 'sent');
-
-      if (!moves) {
-        setLoading(false);
-        return;
-      }
-
-      // Aggregate by partner
-      const partnerMap = new Map<string, PartnerRisk>();
-      
-      moves.forEach(move => {
-        const partner = move.external_partners;
-        if (!partner) return;
-        
-        const partnerId = partner.id;
-        const existing = partnerMap.get(partnerId) || {
-          id: partnerId,
-          name: partner.name,
-          process: move.process || 'unknown',
-          totalPcs: 0,
-          totalMoves: 0,
-          overdueMoves: 0,
-          avgDaysOverdue: 0
-        };
-        
-        const pendingQty = (move.quantity_sent || 0) - (move.quantity_returned || 0);
-        const isOverdue = move.expected_return_date && move.expected_return_date < today;
-        const daysOverdue = isOverdue 
-          ? Math.floor((new Date(today).getTime() - new Date(move.expected_return_date!).getTime()) / (1000 * 60 * 60 * 24))
-          : 0;
-        
-        existing.totalPcs += pendingQty;
-        existing.totalMoves += 1;
-        if (isOverdue) {
-          existing.overdueMoves += 1;
-          existing.avgDaysOverdue = (existing.avgDaysOverdue * (existing.overdueMoves - 1) + daysOverdue) / existing.overdueMoves;
-        }
-        
-        partnerMap.set(partnerId, existing);
-      });
-
-      const risks = Array.from(partnerMap.values())
-        .sort((a, b) => (b.avgDaysOverdue * b.overdueMoves) - (a.avgDaysOverdue * a.overdueMoves));
-      
-      setPartnerRisks(risks);
-      
-      // Find worst partner
-      if (risks.length > 0 && risks[0].overdueMoves > 0) {
-        setWorstPartner(risks[0]);
-      }
-      
-      setLoading(false);
-    };
-
-    fetchPartnerRisks();
-  }, [data]);
-
-  // Calculate totals and find worst process with null-safety
-  const safeData = data ?? {};
-  const totalActive = Object.values(safeData).reduce((sum, p) => sum + (p?.activeMoves ?? 0), 0);
-  const totalOverdue = Object.values(safeData).reduce((sum, p) => sum + (p?.overdue ?? 0), 0);
-  const totalPcs = Object.values(safeData).reduce((sum, p) => sum + (p?.pcs ?? 0), 0);
-  const maxOverdue = Math.max(...Object.values(safeData).map(p => p?.overdue ?? 0), 0);
-
-  // Find worst process
-  useEffect(() => {
-    let worstKey: string | null = null;
-    let worstScore = 0;
-    
-    Object.entries(safeData).forEach(([key, processData]) => {
-      const overdue = processData?.overdue ?? 0;
-      const pcs = processData?.pcs ?? 0;
-      const score = overdue * 10 + pcs;
-      if (score > worstScore && overdue > 0) {
-        worstScore = score;
-        worstKey = key;
-      }
-    });
-    
-    setWorstProcess(worstKey);
-  }, [safeData]);
+  // Calculate totals from batch data
+  const totalActive = externalProcesses.reduce((sum, p) => sum + p.batchCount, 0);
+  const totalOverdue = externalProcesses.reduce((sum, p) => sum + p.overdueCount, 0);
+  const totalPcs = externalProcesses.reduce((sum, p) => sum + p.totalQuantity, 0);
+  const maxOverdue = Math.max(...externalProcesses.map(p => p.overdueCount), 0);
 
   const handleProcessClick = (key: string) => {
     if (selectedProcess === key) {
@@ -197,17 +104,26 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
 
   // Filter partners by selected process
   const filteredPartners = selectedProcess 
-    ? partnerRisks.filter(p => p.process.toLowerCase().includes(selectedProcess.replace('_ext', '').replace('_', ' ')))
-    : partnerRisks;
+    ? partnerMetrics.filter(p => p.processType.toLowerCase().includes(selectedProcess.toLowerCase()))
+    : partnerMetrics;
+
+  // Get process data from batch-based metrics
+  const getProcessData = (key: string) => {
+    const process = externalProcesses.find(p => 
+      p.processType.toLowerCase() === key.toLowerCase() ||
+      p.processType.toLowerCase().includes(key.toLowerCase().replace('_', ' '))
+    );
+    return process || { processType: key, batchCount: 0, totalQuantity: 0, overdueCount: 0, avgWaitHours: 0, partnerBreakdown: [] };
+  };
 
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        {/* Summary strip with alerts */}
+        {/* Summary strip with alerts - derived from batch data */}
         <div className="flex items-center justify-between px-2 flex-wrap gap-2">
           <div className="flex items-center gap-4 text-sm flex-wrap">
             <span className="text-muted-foreground">
-              Active: <span className="font-semibold text-foreground">{formatCount(totalActive)}</span> moves
+              Active: <span className="font-semibold text-foreground">{formatCount(totalActive)}</span> batches
             </span>
             <span className="text-muted-foreground">
               WIP: <span className="font-semibold text-foreground">{formatCount(totalPcs)}</span> pcs
@@ -243,42 +159,42 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
           </div>
         </div>
 
-        {/* Worst alerts banner */}
+        {/* Worst alerts banner - derived from batch data */}
         {(worstProcess || worstPartner) && (
           <div className="flex flex-wrap gap-2 px-2">
-            {worstProcess && data[worstProcess]?.overdue > 0 && (
+            {worstProcess && worstProcess.overdueCount > 0 && (
               <Badge 
                 variant="outline" 
                 className="border-destructive text-destructive cursor-pointer hover:bg-destructive/10"
-                onClick={() => handleProcessClick(worstProcess)}
+                onClick={() => handleProcessClick(worstProcess.processType)}
               >
                 <AlertTriangle className="h-3 w-3 mr-1" />
-                Worst Process: {PROCESS_CONFIG.find(p => p.key === worstProcess)?.label} ({data[worstProcess].overdue} overdue)
+                Worst Process: {worstProcess.processType} ({worstProcess.overdueCount} overdue)
               </Badge>
             )}
-            {worstPartner && worstPartner.overdueMoves > 0 && (
+            {worstPartner && worstPartner.overdueCount > 0 && (
               <Badge 
                 variant="outline" 
                 className="border-amber-500 text-amber-600 cursor-pointer hover:bg-amber-500/10"
-                onClick={() => navigate(`/partners?partner=${worstPartner.id}`)}
+                onClick={() => navigate(`/partners?partner=${worstPartner.partnerId}`)}
               >
                 <Building2 className="h-3 w-3 mr-1" />
-                Risk Partner: {worstPartner.name} ({Math.round(worstPartner.avgDaysOverdue)}d avg overdue)
+                Risk Partner: {worstPartner.partnerName} ({Math.round(worstPartner.avgWaitHours / 24)}d avg wait)
               </Badge>
             )}
           </div>
         )}
 
-        {/* Process Heatmap Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {/* Process Heatmap Grid - derived from batch data */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {PROCESS_CONFIG.map(({ key, label, icon: Icon, color }) => {
-            const processData = data[key] || { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 };
-            const hasActivity = processData.activeMoves > 0;
-            const hasOverdue = processData.overdue > 0;
+            const processData = getProcessData(key);
+            const hasActivity = processData.batchCount > 0;
+            const hasOverdue = processData.overdueCount > 0;
             const isSelected = selectedProcess === key;
-            const isWorst = worstProcess === key;
-            const colors = getProcessColors(color, isSelected, hasOverdue);
-            const heatmapBg = getHeatmapIntensity(processData.overdue, maxOverdue);
+            const isWorst = worstProcess?.processType === key;
+            const colors = getProcessColors(color);
+            const heatmapBg = getHeatmapIntensity(processData.overdueCount, maxOverdue);
 
             return (
               <Tooltip key={key}>
@@ -304,7 +220,7 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                           <div className={cn("p-1.5 rounded", colors.activeBg)}>
                             <Icon className={cn("h-4 w-4", colors.text)} />
                           </div>
-                          <span className="text-sm font-medium">{label}</span>
+                          <span className="text-xs font-medium">{label}</span>
                         </div>
                         {hasOverdue && (
                           <Badge 
@@ -314,7 +230,7 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                               isWorst && "animate-pulse"
                             )}
                           >
-                            {processData.overdue}
+                            {processData.overdueCount}
                           </Badge>
                         )}
                       </div>
@@ -325,25 +241,30 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                             "text-xl font-bold",
                             hasActivity ? "text-foreground" : "text-muted-foreground"
                           )}>
-                            {formatCount(processData.activeMoves)}
+                            {formatCount(processData.batchCount)}
                           </div>
-                          <p className="text-[10px] text-muted-foreground">moves</p>
+                          <p className="text-[10px] text-muted-foreground">batches</p>
                         </div>
                         <div>
                           <div className={cn(
                             "text-xl font-bold",
                             hasActivity ? "text-foreground" : "text-muted-foreground"
                           )}>
-                            {formatCount(processData.pcs)}
+                            {formatCount(processData.totalQuantity)}
                           </div>
                           <p className="text-[10px] text-muted-foreground">pcs</p>
                         </div>
                       </div>
 
-                      {!isEmpty(processData.kg) && (
+                      {hasActivity && processData.avgWaitHours > 0 && (
                         <div className="mt-2 pt-2 border-t border-border/50 text-center">
-                          <span className="text-xs text-muted-foreground">
-                            {formatWeight(processData.kg)}
+                          <span className={cn(
+                            "text-xs",
+                            processData.avgWaitHours > 48 ? "text-destructive" :
+                            processData.avgWaitHours > 24 ? "text-amber-600" : "text-muted-foreground"
+                          )}>
+                            <Clock className="h-3 w-3 inline mr-1" />
+                            {Math.round(processData.avgWaitHours)}h avg
                           </span>
                         </div>
                       )}
@@ -353,9 +274,10 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                 <TooltipContent>
                   <div className="text-xs space-y-1">
                     <p className="font-semibold">{label}</p>
-                    <p>{formatCount(processData.activeMoves)} active moves</p>
-                    <p>{formatCount(processData.pcs)} pcs • {formatWeight(processData.kg)}</p>
-                    {hasOverdue && <p className="text-destructive">{formatCount(processData.overdue)} overdue returns</p>}
+                    <p>{formatCount(processData.batchCount)} active batches</p>
+                    <p>{formatCount(processData.totalQuantity)} pcs</p>
+                    {processData.avgWaitHours > 0 && <p>Avg wait: {Math.round(processData.avgWaitHours)}h</p>}
+                    {hasOverdue && <p className="text-destructive">{formatCount(processData.overdueCount)} overdue</p>}
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -363,13 +285,13 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
           })}
         </div>
 
-        {/* Partner Risk List */}
+        {/* Partner Risk List - derived from batch data */}
         <Card>
           <CardHeader className="py-3 px-4">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                Partner Risk
+                Partner Risk (Batch-Based)
                 {selectedProcess && (
                   <Badge variant="secondary" className="text-xs">
                     {PROCESS_CONFIG.find(p => p.key === selectedProcess)?.label}
@@ -386,17 +308,18 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
               {loading ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">Loading...</div>
               ) : filteredPartners.length === 0 ? (
-                <div className="p-4 text-center text-sm text-muted-foreground">No pending external moves</div>
+                <div className="p-4 text-center text-sm text-muted-foreground">No batches at external partners</div>
               ) : (
                 <div className="divide-y divide-border">
                   {filteredPartners.slice(0, 10).map((partner, index) => {
-                    const isHighRisk = partner.overdueMoves > 0 && partner.avgDaysOverdue > 3;
-                    const isMediumRisk = partner.overdueMoves > 0;
-                    const isWorstPartnerItem = worstPartner?.id === partner.id;
+                    const avgDaysWait = partner.avgWaitHours / 24;
+                    const isHighRisk = partner.overdueCount > 0 && avgDaysWait > 3;
+                    const isMediumRisk = partner.overdueCount > 0;
+                    const isWorstPartnerItem = worstPartner?.partnerId === partner.partnerId;
                     
                     return (
                       <div
-                        key={partner.id}
+                        key={partner.partnerId}
                         className={cn(
                           "px-4 py-3 transition-colors",
                           isWorstPartnerItem && "bg-destructive/5"
@@ -417,16 +340,16 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                                 "text-sm font-medium",
                                 isWorstPartnerItem && "text-destructive"
                               )}>
-                                {partner.name}
+                                {partner.partnerName}
                               </p>
                               <p className="text-[10px] text-muted-foreground capitalize">
-                                {partner.process}
+                                {partner.processType}
                               </p>
                             </div>
                           </div>
                           
                           <div className="flex items-center gap-4 text-right">
-                            {partner.overdueMoves > 0 && (
+                            {partner.overdueCount > 0 && (
                               <div className="flex flex-col items-end">
                                 <Badge 
                                   variant="destructive" 
@@ -435,25 +358,25 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                                     isHighRisk && "animate-pulse"
                                   )}
                                 >
-                                  SLA Breach
+                                  {partner.overdueCount} Overdue
                                 </Badge>
                                 <span className="text-[10px] text-destructive font-medium mt-0.5">
-                                  Avg {Math.round(partner.avgDaysOverdue)}d Overdue
+                                  Avg {Math.round(avgDaysWait)}d Wait
                                 </span>
                               </div>
                             )}
                             <div>
                               <p className={cn(
                                 "text-sm font-bold",
-                                partner.overdueMoves > 0 ? "text-amber-600" : "text-foreground"
+                                partner.overdueCount > 0 ? "text-amber-600" : "text-foreground"
                               )}>
-                                {formatCount(partner.totalPcs)}
+                                {formatCount(partner.totalQuantity)}
                               </p>
                               <p className={cn(
                                 "text-[10px]",
-                                partner.overdueMoves > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"
+                                partner.overdueCount > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"
                               )}>
-                                {partner.overdueMoves > 0 ? "pcs at Risk" : "pcs pending"}
+                                {partner.overdueCount > 0 ? "pcs at Risk" : "pcs pending"}
                               </p>
                             </div>
                           </div>
@@ -467,38 +390,25 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
                             className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/partners?partner=${partner.id}`);
+                              navigate(`/partners?partner=${partner.partnerId}`);
                             }}
                           >
                             <Building2 className="h-3 w-3 mr-1" />
                             View Partner
                           </Button>
-                          {partner.overdueMoves > 0 && (
+                          {partner.overdueCount > 0 && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-6 text-[10px] px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigate(`/logistics?filter=overdue&partner=${partner.id}`);
+                                navigate(`/logistics?filter=overdue&partner=${partner.partnerId}`);
                               }}
                             >
                               <Clock className="h-3 w-3 mr-1" />
-                              View Overdue Jobs
+                              View Overdue
                             </Button>
-                          )}
-                          {isHighRisk && (
-                            <Badge 
-                              variant="outline" 
-                              className="h-5 text-[9px] border-amber-500 text-amber-600 cursor-pointer hover:bg-amber-500/10"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                // Flag only - no logic change
-                              }}
-                            >
-                              <AlertTriangle className="h-2.5 w-2.5 mr-1" />
-                              Hold New Moves
-                            </Badge>
                           )}
                         </div>
                       </div>
@@ -509,6 +419,11 @@ export const ExternalFlowPanel = ({ data, onProcessClick }: ExternalFlowPanelPro
             </ScrollArea>
           </CardContent>
         </Card>
+        
+        {/* Source indicator */}
+        <p className="text-[10px] text-muted-foreground italic text-right">
+          All values derived from production_batches (batch-level source of truth)
+        </p>
       </div>
     </TooltipProvider>
   );
