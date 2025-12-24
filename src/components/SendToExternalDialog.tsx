@@ -206,14 +206,17 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       newErrors.qtySent = `Quantity cannot exceed ${maxQty} (available quantity)`;
     }
     
-    if (!expectedReturnDate) {
-      newErrors.expectedReturnDate = "Expected return date is required";
-    } else {
-      const returnDate = new Date(expectedReturnDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (returnDate < today) {
-        newErrors.expectedReturnDate = "Return date cannot be in the past";
+    // Expected return date only required for external processes
+    if (!isInternalProcess) {
+      if (!expectedReturnDate) {
+        newErrors.expectedReturnDate = "Expected return date is required";
+      } else {
+        const returnDate = new Date(expectedReturnDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (returnDate < today) {
+          newErrors.expectedReturnDate = "Return date cannot be in the past";
+        }
       }
     }
     
@@ -259,10 +262,87 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     }
 
     const qty = parseFloat(qtySent);
-    const challanNo = generateChallanNo(process);
 
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Calculate weight
+      const weightPerPc = workOrder.gross_weight_per_pc || 0;
+      const totalWeight = (qty * weightPerPc) / 1000; // Convert grams to kg
+
+      // INTERNAL PROCESS: Route to production_batches instead of wo_external_moves
+      if (isInternalProcess) {
+        // Create or update production batch for internal process
+        const { data: batchData, error: batchError } = await supabase
+          .from("production_batches")
+          .insert({
+            wo_id: workOrder.id,
+            batch_quantity: qty,
+            current_process: process,
+            stage_type: 'production',
+            batch_status: 'in_queue',
+            trigger_reason: `internal_${process?.toLowerCase()}`,
+            created_by: user?.id,
+          })
+          .select()
+          .single();
+
+        if (batchError) {
+          throw batchError;
+        }
+
+        // Log material movement (internal transfer)
+        await supabase
+          .from("material_movements")
+          .insert({
+            work_order_id: workOrder.id,
+            process_type: process,
+            movement_type: 'internal',
+            qty: qty,
+            weight: totalWeight,
+            remarks: remarks.trim() || `Sent to ${process} department`,
+            created_by: user?.id,
+          });
+
+        // Update work order stage
+        const stageMap: Record<string, string> = {
+          'Cutting': 'cutting',
+        };
+
+        await supabase
+          .from("work_orders")
+          .update({
+            current_stage: (stageMap[process] || process.toLowerCase()) as any,
+            material_location: `In-House (${process})`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", workOrder.id);
+
+        // Create execution record for internal process
+        await createExecutionRecord({
+          workOrderId: workOrder.id,
+          operationType: 'CNC', // Internal cutting tracked as CNC operation
+          processName: process,
+          quantity: qty,
+          unit: 'pcs',
+          direction: 'OUT',
+        });
+
+        toast({
+          title: "Sent to " + process,
+          description: `${qty} pcs (${totalWeight.toFixed(2)} kg) sent to ${process} department.`,
+        });
+
+        onSuccess();
+        onOpenChange(false);
+        resetForm();
+        return;
+      }
+
+      // EXTERNAL PROCESS: Create wo_external_moves and challan
+      const challanNo = generateChallanNo(process);
+
       // Check for duplicate challan number
       const { data: existingChallan } = await (supabase as any)
         .from("wo_external_moves")
@@ -276,14 +356,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-
       const { data: moveData, error } = await supabase
         .from("wo_external_moves")
         .insert([{
           work_order_id: workOrder.id,
           process,
-          partner_id: isInternalProcess ? null : partnerId, // No partner for internal processes
+          partner_id: partnerId,
           quantity_sent: qty,
           expected_return_date: expectedReturnDate,
           challan_no: challanNo,
@@ -304,13 +382,9 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         throw error;
       }
 
-      // Get partner name for material location (or "In-House" for internal processes)
+      // Get partner name for material location
       const selectedPartner = partners.find(p => p.id === partnerId);
-      const partnerName = isInternalProcess ? 'In-House (Cutting)' : (selectedPartner?.name || 'External Partner');
-      
-      // Calculate weight
-      const weightPerPc = workOrder.gross_weight_per_pc || 0;
-      const totalWeight = (qty * weightPerPc) / 1000; // Convert grams to kg
+      const partnerName = selectedPartner?.name || 'External Partner';
       
       // Log material movement (OUT)
       const { error: movementError } = await supabase
@@ -328,15 +402,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       
       if (movementError) {
         console.error("Failed to log material movement:", movementError);
-        // Don't fail the operation, just log the error
       }
       
-      // Update work order with external processing status and set current_stage to match process
+      // Update work order with external processing status
       const currentWip = workOrder.qty_external_wip || 0;
       
-      // Map process type to stage value
       const stageMap: Record<string, string> = {
-        'Cutting': 'cutting',
         'Forging': 'forging',
         'Plating': 'plating',
         'Buffing': 'buffing',
@@ -359,26 +430,25 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
       if (updateError) {
         console.error("Failed to update work order:", updateError);
-        // Don't fail the operation if WO update fails, just log it
       }
 
       // Reload quantity tracking
       await loadQuantityTracking();
       
-      // Create execution record for process OUT (use EXTERNAL_PROCESS for all process moves)
+      // Create execution record for external process OUT
       await createExecutionRecord({
         workOrderId: workOrder.id,
-        operationType: 'EXTERNAL_PROCESS', // All process moves (internal/external) tracked same way
+        operationType: 'EXTERNAL_PROCESS',
         processName: process,
         quantity: qty,
         unit: 'pcs',
         direction: 'OUT',
-        relatedPartnerId: isInternalProcess ? undefined : partnerId,
+        relatedPartnerId: partnerId,
         relatedChallanId: moveData?.id,
       });
       
       toast({
-        title: "Material Sent",
+        title: "Challan Created",
         description: `Material sent to ${partnerName} for ${process} - ${qty} pcs (${totalWeight.toFixed(2)} kg).`,
       });
 
@@ -387,8 +457,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       resetForm();
     } catch (error: any) {
       toast({
-        title: "Error Creating Challan",
-        description: error.message || "Failed to create external move",
+        title: isInternalProcess ? "Error Sending to Department" : "Error Creating Challan",
+        description: error.message || "Failed to process request",
         variant: "destructive",
       });
     } finally {
@@ -565,20 +635,22 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                 {errors.qtySent && <FormHint variant="error">{errors.qtySent}</FormHint>}
               </FormField>
 
-              <FormField>
-                <Label>Expected Return<RequiredIndicator /></Label>
-                <Input
-                  type="date"
-                  value={expectedReturnDate}
-                  onChange={(e) => {
-                    setExpectedReturnDate(e.target.value);
-                    setErrors(prev => ({ ...prev, expectedReturnDate: "" }));
-                  }}
-                  min={format(new Date(), "yyyy-MM-dd")}
-                  className={errors.expectedReturnDate ? "border-destructive" : ""}
-                />
-                {errors.expectedReturnDate && <FormHint variant="error">{errors.expectedReturnDate}</FormHint>}
-              </FormField>
+              {!isInternalProcess && (
+                <FormField>
+                  <Label>Expected Return<RequiredIndicator /></Label>
+                  <Input
+                    type="date"
+                    value={expectedReturnDate}
+                    onChange={(e) => {
+                      setExpectedReturnDate(e.target.value);
+                      setErrors(prev => ({ ...prev, expectedReturnDate: "" }));
+                    }}
+                    min={format(new Date(), "yyyy-MM-dd")}
+                    className={errors.expectedReturnDate ? "border-destructive" : ""}
+                  />
+                  {errors.expectedReturnDate && <FormHint variant="error">{errors.expectedReturnDate}</FormHint>}
+                </FormField>
+              )}
             </FormRow>
 
             {process === 'Job Work' && (
@@ -613,7 +685,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                     setErrors(prev => ({ ...prev, remarks: "" }));
                   }
                 }}
-                placeholder="Optional notes for this challan..."
+                placeholder={isInternalProcess ? "Optional notes..." : "Optional notes for this challan..."}
                 rows={2}
                 maxLength={500}
                 className={errors.remarks ? "border-destructive" : ""}
@@ -638,14 +710,16 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={loading || !canCreate || remainingQty === 0 || loadingQty || workOrder?.production_release_status !== 'RELEASED'}
+              disabled={loading || !canCreate || remainingQty === 0 || loadingQty || (!isInternalProcess && workOrder?.production_release_status !== 'RELEASED')}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {workOrder?.production_release_status !== 'RELEASED' 
+              {!isInternalProcess && workOrder?.production_release_status !== 'RELEASED' 
                 ? "Not Released" 
                 : remainingQty === 0 
                   ? "No Qty Available" 
-                  : "Create Challan"}
+                  : isInternalProcess 
+                    ? `Send to ${process}` 
+                    : "Create Challan"}
             </Button>
           </FormActions>
         </div>
