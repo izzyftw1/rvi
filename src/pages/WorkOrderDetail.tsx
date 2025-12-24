@@ -42,6 +42,8 @@ import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
 import { RouteProgressView } from "@/components/routing/RouteProgressView";
 import { WorkOrderNCRList } from "@/components/ncr/WorkOrderNCRList";
+import { ProductionCompleteControl } from "@/components/ProductionCompleteControl";
+import { ProductionCompleteBadge } from "@/components/ProductionCompleteBadge";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +83,7 @@ const WorkOrderDetail = () => {
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [qcApprovers, setQcApprovers] = useState<Record<string, string>>({});
   const [releasedByName, setReleasedByName] = useState<string>('');
+  const [productionCompletedByName, setProductionCompletedByName] = useState<string>('');
   const [productionNotReleased, setProductionNotReleased] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(() => {
     return localStorage.getItem('wo-detail-active-tab') || 'production';
@@ -327,13 +330,14 @@ const WorkOrderDetail = () => {
       
       setExternalMoves(movesData || []);
 
-      // Load QC approver names and production release user
+      // Load QC approver names, production release user, and production completed by
       if (woData) {
         const approverIds = [
           woData.qc_raw_material_approved_by,
           woData.qc_first_piece_approved_by,
           woData.qc_final_approved_by,
-          woData.production_released_by
+          woData.production_released_by,
+          woData.production_completed_by
         ].filter(Boolean);
 
         if (approverIds.length > 0) {
@@ -351,6 +355,11 @@ const WorkOrderDetail = () => {
           // Set released by name
           if (woData.production_released_by && approversMap[woData.production_released_by]) {
             setReleasedByName(approversMap[woData.production_released_by]);
+          }
+          
+          // Set production completed by name
+          if (woData.production_completed_by && approversMap[woData.production_completed_by]) {
+            setProductionCompletedByName(approversMap[woData.production_completed_by]);
           }
         }
       }
@@ -810,6 +819,13 @@ const WorkOrderDetail = () => {
             <WOProgressCard
               woId={id!}
               orderedQuantity={wo.quantity || 0}
+            />
+            
+            {/* Production Complete Control */}
+            <ProductionCompleteControl
+              workOrder={wo}
+              completedByName={productionCompletedByName}
+              onUpdate={loadWorkOrderData}
             />
           </section>
         )}

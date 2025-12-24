@@ -767,6 +767,30 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     toast.success("NCR created and linked to production log");
   };
 
+  // Check if production is complete (locked)
+  const isProductionComplete = propWorkOrder?.production_complete === true;
+
+  if (isProductionComplete) {
+    return (
+      <Card className="border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <Lock className="h-5 w-5 text-emerald-600 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                Production is complete.
+              </p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Production was marked complete with {(propWorkOrder?.production_complete_qty || 0).toLocaleString()} pcs. 
+                Further logging is locked. Packing & dispatch can proceed.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (disabled) {
     // Determine specific reason for blocking
     const materialStatus = propWorkOrder?.qc_material_status || propWorkOrder?.qc_raw_material_status || 'pending';
