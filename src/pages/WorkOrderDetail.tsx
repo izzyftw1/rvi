@@ -44,6 +44,7 @@ import { RouteProgressView } from "@/components/routing/RouteProgressView";
 import { WorkOrderNCRList } from "@/components/ncr/WorkOrderNCRList";
 import { ProductionCompleteControl } from "@/components/ProductionCompleteControl";
 import { ProductionCompleteBadge } from "@/components/ProductionCompleteBadge";
+import { DispatchEligibilityCard } from "@/components/DispatchEligibilityCard";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -826,6 +827,13 @@ const WorkOrderDetail = () => {
               workOrder={wo}
               completedByName={productionCompletedByName}
               onUpdate={loadWorkOrderData}
+            />
+
+            {/* Dispatch Eligibility */}
+            <DispatchEligibilityCard
+              woId={id!}
+              itemCode={wo.item_code}
+              customerName={wo.customer}
             />
           </section>
         )}
