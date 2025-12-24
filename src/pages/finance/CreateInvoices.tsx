@@ -51,28 +51,42 @@ export default function CreateInvoices() {
 
   const loadInvoiceableShipments = async () => {
     try {
-      // Get all shipments with their dispatches
+      // Get all shipments - simplified query to avoid type recursion
       const { data: shipmentsData, error: shipError } = await supabase
         .from("shipments")
-        .select(`
-          id,
-          ship_id,
-          customer,
-          so_id,
-          ship_date,
-          status,
-          sales_orders!so_id(
-            so_id,
-            customer_id,
-            currency,
-            payment_terms_days,
-            customer_master!customer_id(customer_name, payment_terms_days)
-          )
-        `)
+        .select("id, ship_id, customer, so_id, ship_date, status")
         .in("status", ["delivered", "in_transit", "shipped"])
         .order("ship_date", { ascending: false });
 
       if (shipError) throw shipError;
+
+      // Get sales orders for customer info
+      const soIds = (shipmentsData || []).map(s => s.so_id).filter(Boolean);
+      const { data: salesOrdersData } = soIds.length > 0 
+        ? await supabase
+            .from("sales_orders")
+            .select("id, so_id, customer_id, currency, payment_terms_days")
+            .in("id", soIds)
+        : { data: [] };
+
+      // Get customer info
+      const customerIds = (salesOrdersData || []).map(so => so.customer_id).filter(Boolean);
+      const { data: customersData } = customerIds.length > 0
+        ? await supabase
+            .from("customer_master")
+            .select("id, customer_name, payment_terms_days")
+            .in("id", customerIds)
+        : { data: [] };
+
+      const salesOrderMap: Record<string, any> = {};
+      (salesOrdersData || []).forEach((so: any) => {
+        salesOrderMap[so.id] = so;
+      });
+
+      const customerMap: Record<string, any> = {};
+      (customersData || []).forEach((c: any) => {
+        customerMap[c.id] = c;
+      });
 
       // Get existing invoices to check which shipments are already invoiced
       const { data: existingInvoices } = await supabase
@@ -86,26 +100,41 @@ export default function CreateInvoices() {
       const processedShipments: InvoiceableShipment[] = [];
 
       for (const shipment of shipmentsData || []) {
-        // Get dispatches for this shipment
+        // Get dispatches for this shipment - simplified query
         const { data: dispatchesData } = await supabase
           .from("dispatches")
-          .select(`
-            id,
-            wo_id,
-            quantity,
-            carton_id,
-            work_orders!wo_id(
-              wo_number,
-              item_code,
-              customer_id,
-              so_id,
-              financial_snapshot
-            ),
-            cartons!carton_id(quantity)
-          `)
+          .select("id, wo_id, quantity, carton_id")
           .eq("shipment_id", shipment.id);
 
         if (!dispatchesData || dispatchesData.length === 0) continue;
+
+        // Get work orders and cartons for these dispatches
+        const woIds = dispatchesData.map(d => d.wo_id).filter(Boolean);
+        const cartonIds = dispatchesData.map(d => d.carton_id).filter(Boolean);
+
+        const { data: workOrdersData } = woIds.length > 0
+          ? await supabase
+              .from("work_orders")
+              .select("id, wo_number, item_code, customer_id, so_id, financial_snapshot")
+              .in("id", woIds)
+          : { data: [] };
+
+        const { data: cartonsData } = cartonIds.length > 0
+          ? await supabase
+              .from("cartons")
+              .select("id, quantity")
+              .in("id", cartonIds)
+          : { data: [] };
+
+        const workOrderMap: Record<string, any> = {};
+        (workOrdersData || []).forEach((wo: any) => {
+          workOrderMap[wo.id] = wo;
+        });
+
+        const cartonMap: Record<string, number> = {};
+        (cartonsData || []).forEach((c: any) => {
+          cartonMap[c.id] = c.quantity || 0;
+        });
 
         // Calculate totals and check for mismatches
         let totalDispatchedQty = 0;
@@ -113,12 +142,11 @@ export default function CreateInvoices() {
         const dispatches: InvoiceableShipment["dispatches"] = [];
 
         for (const dispatch of dispatchesData) {
-          const wo = dispatch.work_orders as any;
-          const carton = dispatch.cartons as any;
-          const packedQty = carton?.quantity || 0;
+          const wo = workOrderMap[dispatch.wo_id] || {};
+          const packedQty = dispatch.carton_id ? (cartonMap[dispatch.carton_id] || 0) : 0;
           
           // Get pricing from financial_snapshot or default
-          const financialSnapshot = wo?.financial_snapshot as any;
+          const financialSnapshot = wo.financial_snapshot as any;
           const rate = financialSnapshot?.line_item?.price_per_pc || 0;
           const currency = financialSnapshot?.currency || "USD";
 
@@ -128,8 +156,8 @@ export default function CreateInvoices() {
           dispatches.push({
             id: dispatch.id,
             wo_id: dispatch.wo_id,
-            wo_number: wo?.wo_number || "N/A",
-            item_code: wo?.item_code || "N/A",
+            wo_number: wo.wo_number || "N/A",
+            item_code: wo.item_code || "N/A",
             quantity: dispatch.quantity,
             packed_qty: packedQty,
             rate,
@@ -137,8 +165,8 @@ export default function CreateInvoices() {
           });
         }
 
-        const salesOrder = shipment.sales_orders as any;
-        const customer = salesOrder?.customer_master as any;
+        const salesOrder = shipment.so_id ? salesOrderMap[shipment.so_id] : null;
+        const customer = salesOrder?.customer_id ? customerMap[salesOrder.customer_id] : null;
 
         processedShipments.push({
           id: shipment.id,

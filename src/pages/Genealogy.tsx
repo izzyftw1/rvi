@@ -24,10 +24,10 @@ export default function Genealogy() {
       let entityData: any = null;
       let entityType = "";
 
-      // Try work order
+      // Try work order - use simple select to avoid type recursion
       const { data: woData } = await supabase
         .from("work_orders")
-        .select("*, sales_orders(so_id, customer)")
+        .select("id, wo_id, display_id, item_code, customer, quantity, so_id")
         .eq("wo_id", searchTerm)
         .maybeSingle();
       
@@ -35,20 +35,20 @@ export default function Genealogy() {
         entityData = woData;
         entityType = "work_order";
 
-        // Get materials issued
+        // Get materials issued - simplified query
         const woId = woData.id as string;
         const { data: materials } = await supabase
           .from("wo_material_issues")
-          .select("*, material_lots(lot_id, heat_no, alloy, supplier, purchase_orders(po_id, sales_orders(so_id)))")
+          .select("id, wo_id, lot_id, quantity_issued, issued_at")
           .eq("wo_id", woId);
 
         // Get QC records - note: qc_records doesn't have wo_id column, skip for now
         const qc: any[] = [];
 
-        // Get cartons
+        // Get cartons - simplified query to avoid type recursion
         const { data: cartons } = await supabase
           .from("cartons")
-          .select("*, pallets:pallet_cartons(pallet_id, pallets(pallet_id, shipments:shipment_pallets(shipments(*))))")
+          .select("id, carton_id, wo_id, quantity, status, built_at")
           .eq("wo_id", woId);
 
         // Get scan events

@@ -88,12 +88,23 @@ export const FinalQCReportGenerator = ({
     try {
       setLoading(true);
 
-      // Load work order details
+      // Load work order details - use simple select to avoid type recursion
       const { data: woData } = await supabase
         .from('work_orders')
-        .select('*, sales_orders(so_id)')
+        .select('id, wo_id, display_id, item_code, customer, quantity, revision, so_id, quality_released, final_qc_result, sampling_plan_reference')
         .eq('id', woId)
         .single();
+      
+      // Load sales order separately if needed
+      let salesOrderId: string | null = null;
+      if (woData?.so_id) {
+        const { data: soData } = await supabase
+          .from('sales_orders')
+          .select('so_id')
+          .eq('id', woData.so_id)
+          .single();
+        salesOrderId = soData?.so_id || null;
+      }
 
       // Load hourly QC data
       const { data: hourlyData } = await supabase
