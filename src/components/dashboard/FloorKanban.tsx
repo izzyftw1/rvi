@@ -1,7 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useThrottledRealtime } from "@/hooks/useThrottledRealtime";
+import { useExecutionBasedWIP } from "@/hooks/useExecutionBasedWIP";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -16,7 +14,8 @@ import {
   Hammer,
   Flame,
   AlertTriangle,
-  Clock
+  Clock,
+  Wrench
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -27,238 +26,60 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-interface StageData {
-  stage: string;
-  icon: React.ElementType;
-  count: number;
-  totalPcs: number;
-  totalKg: number;
-  avgWaitHours: number;
-  status: 'normal' | 'warning' | 'bottleneck';
-  onClick: () => void;
-  isExternal?: boolean;
-  breakdown?: {
-    activeJobs: number;
-    pendingReturns?: number;
-    overdueCount?: number;
-    expectedReturns?: string[];
-  };
-}
+/**
+ * FloorKanban - Live factory floor status
+ * 
+ * REFACTORED: Now derives all quantities from execution records and batch tables,
+ * NOT from work_orders.current_stage.
+ * 
+ * current_stage is retained only as a high-level status hint.
+ */
+
+const STAGE_ICONS: Record<string, React.ElementType> = {
+  goods_in: Package,
+  production: Factory,
+  qc: ClipboardCheck,
+  packing: Box,
+  dispatch: Truck
+};
+
+const STAGE_ROUTES: Record<string, string> = {
+  goods_in: '/materials/inwards',
+  production: '/production-progress',
+  qc: '/quality',
+  packing: '/packing',
+  dispatch: '/dispatch'
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  goods_in: 'Goods In',
+  production: 'Production',
+  qc: 'Quality Control',
+  packing: 'Packing',
+  dispatch: 'Dispatch'
+};
+
+const EXTERNAL_ICONS: Record<string, React.ElementType> = {
+  'Forging': Flame,
+  'Job Work': Wrench,
+  'Plating': Sparkles,
+  'Buffing': Wind,
+  'Blasting': Hammer,
+  'Heat Treatment': Flame
+};
 
 const AnimatedNumber = ({ value }: { value: number }) => {
-  const [displayValue, setDisplayValue] = useState(0);
-
-  useEffect(() => {
-    const duration = 1000;
-    const steps = 20;
-    const increment = value / steps;
-    const stepDuration = duration / steps;
-
-    let current = 0;
-    const timer = setInterval(() => {
-      current += increment;
-      if (current >= value) {
-        setDisplayValue(value);
-        clearInterval(timer);
-      } else {
-        setDisplayValue(Math.floor(current));
-      }
-    }, stepDuration);
-
-    return () => clearInterval(timer);
-  }, [value]);
-
-  return <span>{displayValue.toLocaleString()}</span>;
+  return <span>{value.toLocaleString()}</span>;
 };
 
 export const FloorKanban = () => {
   const navigate = useNavigate();
-  const [stages, setStages] = useState<StageData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { internalStages, externalProcesses, summary, loading } = useExecutionBasedWIP();
 
-  useEffect(() => {
-    loadStageData();
-  }, []);
-
-  // Throttled realtime for Kanban - separate channel
-  const loadStageDataCallback = useCallback(() => {
-    loadStageData();
-  }, []);
-
-  useThrottledRealtime({
-    channelName: 'dashboard-kanban',
-    tables: ['work_orders', 'wo_external_moves', 'wo_external_receipts', 'production_logs'],
-    onUpdate: loadStageDataCallback,
-    throttleMs: 5000, // 5 seconds throttle
-    cacheMs: 30000, // 30 seconds cache
-  });
-
-  const loadStageData = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-
-      // Fetch work orders for internal stages
-      const { data: wos } = await supabase
-        .from('work_orders')
-        .select('*');
-
-      // Fetch external moves for external processing
-      const { data: externalMoves } = await supabase
-        .from('wo_external_moves')
-        .select(`
-          *,
-          work_orders!inner(
-            quantity,
-            gross_weight_per_pc,
-            item_code,
-            customer
-          )
-        `)
-        .in('status', ['sent', 'in_transit', 'partial']);
-
-      const workOrders = wos || [];
-      const moves: any[] = externalMoves || [];
-
-      const stagesData: StageData[] = [];
-
-      // Helper function to calculate status
-      const getStatus = (avgWait: number): 'normal' | 'warning' | 'bottleneck' => {
-        if (avgWait > 48) return 'bottleneck';
-        if (avgWait > 24) return 'warning';
-        return 'normal';
-      };
-
-      // Internal Stages
-      const internalStages = [
-        { key: 'goods_in', label: 'Goods In', icon: Package, route: '/materials/inwards' },
-        { key: 'production', label: 'Production', icon: Factory, route: '/production-progress' },
-        { key: 'qc', label: 'Quality Control', icon: ClipboardCheck, route: '/quality' },
-        { key: 'packing', label: 'Packing', icon: Box, route: '/packing' },
-        { key: 'dispatch', label: 'Dispatch', icon: Truck, route: '/dispatch' }
-      ];
-
-      internalStages.forEach(({ key, label, icon, route }) => {
-        const stageWOs = workOrders.filter(wo => wo.current_stage === key);
-        const totalWaitHours = stageWOs.reduce((sum, wo) => {
-          const waitTime = (Date.now() - new Date(wo.updated_at).getTime()) / (1000 * 60 * 60);
-          return sum + waitTime;
-        }, 0);
-        const avgWait = stageWOs.length > 0 ? totalWaitHours / stageWOs.length : 0;
-        const overdueCount = stageWOs.filter(wo => wo.due_date < today && wo.status !== 'completed').length;
-
-        stagesData.push({
-          stage: label,
-          icon,
-          count: stageWOs.length,
-          totalPcs: stageWOs.reduce((sum, wo) => sum + (wo.quantity || 0), 0),
-          totalKg: stageWOs.reduce((sum, wo) => sum + ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000), 0),
-          avgWaitHours: avgWait,
-          status: getStatus(avgWait),
-          onClick: () => navigate(route),
-          isExternal: false,
-          breakdown: {
-            activeJobs: stageWOs.filter(wo => wo.status === 'in_progress').length,
-            overdueCount
-          }
-        });
-      });
-
-      // External Processing Stages - fetch from both work_orders and wo_external_moves
-      const externalStages = [
-        { type: 'Forging', label: 'Forging (Ext)', icon: Flame, woStage: 'forging' },
-        { type: 'Job Work', label: 'Job Work', icon: Factory, woStage: 'job_work' },
-        { type: 'Plating', label: 'Plating', icon: Sparkles, woStage: 'plating' },
-        { type: 'Buffing', label: 'Buffing', icon: Wind, woStage: 'buffing' },
-        { type: 'Blasting', label: 'Blasting', icon: Hammer, woStage: 'blasting' },
-      ];
-
-      externalStages.forEach(({ type, label, icon, woStage }) => {
-        // Get work orders with current_stage matching this process
-        const stageWOs = workOrders.filter(wo => 
-          wo.current_stage?.toLowerCase() === woStage.toLowerCase() ||
-          wo.external_process_type?.toLowerCase() === type.toLowerCase()
-        );
-        
-        // Filter external moves by process type and active status
-        const typeMoves = moves.filter(m => 
-          m.process?.toLowerCase() === type.toLowerCase() &&
-          ['sent', 'in_transit', 'partial'].includes(m.status)
-        );
-        
-        // Calculate WIP from external moves
-        const totalSentPcs = typeMoves.reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
-        const totalReturnedPcs = typeMoves.reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
-        const wipPcsFromMoves = totalSentPcs - totalReturnedPcs;
-        
-        // Calculate WIP from work orders
-        const wipPcsFromWOs = stageWOs.reduce((sum, wo) => sum + (wo.qty_external_wip || 0), 0);
-        
-        // Total WIP (combine both sources)
-        const totalWipPcs = wipPcsFromMoves + wipPcsFromWOs;
-        
-        // Calculate weight from external moves
-        const moveKg = typeMoves.reduce((sum, m) => {
-          const woData = m.work_orders;
-          const qtyInTransit = (m.quantity_sent || 0) - (m.quantity_returned || 0);
-          const weightPerPc = woData?.gross_weight_per_pc || 0;
-          return sum + (qtyInTransit * weightPerPc / 1000);
-        }, 0);
-        
-        // Calculate weight from work orders
-        const woKg = stageWOs.reduce((sum, wo) => {
-          return sum + ((wo.qty_external_wip || 0) * (wo.gross_weight_per_pc || 0) / 1000);
-        }, 0);
-        
-        const totalKg = moveKg + woKg;
-        
-        // Calculate average wait time
-        const totalWaitHours = typeMoves.reduce((sum, m) => {
-          const dispatchDate = m.dispatch_date || m.created_at;
-          const waitTime = (Date.now() - new Date(dispatchDate).getTime()) / (1000 * 60 * 60);
-          return sum + waitTime;
-        }, 0);
-        const avgWait = typeMoves.length > 0 ? totalWaitHours / typeMoves.length : 0;
-
-        // Count overdue moves
-        const overdueCount = typeMoves.filter(m => 
-          m.expected_return_date && new Date(m.expected_return_date) < new Date(today)
-        ).length;
-
-        // Get expected return dates
-        const expectedReturns = typeMoves
-          .filter(m => m.expected_return_date)
-          .map(m => m.expected_return_date)
-          .sort()
-          .slice(0, 3);
-
-        // Total active jobs (unique count of work orders + external moves)
-        const totalActiveJobs = stageWOs.length + typeMoves.length;
-
-        stagesData.push({
-          stage: label,
-          icon,
-          count: totalActiveJobs,
-          totalPcs: totalWipPcs,
-          totalKg: totalKg,
-          avgWaitHours: avgWait,
-          status: getStatus(avgWait),
-          onClick: () => navigate(`/work-orders?stage=${woStage}`),
-          isExternal: true,
-          breakdown: {
-            activeJobs: totalActiveJobs,
-            pendingReturns: typeMoves.filter(m => m.status === 'sent').length,
-            overdueCount,
-            expectedReturns
-          }
-        });
-      });
-
-      setStages(stagesData);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading kanban data:', error);
-      setLoading(false);
-    }
+  const getStatus = (avgWait: number): 'normal' | 'warning' | 'bottleneck' => {
+    if (avgWait > 48) return 'bottleneck';
+    if (avgWait > 24) return 'warning';
+    return 'normal';
   };
 
   const getStatusColor = (status: string) => {
@@ -307,42 +128,53 @@ export const FloorKanban = () => {
     );
   }
 
-  const internalStages = stages.filter(s => !s.isExternal);
-  const externalStages = stages.filter(s => s.isExternal);
+  // Filter external processes with activity
+  const activeExternalProcesses = externalProcesses.filter(p => p.jobCount > 0 || p.wipPcs > 0);
 
   return (
     <TooltipProvider>
       <div className="mb-6 space-y-6">
         <div>
-          <h2 className="text-xl font-bold mb-4">Live Floor Status - Kanban View</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Live Floor Status - Kanban View</h2>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span>Active Jobs: <strong className="text-foreground">{summary.totalActiveJobs}</strong></span>
+              <span>Internal WIP: <strong className="text-foreground">{summary.totalInternalWIP.toLocaleString()}</strong> pcs</span>
+              <span>External WIP: <strong className="text-amber-600">{summary.totalExternalWIP.toLocaleString()}</strong> pcs</span>
+            </div>
+          </div>
           
-          {/* Internal Stages */}
+          {/* Internal Stages - Derived from batch/execution records */}
           <div className="mb-4">
             <div className="flex items-center gap-2 mb-3">
               <div className="h-1 w-6 bg-gradient-to-r from-gray-400 to-gray-600 rounded" />
               <h3 className="text-sm font-semibold text-muted-foreground">Internal Flow</h3>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {internalStages.map((stage, idx) => {
-                const StageIcon = stage.icon;
+              {internalStages.map((stageData, idx) => {
+                const StageIcon = STAGE_ICONS[stageData.stage] || Package;
+                const status = getStatus(stageData.avgWaitHours);
+                const route = STAGE_ROUTES[stageData.stage] || '/production-progress';
+                const label = STAGE_LABELS[stageData.stage] || stageData.stage;
+                
                 return (
-                  <div key={idx} className="relative">
+                  <div key={stageData.stage} className="relative">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Card 
                           className={cn(
                             "cursor-pointer hover:shadow-xl transition-all duration-300 border-l-4",
-                            getStatusColor(stage.status)
+                            getStatusColor(status)
                           )}
-                          onClick={stage.onClick}
+                          onClick={() => navigate(route)}
                         >
                           <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
                               <StageIcon className="h-5 w-5 text-primary" />
-                              {getStatusBadge(stage.status)}
+                              {getStatusBadge(status)}
                             </div>
                             <CardTitle className="text-sm font-medium text-muted-foreground">
-                              {stage.stage}
+                              {label}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-3">
@@ -350,32 +182,32 @@ export const FloorKanban = () => {
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span>Active Jobs</span>
                                 <span className="font-bold text-primary text-lg">
-                                  <AnimatedNumber value={stage.count} />
+                                  <AnimatedNumber value={stageData.jobCount} />
                                 </span>
                               </div>
-                              {stage.totalPcs > 0 && (
+                              {stageData.totalPcs > 0 && (
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                   <span>Pcs</span>
                                   <span className="font-semibold">
-                                    <AnimatedNumber value={stage.totalPcs} />
+                                    <AnimatedNumber value={stageData.totalPcs} />
                                   </span>
                                 </div>
                               )}
-                              {stage.totalKg > 0 && (
+                              {stageData.totalKg > 0 && (
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                   <span>Kg</span>
-                                  <span className="font-semibold">{stage.totalKg.toFixed(1)}</span>
+                                  <span className="font-semibold">{stageData.totalKg.toFixed(1)}</span>
                                 </div>
                               )}
                             </div>
-                            {stage.count > 0 && (
+                            {stageData.jobCount > 0 && (
                               <div className="space-y-1">
                                 <Progress 
-                                  value={(stage.breakdown?.activeJobs || 0) * 10} 
+                                  value={Math.min(stageData.avgWaitHours * 4, 100)} 
                                   className="h-1"
                                 />
                                 <p className="text-xs text-muted-foreground text-center">
-                                  {stage.avgWaitHours.toFixed(1)}h avg wait
+                                  {stageData.avgWaitHours.toFixed(1)}h avg wait
                                 </p>
                               </div>
                             )}
@@ -384,21 +216,29 @@ export const FloorKanban = () => {
                       </TooltipTrigger>
                       <TooltipContent side="top" className="w-64">
                         <div className="space-y-2">
-                          <h4 className="font-semibold">{stage.stage} Details</h4>
+                          <h4 className="font-semibold">{label} Details</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
                             <div>
                               <p className="text-muted-foreground">Active Jobs:</p>
-                              <p className="font-medium">{stage.breakdown?.activeJobs || 0}</p>
+                              <p className="font-medium">{stageData.jobCount}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Overdue:</p>
                               <p className="font-medium text-red-500">
-                                {stage.breakdown?.overdueCount || 0}
+                                {stageData.overdueCount}
                               </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">WIP Quantity:</p>
+                              <p className="font-medium">{stageData.totalPcs.toLocaleString()} pcs</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Avg Wait:</p>
+                              <p className="font-medium">{stageData.avgWaitHours.toFixed(1)}h</p>
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground mt-2">
-                            Click to view {stage.stage.toLowerCase()} details
+                            Click to view {label.toLowerCase()} details
                           </p>
                         </div>
                       </TooltipContent>
@@ -414,8 +254,8 @@ export const FloorKanban = () => {
             </div>
           </div>
 
-          {/* External Stages */}
-          {externalStages.length > 0 && (
+          {/* External Stages - Derived from wo_external_moves */}
+          {activeExternalProcesses.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <div className="h-1 w-6 bg-gradient-to-r from-amber-400 to-amber-600 rounded" />
@@ -424,25 +264,27 @@ export const FloorKanban = () => {
                 </h3>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {externalStages.map((stage, idx) => {
-                  const StageIcon = stage.icon;
+                {activeExternalProcesses.map((proc) => {
+                  const ProcessIcon = EXTERNAL_ICONS[proc.processType] || Factory;
+                  const status = getStatus(proc.avgWaitHours);
+                  
                   return (
-                    <Tooltip key={idx}>
+                    <Tooltip key={proc.processType}>
                       <TooltipTrigger asChild>
                         <Card 
                           className={cn(
                             "cursor-pointer hover:shadow-xl transition-all duration-300 border-l-4",
-                            getStatusColor(stage.status)
+                            getStatusColor(status)
                           )}
-                          onClick={stage.onClick}
+                          onClick={() => navigate(`/work-orders?external=${proc.processType.toLowerCase()}`)}
                         >
                           <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
-                              <StageIcon className="h-5 w-5 text-amber-600" />
-                              {getStatusBadge(stage.status)}
+                              <ProcessIcon className="h-5 w-5 text-amber-600" />
+                              {getStatusBadge(status)}
                             </div>
                             <CardTitle className="text-sm font-medium text-muted-foreground">
-                              {stage.stage}
+                              {proc.processType}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-3">
@@ -450,74 +292,72 @@ export const FloorKanban = () => {
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span>Active Jobs</span>
                                 <span className="font-bold text-amber-600 text-lg">
-                                  <AnimatedNumber value={stage.count} />
+                                  <AnimatedNumber value={proc.jobCount} />
                                 </span>
                               </div>
-                              {stage.totalPcs > 0 && (
+                              {proc.wipPcs > 0 && (
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                  <span>Pcs</span>
+                                  <span>WIP Pcs</span>
                                   <span className="font-semibold">
-                                    <AnimatedNumber value={stage.totalPcs} />
+                                    <AnimatedNumber value={proc.wipPcs} />
                                   </span>
                                 </div>
                               )}
-                              {stage.totalKg > 0 && (
+                              {proc.wipKg > 0 && (
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                  <span>Kg</span>
-                                  <span className="font-semibold">{stage.totalKg.toFixed(1)}</span>
+                                  <span>WIP Kg</span>
+                                  <span className="font-semibold">{proc.wipKg.toFixed(1)}</span>
                                 </div>
                               )}
                             </div>
-                            {stage.count > 0 && (
+                            {proc.jobCount > 0 && (
                               <div className="space-y-1">
                                 <Progress 
-                                  value={(stage.breakdown?.pendingReturns || 0) * 10} 
+                                  value={Math.min(proc.avgWaitHours * 4, 100)} 
                                   className="h-1"
                                 />
                                 <p className="text-xs text-muted-foreground text-center">
-                                  {stage.avgWaitHours.toFixed(1)}h avg wait
+                                  {proc.avgWaitHours.toFixed(1)}h avg
                                 </p>
                               </div>
+                            )}
+                            {proc.overdueCount > 0 && (
+                              <Badge variant="destructive" className="text-xs">
+                                {proc.overdueCount} overdue
+                              </Badge>
                             )}
                           </CardContent>
                         </Card>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="w-64">
+                      <TooltipContent side="bottom" className="w-64">
                         <div className="space-y-2">
-                          <h4 className="font-semibold">{stage.stage} Details</h4>
+                          <h4 className="font-semibold">{proc.processType} Details</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
                             <div>
-                              <p className="text-muted-foreground">Active Jobs:</p>
-                              <p className="font-medium">{stage.breakdown?.activeJobs || 0}</p>
+                              <p className="text-muted-foreground">Jobs:</p>
+                              <p className="font-medium">{proc.jobCount}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Pending Returns:</p>
-                              <p className="font-medium text-amber-600">
-                                {stage.breakdown?.pendingReturns || 0}
-                              </p>
+                              <p className="font-medium">{proc.pendingMoves}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Sent:</p>
+                              <p className="font-medium">{proc.sentPcs.toLocaleString()} pcs</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Returned:</p>
+                              <p className="font-medium">{proc.returnedPcs.toLocaleString()} pcs</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Overdue:</p>
+                              <p className="font-medium text-red-500">{proc.overdueCount}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Avg Wait:</p>
+                              <p className="font-medium">{proc.avgWaitHours.toFixed(1)}h</p>
                             </div>
                           </div>
-                          <div>
-                            <p className="text-muted-foreground text-sm">Overdue:</p>
-                            <p className="font-medium text-red-500">
-                              {stage.breakdown?.overdueCount || 0} moves
-                            </p>
-                          </div>
-                          {stage.breakdown?.expectedReturns && stage.breakdown.expectedReturns.length > 0 && (
-                            <div className="mt-2">
-                              <p className="text-xs text-muted-foreground">Expected Returns:</p>
-                              <div className="space-y-1 mt-1">
-                                {stage.breakdown.expectedReturns.map((date, i) => (
-                                  <p key={i} className="text-xs font-medium">
-                                    {new Date(date).toLocaleDateString()}
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Click to view external processing details
-                          </p>
                         </div>
                       </TooltipContent>
                     </Tooltip>

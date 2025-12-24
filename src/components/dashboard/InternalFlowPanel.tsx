@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useExecutionBasedWIP, StageWIP } from "@/hooks/useExecutionBasedWIP";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -19,31 +19,19 @@ import {
   Pause
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-interface StageData {
-  stage_name: string;
-  active_jobs: number;
-  pcs_remaining: number;
-  kg_remaining: number;
-  avg_wait_hours: number;
-}
-
-interface BlockingReason {
-  type: 'qc' | 'maintenance' | 'production' | 'external' | 'none';
-  label: string;
-  count: number;
-}
-
-interface EnhancedStageData extends StageData {
-  blockingReason: BlockingReason;
-  isBottleneck: boolean;
-  bottleneckRank: number; // 1 = worst, 2 = second worst, 0 = not a bottleneck
-}
+/**
+ * InternalFlowPanel - Production flow visualization
+ * 
+ * REFACTORED: Now derives all quantities from execution records and batch tables,
+ * NOT from work_orders.current_stage.
+ * 
+ * current_stage is retained only as a high-level status hint.
+ */
 
 interface InternalFlowPanelProps {
-  stages: StageData[];
+  stages?: any[]; // Legacy prop - now ignored
 }
 
 const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string; bgColor: string }> = {
@@ -51,12 +39,10 @@ const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; col
   cutting: { label: 'Cutting', icon: Scissors, color: 'text-orange-600', bgColor: 'bg-orange-50 dark:bg-orange-950/30' },
   forging: { label: 'Forging', icon: Flame, color: 'text-red-600', bgColor: 'bg-red-50 dark:bg-red-950/30' },
   production: { label: 'Production', icon: Factory, color: 'text-indigo-600', bgColor: 'bg-indigo-50 dark:bg-indigo-950/30' },
-  quality: { label: 'Quality', icon: ClipboardCheck, color: 'text-emerald-600', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30' },
+  qc: { label: 'Quality', icon: ClipboardCheck, color: 'text-emerald-600', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30' },
   packing: { label: 'Packing', icon: BoxSelect, color: 'text-purple-600', bgColor: 'bg-purple-50 dark:bg-purple-950/30' },
   dispatch: { label: 'Dispatch', icon: Truck, color: 'text-cyan-600', bgColor: 'bg-cyan-50 dark:bg-cyan-950/30' }
 };
-
-const STAGE_ORDER = ['goods_in', 'cutting', 'forging', 'production', 'quality', 'packing', 'dispatch'];
 
 const BLOCKING_ICONS: Record<string, React.ElementType> = {
   qc: ShieldAlert,
@@ -74,111 +60,53 @@ const BLOCKING_COLORS: Record<string, string> = {
   none: 'text-muted-foreground bg-muted'
 };
 
-export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
+interface EnhancedStageData extends StageWIP {
+  blockingReason: { type: string; label: string; count: number };
+  isBottleneck: boolean;
+  bottleneckRank: number;
+}
+
+export const InternalFlowPanel = ({ stages: _legacyStages }: InternalFlowPanelProps) => {
   const navigate = useNavigate();
-  const [blockingData, setBlockingData] = useState<Record<string, BlockingReason>>({});
+  const { internalStages, summary, loading } = useExecutionBasedWIP();
 
-  // Fetch blocking reasons for each stage
-  useEffect(() => {
-    const fetchBlockingReasons = async () => {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Fetch QC blocks - work orders waiting for QC approval
-      const { data: qcBlocks } = await supabase
-        .from('work_orders')
-        .select('current_stage, qc_material_passed, qc_first_piece_passed')
-        .or('qc_material_passed.eq.false,qc_first_piece_passed.eq.false')
-        .neq('status', 'completed');
+  // Calculate totals from execution-based data
+  const totalActiveJobs = internalStages.reduce((sum, s) => sum + s.jobCount, 0);
+  const totalPcs = internalStages.reduce((sum, s) => sum + s.totalPcs, 0);
 
-      // Fetch maintenance blocks
-      const { data: maintenanceBlocks } = await supabase
-        .from('maintenance_logs')
-        .select('machine_id')
-        .is('end_time', null);
-
-      // Fetch machines under maintenance
-      const { data: machinesDown } = await supabase
-        .from('machines')
-        .select('id, department_id')
-        .eq('status', 'maintenance');
-
-      // Calculate blocking reasons per stage
-      const blocking: Record<string, BlockingReason> = {};
-      
-      STAGE_ORDER.forEach(stage => {
-        const stageData = stages.find(s => s.stage_name === stage);
-        if (!stageData || stageData.active_jobs === 0) {
-          blocking[stage] = { type: 'none', label: 'No blocks', count: 0 };
-          return;
-        }
-
-        // Determine primary blocking reason based on stage
-        let qcCount = 0;
-        let maintenanceCount = machinesDown?.length || 0;
-        
-        if (qcBlocks) {
-          qcCount = qcBlocks.filter(wo => {
-            if (stage === 'goods_in' && !wo.qc_material_passed) return true;
-            if (stage === 'production' && !wo.qc_first_piece_passed) return true;
-            return false;
-          }).length;
-        }
-
-        // Prioritize blocking reasons
-        if (maintenanceCount > 0 && (stage === 'production' || stage === 'cutting' || stage === 'forging')) {
-          blocking[stage] = { type: 'maintenance', label: 'Maintenance', count: maintenanceCount };
-        } else if (qcCount > 0) {
-          blocking[stage] = { type: 'qc', label: 'QC Hold', count: qcCount };
-        } else if (stageData.avg_wait_hours > 4) {
-          blocking[stage] = { type: 'production', label: 'Capacity', count: stageData.active_jobs };
-        } else {
-          blocking[stage] = { type: 'none', label: 'Normal', count: 0 };
-        }
-      });
-
-      setBlockingData(blocking);
-    };
-
-    fetchBlockingReasons();
-  }, [stages]);
-
-  // Calculate totals for quick glance with null-safety
-  const safeStages = Array.isArray(stages) ? stages : [];
-  const totalActiveJobs = safeStages.reduce((sum, s) => sum + (s?.active_jobs ?? 0), 0);
-  const totalPcs = safeStages.reduce((sum, s) => sum + (s?.pcs_remaining ?? 0), 0);
-
-  // Identify bottlenecks (top 2 stages with highest wait hours * pcs)
-  const enhancedStages: EnhancedStageData[] = STAGE_ORDER.map(key => {
-    const stage = safeStages.find(s => s?.stage_name === key) || { 
-      stage_name: key, 
-      active_jobs: 0, 
-      pcs_remaining: 0, 
-      kg_remaining: 0, 
-      avg_wait_hours: 0 
-    };
+  // Enhance stages with bottleneck detection
+  const enhancedStages: EnhancedStageData[] = internalStages.map(stage => {
+    // Determine blocking reason based on stage characteristics
+    let blockingReason = { type: 'none', label: 'Normal', count: 0 };
+    
+    if (stage.avgWaitHours > 8) {
+      blockingReason = { type: 'production', label: 'Capacity', count: stage.jobCount };
+    } else if (stage.overdueCount > 0) {
+      blockingReason = { type: 'qc', label: 'Overdue', count: stage.overdueCount };
+    }
     
     return {
       ...stage,
-      blockingReason: blockingData[key] || { type: 'none', label: 'Normal', count: 0 },
+      blockingReason,
       isBottleneck: false,
       bottleneckRank: 0
     };
   });
 
-  // Score stages for bottleneck identification with null-safety
+  // Score stages for bottleneck identification
   const stageScores = enhancedStages
     .map((stage, index) => ({
       index,
-      stage_name: stage.stage_name,
-      score: ((stage.avg_wait_hours ?? 0) * (stage.pcs_remaining ?? 0)) + ((stage.active_jobs ?? 0) * 10),
-      hasWork: (stage.active_jobs ?? 0) > 0
+      stage: stage.stage,
+      score: (stage.avgWaitHours * stage.totalPcs) + (stage.jobCount * 10),
+      hasWork: stage.jobCount > 0
     }))
     .filter(s => s.hasWork && s.score > 0)
     .sort((a, b) => b.score - a.score);
 
   // Mark top 2 as bottlenecks
   stageScores.slice(0, 2).forEach((scored, rank) => {
-    if (scored.score > 50) { // Only mark as bottleneck if score is significant
+    if (scored.score > 50) {
       enhancedStages[scored.index].isBottleneck = true;
       enhancedStages[scored.index].bottleneckRank = rank + 1;
     }
@@ -187,6 +115,18 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
   const handleStageClick = (stageName: string) => {
     navigate(`/production-progress?stage=${stageName}`);
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-1 overflow-x-auto pb-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="min-w-[140px] h-32 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -205,7 +145,7 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
           {stageScores.length > 0 && stageScores[0].score > 50 && (
             <Badge variant="destructive" className="flex items-center gap-1 animate-pulse">
               <AlertTriangle className="h-3 w-3" />
-              Bottleneck: {STAGE_CONFIG[stageScores[0].stage_name]?.label}
+              Bottleneck: {STAGE_CONFIG[stageScores[0].stage]?.label || stageScores[0].stage}
             </Badge>
           )}
         </div>
@@ -213,11 +153,11 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
         {/* Flow visualization */}
         <div className="flex items-center gap-1 overflow-x-auto pb-2">
           {enhancedStages.map((stage, index) => {
-            const config = STAGE_CONFIG[stage.stage_name];
+            const config = STAGE_CONFIG[stage.stage];
             if (!config) return null;
             
             const Icon = config.icon;
-            const hasWork = stage.active_jobs > 0;
+            const hasWork = stage.jobCount > 0;
             const BlockingIcon = BLOCKING_ICONS[stage.blockingReason.type];
             
             // Determine visual emphasis
@@ -226,7 +166,7 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
             const isDeemphasized = hasWork && !stage.isBottleneck && totalActiveJobs > 3;
             
             return (
-              <div key={stage.stage_name} className="flex items-center">
+              <div key={stage.stage} className="flex items-center">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Card
@@ -242,7 +182,7 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
                         // Hover
                         "hover:shadow-lg hover:-translate-y-1"
                       )}
-                      onClick={() => handleStageClick(stage.stage_name)}
+                      onClick={() => handleStageClick(stage.stage)}
                     >
                       <CardContent className="p-3">
                         {/* Header with icon and bottleneck badge */}
@@ -273,7 +213,7 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
                             hasWork ? "text-foreground" : "text-muted-foreground",
                             isWorstBottleneck && "text-destructive"
                           )}>
-                            {stage.active_jobs}
+                            {stage.jobCount}
                           </div>
                           <p className="text-[10px] text-muted-foreground">jobs</p>
                         </div>
@@ -283,25 +223,25 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
                             {/* Pcs and wait time */}
                             <div className="flex justify-between text-[10px]">
                               <span className="text-muted-foreground">
-                                {Math.round(stage.pcs_remaining ?? 0).toLocaleString()} pcs
+                                {stage.totalPcs.toLocaleString()} pcs
                               </span>
                               <span className={cn(
                                 "flex items-center gap-0.5 font-medium",
-                                (stage.avg_wait_hours ?? 0) > 8 ? "text-destructive" :
-                                (stage.avg_wait_hours ?? 0) > 4 ? "text-amber-600" : "text-muted-foreground"
+                                stage.avgWaitHours > 8 ? "text-destructive" :
+                                stage.avgWaitHours > 4 ? "text-amber-600" : "text-muted-foreground"
                               )}>
                                 <Clock className="h-2.5 w-2.5" />
-                                {Math.round(stage.avg_wait_hours ?? 0)}h wait
+                                {Math.round(stage.avgWaitHours)}h wait
                               </span>
                             </div>
                             
                             {/* Progress bar colored by severity */}
                             <Progress 
-                              value={Math.min(((stage.avg_wait_hours ?? 0) / 12) * 100, 100)} 
+                              value={Math.min((stage.avgWaitHours / 12) * 100, 100)} 
                               className={cn(
                                 "h-1.5",
-                                (stage.avg_wait_hours ?? 0) > 8 ? "[&>div]:bg-destructive" :
-                                (stage.avg_wait_hours ?? 0) > 4 ? "[&>div]:bg-amber-500" : ""
+                                stage.avgWaitHours > 8 ? "[&>div]:bg-destructive" :
+                                stage.avgWaitHours > 4 ? "[&>div]:bg-amber-500" : ""
                               )}
                             />
                             
@@ -326,15 +266,15 @@ export const InternalFlowPanel = ({ stages }: InternalFlowPanelProps) => {
                   <TooltipContent side="bottom" className="max-w-[200px]">
                     <div className="text-xs space-y-1">
                       <p className="font-semibold">{config.label}</p>
-                      <p>{(stage?.active_jobs ?? 0)} jobs • {Math.round(stage?.pcs_remaining ?? 0).toLocaleString()} pcs</p>
-                      <p>Avg wait: {(stage.avg_wait_hours ?? 0).toFixed(1)} hours</p>
+                      <p>{stage.jobCount} jobs • {stage.totalPcs.toLocaleString()} pcs</p>
+                      <p>Avg wait: {stage.avgWaitHours.toFixed(1)} hours</p>
                       {stage.isBottleneck && (
                         <p className="text-destructive font-medium">
                           ⚠️ Bottleneck #{stage.bottleneckRank}
                         </p>
                       )}
-                      {stage.blockingReason?.type !== 'none' && (
-                        <p>Block: {stage.blockingReason?.label ?? 'Unknown'} ({stage.blockingReason?.count ?? 0})</p>
+                      {stage.blockingReason.type !== 'none' && (
+                        <p>Block: {stage.blockingReason.label} ({stage.blockingReason.count})</p>
                       )}
                     </div>
                   </TooltipContent>
