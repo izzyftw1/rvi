@@ -7,28 +7,31 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+// Packing batch ready for dispatch
 interface PackingBatch {
   id: string;
   carton_id: string;
   wo_id: string;
+  production_batch_id: string | null;
   quantity: number;
+  dispatched_qty: number;
+  available_qty: number;
   num_cartons: number | null;
   num_pallets: number | null;
   status: string;
   built_at: string;
-  dispatch_qc_batch_id: string | null;
   work_orders?: { 
-    wo_number: string; 
+    display_id: string; 
     item_code: string; 
     customer: string;
   } | null;
-  dispatch_qc_batches?: {
-    qc_batch_id: string;
+  production_batches?: {
+    batch_number: number;
   } | null;
 }
 
@@ -42,7 +45,9 @@ interface Shipment {
     id: string;
     quantity: number;
     remarks: string | null;
-    work_orders?: { wo_number: string } | null;
+    carton_id: string | null;
+    cartons?: { carton_id: string } | null;
+    work_orders?: { display_id: string } | null;
   }[];
 }
 
@@ -51,12 +56,12 @@ export default function Dispatch() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   
-  // Ready for dispatch batches
+  // Ready for dispatch packing batches
   const [readyBatches, setReadyBatches] = useState<PackingBatch[]>([]);
   const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set());
   
-  // Partial dispatch quantities
-  const [partialQuantities, setPartialQuantities] = useState<Record<string, number>>({});
+  // Dispatch quantities (for partial dispatches)
+  const [dispatchQuantities, setDispatchQuantities] = useState<Record<string, number>>({});
   
   // Shipment form
   const [shipmentId, setShipmentId] = useState("");
@@ -72,17 +77,26 @@ export default function Dispatch() {
   }, []);
 
   const loadReadyBatches = async () => {
+    // Load packing batches (cartons) that are ready for dispatch
     const { data } = await supabase
       .from("cartons")
       .select(`
-        id, carton_id, wo_id, quantity, num_cartons, num_pallets, status, built_at, dispatch_qc_batch_id,
-        work_orders(wo_number, item_code, customer),
-        dispatch_qc_batches(qc_batch_id)
+        id, carton_id, wo_id, production_batch_id, quantity, dispatched_qty, 
+        num_cartons, num_pallets, status, built_at,
+        work_orders(display_id, item_code, customer),
+        production_batches(batch_number)
       `)
       .eq("status", "ready_for_dispatch")
       .order("built_at", { ascending: true });
 
-    setReadyBatches((data as unknown as PackingBatch[]) || []);
+    // Calculate available quantity for each batch
+    const enriched: PackingBatch[] = ((data || []) as any[]).map(batch => ({
+      ...batch,
+      dispatched_qty: batch.dispatched_qty || 0,
+      available_qty: batch.quantity - (batch.dispatched_qty || 0),
+    })).filter(b => b.available_qty > 0);
+
+    setReadyBatches(enriched);
   };
 
   const loadRecentShipments = async () => {
@@ -90,7 +104,7 @@ export default function Dispatch() {
       .from("shipments")
       .select(`
         id, ship_id, customer, status, created_at,
-        dispatches(id, quantity, remarks, work_orders(wo_number))
+        dispatches(id, quantity, remarks, carton_id, cartons(carton_id), work_orders(display_id))
       `)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -102,12 +116,17 @@ export default function Dispatch() {
     const newSelected = new Set(selectedBatchIds);
     if (newSelected.has(batchId)) {
       newSelected.delete(batchId);
-      // Remove partial quantity when deselected
-      const newPartials = { ...partialQuantities };
-      delete newPartials[batchId];
-      setPartialQuantities(newPartials);
+      // Remove dispatch quantity when deselected
+      const newQtys = { ...dispatchQuantities };
+      delete newQtys[batchId];
+      setDispatchQuantities(newQtys);
     } else {
       newSelected.add(batchId);
+      // Default to full available quantity
+      const batch = readyBatches.find(b => b.id === batchId);
+      if (batch) {
+        setDispatchQuantities({ ...dispatchQuantities, [batchId]: batch.available_qty });
+      }
     }
     setSelectedBatchIds(newSelected);
   };
@@ -115,25 +134,23 @@ export default function Dispatch() {
   const handleSelectAll = () => {
     if (selectedBatchIds.size === readyBatches.length) {
       setSelectedBatchIds(new Set());
-      setPartialQuantities({});
+      setDispatchQuantities({});
     } else {
-      setSelectedBatchIds(new Set(readyBatches.map(b => b.id)));
+      const allIds = new Set(readyBatches.map(b => b.id));
+      const allQtys: Record<string, number> = {};
+      readyBatches.forEach(b => { allQtys[b.id] = b.available_qty; });
+      setSelectedBatchIds(allIds);
+      setDispatchQuantities(allQtys);
     }
   };
 
-  const handlePartialQtyChange = (batchId: string, qty: number, maxQty: number) => {
-    if (qty <= 0 || qty >= maxQty) {
-      // Remove partial entry if full quantity or invalid
-      const newPartials = { ...partialQuantities };
-      delete newPartials[batchId];
-      setPartialQuantities(newPartials);
-    } else {
-      setPartialQuantities({ ...partialQuantities, [batchId]: qty });
-    }
+  const handleQtyChange = (batchId: string, qty: number, maxQty: number) => {
+    const validQty = Math.max(1, Math.min(qty, maxQty));
+    setDispatchQuantities({ ...dispatchQuantities, [batchId]: validQty });
   };
 
   const getDispatchQty = (batch: PackingBatch) => {
-    return partialQuantities[batch.id] || batch.quantity;
+    return dispatchQuantities[batch.id] || batch.available_qty;
   };
 
   const getSelectedSummary = () => {
@@ -143,13 +160,12 @@ export default function Dispatch() {
       totalQty: selected.reduce((sum, b) => sum + getDispatchQty(b), 0),
       totalCartons: selected.reduce((sum, b) => sum + (b.num_cartons || 0), 0),
       totalPallets: selected.reduce((sum, b) => sum + (b.num_pallets || 0), 0),
-      hasPartial: Object.keys(partialQuantities).length > 0,
+      hasPartial: selected.some(b => getDispatchQty(b) < b.available_qty),
     };
   };
 
   const notifyLogisticsTeam = async (shipId: string, batchCount: number, totalQty: number) => {
     try {
-      // Get admin and logistics users
       const { data: users } = await supabase
         .from("user_roles")
         .select("user_id")
@@ -160,7 +176,7 @@ export default function Dispatch() {
           user_id: u.user_id,
           type: "dispatch_created",
           title: "New Dispatch Created",
-          message: `Shipment ${shipId} created with ${batchCount} batch(es), ${totalQty} pcs total.`,
+          message: `Shipment ${shipId} created with ${batchCount} packing batch(es), ${totalQty} pcs total.`,
           entity_type: "shipment",
         }));
 
@@ -199,25 +215,47 @@ export default function Dispatch() {
       if (shipmentError) throw shipmentError;
 
       // 2. Get production batch IDs for dispatch records (FK requirement)
-      const { data: prodBatches } = await supabase
-        .from("production_batches")
-        .select("id, wo_id")
-        .in("wo_id", [...new Set(selectedBatches.map(b => b.wo_id))]);
+      const prodBatchIds = [...new Set(selectedBatches.map(b => b.production_batch_id).filter(Boolean))];
+      let batchMap = new Map<string, string>();
+      
+      if (prodBatchIds.length > 0) {
+        const { data: prodBatches } = await supabase
+          .from("production_batches")
+          .select("id, wo_id")
+          .in("id", prodBatchIds);
+        
+        (prodBatches || []).forEach(pb => batchMap.set(pb.wo_id, pb.id));
+      }
 
-      const batchMap = new Map((prodBatches || []).map(pb => [pb.wo_id, pb.id]));
+      // Fallback: get any production batch for WOs without direct link
+      const woIdsWithoutBatch = selectedBatches
+        .filter(b => !b.production_batch_id && !batchMap.has(b.wo_id))
+        .map(b => b.wo_id);
+      
+      if (woIdsWithoutBatch.length > 0) {
+        const { data: fallbackBatches } = await supabase
+          .from("production_batches")
+          .select("id, wo_id")
+          .in("wo_id", woIdsWithoutBatch);
+        
+        (fallbackBatches || []).forEach(pb => {
+          if (!batchMap.has(pb.wo_id)) batchMap.set(pb.wo_id, pb.id);
+        });
+      }
 
-      // 3. Create dispatch records with packing batch references
+      // 3. Create dispatch records referencing packing batches (carton_id)
       const dispatchRecords = selectedBatches.map(batch => {
         const dispatchQty = getDispatchQty(batch);
-        const isPartial = partialQuantities[batch.id] !== undefined;
+        const isPartial = dispatchQty < batch.available_qty;
         
         return {
           wo_id: batch.wo_id,
-          batch_id: batchMap.get(batch.wo_id) || batch.wo_id,
+          batch_id: batch.production_batch_id || batchMap.get(batch.wo_id) || batch.wo_id,
+          carton_id: batch.id, // Reference to packing batch
           quantity: dispatchQty,
           shipment_id: shipmentData.id,
           dispatched_by: user?.id,
-          remarks: `Packing: ${batch.carton_id}${batch.dispatch_qc_batches?.qc_batch_id ? ` | QC: ${batch.dispatch_qc_batches.qc_batch_id}` : ""}${isPartial ? ` | Partial: ${dispatchQty}/${batch.quantity}` : ""}${remarks ? ` | ${remarks}` : ""}`,
+          remarks: `${batch.carton_id}${batch.production_batches ? ` | Batch #${batch.production_batches.batch_number}` : ""}${isPartial ? ` | Partial: ${dispatchQty}/${batch.available_qty}` : ""}${remarks ? ` | ${remarks}` : ""}`,
         };
       });
 
@@ -227,45 +265,20 @@ export default function Dispatch() {
 
       if (dispatchError) throw dispatchError;
 
-      // 4. Update packing batch statuses
-      const fullyDispatched = selectedBatches.filter(b => !partialQuantities[b.id]);
-      const partiallyDispatched = selectedBatches.filter(b => partialQuantities[b.id]);
+      // Note: carton status and dispatched_qty are updated by database trigger
 
-      if (fullyDispatched.length > 0) {
-        const { error: updateError } = await supabase
-          .from("cartons")
-          .update({ status: "dispatched" })
-          .in("id", fullyDispatched.map(b => b.id));
-
-        if (updateError) throw updateError;
-      }
-
-      // For partial dispatches, update quantity and keep as ready_for_dispatch
-      for (const batch of partiallyDispatched) {
-        const remainingQty = batch.quantity - partialQuantities[batch.id];
-        const { error } = await supabase
-          .from("cartons")
-          .update({ 
-            quantity: remainingQty,
-            status: "ready_for_dispatch" // Remains dispatchable
-          })
-          .eq("id", batch.id);
-        
-        if (error) throw error;
-      }
-
-      // 5. Notify Admin/Logistics team
+      // 4. Notify Admin/Logistics team
       const summary = getSelectedSummary();
       await notifyLogisticsTeam(generatedShipId, summary.count, summary.totalQty);
 
       toast({
         title: "Dispatch Created",
-        description: `${generatedShipId} with ${selectedBatchIds.size} packing batch(es) dispatched.${partiallyDispatched.length > 0 ? ` (${partiallyDispatched.length} partial)` : ""}`,
+        description: `${generatedShipId} with ${selectedBatchIds.size} packing batch(es), ${summary.totalQty} pcs dispatched.${summary.hasPartial ? " (includes partial dispatches)" : ""}`,
       });
 
       // Reset form
       setSelectedBatchIds(new Set());
-      setPartialQuantities({});
+      setDispatchQuantities({});
       setShipmentId("");
       setRemarks("");
       loadReadyBatches();
@@ -297,8 +310,8 @@ export default function Dispatch() {
       <PageContainer maxWidth="xl">
         <div className="space-y-6">
           <PageHeader
-            title="Dispatch Batches"
-            description="Logistics handoff — create shipments from packed batches"
+            title="Dispatch"
+            description="Create shipments from packed batches for logistics handoff"
             icon={<Truck className="h-6 w-6" />}
           />
 
@@ -306,9 +319,9 @@ export default function Dispatch() {
           <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30">
             <Info className="h-5 w-5 text-blue-500 mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">Dispatch is a logistics handoff, not production.</p>
+              <p className="font-medium">Dispatch operates on packing batches, not work orders.</p>
               <p className="text-muted-foreground">
-                Only fully or partially packed batches from Packing appear here. Select batches to create a shipment for logistics.
+                Each packing batch can be fully or partially dispatched. Work order totals are calculated for reporting only.
               </p>
             </div>
           </div>
@@ -331,10 +344,9 @@ export default function Dispatch() {
                   <CardContent className="py-12">
                     <div className="flex flex-col items-center justify-center text-center">
                       <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No Batches Ready for Dispatch</h3>
+                      <h3 className="text-lg font-semibold mb-2">No Packing Batches Ready for Dispatch</h3>
                       <p className="text-muted-foreground max-w-md">
-                        Packing batches will appear here when marked as ready for dispatch. 
-                        Complete the packing process first.
+                        Packing batches will appear here when created. Complete the packing process first.
                       </p>
                     </div>
                   </CardContent>
@@ -347,11 +359,11 @@ export default function Dispatch() {
                       <div className="flex items-center justify-between">
                         <div>
                           <CardTitle className="flex items-center gap-2">
-                            <Box className="h-5 w-5" />
-                            Packed Batches Ready for Dispatch
+                            <Layers className="h-5 w-5" />
+                            Packing Batches Ready for Dispatch
                           </CardTitle>
                           <CardDescription>
-                            Select batches to include in a shipment. You can dispatch full or partial quantities.
+                            Select batches to include in a shipment. Partial quantities are supported.
                           </CardDescription>
                         </div>
                         <Button variant="outline" size="sm" onClick={handleSelectAll}>
@@ -365,9 +377,9 @@ export default function Dispatch() {
                           <TableRow>
                             <TableHead className="w-12"></TableHead>
                             <TableHead>Packing Batch</TableHead>
-                            <TableHead>QC Batch</TableHead>
+                            <TableHead>Source Batch</TableHead>
                             <TableHead>Work Order</TableHead>
-                            <TableHead className="text-right">Available Qty</TableHead>
+                            <TableHead className="text-right">Available</TableHead>
                             <TableHead className="text-right">Dispatch Qty</TableHead>
                             <TableHead>Packed At</TableHead>
                           </TableRow>
@@ -376,6 +388,7 @@ export default function Dispatch() {
                           {readyBatches.map((batch) => {
                             const isSelected = selectedBatchIds.has(batch.id);
                             const dispatchQty = getDispatchQty(batch);
+                            const isPartial = isSelected && dispatchQty < batch.available_qty;
                             
                             return (
                               <TableRow 
@@ -388,27 +401,37 @@ export default function Dispatch() {
                                     onCheckedChange={() => handleToggleBatch(batch.id)}
                                   />
                                 </TableCell>
-                                <TableCell className="font-mono font-medium">{batch.carton_id}</TableCell>
-                                <TableCell className="font-mono text-muted-foreground">
-                                  {batch.dispatch_qc_batches?.qc_batch_id || "—"}
+                                <TableCell>
+                                  <div>
+                                    <p className="font-mono font-medium">{batch.carton_id}</p>
+                                    {isPartial && (
+                                      <Badge variant="outline" className="text-xs mt-1">Partial</Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  {batch.production_batches 
+                                    ? <span className="font-mono">Batch #{batch.production_batches.batch_number}</span>
+                                    : <span className="text-muted-foreground">—</span>
+                                  }
                                 </TableCell>
                                 <TableCell>
                                   <div>
-                                    <p className="font-medium">{batch.work_orders?.wo_number || "—"}</p>
+                                    <p className="font-medium">{batch.work_orders?.display_id || "—"}</p>
                                     <p className="text-xs text-muted-foreground">
                                       {batch.work_orders?.item_code} • {batch.work_orders?.customer}
                                     </p>
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-right font-medium">{batch.quantity}</TableCell>
+                                <TableCell className="text-right font-medium">{batch.available_qty}</TableCell>
                                 <TableCell className="text-right">
                                   {isSelected ? (
                                     <Input
                                       type="number"
                                       min="1"
-                                      max={batch.quantity}
+                                      max={batch.available_qty}
                                       value={dispatchQty}
-                                      onChange={(e) => handlePartialQtyChange(batch.id, parseInt(e.target.value) || 0, batch.quantity)}
+                                      onChange={(e) => handleQtyChange(batch.id, parseInt(e.target.value) || 1, batch.available_qty)}
                                       className="w-20 text-right ml-auto"
                                     />
                                   ) : (
@@ -416,7 +439,7 @@ export default function Dispatch() {
                                   )}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground text-sm">
-                                  {new Date(batch.built_at).toLocaleString()}
+                                  {new Date(batch.built_at).toLocaleDateString()}
                                 </TableCell>
                               </TableRow>
                             );
@@ -432,44 +455,44 @@ export default function Dispatch() {
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                           <CheckCircle2 className="h-5 w-5 text-primary" />
-                          Create Dispatch
+                          Create Shipment
                         </CardTitle>
                         <CardDescription>
-                          Review selection and create shipment for logistics handoff
+                          Review selection and create shipment for logistics
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        {/* Summary */}
-                        <div className="grid grid-cols-4 gap-4 p-4 rounded-lg bg-background border">
-                          <div className="text-center">
+                        {/* Summary Stats */}
+                        <div className="grid grid-cols-4 gap-4">
+                          <div className="text-center p-3 rounded-lg bg-background border">
                             <p className="text-2xl font-bold text-primary">{summary.count}</p>
-                            <p className="text-sm text-muted-foreground">Batches</p>
+                            <p className="text-xs text-muted-foreground">Packing Batches</p>
                           </div>
-                          <div className="text-center">
+                          <div className="text-center p-3 rounded-lg bg-background border">
                             <p className="text-2xl font-bold">{summary.totalQty}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {summary.hasPartial ? "Dispatch Qty" : "Total Qty"}
-                            </p>
+                            <p className="text-xs text-muted-foreground">Total Pieces</p>
                           </div>
-                          <div className="text-center">
-                            <p className="text-2xl font-bold">{summary.totalCartons || "—"}</p>
-                            <p className="text-sm text-muted-foreground">Cartons</p>
+                          <div className="text-center p-3 rounded-lg bg-background border">
+                            <p className="text-2xl font-bold">{summary.totalCartons}</p>
+                            <p className="text-xs text-muted-foreground">Cartons</p>
                           </div>
-                          <div className="text-center">
-                            <p className="text-2xl font-bold">{summary.totalPallets || "—"}</p>
-                            <p className="text-sm text-muted-foreground">Pallets</p>
+                          <div className="text-center p-3 rounded-lg bg-background border">
+                            <p className="text-2xl font-bold">{summary.totalPallets}</p>
+                            <p className="text-xs text-muted-foreground">Pallets</p>
                           </div>
                         </div>
 
                         {summary.hasPartial && (
-                          <div className="flex items-center gap-2 text-amber-600 bg-amber-500/10 px-3 py-2 rounded text-sm">
-                            <AlertTriangle className="h-4 w-4" />
-                            Partial dispatch selected. Remaining quantities will stay available for future dispatch.
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                            <Info className="h-4 w-4 text-amber-600" />
+                            <p className="text-sm text-amber-700">
+                              Some batches have partial quantities. Remaining will stay available for future dispatch.
+                            </p>
                           </div>
                         )}
 
                         {/* Shipment Form */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-4 md:grid-cols-2">
                           <div className="space-y-2">
                             <Label htmlFor="shipmentId">Shipment ID (optional)</Label>
                             <Input
@@ -485,19 +508,19 @@ export default function Dispatch() {
                               id="remarks"
                               value={remarks}
                               onChange={(e) => setRemarks(e.target.value)}
-                              placeholder="Transporter, vehicle no..."
+                              placeholder="Notes for logistics"
                             />
                           </div>
                         </div>
 
-                        <Button 
-                          onClick={handleCreateShipment} 
+                        <Button
+                          onClick={handleCreateShipment}
                           disabled={loading}
                           className="w-full gap-2"
                           size="lg"
                         >
-                          <Truck className="h-5 w-5" />
-                          Create Dispatch & Notify Logistics
+                          <Send className="h-4 w-4" />
+                          Create Shipment ({summary.count} batches, {summary.totalQty} pcs)
                         </Button>
                       </CardContent>
                     </Card>
@@ -509,17 +532,14 @@ export default function Dispatch() {
             <TabsContent value="history" className="space-y-4 mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Dispatch History</CardTitle>
-                  <CardDescription>Recent dispatches and their status</CardDescription>
+                  <CardTitle>Recent Shipments</CardTitle>
+                  <CardDescription>Dispatch history showing packing batch details</CardDescription>
                 </CardHeader>
-                <CardContent className="p-0">
+                <CardContent>
                   {recentShipments.length === 0 ? (
-                    <div className="py-12 text-center">
-                      <Truck className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                      <p className="text-lg font-medium">No Dispatches Yet</p>
-                      <p className="text-sm text-muted-foreground">
-                        Dispatches will appear here after creation
-                      </p>
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                      <p className="text-muted-foreground">No shipments yet</p>
                     </div>
                   ) : (
                     <Table>
@@ -527,51 +547,40 @@ export default function Dispatch() {
                         <TableRow>
                           <TableHead>Shipment ID</TableHead>
                           <TableHead>Customer</TableHead>
-                          <TableHead>Work Orders</TableHead>
+                          <TableHead>Packing Batches</TableHead>
                           <TableHead className="text-right">Total Qty</TableHead>
-                          <TableHead className="text-right">Batches</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead>Dispatched At</TableHead>
+                          <TableHead>Created</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {recentShipments.map((shipment) => {
-                          const totalQty = shipment.dispatches?.reduce((sum, d) => sum + d.quantity, 0) || 0;
-                          const workOrders = [...new Set(shipment.dispatches?.map(d => d.work_orders?.wo_number).filter(Boolean))];
-                          
-                          return (
-                            <TableRow key={shipment.id}>
-                              <TableCell>
-                                <Badge variant="outline" className="font-mono">
-                                  {shipment.ship_id}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                {shipment.customer || "—"}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-1">
-                                  {workOrders.slice(0, 3).map(wo => (
-                                    <Badge key={wo} variant="secondary" className="text-xs">
-                                      {wo}
-                                    </Badge>
-                                  ))}
-                                  {workOrders.length > 3 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{workOrders.length - 3} more
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium">{totalQty}</TableCell>
-                              <TableCell className="text-right">{shipment.dispatches?.length || 0}</TableCell>
-                              <TableCell>{getStatusBadge(shipment.status)}</TableCell>
-                              <TableCell className="text-muted-foreground text-sm">
-                                {new Date(shipment.created_at).toLocaleString()}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                        {recentShipments.map((shipment) => (
+                          <TableRow key={shipment.id}>
+                            <TableCell className="font-mono font-medium">{shipment.ship_id}</TableCell>
+                            <TableCell>{shipment.customer || "—"}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {shipment.dispatches.slice(0, 3).map((d, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs">
+                                    {d.cartons?.carton_id || d.work_orders?.display_id || "—"}
+                                  </Badge>
+                                ))}
+                                {shipment.dispatches.length > 3 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    +{shipment.dispatches.length - 3} more
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {shipment.dispatches.reduce((sum, d) => sum + d.quantity, 0)}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(shipment.status)}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(shipment.created_at).toLocaleDateString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   )}
