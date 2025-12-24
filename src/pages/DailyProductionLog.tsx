@@ -694,7 +694,7 @@ export default function DailyProductionLog() {
     
     // Navigate back to WO detail if in locked mode
     if (isLockedMode && preselectedWoId) {
-      navigate(`/work-order/${preselectedWoId}`);
+      navigate(`/work-orders/${preselectedWoId}`);
     }
   };
 
