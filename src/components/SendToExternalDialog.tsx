@@ -290,7 +290,6 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
           remarks: remarks.trim() || null,
           operation_tag: operationTag?.trim() || null,
           created_by: user?.id,
-          is_internal: isInternalProcess || false, // Mark as internal process
         }])
         .select()
         .single();

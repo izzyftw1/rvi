@@ -15,7 +15,8 @@ import {
   Flame,
   AlertTriangle,
   Clock,
-  Wrench
+  Wrench,
+  Scissors
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ import {
 
 const STAGE_ICONS: Record<string, React.ElementType> = {
   goods_in: Package,
+  cutting: Scissors,
   production: Factory,
   qc: ClipboardCheck,
   packing: Box,
@@ -45,6 +47,7 @@ const STAGE_ICONS: Record<string, React.ElementType> = {
 
 const STAGE_ROUTES: Record<string, string> = {
   goods_in: '/materials/inwards',
+  cutting: '/work-orders?stage=cutting_queue',
   production: '/production-progress',
   qc: '/quality',
   packing: '/packing',
@@ -53,6 +56,7 @@ const STAGE_ROUTES: Record<string, string> = {
 
 const STAGE_LABELS: Record<string, string> = {
   goods_in: 'Goods In',
+  cutting: 'Cutting',
   production: 'Production',
   qc: 'Quality Control',
   packing: 'Packing',

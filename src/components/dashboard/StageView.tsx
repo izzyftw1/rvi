@@ -72,7 +72,7 @@ interface StageData {
 }
 
 const STAGE_CONFIG = [
-  { key: 'cutting', label: 'Cutting', icon: Scissors, capacity: 5000, route: '/work-orders?stage=cutting' },
+  { key: 'cutting', label: 'Cutting', icon: Scissors, capacity: 5000, route: '/work-orders?stage=cutting_queue' },
   { key: 'production', label: 'Production', icon: Factory, capacity: 10000, route: '/work-orders?stage=production' },
   { key: 'external', label: 'External Processes', icon: Truck, capacity: 20000, route: '/work-orders?type=external' },
   { key: 'qc', label: 'Final QC', icon: CheckCircle, capacity: 5000, route: '/work-orders?stage=qc' },

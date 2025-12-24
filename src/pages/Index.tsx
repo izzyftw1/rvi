@@ -85,7 +85,9 @@ const Index = () => {
     plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
     buffing: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
     blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-    forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
+    forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+    heat_treatment: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
+    // Note: Cutting is internal, not external - tracked in internal flow
   });
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -166,7 +168,8 @@ const Index = () => {
           plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
           buffing: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
           blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
-          forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
+          forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
+          heat_treatment: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
         };
 
         extSummary.forEach((row: any) => {
@@ -200,7 +203,9 @@ const Index = () => {
       plating: 'Plating',
       buffing: 'Buffing',
       blasting: 'Blasting',
-      forging_ext: 'Forging'
+      forging_ext: 'Forging',
+      heat_treatment: 'Heat Treatment'
+      // Cutting is internal - not listed here
     };
     return labels[key] || key;
   };
