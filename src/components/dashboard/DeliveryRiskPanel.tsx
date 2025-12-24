@@ -1,8 +1,18 @@
+/**
+ * DeliveryRiskPanel - Batch-Based Implementation
+ * 
+ * Shows delivery risk outlook based on:
+ * - Work orders due in 3/7 days
+ * - Blocked by production (batches in early stages)
+ * - Blocked by quality (QC flags)
+ * - Blocked by external (batches at external or external_movements)
+ * 
+ * Uses production_batches for stage detection, NOT work_orders.current_stage.
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { 
   Calendar, 
   AlertTriangle, 
@@ -25,7 +35,6 @@ interface DeliveryRisk {
   blockedByProduction: number;
   blockedByQuality: number;
   blockedByExternal: number;
-  externalPendingWOs: Set<string>; // Track WO IDs to avoid double counting
 }
 
 interface BlockedOrder {
@@ -36,6 +45,11 @@ interface BlockedOrder {
   owner: string;
 }
 
+interface BatchRecord {
+  wo_id: string;
+  stage_type: string;
+}
+
 export const DeliveryRiskPanel = () => {
   const navigate = useNavigate();
   const [risk, setRisk] = useState<DeliveryRisk>({
@@ -44,7 +58,6 @@ export const DeliveryRiskPanel = () => {
     blockedByProduction: 0,
     blockedByQuality: 0,
     blockedByExternal: 0,
-    externalPendingWOs: new Set()
   });
   const [blockedOrders, setBlockedOrders] = useState<BlockedOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,18 +74,47 @@ export const DeliveryRiskPanel = () => {
         // Fetch work orders due in the next 7 days that are not completed
         const { data: upcomingOrders } = await supabase
           .from('work_orders')
-          .select('id, display_id, due_date, current_stage, qc_material_passed, qc_first_piece_passed, status')
+          .select('id, display_id, due_date, qc_material_passed, qc_first_piece_passed, status')
           .gte('due_date', todayStr)
           .lte('due_date', in7Days)
           .neq('status', 'completed')
           .neq('status', 'shipped');
 
-        // Fetch external moves that are pending for these work orders
+        const woIds = upcomingOrders?.map(o => o.id) || [];
+
+        // Fetch active batches for these work orders to determine stage
+        const { data: batchData } = await supabase
+          .from('production_batches')
+          .select('wo_id, stage_type')
+          .in('wo_id', woIds.length > 0 ? woIds : ['__none__'])
+          .is('ended_at', null);
+
+        // Fetch external movements that are pending for these work orders
         const { data: externalMoves } = await supabase
-          .from('wo_external_moves')
+          .from('external_movements')
           .select('work_order_id')
+          .in('work_order_id', woIds.length > 0 ? woIds : ['__none__'])
           .eq('status', 'sent');
 
+        // Build batch lookup by WO
+        const batchesByWO = new Map<string, BatchRecord[]>();
+        batchData?.forEach((b: any) => {
+          const existing = batchesByWO.get(b.wo_id) || [];
+          existing.push({ wo_id: b.wo_id, stage_type: b.stage_type });
+          batchesByWO.set(b.wo_id, existing);
+        });
+
+        // Helper to check stages from batches
+        const hasBatchInStages = (woId: string, stages: string[]): boolean => {
+          const woBatches = batchesByWO.get(woId) || [];
+          return woBatches.some(b => stages.includes(b.stage_type));
+        };
+
+        const hasBatchAtExternal = (woId: string): boolean => {
+          return hasBatchInStages(woId, ['external']);
+        };
+
+        // Build external pending set from external_movements
         const externalPendingWOs = new Set<string>(
           externalMoves?.map(m => m.work_order_id) || []
         );
@@ -95,8 +137,8 @@ export const DeliveryRiskPanel = () => {
           due7Days++; // All are within 7 days
 
           // Determine blocking reason (prioritized)
-          // External processing blocks take priority (tracked separately)
-          if (externalPendingWOs.has(order.id)) {
+          // 1. External processing blocks - check from batches OR external_movements
+          if (hasBatchAtExternal(order.id) || externalPendingWOs.has(order.id)) {
             blockedByExternal++;
             blocked.push({
               id: order.id,
@@ -106,7 +148,7 @@ export const DeliveryRiskPanel = () => {
               owner: 'Logistics'
             });
           }
-          // Quality blocks
+          // 2. Quality blocks
           else if (!order.qc_material_passed || !order.qc_first_piece_passed) {
             blockedByQuality++;
             blocked.push({
@@ -117,8 +159,8 @@ export const DeliveryRiskPanel = () => {
               owner: 'Quality'
             });
           }
-          // Production blocks (early stages)
-          else if (['goods_in', 'cutting', 'forging', 'production'].includes(order.current_stage || '')) {
+          // 3. Production blocks - batches in early stages
+          else if (hasBatchInStages(order.id, ['cutting', 'production', 'qc'])) {
             blockedByProduction++;
             blocked.push({
               id: order.id,
@@ -136,7 +178,6 @@ export const DeliveryRiskPanel = () => {
           blockedByProduction,
           blockedByQuality,
           blockedByExternal,
-          externalPendingWOs
         });
 
         // Sort by due date and take top 5
@@ -158,7 +199,8 @@ export const DeliveryRiskPanel = () => {
     const channel = supabase
       .channel('delivery-risk-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => fetchDeliveryRisk())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, () => fetchDeliveryRisk())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => fetchDeliveryRisk())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'external_movements' }, () => fetchDeliveryRisk())
       .subscribe();
 
     return () => {
@@ -310,7 +352,7 @@ export const DeliveryRiskPanel = () => {
                           <p className="text-[9px] text-muted-foreground">Production</p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent>{risk.blockedByProduction} orders blocked by production</TooltipContent>
+                      <TooltipContent>{risk.blockedByProduction} orders in production stages</TooltipContent>
                     </Tooltip>
 
                     <Tooltip>
@@ -337,7 +379,7 @@ export const DeliveryRiskPanel = () => {
                           <p className="text-[9px] text-muted-foreground">Quality</p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent>{risk.blockedByQuality} orders blocked by quality</TooltipContent>
+                      <TooltipContent>{risk.blockedByQuality} orders awaiting QC approval</TooltipContent>
                     </Tooltip>
 
                     <Tooltip>
@@ -364,7 +406,7 @@ export const DeliveryRiskPanel = () => {
                           <p className="text-[9px] text-muted-foreground">External</p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent>{risk.blockedByExternal} orders blocked by external processing</TooltipContent>
+                      <TooltipContent>{risk.blockedByExternal} orders at external processing</TooltipContent>
                     </Tooltip>
                   </div>
                 </div>
@@ -418,6 +460,11 @@ export const DeliveryRiskPanel = () => {
                   <p className="text-sm text-muted-foreground">No orders due in the next 7 days</p>
                 </div>
               )}
+
+              {/* Source indicator */}
+              <p className="text-[10px] text-muted-foreground text-center">
+                Source: production_batches + external_movements
+              </p>
             </div>
           )}
         </CardContent>

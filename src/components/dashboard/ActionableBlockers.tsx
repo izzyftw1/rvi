@@ -1,16 +1,18 @@
 /**
- * ActionableBlockers - Decision-First Component
+ * ActionableBlockers - Batch-Based Implementation
  * 
  * Shows the top blocked items that need immediate action, with:
  * - Owner department
  * - Impact indicator (days overdue, financial risk)
  * - Single-click navigation to resolve
+ * 
+ * Uses production_batches and external_movements for stage detection,
+ * NOT work_orders.current_stage.
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { 
   AlertTriangle, 
   Clock, 
@@ -19,11 +21,10 @@ import {
   Truck,
   ArrowRight,
   User,
-  DollarSign
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { formatDistanceToNow, parseISO, differenceInDays } from "date-fns";
+import { parseISO, differenceInDays } from "date-fns";
 
 interface BlockedItem {
   id: string;
@@ -37,6 +38,12 @@ interface BlockedItem {
   urgency: 'critical' | 'high' | 'medium';
 }
 
+interface BatchRecord {
+  wo_id: string;
+  stage_type: string;
+  stage_entered_at: string | null;
+}
+
 export const ActionableBlockers = () => {
   const navigate = useNavigate();
   const [blockers, setBlockers] = useState<BlockedItem[]>([]);
@@ -48,7 +55,8 @@ export const ActionableBlockers = () => {
     const channel = supabase
       .channel('actionable-blockers')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadBlockedItems)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadBlockedItems)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, loadBlockedItems)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'external_movements' }, loadBlockedItems)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, loadBlockedItems)
       .subscribe();
 
@@ -60,29 +68,57 @@ export const ActionableBlockers = () => {
   const loadBlockedItems = async () => {
     try {
       const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
 
       // Fetch work orders with potential blocks
       const { data: workOrders } = await supabase
         .from('work_orders')
-        .select('id, display_id, due_date, current_stage, qc_material_passed, qc_first_piece_passed, status, customer, quantity, net_weight_per_pc')
+        .select('id, display_id, due_date, qc_material_passed, qc_first_piece_passed, status, customer, quantity, net_weight_per_pc')
         .neq('status', 'completed')
         .neq('status', 'shipped')
         .order('due_date', { ascending: true })
         .limit(50);
 
-      // Fetch external moves with pending status
+      // Fetch active batches to determine actual stage
+      const { data: batchData } = await supabase
+        .from('production_batches')
+        .select('wo_id, stage_type, stage_entered_at')
+        .is('ended_at', null);
+
+      // Fetch external movements with pending status
       const { data: externalMoves } = await supabase
-        .from('wo_external_moves')
-        .select('work_order_id, expected_return_date, process')
+        .from('external_movements')
+        .select('work_order_id, expected_return_date, process_type')
         .eq('status', 'sent');
 
+      // Build batch lookup by WO
+      const batchesByWO = new Map<string, BatchRecord[]>();
+      batchData?.forEach((b: any) => {
+        const existing = batchesByWO.get(b.wo_id) || [];
+        existing.push({
+          wo_id: b.wo_id,
+          stage_type: b.stage_type,
+          stage_entered_at: b.stage_entered_at
+        });
+        batchesByWO.set(b.wo_id, existing);
+      });
+
+      // Helper to check stages from batches
+      const hasBatchInStages = (woId: string, stages: string[]): boolean => {
+        const woBatches = batchesByWO.get(woId) || [];
+        return woBatches.some(b => stages.includes(b.stage_type));
+      };
+
+      const hasBatchAtExternal = (woId: string): boolean => {
+        return hasBatchInStages(woId, ['external']);
+      };
+
+      // Build external pending map
       const externalPendingMap = new Map<string, { date: string; process: string }>();
       externalMoves?.forEach(m => {
         if (m.work_order_id && m.expected_return_date) {
           externalPendingMap.set(m.work_order_id, { 
             date: m.expected_return_date, 
-            process: m.process 
+            process: m.process_type 
           });
         }
       });
@@ -93,7 +129,7 @@ export const ActionableBlockers = () => {
         const dueDate = wo.due_date ? parseISO(wo.due_date) : null;
         const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : 999;
         const isOverdue = daysUntilDue < 0;
-        const estValue = ((wo.quantity ?? 0) * (wo.net_weight_per_pc ?? 0) * 0.5).toFixed(0); // Rough estimate
+        const estValue = ((wo.quantity ?? 0) * (wo.net_weight_per_pc ?? 0) * 0.5).toFixed(0);
 
         // Overdue orders
         if (isOverdue) {
@@ -109,18 +145,18 @@ export const ActionableBlockers = () => {
             urgency: daysUntilDue < -3 ? 'critical' : 'high'
           });
         }
-        // External processing blocks
-        else if (externalPendingMap.has(wo.id)) {
-          const ext = externalPendingMap.get(wo.id)!;
-          const extDue = parseISO(ext.date);
-          const extDaysLate = differenceInDays(today, extDue);
+        // External processing blocks - check from batches OR external movements
+        else if (hasBatchAtExternal(wo.id) || externalPendingMap.has(wo.id)) {
+          const ext = externalPendingMap.get(wo.id);
+          const extDue = ext ? parseISO(ext.date) : null;
+          const extDaysLate = extDue ? differenceInDays(today, extDue) : 0;
           if (extDaysLate > 0 || daysUntilDue <= 7) {
             items.push({
               id: wo.id,
               display_id: wo.display_id || 'N/A',
               blockType: 'external',
               owner: 'Logistics',
-              reason: `Waiting: ${ext.process}${extDaysLate > 0 ? ` (${extDaysLate}d late)` : ''}`,
+              reason: `Waiting: ${ext?.process || 'External'}${extDaysLate > 0 ? ` (${extDaysLate}d late)` : ''}`,
               daysBlocked: Math.max(0, extDaysLate),
               estimatedImpact: daysUntilDue <= 3 ? 'Delivery at risk' : 'Monitor',
               route: `/work-orders/${wo.id}`,
@@ -145,14 +181,16 @@ export const ActionableBlockers = () => {
             });
           }
         }
-        // Production blocks (early stages with tight deadline)
-        else if (['goods_in', 'cutting', 'forging'].includes(wo.current_stage || '') && daysUntilDue <= 5) {
+        // Production blocks - batches in early stages with tight deadline
+        else if (hasBatchInStages(wo.id, ['cutting', 'production']) && daysUntilDue <= 5) {
+          const woBatches = batchesByWO.get(wo.id) || [];
+          const stageLabel = woBatches.find(b => ['cutting', 'production'].includes(b.stage_type))?.stage_type || 'production';
           items.push({
             id: wo.id,
             display_id: wo.display_id || 'N/A',
             blockType: 'production',
             owner: 'Production',
-            reason: `At ${wo.current_stage?.replace('_', ' ')} stage`,
+            reason: `At ${stageLabel} stage`,
             daysBlocked: 0,
             estimatedImpact: `Due in ${daysUntilDue}d`,
             route: `/work-orders/${wo.id}`,
@@ -293,6 +331,9 @@ export const ActionableBlockers = () => {
             </div>
           );
         })}
+        <p className="text-[10px] text-muted-foreground text-center pt-2">
+          Source: production_batches + external_movements
+        </p>
       </CardContent>
     </Card>
   );

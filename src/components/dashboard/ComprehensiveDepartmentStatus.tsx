@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -19,6 +17,16 @@ import {
   LucideIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBatchBasedWIP } from "@/hooks/useBatchBasedWIP";
+
+/**
+ * ComprehensiveDepartmentStatus - Batch-Based Implementation
+ * 
+ * All counts and metrics are derived from production_batches table,
+ * NOT from work_orders.current_stage.
+ * 
+ * A Work Order may have multiple active batches in different stages simultaneously.
+ */
 
 interface DepartmentMetrics {
   title: string;
@@ -34,246 +42,103 @@ interface DepartmentMetrics {
   isExternal?: boolean;
 }
 
+// Map stage_type to display config
+const STAGE_CONFIG: Record<string, { title: string; icon: LucideIcon; route: string }> = {
+  'cutting': { title: 'Cutting', icon: Scissors, route: '/cutting' },
+  'production': { title: 'CNC / Production', icon: Factory, route: '/production-progress' },
+  'qc': { title: 'Quality Control', icon: ClipboardCheck, route: '/quality' },
+  'packing': { title: 'Packing', icon: Box, route: '/packing' },
+  'dispatch': { title: 'Dispatch', icon: Truck, route: '/dispatch' },
+};
+
+// Map external process types to icons
+const EXTERNAL_PROCESS_CONFIG: Record<string, { icon: LucideIcon }> = {
+  'job_work': { icon: Users },
+  'plating': { icon: Sparkles },
+  'buffing': { icon: Wind },
+  'blasting': { icon: Hammer },
+};
+
 export const ComprehensiveDepartmentStatus = () => {
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState<DepartmentMetrics[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [overallProgress, setOverallProgress] = useState(0);
-  const [overdueCount, setOverdueCount] = useState(0);
-  const [externalWIP, setExternalWIP] = useState({ pcs: 0, kg: 0 });
+  const { internalStages, externalProcesses, summary, loading } = useBatchBasedWIP();
 
-  useEffect(() => {
-    loadAllMetrics();
-
-    // Set up real-time subscriptions
-    const channel = supabase
-      .channel('department-metrics')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadAllMetrics)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cutting_records' }, loadAllMetrics)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'forging_records' }, loadAllMetrics)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, loadAllMetrics)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_receipts' }, loadAllMetrics)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_logs' }, loadAllMetrics)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, loadAllMetrics)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+  // Build metrics for internal stages from batch data
+  const internalMetrics: DepartmentMetrics[] = internalStages.map(stage => {
+    const config = STAGE_CONFIG[stage.stage] || { 
+      title: stage.stage, 
+      icon: Package, 
+      route: '/work-orders' 
     };
-  }, []);
+    
+    const completedCount = stage.completed;
+    const progress = stage.batchCount > 0 
+      ? Math.round((completedCount / stage.batchCount) * 100) 
+      : 0;
+    
+    return {
+      title: config.title,
+      icon: config.icon,
+      activeJobs: stage.batchCount,
+      totalQtyPcs: stage.totalQuantity,
+      totalQtyKg: 0, // Weight not tracked at batch level currently
+      completedQtyPcs: 0, // Batch-level completion tracked via completed count
+      completedQtyKg: 0,
+      progressPercentage: progress,
+      status: stage.overdueCount > 0 ? 'delayed' : stage.batchCount > 0 ? 'active' : 'done',
+      onClick: () => navigate(config.route),
+      isExternal: false
+    };
+  });
 
-  const loadAllMetrics = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch all necessary data
-      const [
-        workOrders,
-        cuttingRecords,
-        forgingRecords,
-        externalMoves,
-        externalReceipts,
-        productionLogs,
-        qcRecords
-      ] = await Promise.all([
-        supabase.from('work_orders').select('*'),
-        supabase.from('cutting_records').select('*'),
-        supabase.from('forging_records').select('*'),
-        supabase.from('wo_external_moves' as any).select('*'),
-        supabase.from('wo_external_receipts' as any).select('*'),
-        supabase.from('production_logs').select('*'),
-        supabase.from('qc_records').select('*')
-      ]);
-
-      const wos = workOrders.data || [];
-      const cutting = cuttingRecords.data || [];
-      const forging = forgingRecords.data || [];
-      const moves: any[] = externalMoves.data || [];
-      const receipts: any[] = externalReceipts.data || [];
-      const prodLogs = productionLogs.data || [];
-      const qc = qcRecords.data || [];
-
-      // Calculate overall progress
-      const totalQty = wos.reduce((sum, wo) => sum + (wo.quantity || 0), 0);
-      const completedQty = prodLogs.reduce((sum, log) => sum + (log.quantity_completed || 0) - (log.quantity_scrap || 0), 0);
-      const overallProg = totalQty > 0 ? Math.round((completedQty / totalQty) * 100) : 0;
-      setOverallProgress(overallProg);
-
-      // Calculate overdue count
-      const today = new Date().toISOString().split('T')[0];
-      const overdue = wos.filter(wo => wo.due_date < today && wo.status !== 'completed').length;
-      setOverdueCount(overdue);
-
-      // Calculate external WIP
-      const externalWIPPcs = moves.reduce((sum, move) => {
-        const received = receipts
-          .filter(r => r.move_id === move.id)
-          .reduce((s, r) => s + (r.qty_received || 0), 0);
-        return sum + (move.qty_sent || 0) - received;
-      }, 0);
-      setExternalWIP({ pcs: externalWIPPcs, kg: 0 }); // TODO: Add kg calculation if needed
-
-      // Build metrics for each department
-      const departmentMetrics: DepartmentMetrics[] = [];
-
-      // 1. Goods In
-      const goodsInWOs = wos.filter(wo => wo.current_stage === 'goods_in');
-      departmentMetrics.push({
-        title: "Goods In",
-        icon: Package,
-        activeJobs: goodsInWOs.length,
-        totalQtyPcs: goodsInWOs.reduce((sum, wo) => sum + (wo.quantity || 0), 0),
-        totalQtyKg: goodsInWOs.reduce((sum, wo) => sum + ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000), 0),
-        completedQtyPcs: 0,
-        completedQtyKg: 0,
-        progressPercentage: 0,
-        status: goodsInWOs.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/material-inwards'),
-        isExternal: false
-      });
-
-      // 2. Cutting
-      const cuttingActive = cutting.filter(c => c.status !== 'completed');
-      const cuttingTotal = cutting.reduce((sum, c) => sum + (c.qty_required || 0), 0);
-      const cuttingDone = cutting.reduce((sum, c) => sum + (c.qty_cut || 0), 0);
-      departmentMetrics.push({
-        title: "Cutting",
-        icon: Scissors,
-        activeJobs: cuttingActive.length,
-        totalQtyPcs: cuttingTotal,
-        totalQtyKg: 0,
-        completedQtyPcs: cuttingDone,
-        completedQtyKg: 0,
-        progressPercentage: cuttingTotal > 0 ? Math.round((cuttingDone / cuttingTotal) * 100) : 0,
-        status: cuttingActive.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/cutting'),
-        isExternal: false
-      });
-
-      // 3. Forging
-      const forgingActive = forging.filter(f => f.status !== 'completed');
-      const forgingTotal = forging.reduce((sum, f) => sum + (f.qty_required || 0), 0);
-      const forgingDone = forging.reduce((sum, f) => sum + (f.qty_forged || 0), 0);
-      departmentMetrics.push({
-        title: "Forging",
-        icon: Flame,
-        activeJobs: forgingActive.length,
-        totalQtyPcs: forgingTotal,
-        totalQtyKg: 0,
-        completedQtyPcs: forgingDone,
-        completedQtyKg: 0,
-        progressPercentage: forgingTotal > 0 ? Math.round((forgingDone / forgingTotal) * 100) : 0,
-        status: forgingActive.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/forging'),
-        isExternal: false
-      });
-
-      // 4. CNC / Production
-      const productionWOs = wos.filter(wo => wo.current_stage === 'production');
-      const productionTotal = productionWOs.reduce((sum, wo) => sum + (wo.quantity || 0), 0);
-      const productionCompleted = prodLogs
-        .filter(log => productionWOs.some(wo => wo.id === log.wo_id))
-        .reduce((sum, log) => sum + (log.quantity_completed || 0) - (log.quantity_scrap || 0), 0);
-      departmentMetrics.push({
-        title: "CNC / Production",
-        icon: Factory,
-        activeJobs: productionWOs.length,
-        totalQtyPcs: productionTotal,
-        totalQtyKg: productionWOs.reduce((sum, wo) => sum + ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000), 0),
-        completedQtyPcs: productionCompleted,
-        completedQtyKg: 0,
-        progressPercentage: productionTotal > 0 ? Math.round((productionCompleted / productionTotal) * 100) : 0,
-        status: productionWOs.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/production-progress'),
-        isExternal: false
-      });
-
-      // 5. QC
-      const qcWOs = wos.filter(wo => wo.current_stage === 'qc');
-      const qcPending = qc.filter(q => q.result === 'pending');
-      const qcPassed = qc.filter(q => q.result === 'pass');
-      departmentMetrics.push({
-        title: "Quality Control",
-        icon: ClipboardCheck,
-        activeJobs: qcWOs.length,
-        totalQtyPcs: qcWOs.reduce((sum, wo) => sum + (wo.quantity || 0), 0),
-        totalQtyKg: qcWOs.reduce((sum, wo) => sum + ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000), 0),
-        completedQtyPcs: qcPassed.length,
-        completedQtyKg: 0,
-        progressPercentage: (qcPending.length + qcPassed.length) > 0 ? Math.round((qcPassed.length / (qcPending.length + qcPassed.length)) * 100) : 0,
-        status: qcWOs.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/quality'),
-        isExternal: false
-      });
-
-      // 6. Packing
-      const packingWOs = wos.filter(wo => wo.current_stage === 'packing');
-      departmentMetrics.push({
-        title: "Packing",
-        icon: Box,
-        activeJobs: packingWOs.length,
-        totalQtyPcs: packingWOs.reduce((sum, wo) => sum + (wo.quantity || 0), 0),
-        totalQtyKg: packingWOs.reduce((sum, wo) => sum + ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000), 0),
-        completedQtyPcs: 0,
-        completedQtyKg: 0,
-        progressPercentage: 0,
-        status: packingWOs.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/packing'),
-        isExternal: false
-      });
-
-      // 7. Dispatch
-      const dispatchWOs = wos.filter(wo => wo.current_stage === 'dispatch');
-      departmentMetrics.push({
-        title: "Dispatch",
-        icon: Truck,
-        activeJobs: dispatchWOs.length,
-        totalQtyPcs: dispatchWOs.reduce((sum, wo) => sum + (wo.quantity || 0), 0),
-        totalQtyKg: dispatchWOs.reduce((sum, wo) => sum + ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0) / 1000), 0),
-        completedQtyPcs: 0,
-        completedQtyKg: 0,
-        progressPercentage: 0,
-        status: dispatchWOs.length > 0 ? 'active' : 'done',
-        onClick: () => navigate('/dispatch'),
-        isExternal: false
-      });
-
-      // External Processes
-      const externalProcessTypes = ['job_work', 'plating', 'buffing', 'blasting'];
-      
-      externalProcessTypes.forEach(processType => {
-        const processIcon = processType === 'job_work' ? Users :
-                          processType === 'plating' ? Sparkles :
-                          processType === 'buffing' ? Wind : Hammer;
-        
-        const processMoves = moves.filter(m => m.process_type === processType);
-        const totalSent = processMoves.reduce((sum, m) => sum + (m.qty_sent || 0), 0);
-        const totalReceived = receipts
-          .filter(r => processMoves.some(m => m.id === r.move_id))
-          .reduce((sum, r) => sum + (r.qty_received || 0), 0);
-        
-        departmentMetrics.push({
-          title: processType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-          icon: processIcon,
-          activeJobs: processMoves.filter(m => m.status !== 'returned').length,
-          totalQtyPcs: totalSent,
-          totalQtyKg: 0,
-          completedQtyPcs: totalReceived,
-          completedQtyKg: 0,
-          progressPercentage: totalSent > 0 ? Math.round((totalReceived / totalSent) * 100) : 0,
-          status: processMoves.filter(m => m.status !== 'returned').length > 0 ? 'active' : 'done',
-          onClick: () => navigate('/logistics'),
-          isExternal: true
-        });
-      });
-
-      setMetrics(departmentMetrics);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading department metrics:', error);
-      setLoading(false);
-    }
+  // Add Goods In as first stage (batches not yet in production)
+  // This represents WOs that have batches but none have started cutting yet
+  const goodsInMetric: DepartmentMetrics = {
+    title: 'Goods In',
+    icon: Package,
+    activeJobs: 0, // Will be calculated from WOs without any active batches
+    totalQtyPcs: 0,
+    totalQtyKg: 0,
+    completedQtyPcs: 0,
+    completedQtyKg: 0,
+    progressPercentage: 0,
+    status: 'done',
+    onClick: () => navigate('/material-inwards'),
+    isExternal: false
   };
+
+  // Build metrics for external processes from batch data
+  const externalMetrics: DepartmentMetrics[] = externalProcesses.map(process => {
+    const config = EXTERNAL_PROCESS_CONFIG[process.processType] || { icon: Users };
+    const displayName = process.processType
+      .split('_')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    
+    return {
+      title: displayName,
+      icon: config.icon,
+      activeJobs: process.batchCount,
+      totalQtyPcs: process.totalQuantity,
+      totalQtyKg: 0,
+      completedQtyPcs: 0,
+      completedQtyKg: 0,
+      progressPercentage: 0, // External progress tracked separately
+      status: process.overdueCount > 0 ? 'delayed' : process.batchCount > 0 ? 'active' : 'done',
+      onClick: () => navigate('/logistics'),
+      isExternal: true
+    };
+  });
+
+  // Calculate overall progress from batch summary
+  const totalActive = summary.totalBatches;
+  const totalCompleted = summary.dispatchedBatches;
+  const overallProgress = totalActive + totalCompleted > 0 
+    ? Math.round((totalCompleted / (totalActive + totalCompleted)) * 100) 
+    : 0;
+
+  // Count overdue from internal stages
+  const overdueCount = internalStages.reduce((sum, s) => sum + s.overdueCount, 0);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -293,8 +158,8 @@ export const ComprehensiveDepartmentStatus = () => {
     }
   };
 
-  const internalMetrics = metrics.filter(m => !m.isExternal);
-  const externalMetrics = metrics.filter(m => m.isExternal);
+  // Combine internal metrics
+  const allInternalMetrics = [goodsInMetric, ...internalMetrics];
 
   if (loading) {
     return (
@@ -327,11 +192,11 @@ export const ComprehensiveDepartmentStatus = () => {
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Orders</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Batches</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-500">{overdueCount}</div>
-            <p className="text-xs text-muted-foreground mt-2">Work orders past due date</p>
+            <p className="text-xs text-muted-foreground mt-2">Batches past WO due date</p>
           </CardContent>
         </Card>
         <Card>
@@ -339,7 +204,7 @@ export const ComprehensiveDepartmentStatus = () => {
             <CardTitle className="text-sm font-medium text-muted-foreground">External WIP</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-amber-500">{externalWIP.pcs}</div>
+            <div className="text-3xl font-bold text-amber-500">{summary.totalExternalWIP.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground mt-2">Pieces at external partners</p>
           </CardContent>
         </Card>
@@ -350,9 +215,12 @@ export const ComprehensiveDepartmentStatus = () => {
         <div className="flex items-center gap-2 mb-4">
           <div className="h-1 w-8 bg-gradient-to-r from-gray-400 to-gray-600 rounded" />
           <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300">Internal Departments</h3>
+          <span className="text-xs text-muted-foreground ml-2">
+            ({summary.totalInternalWIP.toLocaleString()} pcs WIP)
+          </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {internalMetrics.map((metric, idx) => {
+          {allInternalMetrics.map((metric, idx) => {
             const Icon = metric.icon;
             return (
               <Card
@@ -372,7 +240,7 @@ export const ComprehensiveDepartmentStatus = () => {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Active Jobs</span>
+                    <span className="text-xs text-muted-foreground">Active Batches</span>
                     <span className="text-lg font-bold">{metric.activeJobs}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t">
@@ -405,6 +273,9 @@ export const ComprehensiveDepartmentStatus = () => {
           <div className="flex items-center gap-2 mb-4">
             <div className="h-1 w-8 bg-gradient-to-r from-amber-400 to-amber-600 rounded" />
             <h3 className="text-lg font-bold text-amber-700 dark:text-amber-400">External Processes</h3>
+            <span className="text-xs text-muted-foreground ml-2">
+              ({summary.totalExternalWIP.toLocaleString()} pcs)
+            </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {externalMetrics.map((metric, idx) => {
@@ -427,22 +298,22 @@ export const ComprehensiveDepartmentStatus = () => {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground">Active Jobs</span>
+                      <span className="text-xs text-muted-foreground">Active Batches</span>
                       <span className="text-lg font-bold">{metric.activeJobs}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t">
                       <div>
                         <p className="text-base font-semibold">{metric.totalQtyPcs.toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">Sent</p>
+                        <p className="text-xs text-muted-foreground">Pcs</p>
                       </div>
                       <div>
-                        <p className="text-base font-semibold">{metric.completedQtyPcs.toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">Received</p>
+                        <p className="text-base font-semibold">{metric.totalQtyKg.toFixed(1)}</p>
+                        <p className="text-xs text-muted-foreground">Kg</p>
                       </div>
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Return Rate</span>
+                        <span className="text-muted-foreground">Progress</span>
                         <span className="font-medium">{metric.progressPercentage}%</span>
                       </div>
                       <Progress value={metric.progressPercentage} className="h-2" />
@@ -454,6 +325,11 @@ export const ComprehensiveDepartmentStatus = () => {
           </div>
         </div>
       )}
+
+      {/* Source indicator */}
+      <p className="text-[10px] text-muted-foreground text-center">
+        Source: production_batches (batch-level)
+      </p>
     </div>
   );
 };
