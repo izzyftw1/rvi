@@ -7899,6 +7899,11 @@ export type Database = {
           net_weight_per_pc: number | null
           priority: number | null
           production_allowed: boolean | null
+          production_complete: boolean
+          production_complete_qty: number | null
+          production_complete_reason: string | null
+          production_completed_at: string | null
+          production_completed_by: string | null
           production_end: string | null
           production_locked: boolean | null
           production_release_date: string | null
@@ -7975,6 +7980,11 @@ export type Database = {
           net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
+          production_complete?: boolean
+          production_complete_qty?: number | null
+          production_complete_reason?: string | null
+          production_completed_at?: string | null
+          production_completed_by?: string | null
           production_end?: string | null
           production_locked?: boolean | null
           production_release_date?: string | null
@@ -8051,6 +8061,11 @@ export type Database = {
           net_weight_per_pc?: number | null
           priority?: number | null
           production_allowed?: boolean | null
+          production_complete?: boolean
+          production_complete_qty?: number | null
+          production_complete_reason?: string | null
+          production_completed_at?: string | null
+          production_completed_by?: string | null
           production_end?: string | null
           production_locked?: boolean | null
           production_release_date?: string | null

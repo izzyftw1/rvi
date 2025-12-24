@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Packable batch - a production batch with Final QC approval
+// Packable batch - a production batch with Final QC approval AND production complete
 interface PackableBatch {
   id: string;
   wo_id: string;
@@ -39,6 +39,7 @@ interface PackableBatch {
   item_code: string;
   customer: string;
   wo_quantity: number;
+  production_complete: boolean;
 }
 
 interface PackingRecord {
@@ -89,7 +90,10 @@ const Packing = () => {
   }, [selectedBatchId, packableBatches]);
 
   const loadPackableBatches = async () => {
-    // Load production batches with Final QC approval that have remaining packable quantity
+    // Load production batches where:
+    // 1. Final QC has approved quantity
+    // 2. Work order production is complete
+    // 3. Has remaining quantity to pack
     const { data, error } = await supabase
       .from("production_batches")
       .select(`
@@ -105,7 +109,7 @@ const Packing = () => {
         qc_final_approved_at,
         stage_type,
         batch_status,
-        work_orders!inner(display_id, item_code, customer, quantity)
+        work_orders!inner(display_id, item_code, customer, quantity, production_complete)
       `)
       .eq("qc_final_status", "passed")
       .not("batch_status", "eq", "completed")
@@ -135,32 +139,39 @@ const Packing = () => {
     }
 
     // Enrich with packed qty and available for packing
-    const enriched: PackableBatch[] = (data || []).map(b => {
-      const wo = b.work_orders as any;
-      const packedQty = packedQtyMap[b.id] || 0;
-      const availableForPacking = Math.max(0, (b.qc_approved_qty || 0) - packedQty);
+    // ONLY include batches where production is complete
+    const enriched: PackableBatch[] = (data || [])
+      .filter(b => {
+        const wo = b.work_orders as any;
+        return wo?.production_complete === true;
+      })
+      .map(b => {
+        const wo = b.work_orders as any;
+        const packedQty = packedQtyMap[b.id] || 0;
+        const availableForPacking = Math.max(0, (b.qc_approved_qty || 0) - packedQty);
       
-      return {
-        id: b.id,
-        wo_id: b.wo_id,
-        batch_number: b.batch_number,
-        batch_quantity: b.batch_quantity || 0,
-        produced_qty: b.produced_qty || 0,
-        qc_approved_qty: b.qc_approved_qty || 0,
-        qc_rejected_qty: b.qc_rejected_qty || 0,
-        dispatched_qty: b.dispatched_qty || 0,
-        packed_qty: packedQty,
-        available_for_packing: availableForPacking,
-        qc_final_status: b.qc_final_status || "",
-        qc_final_approved_at: b.qc_final_approved_at,
-        stage_type: b.stage_type || "",
-        batch_status: b.batch_status || "",
-        wo_number: wo?.display_id || "",
-        item_code: wo?.item_code || "",
-        customer: wo?.customer || "",
-        wo_quantity: wo?.quantity || 0,
-      };
-    }).filter(b => b.available_for_packing > 0);
+        return {
+          id: b.id,
+          wo_id: b.wo_id,
+          batch_number: b.batch_number,
+          batch_quantity: b.batch_quantity || 0,
+          produced_qty: b.produced_qty || 0,
+          qc_approved_qty: b.qc_approved_qty || 0,
+          qc_rejected_qty: b.qc_rejected_qty || 0,
+          dispatched_qty: b.dispatched_qty || 0,
+          packed_qty: packedQty,
+          available_for_packing: availableForPacking,
+          qc_final_status: b.qc_final_status || "",
+          qc_final_approved_at: b.qc_final_approved_at,
+          stage_type: b.stage_type || "",
+          batch_status: b.batch_status || "",
+          wo_number: wo?.display_id || "",
+          item_code: wo?.item_code || "",
+          customer: wo?.customer || "",
+          wo_quantity: wo?.quantity || 0,
+          production_complete: wo?.production_complete || false,
+        };
+      }).filter(b => b.available_for_packing > 0);
 
     setPackableBatches(enriched);
   };
@@ -334,9 +345,13 @@ const Packing = () => {
                       <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
                       <h3 className="text-lg font-semibold mb-2">No Batches Ready for Packing</h3>
                       <p className="text-muted-foreground max-w-md">
-                        There are no production batches with Final QC approval that have remaining quantity. 
-                        Complete Final QC approval to make batches eligible for packing.
+                        Batches are ready for packing when:
                       </p>
+                      <ul className="text-muted-foreground text-sm mt-2 space-y-1 text-left">
+                        <li>• Production is marked complete on the Work Order</li>
+                        <li>• Final QC has approved quantity</li>
+                        <li>• There is remaining quantity to pack</li>
+                      </ul>
                     </div>
                   </CardContent>
                 </Card>
