@@ -9018,6 +9018,7 @@ export type Database = {
         Returns: string
       }
       generate_rpo_number: { Args: never; Returns: string }
+      generate_so_number: { Args: never; Returns: string }
       generate_wo_number: { Args: never; Returns: string }
       get_batch_dispatchable_qty: {
         Args: { p_batch_id: string }
