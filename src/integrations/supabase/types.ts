@@ -2666,24 +2666,41 @@ export type Database = {
           closed_adjusted_at: string | null
           closed_adjusted_by: string | null
           closure_adjustment_total: number | null
+          country_of_origin: string | null
           created_at: string | null
           created_by: string | null
           currency: string | null
+          customer_address: string | null
+          customer_contact: string | null
+          customer_email: string | null
+          customer_gst: string | null
           customer_id: string
+          dispatch_date: string | null
+          dispatch_id: string | null
           due_date: string
           expected_payment_date: string | null
+          final_destination: string | null
           gross_amount: number | null
           gst_amount: number | null
           gst_percent: number | null
+          hs_code: string | null
           id: string
+          incoterm: string | null
           internal_adjustment_notes: string | null
           internal_adjustment_total: number | null
           invoice_date: string
           invoice_no: string
+          is_export: boolean | null
+          kind_of_packages: string | null
+          marks_nos: string | null
           net_payable: number | null
           paid_amount: number | null
           payment_terms_days: number | null
           pdf_url: string | null
+          po_date: string | null
+          po_number: string | null
+          port_of_discharge: string | null
+          port_of_loading: string | null
           recovery_stage: Database["public"]["Enums"]["recovery_stage"] | null
           shipment_id: string | null
           short_close_reason: string | null
@@ -2694,7 +2711,10 @@ export type Database = {
           status: Database["public"]["Enums"]["invoice_status"] | null
           subtotal: number
           total_amount: number
+          total_gross_weight: number | null
+          total_net_weight: number | null
           updated_at: string | null
+          vessel_flight: string | null
           wo_id: string | null
         }
         Insert: {
@@ -2703,24 +2723,41 @@ export type Database = {
           closed_adjusted_at?: string | null
           closed_adjusted_by?: string | null
           closure_adjustment_total?: number | null
+          country_of_origin?: string | null
           created_at?: string | null
           created_by?: string | null
           currency?: string | null
+          customer_address?: string | null
+          customer_contact?: string | null
+          customer_email?: string | null
+          customer_gst?: string | null
           customer_id: string
+          dispatch_date?: string | null
+          dispatch_id?: string | null
           due_date: string
           expected_payment_date?: string | null
+          final_destination?: string | null
           gross_amount?: number | null
           gst_amount?: number | null
           gst_percent?: number | null
+          hs_code?: string | null
           id?: string
+          incoterm?: string | null
           internal_adjustment_notes?: string | null
           internal_adjustment_total?: number | null
           invoice_date?: string
           invoice_no: string
+          is_export?: boolean | null
+          kind_of_packages?: string | null
+          marks_nos?: string | null
           net_payable?: number | null
           paid_amount?: number | null
           payment_terms_days?: number | null
           pdf_url?: string | null
+          po_date?: string | null
+          po_number?: string | null
+          port_of_discharge?: string | null
+          port_of_loading?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
           shipment_id?: string | null
           short_close_reason?: string | null
@@ -2731,7 +2768,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["invoice_status"] | null
           subtotal?: number
           total_amount?: number
+          total_gross_weight?: number | null
+          total_net_weight?: number | null
           updated_at?: string | null
+          vessel_flight?: string | null
           wo_id?: string | null
         }
         Update: {
@@ -2740,24 +2780,41 @@ export type Database = {
           closed_adjusted_at?: string | null
           closed_adjusted_by?: string | null
           closure_adjustment_total?: number | null
+          country_of_origin?: string | null
           created_at?: string | null
           created_by?: string | null
           currency?: string | null
+          customer_address?: string | null
+          customer_contact?: string | null
+          customer_email?: string | null
+          customer_gst?: string | null
           customer_id?: string
+          dispatch_date?: string | null
+          dispatch_id?: string | null
           due_date?: string
           expected_payment_date?: string | null
+          final_destination?: string | null
           gross_amount?: number | null
           gst_amount?: number | null
           gst_percent?: number | null
+          hs_code?: string | null
           id?: string
+          incoterm?: string | null
           internal_adjustment_notes?: string | null
           internal_adjustment_total?: number | null
           invoice_date?: string
           invoice_no?: string
+          is_export?: boolean | null
+          kind_of_packages?: string | null
+          marks_nos?: string | null
           net_payable?: number | null
           paid_amount?: number | null
           payment_terms_days?: number | null
           pdf_url?: string | null
+          po_date?: string | null
+          po_number?: string | null
+          port_of_discharge?: string | null
+          port_of_loading?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
           shipment_id?: string | null
           short_close_reason?: string | null
@@ -2768,7 +2825,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["invoice_status"] | null
           subtotal?: number
           total_amount?: number
+          total_gross_weight?: number | null
+          total_net_weight?: number | null
           updated_at?: string | null
+          vessel_flight?: string | null
           wo_id?: string | null
         }
         Relationships: [
@@ -2784,6 +2844,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatches"
             referencedColumns: ["id"]
           },
           {
