@@ -243,6 +243,17 @@ export async function submitBatchQC(
           qc_final_approved_by: user.id,
           qc_final_approved_at: now,
         };
+        // When Final QC passes/waives, set qc_approved_qty = produced_qty - qc_rejected_qty
+        if (['passed', 'waived'].includes(status)) {
+          const { data: batchQty } = await supabase
+            .from('production_batches')
+            .select('produced_qty, qc_rejected_qty')
+            .eq('id', batchId)
+            .single();
+          if (batchQty) {
+            updateData.qc_approved_qty = Math.max(0, (batchQty.produced_qty || 0) - (batchQty.qc_rejected_qty || 0));
+          }
+        }
         break;
       case 'post_external':
         updateData = {
