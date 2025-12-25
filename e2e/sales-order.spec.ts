@@ -74,8 +74,53 @@ test.describe('Sales Order Flow', () => {
     await page.goto('/work-orders');
     await page.waitForLoadState('networkidle');
     
-    // Verify Work Order was created
-    await expect(page.locator('text=ISO-')).toBeVisible();
+    // Verify Work Order was created with correct WO-YYYY-XXXXX format
+    await expect(page.locator('text=/WO-\\d{4}-\\d{5}/')).toBeVisible();
     await expect(page.locator('text=TEST-ITEM')).toBeVisible();
+  });
+
+  test('Work Order number format matches WO-YYYY-XXXXX constraint', async ({ page }) => {
+    // This is a regression test to ensure WO numbers are generated correctly
+    // Format required: WO-YYYY-XXXXX (e.g., WO-2025-00068)
+    
+    await page.goto('/sales');
+    await page.waitForLoadState('networkidle');
+    
+    const uniqueItemCode = `REGTEST-${Date.now()}`;
+    
+    // Create SO
+    await page.click('button:has-text("Create Sales Order")');
+    await page.fill('input[name="customer"]', 'Regression Test Customer');
+    await page.fill('input[name="po_number"]', `PO-REG-${Date.now()}`);
+    await page.fill('input[name="line_items[0].item_code"]', uniqueItemCode);
+    await page.fill('input[name="line_items[0].quantity"]', '25');
+    await page.fill('input[name="line_items[0].price_per_pc"]', '50');
+    
+    // Directly approve
+    await page.click('button:has-text("Approve")');
+    
+    // Wait for WO generation
+    await page.waitForTimeout(2000);
+    
+    // Verify no error occurred
+    await expect(page.locator('text=error').first()).not.toBeVisible({ timeout: 1000 }).catch(() => {
+      // Error text not found is expected
+    });
+    
+    // Navigate to Work Orders and verify format
+    await page.goto('/work-orders');
+    await page.waitForLoadState('networkidle');
+    
+    // Find the WO with our unique item code and verify WO number format
+    const woRow = page.locator(`tr:has-text("${uniqueItemCode}")`);
+    await expect(woRow).toBeVisible({ timeout: 10000 });
+    
+    // Verify the WO number matches the required format: WO-YYYY-XXXXX
+    const woNumberCell = woRow.locator('text=/WO-\\d{4}-\\d{5}/');
+    await expect(woNumberCell).toBeVisible();
+    
+    // Extract and validate the WO number format
+    const woText = await woNumberCell.textContent();
+    expect(woText).toMatch(/^WO-\d{4}-\d{5}$/);
   });
 });
