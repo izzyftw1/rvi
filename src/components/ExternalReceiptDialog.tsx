@@ -41,7 +41,8 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
 
   const getMaxReceivable = () => {
     if (!move) return 0;
-    return move.qty_sent - (move.total_received || 0);
+    const qtySent = move.quantity_sent ?? move.qty_sent ?? 0;
+    return qtySent - (move.total_received || 0);
   };
 
   const handleSubmit = async () => {

@@ -93,7 +93,7 @@ export default function FinanceDashboard() {
       // Load items
       const { data: itemsData } = await supabase
         .from("item_master")
-        .select("id, item_code, item_name")
+        .select("id, item_code")
         .order("item_code");
       
       setItems(itemsData || []);

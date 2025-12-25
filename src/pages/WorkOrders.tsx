@@ -813,7 +813,7 @@ const WorkOrders = () => {
         // Fetch external moves
         const movesPromise = supabase
           .from("wo_external_moves" as any)
-          .select("id, work_order_id, process, qty_sent, status, expected_return_date, challan_no")
+          .select("id, work_order_id, process, quantity_sent, status, expected_return_date, challan_no")
           .in("work_order_id", woIds);
         
         // Fetch production log aggregates - OK qty, rejections, last log date
@@ -827,7 +827,7 @@ const WorkOrders = () => {
           .from("ncrs" as any)
           .select("work_order_id")
           .in("work_order_id", woIds)
-          .eq("status", "open");
+          .eq("status", "OPEN");
         
         const [movesResult, productionResult, ncrResult] = await Promise.all([
           movesPromise,

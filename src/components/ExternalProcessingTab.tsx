@@ -13,7 +13,7 @@ interface ExternalMove {
   id: string;
   work_order_id: string;
   process: string;
-  qty_sent: number;
+  quantity_sent: number;
   status: string;
   partner_id: string;
   expected_return_date: string | null;
@@ -121,7 +121,8 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
   };
 
   const getStatusBadge = (move: any) => {
-    const progress = move.qty_sent > 0 ? (move.total_received / move.qty_sent) * 100 : 0;
+    const qtySent = move.quantity_sent ?? move.qty_sent ?? 0;
+    const progress = qtySent > 0 ? ((move.total_received || 0) / qtySent) * 100 : 0;
     if (progress >= 100) {
       return <Badge variant="default">Received Full</Badge>;
     } else if (progress > 0) {
@@ -163,7 +164,7 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
           </CardHeader>
           <CardContent className="space-y-4">
             {processMove.map((move: ExternalMove) => {
-              const progress = move.qty_sent > 0 ? ((move.total_received || 0) / move.qty_sent) * 100 : 0;
+              const progress = (move.quantity_sent || 0) > 0 ? ((move.total_received || 0) / (move.quantity_sent || 1)) * 100 : 0;
               const overdue = isOverdue(move);
 
               return (
@@ -200,7 +201,7 @@ export const ExternalProcessingTab = ({ workOrderId }: ExternalProcessingTabProp
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div className="flex items-center gap-2">
                       <Package className="h-4 w-4 text-muted-foreground" />
-                      <span>Sent: {move.qty_sent}</span>
+                      <span>Sent: {move.quantity_sent || 0}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-muted-foreground" />

@@ -10,7 +10,7 @@ interface ExternalMove {
   id: string;
   process: string;
   partner_id: string;
-  qty_sent: number;
+  quantity_sent: number;
   expected_return_date: string | null;
   dispatch_date: string;
   challan_no: string;
@@ -100,7 +100,7 @@ export const ExternalProcessingHistoryTab = ({ workOrderId }: ExternalProcessing
 
   const getStatusInfo = (move: ExternalMove) => {
     const totalReceived = calculateTotalReceived(move);
-    const progress = move.qty_sent > 0 ? (totalReceived / move.qty_sent) * 100 : 0;
+    const progress = (move.quantity_sent || 0) > 0 ? (totalReceived / (move.quantity_sent || 1)) * 100 : 0;
     const isOverdue = move.expected_return_date && new Date(move.expected_return_date) < new Date() && progress < 100;
 
     if (progress >= 100) {
@@ -116,7 +116,7 @@ export const ExternalProcessingHistoryTab = ({ workOrderId }: ExternalProcessing
 
   const totalOutstanding = moves.reduce((sum, move) => {
     const received = calculateTotalReceived(move);
-    return sum + (move.qty_sent - received);
+    return sum + ((move.quantity_sent || 0) - received);
   }, 0);
 
   if (loading) {
@@ -166,7 +166,7 @@ export const ExternalProcessingHistoryTab = ({ workOrderId }: ExternalProcessing
                       {move.process.replace("_", " ")}
                     </TableCell>
                     <TableCell>{getPartnerName(move.partner_id)}</TableCell>
-                    <TableCell className="text-right">{move.qty_sent}</TableCell>
+                    <TableCell className="text-right">{move.quantity_sent || 0}</TableCell>
                     <TableCell className="text-right">{totalReceived}</TableCell>
                     <TableCell>
                       {move.expected_return_date 
