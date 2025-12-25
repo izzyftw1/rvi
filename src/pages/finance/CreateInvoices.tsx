@@ -309,7 +309,9 @@ export default function CreateInvoices() {
         }
 
         const invoiceDate = new Date();
-        const dueDate = new Date(invoiceDate);
+        // Due date calculated from DISPATCH date (not invoice date) per payment terms
+        const dispatchDate = new Date(shipment.ship_date);
+        const dueDate = new Date(dispatchDate);
         dueDate.setDate(dueDate.getDate() + shipment.payment_terms_days);
 
         // Calculate totals from dispatched quantities
