@@ -42,16 +42,18 @@ const FinalQCList = () => {
       // Get work orders that are in production, qc, packing, or dispatch stages
       const { data: woData, error: woError } = await supabase
         .from("work_orders")
-        .select("id, wo_number, display_id, customer, item_code, quantity, status, current_stage, quality_released, final_qc_result")
+        .select(
+          "id, wo_number, display_id, customer, item_code, quantity, status, current_stage, quality_released, final_qc_result"
+        )
         .in("current_stage", ["production", "qc", "packing", "dispatch"])
         .order("updated_at", { ascending: false })
-        .limit(100);
+        .limit(200);
 
       if (woError) throw woError;
 
-      // Get QC check counts for each work order
       const woIds = (woData || []).map((wo) => wo.id);
-      
+
+      // Get QC check counts for each work order
       const { data: qcCounts, error: qcError } = await supabase
         .from("hourly_qc_checks")
         .select("wo_id")
@@ -65,22 +67,64 @@ const FinalQCList = () => {
         qcCountMap[qc.wo_id] = (qcCountMap[qc.wo_id] || 0) + 1;
       });
 
-      const result: WorkOrderWithQC[] = (woData || []).map((wo: any) => ({
-        ...wo,
-        qc_check_count: qcCountMap[wo.id] || 0,
-      }));
+      // Compute the *eligible* quantity for Final QC from batch truth.
+      // - For non-released WOs: sum OK qty in production-complete batches that are NOT yet final-QC passed/waived.
+      // - For released WOs: show total QC-approved qty from final-QC passed/waived batches.
+      const pendingOkQtyMap: Record<string, number> = {};
+      const releasedQtyMap: Record<string, number> = {};
+
+      const { data: batchData, error: batchError } = await supabase
+        .from("production_batches")
+        .select(
+          "wo_id, production_complete, produced_qty, qc_rejected_qty, qc_approved_qty, qc_final_status"
+        )
+        .in("wo_id", woIds.length > 0 ? woIds : ["00000000-0000-0000-0000-000000000000"]);
+
+      if (batchError) throw batchError;
+
+      (batchData || []).forEach((b: any) => {
+        const woId = b.wo_id as string | null;
+        if (!woId) return;
+        if (!b.production_complete) return;
+
+        const produced = b.produced_qty || 0;
+        const rejected = b.qc_rejected_qty || 0;
+        const okQty = Math.max(0, produced - rejected);
+        const status = String(b.qc_final_status || "pending").toLowerCase();
+
+        if (["passed", "waived"].includes(status)) {
+          const approved = b.qc_approved_qty ?? okQty;
+          releasedQtyMap[woId] = (releasedQtyMap[woId] || 0) + Math.max(0, approved || 0);
+        } else {
+          pendingOkQtyMap[woId] = (pendingOkQtyMap[woId] || 0) + okQty;
+        }
+      });
+
+      const result: WorkOrderWithQC[] = (woData || [])
+        .map((wo: any) => {
+          const pendingQty = pendingOkQtyMap[wo.id] || 0;
+          const releasedQty = releasedQtyMap[wo.id] || 0;
+          const displayQty = wo.quality_released ? releasedQty : pendingQty;
+
+          return {
+            ...wo,
+            quantity: displayQty,
+            qc_check_count: qcCountMap[wo.id] || 0,
+          };
+        })
+        .filter((wo) => wo.quality_released || (wo.quantity || 0) > 0);
 
       // Sort by stage priority (qc first, then others)
       const stagePriority: Record<string, number> = {
-        'qc': 1,
-        'production': 2,
-        'packing': 3,
-        'dispatch': 4
+        qc: 1,
+        production: 2,
+        packing: 3,
+        dispatch: 4,
       };
-      
+
       result.sort((a, b) => {
-        const priorityA = stagePriority[a.current_stage || ''] || 99;
-        const priorityB = stagePriority[b.current_stage || ''] || 99;
+        const priorityA = stagePriority[a.current_stage || ""] || 99;
+        const priorityB = stagePriority[b.current_stage || ""] || 99;
         if (priorityA !== priorityB) return priorityA - priorityB;
         return b.qc_check_count - a.qc_check_count;
       });
@@ -181,7 +225,7 @@ const FinalQCList = () => {
                   <TableHead>Work Order</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Item Code</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Eligible Qty</TableHead>
                   <TableHead>Stage</TableHead>
                   <TableHead className="text-right">QC Checks</TableHead>
                   <TableHead>FQC Status</TableHead>
