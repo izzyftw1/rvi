@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle, Warehouse, Factory, FileDown, ExternalLink } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle, Warehouse, Factory, FileDown, ExternalLink, ClipboardList } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Link } from "react-router-dom";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
+import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib/packingListGenerator";
 
 // Source type for dispatch
 type DispatchSource = "production" | "inventory";
@@ -825,6 +826,121 @@ export default function Dispatch() {
     }
   };
 
+  // Download packing list for a shipment
+  const handleDownloadPackingList = async (shipment: Shipment) => {
+    try {
+      // Get cartons data for this shipment
+      const { data: dispatches } = await supabase
+        .from("dispatches")
+        .select(`
+          id, quantity, carton_id, wo_id,
+          cartons(id, carton_id, quantity, num_cartons, net_weight, gross_weight),
+          work_orders(display_id, item_code, customer, customer_id, so_id)
+        `)
+        .eq("shipment_id", shipment.id);
+
+      if (!dispatches || dispatches.length === 0) {
+        toast({ variant: "destructive", description: "No dispatch data found for this shipment." });
+        return;
+      }
+
+      // Get invoice reference if exists
+      const { data: invoice } = await supabase
+        .from("invoices")
+        .select("invoice_no, po_number, po_date, is_export, port_of_loading, port_of_discharge, customer_address, customer_contact, customer_email")
+        .eq("shipment_id", shipment.id)
+        .limit(1)
+        .single();
+
+      // Get customer details
+      const woWithCustomer = dispatches.find(d => (d.work_orders as any)?.customer_id);
+      let customerDetails = {
+        name: shipment.customer || 'Customer',
+        address: invoice?.customer_address || '',
+        contact: invoice?.customer_contact,
+        email: invoice?.customer_email,
+      };
+
+      if (woWithCustomer && (woWithCustomer.work_orders as any)?.customer_id) {
+        const { data: customer } = await supabase
+          .from("customer_master")
+          .select("customer_name, address_line_1, city, state, country, pincode, primary_contact_name, primary_contact_email, is_export_customer")
+          .eq("id", (woWithCustomer.work_orders as any).customer_id)
+          .single();
+
+        if (customer) {
+          customerDetails = {
+            name: customer.customer_name,
+            address: [customer.address_line_1, customer.city, customer.state, customer.pincode, customer.country].filter(Boolean).join(', '),
+            contact: customer.primary_contact_name || undefined,
+            email: customer.primary_contact_email || undefined,
+          };
+        }
+      }
+
+      // Build line items from dispatches
+      const lineItems: PackingListLineItem[] = [];
+      let totalCartons = 0;
+      let totalQuantity = 0;
+      let totalNetWeight = 0;
+      let totalGrossWeight = 0;
+
+      dispatches.forEach((dispatch, idx) => {
+        const carton = dispatch.cartons as any;
+        const wo = dispatch.work_orders as any;
+        
+        const numCartons = carton?.num_cartons || 1;
+        const qtyPerCarton = carton ? Math.floor(carton.quantity / numCartons) : dispatch.quantity;
+        const netWeight = carton?.net_weight || 0;
+        const grossWeight = carton?.gross_weight || 0;
+
+        lineItems.push({
+          srNo: idx + 1,
+          itemCode: wo?.item_code || 'N/A',
+          description: wo?.display_id || `WO-${dispatch.wo_id?.slice(0, 8)}`,
+          cartonNos: carton?.carton_id || `CTN-${idx + 1}`,
+          quantityPerCarton: qtyPerCarton,
+          totalQty: dispatch.quantity,
+          netWeightKg: netWeight,
+          grossWeightKg: grossWeight,
+        });
+
+        totalCartons += numCartons;
+        totalQuantity += dispatch.quantity;
+        totalNetWeight += netWeight;
+        totalGrossWeight += grossWeight;
+      });
+
+      const isExport = invoice?.is_export || false;
+
+      const packingListData: PackingListData = {
+        packingListNo: `PL-${shipment.ship_id}`,
+        date: new Date(shipment.created_at).toLocaleDateString('en-GB'),
+        dispatchRef: shipment.ship_id,
+        invoiceRef: invoice?.invoice_no,
+        poNumber: invoice?.po_number,
+        poDate: invoice?.po_date ? new Date(invoice.po_date).toLocaleDateString('en-GB') : undefined,
+        customer: customerDetails,
+        isExport,
+        portOfLoading: isExport ? invoice?.port_of_loading : undefined,
+        portOfDischarge: isExport ? invoice?.port_of_discharge : undefined,
+        countryOfOrigin: 'INDIA',
+        lineItems,
+        totalCartons,
+        totalQuantity,
+        totalNetWeight,
+        totalGrossWeight,
+        kindOfPackages: 'CARTONS',
+        marksNos: 'AS MARKED',
+      };
+
+      downloadPackingList(packingListData);
+      toast({ description: `Downloaded packing list for ${shipment.ship_id}` });
+    } catch (error: any) {
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <PageContainer maxWidth="xl">
@@ -1355,7 +1471,21 @@ export default function Dispatch() {
                                 {new Date(shipment.created_at).toLocaleDateString()}
                               </TableCell>
                               <TableCell className="text-right">
-                                <div className="flex justify-end gap-2">
+                                <div className="flex justify-end gap-1">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleDownloadPackingList(shipment)}
+                                        >
+                                          <ClipboardList className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Download Packing List</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
