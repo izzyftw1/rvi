@@ -125,7 +125,7 @@ export const TodayGlanceTimeline = ({ limit, showViewAll = false }: TodayGlanceT
           id: `return-${m.id}`,
           time: '14:00',
           title: `Expected Return: ${m.challan_no || 'External'}`,
-          description: `${m.qty_sent} pcs from ${m.process_type}`,
+          description: `${m.quantity_sent ?? m.qty_sent ?? 0} pcs from ${m.process_type}`,
           type: 'return',
           urgency: 'due_soon',
           onClick: () => navigate('/logistics')

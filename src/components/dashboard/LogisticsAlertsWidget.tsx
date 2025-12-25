@@ -57,7 +57,7 @@ export const LogisticsAlertsWidget = () => {
         if (move.expected_return_date && move.expected_return_date < today && !move.returned_date) {
           const moveReceipts = receipts.filter(r => r.move_id === move.id);
           const totalReceived = moveReceipts.reduce((sum, r) => sum + (r.qty_received || 0), 0);
-          const pending = (move.qty_sent || 0) - totalReceived;
+          const pending = (move.quantity_sent ?? move.qty_sent ?? 0) - totalReceived;
 
           if (pending > 0) {
             const wo = workOrders.find(w => w.id === move.wo_id);

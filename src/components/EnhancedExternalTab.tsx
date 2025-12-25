@@ -9,7 +9,7 @@ import { format } from "date-fns";
 interface ExternalMove {
   id: string;
   process: string;
-  qty_sent: number;
+  quantity_sent: number;
   status: string;
   partner_id: string | null;
   expected_return_date: string | null;
@@ -121,7 +121,7 @@ export function EnhancedExternalTab({ workOrderId }: EnhancedExternalTabProps) {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-orange-600">
-              {moves.reduce((sum, m) => sum + m.qty_sent, 0)}
+              {moves.reduce((sum, m) => sum + (m.quantity_sent || 0), 0)}
             </div>
             <p className="text-xs text-muted-foreground">Total Qty Sent</p>
           </CardContent>
@@ -159,7 +159,7 @@ export function EnhancedExternalTab({ workOrderId }: EnhancedExternalTabProps) {
               {moves.map((move) => {
                 const moveReceipts = receipts[move.id] || [];
                 const totalReceived = getTotalReceived(move.id);
-                const pending = move.qty_sent - totalReceived;
+                const pending = (move.quantity_sent || 0) - totalReceived;
 
                 return (
                   <div
@@ -190,7 +190,7 @@ export function EnhancedExternalTab({ workOrderId }: EnhancedExternalTabProps) {
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
                           <span className="text-muted-foreground">Sent:</span>
-                          <p className="font-medium text-blue-600">{move.qty_sent} pcs</p>
+                          <p className="font-medium text-blue-600">{move.quantity_sent || 0} pcs</p>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Received:</span>

@@ -122,7 +122,7 @@ export function OutstandingBreakdownWidget({ dateFrom, dateTo }: OutstandingBrea
           gross_amount,
           tds_amount,
           tds_rate,
-          transaction_type,
+          record_type,
           created_at,
           status,
           customer_master!customer_id(customer_name),

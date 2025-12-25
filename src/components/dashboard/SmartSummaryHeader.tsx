@@ -92,7 +92,7 @@ export const SmartSummaryHeader = () => {
         const received = receipts
           .filter(r => r.move_id === move.id)
           .reduce((s, r) => s + (r.qty_received || 0), 0);
-        return sum + ((move.qty_sent || 0) - received);
+        return sum + ((move.quantity_sent ?? move.qty_sent ?? 0) - received);
       }, 0);
 
       const metricsData: MetricData[] = [

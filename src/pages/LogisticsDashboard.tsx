@@ -18,7 +18,7 @@ interface ExtendedMove {
   work_order_id: string;
   process: string;
   partner_id: string;
-  qty_sent: number;
+  quantity_sent: number;
   status: string;
   expected_return_date: string | null;
   dispatch_date: string;
@@ -92,7 +92,7 @@ const LogisticsDashboard = () => {
       // Load all active moves
       const { data: movesData } = await supabase
         .from("wo_external_moves" as any)
-        .select("id, work_order_id, process, partner_id, qty_sent, status, expected_return_date, dispatch_date, challan_no")
+        .select("id, work_order_id, process, partner_id, quantity_sent, status, expected_return_date, dispatch_date, challan_no")
         .neq("status", "cancelled")
         .order("dispatch_date", { ascending: false });
 
@@ -227,9 +227,9 @@ const LogisticsDashboard = () => {
       'Item': m.work_order?.item_code || '',
       'Process': m.process.replace('_', ' ').toUpperCase(),
       'Partner': m.partner?.name || '',
-      'Qty Sent': m.qty_sent,
+      'Qty Sent': m.quantity_sent,
       'Qty Received': m.total_received || 0,
-      '% Complete': Math.round(((m.total_received || 0) / m.qty_sent) * 100),
+      '% Complete': m.quantity_sent > 0 ? Math.round(((m.total_received || 0) / m.quantity_sent) * 100) : 0,
       'Expected Return': m.expected_return_date || 'N/A',
       'Challan No': m.challan_no,
     }));
@@ -365,7 +365,7 @@ const LogisticsDashboard = () => {
   };
 
   const renderMoveRow = (move: ExtendedMove) => {
-    const progress = move.qty_sent > 0 ? ((move.total_received || 0) / move.qty_sent) * 100 : 0;
+    const progress = (move.quantity_sent || 0) > 0 ? ((move.total_received || 0) / (move.quantity_sent || 1)) * 100 : 0;
     const isOverdue = move.expected_return_date && isPast(parseISO(move.expected_return_date)) && move.status !== 'received_full';
 
     return (
@@ -390,7 +390,7 @@ const LogisticsDashboard = () => {
             </div>
 
             <div>
-              <p className="text-sm">{move.total_received || 0} / {move.qty_sent} pcs</p>
+              <p className="text-sm">{move.total_received || 0} / {move.quantity_sent || 0} pcs</p>
               <Progress value={progress} className="h-1 mt-1" />
             </div>
 
