@@ -373,13 +373,35 @@ export default function Sales() {
         due_date: item.due_date || null
       }));
 
-      const { error: lineItemsError } = await supabase
+      const { data: insertedLineItems, error: lineItemsError } = await supabase
         .from("sales_order_line_items" as any)
-        .insert(lineItemsToInsert);
+        .insert(lineItemsToInsert)
+        .select('id');
 
       if (lineItemsError) throw lineItemsError;
 
-      toast({ description: `Sales order ${so_id} created with ${lineItems.length} line items` });
+      // Update line items to 'approved' to trigger work order generation
+      // The trigger auto_generate_work_order_from_line_item fires on UPDATE when status changes to 'approved'
+      if (insertedLineItems && insertedLineItems.length > 0) {
+        const lineItemIds = insertedLineItems.map((li: any) => li.id);
+        const { error: approveError } = await supabase
+          .from("sales_order_line_items" as any)
+          .update({ status: 'approved' })
+          .in('id', lineItemIds);
+
+        if (approveError) {
+          console.error("Error approving line items:", approveError);
+          // Don't throw - SO was created, WO generation can be retried
+          toast({ 
+            variant: "destructive", 
+            description: `Sales order created but work order generation failed: ${approveError.message}` 
+          });
+        } else {
+          toast({ description: `Sales order ${so_id} created with ${lineItems.length} line items and work orders generated` });
+        }
+      } else {
+        toast({ description: `Sales order ${so_id} created with ${lineItems.length} line items` });
+      }
       
       // Reset form
       setFormData({
