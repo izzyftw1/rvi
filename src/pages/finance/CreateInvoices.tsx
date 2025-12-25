@@ -13,7 +13,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUserRole } from "@/hooks/useUserRole";
-
+import { generateCommercialInvoicePDF, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
+import { format } from "date-fns";
 interface DispatchNoteItem {
   id: string;
   dispatch_note_no: string;
@@ -54,6 +55,17 @@ interface InvoiceableShipment {
   currency: string;
   payment_terms_days: number;
   already_invoiced: boolean;
+  // Export fields
+  is_export: boolean;
+  customer_address?: string;
+  customer_contact?: string;
+  customer_email?: string;
+  customer_gst?: string;
+  incoterm?: string;
+  po_number?: string;
+  po_date?: string;
+  total_gross_weight?: number;
+  total_net_weight?: number;
 }
 
 export default function CreateInvoices() {
@@ -83,21 +95,21 @@ export default function CreateInvoices() {
 
       if (shipError) throw shipError;
 
-      // Get sales orders for customer info
+      // Get sales orders for customer info including export fields
       const soIds = (shipmentsData || []).map(s => s.so_id).filter(Boolean);
       const { data: salesOrdersData } = soIds.length > 0 
         ? await supabase
             .from("sales_orders")
-            .select("id, so_id, customer_id, currency, payment_terms_days")
+            .select("id, so_id, customer_id, currency, payment_terms_days, incoterm, po_number, po_date, items")
             .in("id", soIds)
         : { data: [] };
 
-      // Get customer info
+      // Get customer info including export details
       const customerIds = (salesOrdersData || []).map(so => so.customer_id).filter(Boolean);
       const { data: customersData } = customerIds.length > 0
         ? await supabase
             .from("customer_master")
-            .select("id, customer_name, payment_terms_days")
+            .select("id, customer_name, payment_terms_days, is_export_customer, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, primary_contact_phone, gst_number")
             .in("id", customerIds)
         : { data: [] };
 
@@ -135,12 +147,16 @@ export default function CreateInvoices() {
         let totalDispatchedQty = 0;
         let totalPackedQty = 0;
         let totalSoQty = 0;
+        let totalGrossWeight = 0;
+        let totalNetWeight = 0;
         const dispatchNotes: DispatchNoteItem[] = [];
 
         for (const note of dispatchNotesData) {
           totalDispatchedQty += note.dispatched_qty || 0;
           totalPackedQty += note.packed_qty || 0;
           totalSoQty += note.so_ordered_qty || 0;
+          totalGrossWeight += note.gross_weight_kg || 0;
+          totalNetWeight += note.net_weight_kg || 0;
 
           dispatchNotes.push({
             id: note.id,
@@ -165,6 +181,18 @@ export default function CreateInvoices() {
 
         const salesOrder = shipment.so_id ? salesOrderMap[shipment.so_id] : null;
         const customer = salesOrder?.customer_id ? customerMap[salesOrder.customer_id] : null;
+        
+        // Determine if export customer
+        const isExport = customer?.is_export_customer === true || customer?.country !== 'India';
+        
+        // Build customer address
+        const customerAddress = [
+          customer?.address_line_1,
+          customer?.city,
+          customer?.state,
+          customer?.pincode,
+          customer?.country
+        ].filter(Boolean).join(', ');
 
         processedShipments.push({
           id: shipment.id,
@@ -183,6 +211,17 @@ export default function CreateInvoices() {
           currency: dispatchNotes[0]?.currency || salesOrder?.currency || "USD",
           payment_terms_days: customer?.payment_terms_days || salesOrder?.payment_terms_days || 30,
           already_invoiced: invoicedShipmentIds.has(shipment.id),
+          // Export fields
+          is_export: isExport,
+          customer_address: customerAddress,
+          customer_contact: customer?.primary_contact_name,
+          customer_email: customer?.primary_contact_email,
+          customer_gst: customer?.gst_number,
+          incoterm: salesOrder?.incoterm,
+          po_number: salesOrder?.po_number,
+          po_date: salesOrder?.po_date,
+          total_gross_weight: totalGrossWeight,
+          total_net_weight: totalNetWeight,
         });
       }
 
@@ -275,7 +314,9 @@ export default function CreateInvoices() {
 
         // Calculate totals from dispatched quantities
         const subtotal = calculateShipmentTotal(shipment);
-        const gstPercent = 18;
+        // Determine GST based on export status (no GST for exports)
+        const isExport = shipment.is_export;
+        const gstPercent = isExport ? 0 : 18;
         const gstAmount = (subtotal * gstPercent) / 100;
         const totalAmount = subtotal + gstAmount;
 
@@ -309,8 +350,7 @@ export default function CreateInvoices() {
           }
         }
 
-        // Create invoice linked to shipment
-        // Note: total_amount and balance_amount remain unchanged for PDF - adjustment is internal only
+        // Create invoice linked to shipment with export fields
         const { data: invoice, error: invoiceError } = await supabase
           .from("invoices")
           .insert({
@@ -320,18 +360,31 @@ export default function CreateInvoices() {
             customer_id: shipment.customer_id,
             invoice_date: invoiceDate.toISOString().split('T')[0],
             due_date: dueDate.toISOString().split('T')[0],
+            dispatch_date: shipment.ship_date,
             subtotal,
             gst_percent: gstPercent,
             gst_amount: gstAmount,
-            total_amount: totalAmount, // PDF total remains full amount
-            balance_amount: totalAmount - internalAdjustmentTotal, // Balance reduced by internal adjustment
-            paid_amount: internalAdjustmentTotal, // Internal adjustment counts as "paid"
+            total_amount: totalAmount,
+            balance_amount: totalAmount - internalAdjustmentTotal,
+            paid_amount: internalAdjustmentTotal,
             status: 'issued',
             currency: shipment.currency,
             payment_terms_days: shipment.payment_terms_days,
             created_by: user?.id,
             internal_adjustment_total: internalAdjustmentTotal > 0 ? internalAdjustmentTotal : null,
-            internal_adjustment_notes: internalAdjustmentNotes || null
+            internal_adjustment_notes: internalAdjustmentNotes || null,
+            // Export fields
+            is_export: isExport,
+            customer_address: shipment.customer_address,
+            customer_contact: shipment.customer_contact,
+            customer_email: shipment.customer_email,
+            customer_gst: shipment.customer_gst,
+            incoterm: isExport ? shipment.incoterm : null,
+            po_number: shipment.po_number,
+            po_date: shipment.po_date,
+            country_of_origin: 'India',
+            total_gross_weight: shipment.total_gross_weight,
+            total_net_weight: shipment.total_net_weight,
           })
           .select()
           .single();

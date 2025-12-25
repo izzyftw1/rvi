@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle, Package, Truck, ClipboardList, Lock } from "lucide-react";
+import { Home, ArrowLeft, FileText, Calendar, Phone, Mail, CheckCircle2, AlertTriangle, MinusCircle, Package, Truck, ClipboardList, Lock, Download } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,8 @@ import { format } from "date-fns";
 import { QuantityLayersDisplay } from "@/components/finance/QuantityLayersDisplay";
 import { CloseAdjustedDialog } from "@/components/finance/CloseAdjustedDialog";
 import { useUserRole } from "@/hooks/useUserRole";
+import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
+import { toast } from "sonner";
 
 interface InvoiceItem {
   id: string;
@@ -245,12 +247,58 @@ export default function InvoiceDetail() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <Button variant="outline" asChild>
-            <Link to="/finance/invoices">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Invoices
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="default" 
+              onClick={() => {
+                if (!invoice || !invoiceItems.length) return;
+                const pdfData: CommercialInvoiceData = {
+                  invoiceNo: invoice.invoice_no,
+                  invoiceDate: format(new Date(invoice.invoice_date), 'dd-MMM-yyyy'),
+                  dispatchDate: invoice.dispatch_date ? format(new Date(invoice.dispatch_date), 'dd-MMM-yyyy') : format(new Date(invoice.invoice_date), 'dd-MMM-yyyy'),
+                  dueDate: format(new Date(invoice.due_date), 'dd-MMM-yyyy'),
+                  poNumber: invoice.po_number,
+                  poDate: invoice.po_date ? format(new Date(invoice.po_date), 'dd-MMM-yyyy') : undefined,
+                  customer: {
+                    name: invoice.customer_master?.customer_name || '',
+                    address: invoice.customer_address || [invoice.customer_master?.address_line_1, invoice.customer_master?.city, invoice.customer_master?.state].filter(Boolean).join(', '),
+                    contact: invoice.customer_contact || invoice.customer_master?.primary_contact_name,
+                    email: invoice.customer_email || invoice.customer_master?.primary_contact_email,
+                    gst: invoice.customer_gst || invoice.customer_master?.gst_number,
+                  },
+                  isExport: invoice.is_export || false,
+                  incoterm: invoice.incoterm,
+                  countryOfOrigin: invoice.country_of_origin || 'India',
+                  totalGrossWeight: invoice.total_gross_weight,
+                  totalNetWeight: invoice.total_net_weight,
+                  lineItems: invoiceItems.map((item, idx) => ({
+                    srNo: idx + 1,
+                    itemCode: item.item_code,
+                    description: item.description,
+                    quantity: item.quantity,
+                    rate: item.rate,
+                    total: item.amount,
+                  })),
+                  currency: invoice.currency || 'USD',
+                  subtotal: invoice.subtotal,
+                  gstPercent: invoice.gst_percent,
+                  gstAmount: invoice.gst_amount,
+                  totalAmount: invoice.total_amount,
+                };
+                downloadCommercialInvoice(pdfData);
+                toast.success('Invoice PDF downloaded');
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download PDF
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/finance/invoices">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Invoices
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
