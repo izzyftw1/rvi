@@ -807,69 +807,69 @@ const WorkOrders = () => {
 
       const woIds = (workOrders || []).map((wo: any) => wo.id);
       let movesMap: Record<string, any[]> = {};
-      let productionMetrics: Record<string, { ok_qty: number; total_rejection: number; last_date: string | null }> = {};
       let ncrCounts: Record<string, number> = {};
-      
+      let batchQuantities: Map<string, any> = new Map();
+
       if (woIds.length > 0) {
-        // Fetch external moves
-        const movesPromise = supabase
-          .from("wo_external_moves" as any)
-          .select("id, work_order_id, process, quantity_sent, status, expected_return_date, challan_no")
-          .in("work_order_id", woIds);
-        
-        // Fetch production log aggregates - OK qty, rejections, last log date
-        const productionPromise = supabase
-          .from("daily_production_logs")
-          .select("wo_id, ok_quantity, total_rejection_quantity, log_date")
-          .in("wo_id", woIds);
-        
-        // Fetch open NCR counts
-        const ncrPromise = supabase
-          .from("ncrs" as any)
-          .select("work_order_id")
-          .in("work_order_id", woIds)
-          .eq("status", "OPEN");
-        
-        const [movesResult, productionResult, ncrResult] = await Promise.all([
-          movesPromise,
-          productionPromise,
-          ncrPromise
-        ]);
-        
-        // Process moves
-        (movesResult.data || []).forEach((move: any) => {
-          if (!movesMap[move.work_order_id]) movesMap[move.work_order_id] = [];
-          movesMap[move.work_order_id].push(move);
+        // Fetch external moves (chunked to avoid URL length limit)
+        const chunkArr = <T,>(arr: T[], size: number): T[][] => {
+          const chunks: T[][] = [];
+          for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+          return chunks;
+        };
+        const CHUNK_SIZE = 10;
+        const chunks = chunkArr(woIds, CHUNK_SIZE);
+
+        const movesResults = await Promise.all(
+          chunks.map((ids) =>
+            supabase
+              .from("wo_external_moves" as any)
+              .select("id, work_order_id, process, quantity_sent, status, expected_return_date, challan_no")
+              .in("work_order_id", ids)
+          )
+        );
+        movesResults.forEach((r) => {
+          (r.data || []).forEach((move: any) => {
+            if (!movesMap[move.work_order_id]) movesMap[move.work_order_id] = [];
+            movesMap[move.work_order_id].push(move);
+          });
         });
-        
-        // Aggregate production metrics per WO
-        (productionResult.data || []).forEach((log: any) => {
-          if (!productionMetrics[log.wo_id]) {
-            productionMetrics[log.wo_id] = { ok_qty: 0, total_rejection: 0, last_date: null };
-          }
-          productionMetrics[log.wo_id].ok_qty += log.ok_quantity || 0;
-          productionMetrics[log.wo_id].total_rejection += log.total_rejection_quantity || 0;
-          // Track most recent log date
-          if (!productionMetrics[log.wo_id].last_date || log.log_date > productionMetrics[log.wo_id].last_date) {
-            productionMetrics[log.wo_id].last_date = log.log_date;
-          }
+
+        // Fetch NCRs (chunked)
+        const ncrResults = await Promise.all(
+          chunks.map((ids) =>
+            supabase
+              .from("ncrs" as any)
+              .select("work_order_id")
+              .in("work_order_id", ids)
+              .eq("status", "OPEN")
+          )
+        );
+        ncrResults.forEach((r) => {
+          (r.data || []).forEach((ncr: any) => {
+            ncrCounts[ncr.work_order_id] = (ncrCounts[ncr.work_order_id] || 0) + 1;
+          });
         });
-        
-        // Count NCRs per WO
-        (ncrResult.data || []).forEach((ncr: any) => {
-          ncrCounts[ncr.work_order_id] = (ncrCounts[ncr.work_order_id] || 0) + 1;
-        });
+
+        // Fetch BATCH QUANTITIES — SINGLE SOURCE OF TRUTH
+        batchQuantities = await fetchBatchQuantitiesMultiple(woIds);
       }
 
-      const data = (workOrders || []).map((wo: any) => ({
-        ...wo,
-        external_moves: movesMap[wo.id] || [],
-        ok_qty: productionMetrics[wo.id]?.ok_qty || 0,
-        total_rejection: productionMetrics[wo.id]?.total_rejection || 0,
-        last_production_date: productionMetrics[wo.id]?.last_date || null,
-        open_ncr_count: ncrCounts[wo.id] || 0,
-        has_open_ncr: (ncrCounts[wo.id] || 0) > 0,
-      }));
+      const data = (workOrders || []).map((wo: any) => {
+        const bq = batchQuantities.get(wo.id);
+        return {
+          ...wo,
+          external_moves: movesMap[wo.id] || [],
+          // BATCH-DERIVED — production_batches.produced_qty & qc_rejected_qty
+          ok_qty: bq?.producedQty || 0,
+          qc_approved_qty: bq?.qcApprovedQty || 0,
+          total_rejection: bq?.qcRejectedQty || 0,
+          packed_qty: bq?.packedQty || 0,
+          dispatched_qty: bq?.dispatchedQty || 0,
+          open_ncr_count: ncrCounts[wo.id] || 0,
+          has_open_ncr: (ncrCounts[wo.id] || 0) > 0,
+        };
+      });
 
       setWorkOrders(data);
     } catch (err: any) {
@@ -888,6 +888,10 @@ const WorkOrders = () => {
     const channel = supabase
       .channel('work_orders_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
