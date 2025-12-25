@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import rvLogoHighRes from '@/assets/rv-logo-high-res.png';
 
 interface ProformaLineItem {
   sr_no: number;
@@ -57,10 +58,10 @@ interface ProformaInvoiceData {
   notes?: string;
 }
 
-// RV Industries Brand Colors
+// RV Industries Brand Colors (from company banner)
 const BRAND_COLORS = {
-  primary: [0, 51, 102] as [number, number, number],    // Navy blue
-  secondary: [204, 153, 0] as [number, number, number], // Gold/Brass
+  primary: [30, 74, 141] as [number, number, number],   // Brand Blue #1E4A8D
+  accent: [211, 47, 47] as [number, number, number],    // Brand Red #D32F2F
   dark: [33, 33, 33] as [number, number, number],
   light: [245, 245, 245] as [number, number, number],
   white: [255, 255, 255] as [number, number, number],
@@ -69,15 +70,18 @@ const BRAND_COLORS = {
 const drawHeader = (doc: jsPDF, pageWidth: number): number => {
   let yPos = 15;
   
-  // Company Logo placeholder (left side)
-  doc.setFillColor(...BRAND_COLORS.primary);
-  doc.rect(14, yPos - 5, 25, 25, 'F');
-  doc.setTextColor(...BRAND_COLORS.white);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text("RV", 26.5, yPos + 5, { align: "center" });
-  doc.setFontSize(7);
-  doc.text("INDUSTRIES", 26.5, yPos + 10, { align: "center" });
+  // Add RV Industries Logo (high resolution PNG)
+  try {
+    doc.addImage(rvLogoHighRes, 'PNG', 14, yPos - 5, 28, 14);
+  } catch {
+    // Fallback if logo fails to load
+    doc.setFillColor(...BRAND_COLORS.primary);
+    doc.rect(14, yPos - 5, 25, 14, 'F');
+    doc.setTextColor(...BRAND_COLORS.white);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("RV", 26.5, yPos + 5, { align: "center" });
+  }
   
   // Company Name and Tagline
   doc.setTextColor(...BRAND_COLORS.primary);
@@ -88,27 +92,32 @@ const drawHeader = (doc: jsPDF, pageWidth: number): number => {
   doc.setFontSize(9);
   doc.setTextColor(...BRAND_COLORS.dark);
   doc.setFont("helvetica", "normal");
-  doc.text("Manufacturer of HIGH PRECISION Brass & Stainless Steel Components", 45, yPos + 10);
+  doc.text("Precision Brass Components", 45, yPos + 9);
   
   // Address
   doc.setFontSize(8);
-  doc.text("K-1/212, G.I.D.C. Shankar Tekri, Udyognagar, Jamnagar - 361004 (Gujarat) India", 45, yPos + 16);
+  doc.text("Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India", 45, yPos + 15);
   
-  // Certifications (right side)
+  // Certifications (right side) - with brand colors
   const certX = pageWidth - 14;
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(...BRAND_COLORS.secondary);
+  doc.setTextColor(...BRAND_COLORS.primary);
   doc.text("ISO 9001:2015", certX, yPos, { align: "right" });
+  doc.setTextColor(...BRAND_COLORS.accent);
   doc.text("TÜV SÜD CERTIFIED", certX, yPos + 5, { align: "right" });
+  doc.setTextColor(...BRAND_COLORS.primary);
   doc.text("RoHS COMPLIANT", certX, yPos + 10, { align: "right" });
+  doc.setTextColor(...BRAND_COLORS.accent);
   doc.text("CE MARKED", certX, yPos + 15, { align: "right" });
   
-  // Horizontal line
-  yPos += 25;
+  // Horizontal line with dual brand colors
+  yPos += 22;
   doc.setDrawColor(...BRAND_COLORS.primary);
-  doc.setLineWidth(1);
-  doc.line(14, yPos, pageWidth - 14, yPos);
+  doc.setLineWidth(1.5);
+  doc.line(14, yPos, pageWidth / 2, yPos);
+  doc.setDrawColor(...BRAND_COLORS.accent);
+  doc.line(pageWidth / 2, yPos, pageWidth - 14, yPos);
   
   return yPos + 5;
 };

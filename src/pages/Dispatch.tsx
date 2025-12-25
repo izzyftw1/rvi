@@ -7,13 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle, Warehouse, Factory } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle, Warehouse, Factory, FileDown, ExternalLink } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "react-router-dom";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
 
 // Source type for dispatch
 type DispatchSource = "production" | "inventory";
@@ -756,6 +757,74 @@ export default function Dispatch() {
     return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 gap-1"><Factory className="h-3 w-3" />Production</Badge>;
   };
 
+  // Download invoice for a shipment
+  const handleDownloadInvoice = async (shipment: Shipment) => {
+    try {
+      // Check if invoice exists for this shipment
+      const { data: invoices } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("shipment_id", shipment.id)
+        .limit(1);
+
+      if (invoices && invoices.length > 0) {
+        const invoice = invoices[0] as any;
+        
+        // Get dispatch notes for line items
+        const { data: dispatchNotes } = await supabase
+          .from("dispatch_notes")
+          .select("*")
+          .eq("shipment_id", shipment.id);
+
+        const lineItems = (dispatchNotes || []).map((dn, idx) => ({
+          srNo: idx + 1,
+          itemCode: dn.item_code,
+          description: dn.item_description || dn.item_code,
+          quantity: dn.dispatched_qty,
+          rate: dn.unit_rate || 0,
+          total: (dn.dispatched_qty * (dn.unit_rate || 0)),
+        }));
+
+        const invoiceData: CommercialInvoiceData = {
+          invoiceNo: invoice.invoice_no,
+          invoiceDate: new Date(invoice.invoice_date).toLocaleDateString('en-GB'),
+          dispatchDate: invoice.dispatch_date ? new Date(invoice.dispatch_date).toLocaleDateString('en-GB') : new Date(shipment.created_at).toLocaleDateString('en-GB'),
+          poNumber: invoice.po_number,
+          poDate: invoice.po_date ? new Date(invoice.po_date).toLocaleDateString('en-GB') : undefined,
+          customer: {
+            name: invoice.customer_name || shipment.customer || 'Customer',
+            address: invoice.customer_address || '',
+            contact: invoice.customer_contact,
+            email: invoice.customer_email,
+            gst: invoice.customer_gst,
+          },
+          isExport: invoice.is_export || false,
+          portOfLoading: invoice.port_of_loading,
+          portOfDischarge: invoice.port_of_discharge,
+          incoterm: invoice.incoterm,
+          countryOfOrigin: invoice.country_of_origin || 'INDIA',
+          lineItems,
+          currency: invoice.currency || 'INR',
+          subtotal: invoice.subtotal || 0,
+          gstPercent: invoice.gst_percent,
+          gstAmount: invoice.gst_amount,
+          totalAmount: invoice.total_amount || 0,
+          dueDate: invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-GB') : '',
+        };
+
+        downloadCommercialInvoice(invoiceData);
+        toast({ description: `Downloaded invoice ${invoice.invoice_no}` });
+      } else {
+        toast({ 
+          variant: "destructive", 
+          description: "No invoice found for this shipment. Create an invoice first from Finance > Invoices." 
+        });
+      }
+    } catch (error: any) {
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <PageContainer maxWidth="xl">
@@ -1251,6 +1320,7 @@ export default function Dispatch() {
                           </TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1283,6 +1353,36 @@ export default function Dispatch() {
                               <TableCell>{getStatusBadge(shipment.status)}</TableCell>
                               <TableCell className="text-muted-foreground">
                                 {new Date(shipment.created_at).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleDownloadInvoice(shipment)}
+                                        >
+                                          <FileDown className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Download Invoice PDF</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Link to={`/finance/invoices`}>
+                                          <Button variant="ghost" size="sm">
+                                            <ExternalLink className="h-4 w-4" />
+                                          </Button>
+                                        </Link>
+                                      </TooltipTrigger>
+                                      <TooltipContent>View in Finance</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
                               </TableCell>
                             </TableRow>
                           );

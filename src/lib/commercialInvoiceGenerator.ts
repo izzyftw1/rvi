@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import rvLogo from '@/assets/rv-industries-logo.jpg';
+import rvLogoHighRes from '@/assets/rv-logo-high-res.png';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -9,6 +9,15 @@ declare module 'jspdf' {
     };
   }
 }
+
+// RV Industries Brand Colors (from company banner)
+const BRAND_COLORS = {
+  primary: [30, 74, 141] as [number, number, number],   // Brand Blue #1E4A8D
+  accent: [211, 47, 47] as [number, number, number],    // Brand Red #D32F2F
+  dark: [33, 33, 33] as [number, number, number],
+  light: [245, 245, 245] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
+};
 
 export interface CommercialInvoiceLineItem {
   srNo: number;
@@ -76,30 +85,59 @@ export interface CommercialInvoiceData {
 }
 
 const addLetterhead = (doc: jsPDF): number => {
-  // Add logo
-  doc.addImage(rvLogo, 'JPEG', 15, 10, 30, 15);
+  // Add high-res logo
+  try {
+    doc.addImage(rvLogoHighRes, 'PNG', 15, 8, 32, 16);
+  } catch {
+    // Fallback if logo fails
+    doc.setFillColor(...BRAND_COLORS.primary);
+    doc.rect(15, 8, 30, 16, 'F');
+    doc.setTextColor(...BRAND_COLORS.white);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RV', 30, 18, { align: 'center' });
+  }
   
-  // Company name and title
-  doc.setFontSize(16);
+  // Company name and title with brand colors
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text('R. V. INDUSTRIES', 105, 15, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.primary);
+  doc.text('R.V. INDUSTRIES', 105, 14, { align: 'center' });
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Manufacturer of HIGH PRECISION Brass Components', 105, 20, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.dark);
+  doc.text('Precision Brass Components', 105, 19, { align: 'center' });
   
-  // Certifications
-  doc.setFontSize(8);
-  doc.text('An ISO 9001:2015 Company | CE | RoHS | TUV Compliant', 105, 25, { align: 'center' });
+  // Certifications with alternating brand colors
+  doc.setFontSize(7);
+  doc.setTextColor(...BRAND_COLORS.primary);
+  doc.text('ISO 9001:2015', 70, 24, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.accent);
+  doc.text('|', 85, 24, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.primary);
+  doc.text('CE', 95, 24, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.accent);
+  doc.text('|', 102, 24, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.primary);
+  doc.text('RoHS', 112, 24, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.accent);
+  doc.text('|', 122, 24, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.primary);
+  doc.text('TÜV Certified', 138, 24, { align: 'center' });
   
   // Contact details
   doc.setFontSize(7);
-  doc.text('Plot No 11, 12/1 & 12/2, Near Prime International School, Kansumara Main Road, Sadguru Industrial Area, Jamnagar - 6. (Guj.) India', 105, 30, { align: 'center' });
-  doc.text('www.brasspartsindia.net | brassinserts@gmail.com | sales@brasspartsindia.net | +91 288 2564431 / 2567731', 105, 34, { align: 'center' });
+  doc.setTextColor(...BRAND_COLORS.dark);
+  doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', 105, 29, { align: 'center' });
+  doc.text('www.brasspartsindia.net | sales@brasspartsindia.net | +91 288 2564431', 105, 33, { align: 'center' });
   
-  // Line separator
-  doc.setDrawColor(0, 0, 0);
-  doc.line(15, 38, 195, 38);
+  // Line separator with dual brand colors
+  doc.setDrawColor(...BRAND_COLORS.primary);
+  doc.setLineWidth(1);
+  doc.line(15, 37, 105, 37);
+  doc.setDrawColor(...BRAND_COLORS.accent);
+  doc.line(105, 37, 195, 37);
   
   return 42;
 };
@@ -340,7 +378,7 @@ export const generateCommercialInvoicePDF = (data: CommercialInvoiceData): jsPDF
     head: tableHead,
     body: tableData,
     theme: 'grid',
-    headStyles: { fillColor: [66, 66, 66], fontSize: 7, fontStyle: 'bold' },
+    headStyles: { fillColor: BRAND_COLORS.primary, fontSize: 7, fontStyle: 'bold' },
     bodyStyles: { fontSize: 7 },
     columnStyles,
     margin: { left: 15, right: 15 }
