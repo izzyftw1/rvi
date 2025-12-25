@@ -5280,45 +5280,137 @@ export type Database = {
       }
       proforma_invoices: {
         Row: {
+          advance_amount: number | null
+          advance_percent: number | null
+          balance_terms: string | null
+          country_of_origin: string | null
           created_at: string
+          currency: string | null
+          customer_address: string | null
+          customer_contact: string | null
+          customer_email: string | null
+          customer_gst: string | null
+          customer_id: string | null
+          customer_name: string | null
           file_path: string
           file_url: string | null
           generated_at: string
           generated_by: string | null
+          gst_amount: number | null
+          gst_percent: number | null
+          hs_code: string | null
           id: string
+          incoterm: string | null
+          is_export: boolean | null
+          line_items: Json | null
+          notes: string | null
+          po_date: string | null
+          po_number: string | null
+          port_of_discharge: string | null
+          port_of_loading: string | null
           proforma_no: string
           sales_order_id: string
           sent_at: string | null
           sent_to_email: string | null
+          status: string | null
+          subtotal: number | null
+          total_amount: number | null
           updated_at: string
+          validity_days: number | null
         }
         Insert: {
+          advance_amount?: number | null
+          advance_percent?: number | null
+          balance_terms?: string | null
+          country_of_origin?: string | null
           created_at?: string
+          currency?: string | null
+          customer_address?: string | null
+          customer_contact?: string | null
+          customer_email?: string | null
+          customer_gst?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
           file_path: string
           file_url?: string | null
           generated_at?: string
           generated_by?: string | null
+          gst_amount?: number | null
+          gst_percent?: number | null
+          hs_code?: string | null
           id?: string
+          incoterm?: string | null
+          is_export?: boolean | null
+          line_items?: Json | null
+          notes?: string | null
+          po_date?: string | null
+          po_number?: string | null
+          port_of_discharge?: string | null
+          port_of_loading?: string | null
           proforma_no: string
           sales_order_id: string
           sent_at?: string | null
           sent_to_email?: string | null
+          status?: string | null
+          subtotal?: number | null
+          total_amount?: number | null
           updated_at?: string
+          validity_days?: number | null
         }
         Update: {
+          advance_amount?: number | null
+          advance_percent?: number | null
+          balance_terms?: string | null
+          country_of_origin?: string | null
           created_at?: string
+          currency?: string | null
+          customer_address?: string | null
+          customer_contact?: string | null
+          customer_email?: string | null
+          customer_gst?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
           file_path?: string
           file_url?: string | null
           generated_at?: string
           generated_by?: string | null
+          gst_amount?: number | null
+          gst_percent?: number | null
+          hs_code?: string | null
           id?: string
+          incoterm?: string | null
+          is_export?: boolean | null
+          line_items?: Json | null
+          notes?: string | null
+          po_date?: string | null
+          po_number?: string | null
+          port_of_discharge?: string | null
+          port_of_loading?: string | null
           proforma_no?: string
           sales_order_id?: string
           sent_at?: string | null
           sent_to_email?: string | null
+          status?: string | null
+          subtotal?: number | null
+          total_amount?: number | null
           updated_at?: string
+          validity_days?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "proforma_invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "proforma_invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "proforma_invoices_sales_order_id_fkey"
             columns: ["sales_order_id"]
@@ -8846,6 +8938,7 @@ export type Database = {
       generate_dispatch_qc_batch_id: { Args: never; Returns: string }
       generate_grn_number: { Args: never; Returns: string }
       generate_ncr_number: { Args: never; Returns: string }
+      generate_proforma_number: { Args: never; Returns: string }
       generate_raw_po_number: { Args: never; Returns: string }
       generate_receipt_number: {
         Args: {
