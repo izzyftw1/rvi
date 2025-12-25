@@ -18,6 +18,7 @@ import { ExternalReceiptDialog } from "@/components/ExternalReceiptDialog";
 import { isPast, parseISO, differenceInDays, format as formatDate } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useWOBatchStages, WOBatchStageBreakdown, getEmptyBreakdown } from "@/hooks/useWOBatchStages";
+import { fetchBatchQuantitiesMultiple } from "@/hooks/useBatchQuantities";
 
 // Internal stages
 const INTERNAL_STAGES = {

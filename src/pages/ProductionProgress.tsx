@@ -297,17 +297,16 @@ export default function ProductionProgress() {
       // 4. Enrich work orders with batch-derived metrics
       const enriched: WorkOrder[] = woData.map((wo) => {
         const bq = batchQuantities.get(wo.id);
-        const target_qty = wo.quantity; // Use ordered as target for progress
-        const actual_qty = bq?.producedQty || 0;
-        const ok_qty = bq?.qcApprovedQty || 0;
+
+        // Produced = OK output; Rejected = scrap/rejections. (QC-approved is a later gate and may be 0 even after production.)
+        const ok_qty = bq?.producedQty || 0;
         const scrap_qty = bq?.qcRejectedQty || 0;
+        const actual_qty = ok_qty + scrap_qty;
+
+        const target_qty = wo.quantity; // Use ordered as target for progress
         const remaining_qty = Math.max(0, wo.quantity - ok_qty);
-        const progress_pct = wo.quantity > 0 
-          ? Math.min(100, Math.round((ok_qty / wo.quantity) * 100)) 
-          : 0;
-        const efficiency_pct = actual_qty > 0
-          ? Math.round((ok_qty / actual_qty) * 100)
-          : 0;
+        const progress_pct = wo.quantity > 0 ? Math.min(100, Math.round((ok_qty / wo.quantity) * 100)) : 0;
+        const efficiency_pct = actual_qty > 0 ? Math.round((ok_qty / actual_qty) * 100) : 0;
 
         return {
           ...wo,
@@ -318,7 +317,7 @@ export default function ProductionProgress() {
           remaining_qty,
           progress_pct,
           efficiency_pct,
-          external_status: externalStatus.get(wo.id) || null
+          external_status: externalStatus.get(wo.id) || null,
         };
       });
 
