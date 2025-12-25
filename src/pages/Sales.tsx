@@ -467,8 +467,42 @@ export default function Sales() {
         customer = data;
       }
 
-      console.log("Generating proforma for order:", order);
-      console.log("Customer data:", customer);
+      // Parse items for storage
+      let lineItems = [];
+      if (order.items) {
+        const parsedItems = typeof order.items === 'string' 
+          ? JSON.parse(order.items) 
+          : order.items;
+        lineItems = (parsedItems || []).map((item: any, index: number) => ({
+          sr_no: index + 1,
+          item_code: item.item_code || '-',
+          description: item.drawing_number || '',
+          material_grade: [item.alloy, item.material_size_mm].filter(Boolean).join(' '),
+          quantity: Number(item.quantity) || 0,
+          unit: 'PCS',
+          price_per_pc: item.price_per_pc ? Number(item.price_per_pc) : null,
+          line_amount: item.line_amount ? Number(item.line_amount) : null
+        }));
+      }
+      
+      // Calculate totals
+      const subtotal = lineItems.reduce((sum: number, item: any) => sum + (item.line_amount || 0), 0);
+      const isExport = customer?.is_export_customer || customer?.gst_type === 'export';
+      const gstPercent = isExport ? 0 : 18;
+      const gstAmount = (subtotal * gstPercent) / 100;
+      const totalAmount = subtotal + gstAmount;
+      
+      // Calculate advance payment
+      let advancePercent = 0;
+      let advanceAmount = 0;
+      if (order.advance_payment) {
+        if (order.advance_payment.type === 'percentage') {
+          advancePercent = order.advance_payment.value || 0;
+          advanceAmount = order.advance_payment.calculated_amount || (totalAmount * advancePercent / 100);
+        } else {
+          advanceAmount = order.advance_payment.value || order.advance_payment.calculated_amount || 0;
+        }
+      }
       
       // Generate PDF
       const pdf = generateProformaFromSalesOrder(order, customer);
@@ -478,7 +512,7 @@ export default function Sales() {
       
       // Upload to Supabase Storage
       const filePath = `${order.customer_id || 'unknown'}/${fileName}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('proforma-invoices')
         .upload(filePath, pdfBlob, {
           contentType: 'application/pdf',
@@ -492,15 +526,38 @@ export default function Sales() {
         .from('proforma-invoices')
         .getPublicUrl(filePath);
 
-      // Save metadata to database
-      const { data: proformaRecord, error: dbError } = await supabase
+      // Save enhanced metadata to database
+      const { error: dbError } = await supabase
         .from('proforma_invoices')
         .insert({
           sales_order_id: order.id,
           proforma_no: proformaNo,
           file_path: filePath,
           file_url: urlData.publicUrl,
-          generated_by: user?.id
+          generated_by: user?.id,
+          // Extended fields
+          customer_id: order.customer_id,
+          customer_name: customer?.customer_name || order.customer,
+          customer_address: [customer?.address_line_1, customer?.city, customer?.state, customer?.pincode].filter(Boolean).join(', '),
+          customer_contact: customer?.primary_contact_name,
+          customer_email: customer?.primary_contact_email,
+          customer_gst: customer?.gst_number,
+          po_number: order.po_number,
+          po_date: order.po_date,
+          line_items: lineItems,
+          subtotal,
+          gst_percent: gstPercent,
+          gst_amount: gstAmount,
+          total_amount: totalAmount,
+          currency: order.currency || 'USD',
+          advance_percent: advancePercent,
+          advance_amount: advanceAmount,
+          balance_terms: order.advance_payment?.balance_terms,
+          is_export: isExport,
+          incoterm: order.incoterm,
+          country_of_origin: 'India',
+          validity_days: 30,
+          status: 'issued'
         })
         .select()
         .single();
@@ -510,7 +567,7 @@ export default function Sales() {
       // Download the PDF
       pdf.save(fileName);
       
-      toast({ description: `Proforma invoice generated and saved for ${order.so_id}` });
+      toast({ description: `Proforma invoice ${proformaNo} generated and saved` });
       await loadSalesOrders();
     } catch (error: any) {
       console.error("Error generating proforma:", error);
