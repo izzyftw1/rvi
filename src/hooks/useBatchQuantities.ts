@@ -194,34 +194,59 @@ export function useBatchQuantities(woId: string | undefined): UseBatchQuantities
  */
 export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map<string, BatchQuantities>> {
   const result = new Map<string, BatchQuantities>();
-  
+
   if (woIds.length === 0) return result;
 
+  const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+    return chunks;
+  };
+
+  // Keep chunk small to avoid PostgREST URL length limits (400 errors) when using .in(...)
+  const CHUNK_SIZE = 10;
+  const chunks = chunkArray(woIds, CHUNK_SIZE);
+
   try {
-    // 1. Get all work orders
-    const { data: workOrders } = await supabase
-      .from('work_orders')
-      .select('id, quantity')
-      .in('id', woIds);
+    // 1) Work orders
+    const woResults = await Promise.all(
+      chunks.map((ids) =>
+        supabase
+          .from("work_orders")
+          .select("id, quantity")
+          .in("id", ids)
+      )
+    );
+    const workOrders = woResults.flatMap((r) => r.data || []);
 
-    // 2. Get all production batches
-    const { data: batches } = await supabase
-      .from('production_batches')
-      .select('wo_id, produced_qty, qc_approved_qty, qc_rejected_qty')
-      .in('wo_id', woIds);
+    // 2) Production batches
+    const batchResults = await Promise.all(
+      chunks.map((ids) =>
+        supabase
+          .from("production_batches")
+          .select("wo_id, produced_qty, qc_approved_qty, qc_rejected_qty")
+          .in("wo_id", ids)
+      )
+    );
+    const batches = batchResults.flatMap((r) => r.data || []);
 
-    // 3. Get all cartons
-    const { data: cartons } = await supabase
-      .from('cartons')
-      .select('wo_id, quantity, status')
-      .in('wo_id', woIds);
+    // 3) Cartons
+    const cartonResults = await Promise.all(
+      chunks.map((ids) =>
+        supabase
+          .from("cartons")
+          .select("wo_id, quantity, status")
+          .in("wo_id", ids)
+      )
+    );
+    const cartons = cartonResults.flatMap((r) => r.data || []);
 
     // Aggregate by work order
     const orderedMap = new Map<string, number>();
-    (workOrders || []).forEach(wo => orderedMap.set(wo.id, wo.quantity || 0));
+    (workOrders || []).forEach((wo) => orderedMap.set(wo.id, wo.quantity || 0));
 
     const batchAgg = new Map<string, { produced: number; approved: number; rejected: number }>();
-    (batches || []).forEach(b => {
+    (batches || []).forEach((b) => {
       const existing = batchAgg.get(b.wo_id) || { produced: 0, approved: 0, rejected: 0 };
       existing.produced += b.produced_qty || 0;
       existing.approved += b.qc_approved_qty || 0;
@@ -229,12 +254,20 @@ export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map
       batchAgg.set(b.wo_id, existing);
     });
 
-    const cartonAgg = new Map<string, { packed: number; dispatched: number; packCount: number; dispatchCount: number }>();
-    (cartons || []).forEach(c => {
-      const existing = cartonAgg.get(c.wo_id) || { packed: 0, dispatched: 0, packCount: 0, dispatchCount: 0 };
+    const cartonAgg = new Map<
+      string,
+      { packed: number; dispatched: number; packCount: number; dispatchCount: number }
+    >();
+    (cartons || []).forEach((c) => {
+      const existing = cartonAgg.get(c.wo_id) || {
+        packed: 0,
+        dispatched: 0,
+        packCount: 0,
+        dispatchCount: 0,
+      };
       existing.packed += c.quantity || 0;
       existing.packCount += 1;
-      if (c.status === 'dispatched') {
+      if (c.status === "dispatched") {
         existing.dispatched += c.quantity || 0;
         existing.dispatchCount += 1;
       }
@@ -242,7 +275,7 @@ export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map
     });
 
     // Build quantities for each WO
-    woIds.forEach(woId => {
+    woIds.forEach((woId) => {
       const orderedQty = orderedMap.get(woId) || 0;
       const batch = batchAgg.get(woId) || { produced: 0, approved: 0, rejected: 0 };
       const carton = cartonAgg.get(woId) || { packed: 0, dispatched: 0, packCount: 0, dispatchCount: 0 };
@@ -275,7 +308,7 @@ export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map
       });
     });
   } catch (error) {
-    console.error('Error fetching batch quantities:', error);
+    console.error("Error fetching batch quantities:", error);
   }
 
   return result;
