@@ -9006,6 +9006,10 @@ export type Database = {
       generate_grn_number: { Args: never; Returns: string }
       generate_ncr_number: { Args: never; Returns: string }
       generate_proforma_number: { Args: never; Returns: string }
+      generate_qc_id: {
+        Args: { qc_type_in: Database["public"]["Enums"]["qc_type"] }
+        Returns: string
+      }
       generate_raw_po_number: { Args: never; Returns: string }
       generate_receipt_number: {
         Args: {
