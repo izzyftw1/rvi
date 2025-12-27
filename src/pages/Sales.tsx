@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download } from "lucide-react";
-import { generateProformaFromSalesOrder } from "@/lib/proformaGenerator";
+// Proforma generation is now server-side via Edge Function
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
@@ -461,118 +461,30 @@ export default function Sales() {
     try {
       setLoading(true);
       
-      // Fetch customer details
-      let customer = null;
-      if (order.customer_id) {
-        const { data } = await supabase
-          .from("customer_master")
-          .select("*")
-          .eq("id", order.customer_id)
-          .maybeSingle();
-        customer = data;
-      }
-
-      // Parse items for storage
-      let lineItems = [];
-      if (order.items) {
-        const parsedItems = typeof order.items === 'string' 
-          ? JSON.parse(order.items) 
-          : order.items;
-        lineItems = (parsedItems || []).map((item: any, index: number) => ({
-          sr_no: index + 1,
-          item_code: item.item_code || '-',
-          description: item.drawing_number || '',
-          material_grade: [item.alloy, item.material_size_mm].filter(Boolean).join(' '),
-          quantity: Number(item.quantity) || 0,
-          unit: 'PCS',
-          price_per_pc: item.price_per_pc ? Number(item.price_per_pc) : null,
-          line_amount: item.line_amount ? Number(item.line_amount) : null
-        }));
+      // Call server-side Edge Function to generate proforma
+      // This bypasses RLS and uses service role for storage uploads
+      const { data, error } = await supabase.functions.invoke('generate-proforma', {
+        body: { salesOrderId: order.id }
+      });
+      
+      if (error) {
+        throw new Error(error.message || 'Failed to generate proforma');
       }
       
-      // Calculate totals
-      const subtotal = lineItems.reduce((sum: number, item: any) => sum + (item.line_amount || 0), 0);
-      const isExport = customer?.is_export_customer || customer?.gst_type === 'export';
-      const gstPercent = isExport ? 0 : 18;
-      const gstAmount = (subtotal * gstPercent) / 100;
-      const totalAmount = subtotal + gstAmount;
-      
-      // Calculate advance payment
-      let advancePercent = 0;
-      let advanceAmount = 0;
-      if (order.advance_payment) {
-        if (order.advance_payment.type === 'percentage') {
-          advancePercent = order.advance_payment.value || 0;
-          advanceAmount = order.advance_payment.calculated_amount || (totalAmount * advancePercent / 100);
-        } else {
-          advanceAmount = order.advance_payment.value || order.advance_payment.calculated_amount || 0;
-        }
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to generate proforma');
       }
       
-      // Generate PDF
-      const pdf = generateProformaFromSalesOrder(order, customer);
-      const pdfBlob = pdf.output('blob');
-      const proformaNo = `${order.so_id}-PI`;
-      const fileName = `${proformaNo}.pdf`;
+      // Open the signed download URL
+      if (data.downloadUrl) {
+        window.open(data.downloadUrl, '_blank');
+      }
       
-      // Upload to Supabase Storage
-      const filePath = `${order.customer_id || 'unknown'}/${fileName}`;
-      const { error: uploadError } = await supabase.storage
-        .from('proforma-invoices')
-        .upload(filePath, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: true
-        });
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('proforma-invoices')
-        .getPublicUrl(filePath);
-
-      // Save enhanced metadata to database
-      const { error: dbError } = await supabase
-        .from('proforma_invoices')
-        .insert({
-          sales_order_id: order.id,
-          proforma_no: proformaNo,
-          file_path: filePath,
-          file_url: urlData.publicUrl,
-          generated_by: user?.id,
-          // Extended fields
-          customer_id: order.customer_id,
-          customer_name: customer?.customer_name || order.customer,
-          customer_address: [customer?.address_line_1, customer?.city, customer?.state, customer?.pincode].filter(Boolean).join(', '),
-          customer_contact: customer?.primary_contact_name,
-          customer_email: customer?.primary_contact_email,
-          customer_gst: customer?.gst_number,
-          po_number: order.po_number,
-          po_date: order.po_date,
-          line_items: lineItems,
-          subtotal,
-          gst_percent: gstPercent,
-          gst_amount: gstAmount,
-          total_amount: totalAmount,
-          currency: order.currency || 'USD',
-          advance_percent: advancePercent,
-          advance_amount: advanceAmount,
-          balance_terms: order.advance_payment?.balance_terms,
-          is_export: isExport,
-          incoterm: order.incoterm,
-          country_of_origin: 'India',
-          validity_days: 30,
-          status: 'issued'
-        })
-        .select()
-        .single();
-
-      if (dbError) throw dbError;
-
-      // Download the PDF
-      pdf.save(fileName);
+      const message = data.isExisting 
+        ? `Proforma invoice ${data.proformaNo} downloaded`
+        : `Proforma invoice ${data.proformaNo} generated and saved`;
       
-      toast({ description: `Proforma invoice ${proformaNo} generated and saved` });
+      toast({ description: message });
       await loadSalesOrders();
     } catch (error: any) {
       console.error("Error generating proforma:", error);

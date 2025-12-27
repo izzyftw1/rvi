@@ -1,1 +1,13 @@
 project_id = "krjhqzoqiadkxbdkrzeu"
+
+[functions.generate-proforma]
+verify_jwt = false
+
+[functions.send-proforma-email]
+verify_jwt = false
+
+[functions.create-user]
+verify_jwt = false
+
+[functions.check-overdue-external-moves]
+verify_jwt = false
