@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AddCustomerDialog } from "@/components/sales/AddCustomerDialog";
 import { AddItemDialog } from "@/components/sales/AddItemDialog";
-import { useInitializeCompanyAssets } from "@/hooks/useInitializeCompanyAssets";
+// Logo is now handled server-side in Edge Function - no frontend upload needed
 
 interface LineItem {
   line_number: number;
@@ -48,8 +48,7 @@ const INCOTERMS = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB"
 
 export default function Sales() {
   const { toast } = useToast();
-  // Initialize company assets (logo upload) on component mount
-  useInitializeCompanyAssets();
+  // Logo is now handled server-side in Edge Function
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
