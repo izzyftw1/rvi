@@ -69,37 +69,29 @@ const BRAND_COLORS = {
   tableBorder: '#1E4A8D',
 };
 
-// RV Industries Logo as base64 PNG (the actual swoosh logo)
-// This is a simplified representation - in production you'd embed the actual logo
-const RV_LOGO_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF8WlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNy4xLWMwMDAgNzkuZGFiYWNiYiwgMjAyMS8wNC8xNC0wMDozOTo0NCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIvPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+Af/+/fz7+vn49/b19PPy8fDv7u3s6+rp6Ofm5eTj4uHg397d3Nva2djX1tXU09LR0M/OzczLysnIx8bFxMPCwcC/vr28u7q5uLe2tbSzsrGwr66trKuqqainpqWko6KhoJ+enZybmpmYl5aVlJOSkZCPjo2Mi4qJiIeGhYSDgoGAf359fHt6eXh3dnV0c3JxcG9ubWxramloZ2ZlZGNiYWBfXl1cW1pZWFdWVVRTUlFQT05NTEtKSUhHRkVEQ0JBQD8+PTw7Ojk4NzY1NDMyMTAvLi0sKyopKCcmJSQjIiEgHx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQAAOw==';
-
-async function addLogo(doc: jsPDF, x: number, y: number): Promise<{ width: number, height: number }> {
-  // For now, draw a simplified version of the RV swoosh logo
-  const logoWidth = 35;
-  const logoHeight = 15;
-  
-  // Draw blue left swoosh
-  doc.setFillColor(30, 74, 141);
-  // Left wave
-  doc.ellipse(x + 8, y + 10, 10, 6, 'F');
-  doc.triangle(x + 15, y + 4, x + 22, y + 15, x + 8, y + 15, 'F');
-  
-  // Draw red center/checkmark
-  doc.setFillColor(211, 47, 47);
-  doc.ellipse(x + 20, y + 7, 8, 8, 'F');
-  // White checkmark gap
-  doc.setFillColor(255, 255, 255);
-  doc.triangle(x + 16, y + 10, x + 20, y + 15, x + 22, y + 6, 'F');
-  
-  // Draw blue right swoosh
-  doc.setFillColor(30, 74, 141);
-  doc.ellipse(x + 30, y + 10, 8, 5, 'F');
-  doc.triangle(x + 25, y + 5, x + 38, y + 15, x + 25, y + 15, 'F');
-  
-  return { width: logoWidth, height: logoHeight };
+// Function to fetch logo and convert to base64
+async function fetchLogoAsBase64(supabaseUrl: string): Promise<string | null> {
+  try {
+    // Try to fetch from company-assets bucket
+    const logoUrl = `${supabaseUrl}/storage/v1/object/public/company-assets/rv-logo.png`;
+    console.log('Fetching logo from:', logoUrl);
+    
+    const response = await fetch(logoUrl);
+    if (!response.ok) {
+      console.log('Logo not found in storage, will skip logo');
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    return `data:image/png;base64,${base64}`;
+  } catch (error) {
+    console.error('Error fetching logo:', error);
+    return null;
+  }
 }
 
-function generateProfessionalPdf(data: ProformaData): Uint8Array {
+async function generateProfessionalPdf(data: ProformaData, logoBase64: string | null): Promise<Uint8Array> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -114,24 +106,26 @@ function generateProfessionalPdf(data: ProformaData): Uint8Array {
   let yPos = 12;
 
   // ============= HEADER SECTION =============
-  // Draw simplified logo representation
-  const logoWidth = 40;
+  const logoWidth = 45;
   const logoHeight = 18;
+  let textStartX = leftMargin;
   
-  // Blue left swoosh  
-  doc.setFillColor(30, 74, 141);
-  doc.ellipse(leftMargin + 10, yPos + 12, 12, 8, 'F');
+  // Add actual logo image if available
+  if (logoBase64) {
+    try {
+      doc.addImage(logoBase64, 'PNG', leftMargin, yPos, logoWidth, logoHeight);
+      textStartX = leftMargin + logoWidth + 5;
+      console.log('Logo added successfully');
+    } catch (e) {
+      console.error('Error adding logo image:', e);
+      textStartX = leftMargin;
+    }
+  } else {
+    // No logo available, just use text
+    textStartX = leftMargin;
+  }
   
-  // Red center oval with white checkmark
-  doc.setFillColor(211, 47, 47);
-  doc.ellipse(leftMargin + 22, yPos + 9, 9, 9, 'F');
-  
-  // Blue right swoosh
-  doc.setFillColor(30, 74, 141);
-  doc.ellipse(leftMargin + 35, yPos + 12, 10, 6, 'F');
-  
-  // Company Name - next to logo with proper spacing
-  const textStartX = leftMargin + logoWidth + 8;
+  // Company Name
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
   doc.setTextColor(30, 74, 141);
@@ -143,11 +137,11 @@ function generateProfessionalPdf(data: ProformaData): Uint8Array {
   doc.setTextColor(33, 33, 33);
   doc.text('Precision Brass Components', textStartX, yPos + 14);
   
-  // Address - on its own line, full width
+  // Address - on its own line
   doc.setFontSize(8);
   doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', textStartX, yPos + 20);
   
-  // Certifications on the far right - stacked properly with no overlap
+  // Certifications on the far right - stacked properly
   const certX = rightMargin - 2;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
@@ -684,9 +678,13 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     
+    // Fetch the company logo
+    console.log('Fetching company logo...');
+    const logoBase64 = await fetchLogoAsBase64(supabaseUrl);
+    
     // Generate professional PDF using jsPDF with autoTable
     console.log('Generating professional PDF with jsPDF and autoTable...');
-    const pdfBytes = generateProfessionalPdf({
+    const pdfBytes = await generateProfessionalPdf({
       proformaNo,
       date: new Date().toLocaleDateString('en-GB'),
       soId: order.so_id,
@@ -715,7 +713,7 @@ const handler = async (req: Request): Promise<Response> => {
       incoterm: order.incoterm,
       countryOfOrigin: 'India',
       validityDays: 30
-    });
+    }, logoBase64);
     
     // Upload to storage using service role (bypasses RLS)
     const fileName = `${proformaNo}.pdf`;
