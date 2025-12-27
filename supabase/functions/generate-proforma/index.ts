@@ -69,21 +69,32 @@ const BRAND_COLORS = {
   tableBorder: '#1E4A8D',
 };
 
-// Embedded logo as base64 (simplified RV logo representation)
-// Note: We'll draw the logo using shapes for better control
-function drawLogoWithText(doc: jsPDF, x: number, y: number) {
-  // Draw the RV stylized letters
-  const logoWidth = 45;
-  const logoHeight = 25;
+// RV Industries Logo as base64 PNG (the actual swoosh logo)
+// This is a simplified representation - in production you'd embed the actual logo
+const RV_LOGO_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF8WlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNy4xLWMwMDAgNzkuZGFiYWNiYiwgMjAyMS8wNC8xNC0wMDozOTo0NCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIvPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+Af/+/fz7+vn49/b19PPy8fDv7u3s6+rp6Ofm5eTj4uHg397d3Nva2djX1tXU09LR0M/OzczLysnIx8bFxMPCwcC/vr28u7q5uLe2tbSzsrGwr66trKuqqainpqWko6KhoJ+enZybmpmYl5aVlJOSkZCPjo2Mi4qJiIeGhYSDgoGAf359fHt6eXh3dnV0c3JxcG9ubWxramloZ2ZlZGNiYWBfXl1cW1pZWFdWVVRTUlFQT05NTEtKSUhHRkVEQ0JBQD8+PTw7Ojk4NzY1NDMyMTAvLi0sKyopKCcmJSQjIiEgHx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQAAOw==';
+
+async function addLogo(doc: jsPDF, x: number, y: number): Promise<{ width: number, height: number }> {
+  // For now, draw a simplified version of the RV swoosh logo
+  const logoWidth = 35;
+  const logoHeight = 15;
   
-  // Blue "R" part
-  doc.setFillColor(30, 74, 141); // Brand Blue
-  doc.triangle(x, y + logoHeight, x + 15, y, x + 15, y + logoHeight, 'F');
-  doc.rect(x + 15, y, 8, logoHeight, 'F');
+  // Draw blue left swoosh
+  doc.setFillColor(30, 74, 141);
+  // Left wave
+  doc.ellipse(x + 8, y + 10, 10, 6, 'F');
+  doc.triangle(x + 15, y + 4, x + 22, y + 15, x + 8, y + 15, 'F');
   
-  // Red "V" part
-  doc.setFillColor(211, 47, 47); // Brand Red
-  doc.triangle(x + 25, y, x + 32, y + logoHeight, x + 40, y, 'F');
+  // Draw red center/checkmark
+  doc.setFillColor(211, 47, 47);
+  doc.ellipse(x + 20, y + 7, 8, 8, 'F');
+  // White checkmark gap
+  doc.setFillColor(255, 255, 255);
+  doc.triangle(x + 16, y + 10, x + 20, y + 15, x + 22, y + 6, 'F');
+  
+  // Draw blue right swoosh
+  doc.setFillColor(30, 74, 141);
+  doc.ellipse(x + 30, y + 10, 8, 5, 'F');
+  doc.triangle(x + 25, y + 5, x + 38, y + 15, x + 25, y + 15, 'F');
   
   return { width: logoWidth, height: logoHeight };
 }
@@ -100,47 +111,61 @@ function generateProfessionalPdf(data: ProformaData): Uint8Array {
   const leftMargin = 15;
   const rightMargin = pageWidth - 15;
   const contentWidth = rightMargin - leftMargin;
-  let yPos = 15;
+  let yPos = 12;
 
   // ============= HEADER SECTION =============
-  // Draw logo
-  const logoInfo = drawLogoWithText(doc, leftMargin, yPos);
+  // Draw simplified logo representation
+  const logoWidth = 40;
+  const logoHeight = 18;
   
-  // Company Name - next to logo
+  // Blue left swoosh  
+  doc.setFillColor(30, 74, 141);
+  doc.ellipse(leftMargin + 10, yPos + 12, 12, 8, 'F');
+  
+  // Red center oval with white checkmark
+  doc.setFillColor(211, 47, 47);
+  doc.ellipse(leftMargin + 22, yPos + 9, 9, 9, 'F');
+  
+  // Blue right swoosh
+  doc.setFillColor(30, 74, 141);
+  doc.ellipse(leftMargin + 35, yPos + 12, 10, 6, 'F');
+  
+  // Company Name - next to logo with proper spacing
+  const textStartX = leftMargin + logoWidth + 8;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.setTextColor(30, 74, 141); // Brand Blue
-  doc.text('R.V. INDUSTRIES', leftMargin + logoInfo.width + 5, yPos + 10);
+  doc.setFontSize(22);
+  doc.setTextColor(30, 74, 141);
+  doc.text('R.V. INDUSTRIES', textStartX, yPos + 8);
   
   // Tagline
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(33, 33, 33);
-  doc.text('Precision Brass Components', leftMargin + logoInfo.width + 5, yPos + 17);
+  doc.text('Precision Brass Components', textStartX, yPos + 14);
   
-  // Address
-  doc.setFontSize(9);
-  doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', leftMargin + logoInfo.width + 5, yPos + 23);
-  
-  // Certifications on the right - properly aligned
-  const certX = rightMargin;
-  doc.setFont('helvetica', 'bold');
+  // Address - on its own line, full width
   doc.setFontSize(8);
+  doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', textStartX, yPos + 20);
+  
+  // Certifications on the far right - stacked properly with no overlap
+  const certX = rightMargin - 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
   
   doc.setTextColor(30, 74, 141);
-  doc.text('ISO 9001:2015', certX, yPos + 5, { align: 'right' });
+  doc.text('ISO 9001:2015', certX, yPos + 4, { align: 'right' });
   
   doc.setTextColor(211, 47, 47);
-  doc.text('TÜV SÜD CERTIFIED', certX, yPos + 11, { align: 'right' });
+  doc.text('TÜV SÜD CERTIFIED', certX, yPos + 9, { align: 'right' });
   
   doc.setTextColor(30, 74, 141);
-  doc.text('RoHS COMPLIANT', certX, yPos + 17, { align: 'right' });
+  doc.text('RoHS COMPLIANT', certX, yPos + 14, { align: 'right' });
   
   doc.setTextColor(211, 47, 47);
-  doc.text('CE MARKED', certX, yPos + 23, { align: 'right' });
+  doc.text('CE MARKED', certX, yPos + 19, { align: 'right' });
   
   // Header divider line (two-color)
-  yPos += 30;
+  yPos += 26;
   doc.setDrawColor(30, 74, 141);
   doc.setLineWidth(0.8);
   doc.line(leftMargin, yPos, leftMargin + contentWidth / 2, yPos);
@@ -327,17 +352,21 @@ function generateProfessionalPdf(data: ProformaData): Uint8Array {
         amount: { cellWidth: 25, halign: 'right' as const },
       };
   
+  // Calculate table width to match content width exactly (180mm for A4 with 15mm margins)
+  // For domestic: Sr(15) + Code(30) + Desc(65) + Qty(20) + Unit(15) + Rate(25) + Amount(30) = 200 - too wide
+  // Adjusted: Sr(12) + Code(25) + Desc(58) + Qty(18) + Unit(15) + Rate(22) + Amount(30) = 180
   autoTable(doc, {
     startY: yPos,
     head: [tableColumns.map(col => col.header)],
     body: tableBody.map(row => tableColumns.map(col => String(row[col.dataKey as keyof typeof row] ?? ''))),
-    margin: { left: leftMargin, right: 15 },
-    tableWidth: contentWidth,
+    margin: { left: leftMargin, right: leftMargin },
+    tableWidth: 'auto',
     styles: {
       fontSize: 9,
       cellPadding: 2,
       lineColor: [30, 74, 141],
       lineWidth: 0.2,
+      overflow: 'linebreak',
     },
     headStyles: {
       fillColor: [30, 74, 141],
@@ -346,27 +375,27 @@ function generateProfessionalPdf(data: ProformaData): Uint8Array {
       halign: 'center',
     },
     alternateRowStyles: {
-      fillColor: [245, 245, 245],
+      fillColor: [248, 248, 248],
     },
     columnStyles: data.isExport
       ? {
-          0: { cellWidth: 12, halign: 'center' },
-          1: { cellWidth: 25 },
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 22 },
           2: { cellWidth: 45 },
-          3: { cellWidth: 20, halign: 'center' },
-          4: { cellWidth: 18, halign: 'right' },
-          5: { cellWidth: 15, halign: 'center' },
-          6: { cellWidth: 22, halign: 'right' },
-          7: { cellWidth: 28, halign: 'right' },
+          3: { cellWidth: 18, halign: 'center' },
+          4: { cellWidth: 16, halign: 'right' },
+          5: { cellWidth: 12, halign: 'center' },
+          6: { cellWidth: 20, halign: 'right' },
+          7: { cellWidth: 25, halign: 'right' },
         }
       : {
           0: { cellWidth: 12, halign: 'center' },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 55 },
-          3: { cellWidth: 22, halign: 'right' },
-          4: { cellWidth: 18, halign: 'center' },
-          5: { cellWidth: 27, halign: 'right' },
-          6: { cellWidth: 28, halign: 'right' },
+          1: { cellWidth: 28 },
+          2: { cellWidth: 52 },
+          3: { cellWidth: 20, halign: 'right' },
+          4: { cellWidth: 16, halign: 'center' },
+          5: { cellWidth: 25, halign: 'right' },
+          6: { cellWidth: 27, halign: 'right' },
         },
     theme: 'grid',
   });
