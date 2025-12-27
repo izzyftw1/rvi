@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-import { PDFDocument, rgb, StandardFonts, PageSizes } from "https://esm.sh/pdf-lib@1.17.1";
+import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
+import autoTable from "https://esm.sh/jspdf-autotable@3.8.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,418 +59,429 @@ interface ProformaData {
   notes?: string;
 }
 
-// RV Industries Brand Colors (RGB 0-1 scale for pdf-lib)
+// RV Industries Brand Colors
 const BRAND_COLORS = {
-  primary: rgb(30/255, 74/255, 141/255),     // Brand Blue #1E4A8D
-  accent: rgb(211/255, 47/255, 47/255),      // Brand Red #D32F2F
-  dark: rgb(33/255, 33/255, 33/255),         // Dark gray
-  light: rgb(245/255, 245/255, 245/255),     // Light gray
-  white: rgb(1, 1, 1),                        // White
-  tableHeader: rgb(30/255, 74/255, 141/255), // Same as primary
+  primary: '#1E4A8D',      // Brand Blue
+  accent: '#D32F2F',       // Brand Red
+  dark: '#212121',         // Dark gray for text
+  lightBg: '#F5F5F5',      // Light gray for backgrounds
+  white: '#FFFFFF',
+  tableBorder: '#1E4A8D',
 };
 
-async function generateProfessionalPdf(data: ProformaData): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage(PageSizes.A4);
-  const { width, height } = page.getSize();
+// Embedded logo as base64 (simplified RV logo representation)
+// Note: We'll draw the logo using shapes for better control
+function drawLogoWithText(doc: jsPDF, x: number, y: number) {
+  // Draw the RV stylized letters
+  const logoWidth = 45;
+  const logoHeight = 25;
   
-  // Load fonts
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+  // Blue "R" part
+  doc.setFillColor(30, 74, 141); // Brand Blue
+  doc.triangle(x, y + logoHeight, x + 15, y, x + 15, y + logoHeight, 'F');
+  doc.rect(x + 15, y, 8, logoHeight, 'F');
   
-  const leftMargin = 40;
-  const rightMargin = width - 40;
+  // Red "V" part
+  doc.setFillColor(211, 47, 47); // Brand Red
+  doc.triangle(x + 25, y, x + 32, y + logoHeight, x + 40, y, 'F');
+  
+  return { width: logoWidth, height: logoHeight };
+}
+
+function generateProfessionalPdf(data: ProformaData): Uint8Array {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+  
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const leftMargin = 15;
+  const rightMargin = pageWidth - 15;
   const contentWidth = rightMargin - leftMargin;
-  let yPos = height - 40;
+  let yPos = 15;
+
+  // ============= HEADER SECTION =============
+  // Draw logo
+  const logoInfo = drawLogoWithText(doc, leftMargin, yPos);
   
-  // === HEADER SECTION ===
-  // Company Name - Large Blue Title
-  page.drawText('R.V. INDUSTRIES', {
-    x: leftMargin,
-    y: yPos,
-    size: 22,
-    font: helveticaBold,
-    color: BRAND_COLORS.primary,
-  });
+  // Company Name - next to logo
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.setTextColor(30, 74, 141); // Brand Blue
+  doc.text('R.V. INDUSTRIES', leftMargin + logoInfo.width + 5, yPos + 10);
   
-  // Certifications on the right
+  // Tagline
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(33, 33, 33);
+  doc.text('Precision Brass Components', leftMargin + logoInfo.width + 5, yPos + 17);
+  
+  // Address
+  doc.setFontSize(9);
+  doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', leftMargin + logoInfo.width + 5, yPos + 23);
+  
+  // Certifications on the right - properly aligned
   const certX = rightMargin;
-  page.drawText('ISO 9001:2015', {
-    x: certX - 70,
-    y: yPos,
-    size: 7,
-    font: helveticaBold,
-    color: BRAND_COLORS.primary,
-  });
-  page.drawText('TÜV SÜD CERTIFIED', {
-    x: certX - 85,
-    y: yPos - 10,
-    size: 7,
-    font: helveticaBold,
-    color: BRAND_COLORS.accent,
-  });
-  page.drawText('RoHS COMPLIANT', {
-    x: certX - 75,
-    y: yPos - 20,
-    size: 7,
-    font: helveticaBold,
-    color: BRAND_COLORS.primary,
-  });
-  page.drawText('CE MARKED', {
-    x: certX - 60,
-    y: yPos - 30,
-    size: 7,
-    font: helveticaBold,
-    color: BRAND_COLORS.accent,
-  });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
   
-  yPos -= 18;
-  page.drawText('Precision Brass Components', {
-    x: leftMargin,
-    y: yPos,
-    size: 10,
-    font: helvetica,
-    color: BRAND_COLORS.dark,
-  });
+  doc.setTextColor(30, 74, 141);
+  doc.text('ISO 9001:2015', certX, yPos + 5, { align: 'right' });
   
-  yPos -= 14;
-  page.drawText('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', {
-    x: leftMargin,
-    y: yPos,
-    size: 8,
-    font: helvetica,
-    color: BRAND_COLORS.dark,
-  });
+  doc.setTextColor(211, 47, 47);
+  doc.text('TÜV SÜD CERTIFIED', certX, yPos + 11, { align: 'right' });
+  
+  doc.setTextColor(30, 74, 141);
+  doc.text('RoHS COMPLIANT', certX, yPos + 17, { align: 'right' });
+  
+  doc.setTextColor(211, 47, 47);
+  doc.text('CE MARKED', certX, yPos + 23, { align: 'right' });
   
   // Header divider line (two-color)
-  yPos -= 12;
-  const midPoint = leftMargin + contentWidth / 2;
-  page.drawLine({
-    start: { x: leftMargin, y: yPos },
-    end: { x: midPoint, y: yPos },
-    thickness: 2,
-    color: BRAND_COLORS.primary,
-  });
-  page.drawLine({
-    start: { x: midPoint, y: yPos },
-    end: { x: rightMargin, y: yPos },
-    thickness: 2,
-    color: BRAND_COLORS.accent,
-  });
+  yPos += 30;
+  doc.setDrawColor(30, 74, 141);
+  doc.setLineWidth(0.8);
+  doc.line(leftMargin, yPos, leftMargin + contentWidth / 2, yPos);
+  doc.setDrawColor(211, 47, 47);
+  doc.line(leftMargin + contentWidth / 2, yPos, rightMargin, yPos);
   
-  // === PROFORMA INVOICE TITLE BAR ===
-  yPos -= 20;
-  page.drawRectangle({
-    x: leftMargin,
-    y: yPos - 8,
-    width: contentWidth,
-    height: 22,
-    color: BRAND_COLORS.primary,
-  });
+  // ============= PROFORMA INVOICE TITLE =============
+  yPos += 8;
+  doc.setFillColor(30, 74, 141);
+  doc.rect(leftMargin, yPos, contentWidth, 10, 'F');
   
-  page.drawText('PROFORMA INVOICE', {
-    x: leftMargin + contentWidth / 2 - 55,
-    y: yPos,
-    size: 14,
-    font: helveticaBold,
-    color: BRAND_COLORS.white,
-  });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.text('PROFORMA INVOICE', pageWidth / 2, yPos + 7, { align: 'center' });
   
-  // === DOCUMENT DETAILS (Two columns) ===
-  yPos -= 35;
+  // ============= DOCUMENT DETAILS =============
+  yPos += 18;
   const col1X = leftMargin;
-  const col2X = leftMargin + contentWidth / 2 + 10;
+  const col2X = pageWidth / 2 + 5;
   
-  // Left column
-  page.drawText('Proforma Invoice No:', { x: col1X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-  page.drawText(data.proformaNo, { x: col1X + 95, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(33, 33, 33);
   
-  // Right column
-  page.drawText('Date:', { x: col2X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-  page.drawText(data.date, { x: col2X + 30, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  // Row 1
+  doc.text('Proforma Invoice No:', col1X, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.proformaNo, col1X + 45, yPos);
   
-  yPos -= 14;
-  if (data.soId) {
-    page.drawText('Sales Order No:', { x: col1X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-    page.drawText(data.soId, { x: col1X + 80, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
-  }
+  doc.setFont('helvetica', 'bold');
+  doc.text('Date:', col2X, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.date, col2X + 20, yPos);
+  
+  // Row 2
+  yPos += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Sales Order No:', col1X, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.soId, col1X + 35, yPos);
   
   if (data.validityDays) {
     const validDate = new Date();
     validDate.setDate(validDate.getDate() + data.validityDays);
-    page.drawText('Valid Until:', { x: col2X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-    page.drawText(validDate.toLocaleDateString('en-GB'), { x: col2X + 55, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.setFont('helvetica', 'bold');
+    doc.text('Valid Until:', col2X, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(validDate.toLocaleDateString('en-GB'), col2X + 25, yPos);
   }
   
-  yPos -= 14;
+  // Row 3
+  yPos += 6;
   if (data.poNumber) {
-    page.drawText('Customer PO No:', { x: col1X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-    page.drawText(data.poNumber, { x: col1X + 85, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.setFont('helvetica', 'bold');
+    doc.text('Customer PO No:', col1X, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.poNumber, col1X + 40, yPos);
   }
   
   if (data.poDate) {
-    page.drawText('PO Date:', { x: col2X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-    page.drawText(data.poDate, { x: col2X + 45, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.setFont('helvetica', 'bold');
+    doc.text('PO Date:', col2X, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.poDate, col2X + 22, yPos);
   }
   
-  // === CUSTOMER DETAILS BOX ===
-  yPos -= 25;
-  const customerBoxHeight = 65;
-  page.drawRectangle({
-    x: leftMargin,
-    y: yPos - customerBoxHeight + 10,
-    width: contentWidth,
-    height: customerBoxHeight,
-    color: BRAND_COLORS.light,
-  });
+  // ============= CUSTOMER DETAILS BOX =============
+  yPos += 10;
+  const customerBoxHeight = 28;
+  doc.setFillColor(245, 245, 245);
+  doc.rect(leftMargin, yPos, contentWidth, customerBoxHeight, 'F');
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.rect(leftMargin, yPos, contentWidth, customerBoxHeight, 'S');
   
-  page.drawText('Bill To:', { x: leftMargin + 8, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+  yPos += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(30, 74, 141);
+  doc.text('Bill To:', leftMargin + 3, yPos);
   
-  yPos -= 14;
-  page.drawText(data.customer.name, { x: leftMargin + 8, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.dark });
+  yPos += 5;
+  doc.setTextColor(33, 33, 33);
+  doc.text(data.customer.name, leftMargin + 3, yPos);
+  
+  yPos += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
   
   if (data.customer.address) {
-    yPos -= 12;
-    page.drawText(data.customer.address, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.text(data.customer.address, leftMargin + 3, yPos);
+    yPos += 4;
   }
   
   const location = [data.customer.city, data.customer.state, data.customer.pincode].filter(Boolean).join(', ');
   if (location) {
-    yPos -= 12;
-    page.drawText(location, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.text(location, leftMargin + 3, yPos);
+    yPos += 4;
   }
   
   if (data.customer.country) {
-    yPos -= 12;
-    page.drawText(data.customer.country, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.text(data.customer.country, leftMargin + 3, yPos);
   }
   
-  // GST on the right side of customer box (for domestic orders)
+  // GST on right side (for domestic)
   if (data.customer.gst_number && !data.isExport) {
-    page.drawText('GST No:', { x: col2X, y: yPos + 24, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
-    page.drawText(data.customer.gst_number, { x: col2X + 45, y: yPos + 24, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.setFont('helvetica', 'bold');
+    doc.text('GST No:', col2X, yPos - 8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.customer.gst_number, col2X + 20, yPos - 8);
   }
   
-  // === ITEMS TABLE ===
-  yPos -= 25;
+  yPos += 10;
   
-  // Table column definitions
-  const columns = data.isExport
+  // ============= ITEMS TABLE =============
+  // Define columns based on export/domestic
+  const tableColumns = data.isExport
     ? [
-        { header: 'Sr', width: 25, align: 'center' as const },
-        { header: 'Item Code', width: 60, align: 'left' as const },
-        { header: 'Description / Material', width: 130, align: 'left' as const },
-        { header: 'HS Code', width: 50, align: 'center' as const },
-        { header: 'Qty', width: 40, align: 'right' as const },
-        { header: 'Unit', width: 35, align: 'center' as const },
-        { header: `Rate (${data.currency})`, width: 55, align: 'right' as const },
-        { header: `Amount (${data.currency})`, width: 65, align: 'right' as const },
+        { header: 'Sr', dataKey: 'sr' },
+        { header: 'Item Code', dataKey: 'code' },
+        { header: 'Description / Material Grade', dataKey: 'desc' },
+        { header: 'HS Code', dataKey: 'hs' },
+        { header: 'Qty', dataKey: 'qty' },
+        { header: 'Unit', dataKey: 'unit' },
+        { header: `Rate (${data.currency})`, dataKey: 'rate' },
+        { header: `Amount (${data.currency})`, dataKey: 'amount' },
       ]
     : [
-        { header: 'Sr', width: 25, align: 'center' as const },
-        { header: 'Item Code', width: 70, align: 'left' as const },
-        { header: 'Description / Material Grade', width: 155, align: 'left' as const },
-        { header: 'Qty', width: 45, align: 'right' as const },
-        { header: 'Unit', width: 35, align: 'center' as const },
-        { header: `Rate (${data.currency})`, width: 60, align: 'right' as const },
-        { header: `Amount (${data.currency})`, width: 70, align: 'right' as const },
+        { header: 'Sr', dataKey: 'sr' },
+        { header: 'Item Code', dataKey: 'code' },
+        { header: 'Description / Material Grade', dataKey: 'desc' },
+        { header: 'Qty', dataKey: 'qty' },
+        { header: 'Unit', dataKey: 'unit' },
+        { header: `Rate (${data.currency})`, dataKey: 'rate' },
+        { header: `Amount (${data.currency})`, dataKey: 'amount' },
       ];
   
-  const tableWidth = columns.reduce((sum, col) => sum + col.width, 0);
-  const tableStartX = leftMargin + (contentWidth - tableWidth) / 2;
-  const rowHeight = 16;
-  const headerHeight = 18;
-  
-  // Draw table header background
-  page.drawRectangle({
-    x: tableStartX,
-    y: yPos - headerHeight + 5,
-    width: tableWidth,
-    height: headerHeight,
-    color: BRAND_COLORS.tableHeader,
-  });
-  
-  // Draw header text
-  let colX = tableStartX;
-  for (const col of columns) {
-    const textWidth = helveticaBold.widthOfTextAtSize(col.header, 8);
-    let textX = colX + 3;
-    if (col.align === 'center') textX = colX + (col.width - textWidth) / 2;
-    if (col.align === 'right') textX = colX + col.width - textWidth - 3;
-    
-    page.drawText(col.header, {
-      x: textX,
-      y: yPos - 8,
-      size: 8,
-      font: helveticaBold,
-      color: BRAND_COLORS.white,
-    });
-    colX += col.width;
-  }
-  
-  yPos -= headerHeight;
-  
-  // Draw table rows
-  for (let i = 0; i < data.items.length; i++) {
-    const item = data.items[i];
+  const tableBody = data.items.map((item, index) => {
     const desc = [item.description, item.material_grade].filter(Boolean).join(' - ') || 'As per specification';
     
-    // Alternate row background
-    if (i % 2 === 1) {
-      page.drawRectangle({
-        x: tableStartX,
-        y: yPos - rowHeight + 5,
-        width: tableWidth,
-        height: rowHeight,
-        color: BRAND_COLORS.light,
-      });
+    if (data.isExport) {
+      return {
+        sr: (index + 1).toString(),
+        code: item.item_code || '-',
+        desc: desc,
+        hs: item.hs_code || '-',
+        qty: item.quantity?.toString() || '0',
+        unit: item.unit || 'PCS',
+        rate: item.price_per_pc ? item.price_per_pc.toFixed(4) : '-',
+        amount: item.line_amount ? item.line_amount.toFixed(2) : '-',
+      };
     }
-    
-    const rowData = data.isExport
-      ? [
-          (i + 1).toString(),
-          item.item_code || '-',
-          desc.substring(0, 35),
-          item.hs_code || '-',
-          item.quantity?.toString() || '0',
-          item.unit || 'PCS',
-          item.price_per_pc ? item.price_per_pc.toFixed(4) : '-',
-          item.line_amount ? item.line_amount.toFixed(2) : '-',
-        ]
-      : [
-          (i + 1).toString(),
-          item.item_code || '-',
-          desc.substring(0, 40),
-          item.quantity?.toString() || '0',
-          item.unit || 'PCS',
-          item.price_per_pc ? item.price_per_pc.toFixed(4) : '-',
-          item.line_amount ? item.line_amount.toFixed(2) : '-',
-        ];
-    
-    colX = tableStartX;
-    for (let j = 0; j < columns.length; j++) {
-      const col = columns[j];
-      const text = rowData[j];
-      const textWidth = helvetica.widthOfTextAtSize(text, 8);
-      let textX = colX + 3;
-      if (col.align === 'center') textX = colX + (col.width - textWidth) / 2;
-      if (col.align === 'right') textX = colX + col.width - textWidth - 3;
-      
-      page.drawText(text, {
-        x: textX,
-        y: yPos - 10,
-        size: 8,
-        font: helvetica,
-        color: BRAND_COLORS.dark,
-      });
-      colX += col.width;
-    }
-    
-    yPos -= rowHeight;
-  }
-  
-  // Table border
-  page.drawRectangle({
-    x: tableStartX,
-    y: yPos + 5,
-    width: tableWidth,
-    height: headerHeight + (data.items.length * rowHeight),
-    borderColor: BRAND_COLORS.primary,
-    borderWidth: 0.5,
+    return {
+      sr: (index + 1).toString(),
+      code: item.item_code || '-',
+      desc: desc,
+      qty: item.quantity?.toString() || '0',
+      unit: item.unit || 'PCS',
+      rate: item.price_per_pc ? item.price_per_pc.toFixed(4) : '-',
+      amount: item.line_amount ? item.line_amount.toFixed(2) : '-',
+    };
   });
   
-  // === TOTALS SECTION ===
-  yPos -= 20;
-  const totalsX = rightMargin - 150;
+  // Column widths for domestic (full width = 180mm)
+  const columnStyles = data.isExport
+    ? {
+        sr: { cellWidth: 12, halign: 'center' as const },
+        code: { cellWidth: 25, halign: 'left' as const },
+        desc: { cellWidth: 50, halign: 'left' as const },
+        hs: { cellWidth: 20, halign: 'center' as const },
+        qty: { cellWidth: 18, halign: 'right' as const },
+        unit: { cellWidth: 15, halign: 'center' as const },
+        rate: { cellWidth: 22, halign: 'right' as const },
+        amount: { cellWidth: 28, halign: 'right' as const },
+      }
+    : {
+        sr: { cellWidth: 12, halign: 'center' as const },
+        code: { cellWidth: 30, halign: 'left' as const },
+        desc: { cellWidth: 60, halign: 'left' as const },
+        qty: { cellWidth: 20, halign: 'right' as const },
+        unit: { cellWidth: 18, halign: 'center' as const },
+        rate: { cellWidth: 25, halign: 'right' as const },
+        amount: { cellWidth: 25, halign: 'right' as const },
+      };
   
-  page.drawText('Subtotal:', { x: totalsX, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
-  page.drawText(`${data.currency} ${data.subtotal.toFixed(2)}`, { x: rightMargin - 70, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  autoTable(doc, {
+    startY: yPos,
+    head: [tableColumns.map(col => col.header)],
+    body: tableBody.map(row => tableColumns.map(col => String(row[col.dataKey as keyof typeof row] ?? ''))),
+    margin: { left: leftMargin, right: 15 },
+    tableWidth: contentWidth,
+    styles: {
+      fontSize: 9,
+      cellPadding: 2,
+      lineColor: [30, 74, 141],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: [30, 74, 141],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
+    alternateRowStyles: {
+      fillColor: [245, 245, 245],
+    },
+    columnStyles: data.isExport
+      ? {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 45 },
+          3: { cellWidth: 20, halign: 'center' },
+          4: { cellWidth: 18, halign: 'right' },
+          5: { cellWidth: 15, halign: 'center' },
+          6: { cellWidth: 22, halign: 'right' },
+          7: { cellWidth: 28, halign: 'right' },
+        }
+      : {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 55 },
+          3: { cellWidth: 22, halign: 'right' },
+          4: { cellWidth: 18, halign: 'center' },
+          5: { cellWidth: 27, halign: 'right' },
+          6: { cellWidth: 28, halign: 'right' },
+        },
+    theme: 'grid',
+  });
+  
+  // Get Y position after table
+  yPos = (doc as any).lastAutoTable.finalY + 8;
+  
+  // ============= TOTALS SECTION =============
+  const totalsX = rightMargin - 75;
+  const amountX = rightMargin - 5;
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(33, 33, 33);
+  
+  doc.text('Subtotal:', totalsX, yPos);
+  doc.text(`${data.currency} ${data.subtotal.toFixed(2)}`, amountX, yPos, { align: 'right' });
   
   if (!data.isExport && data.gstPercent > 0) {
-    yPos -= 14;
-    page.drawText(`GST (${data.gstPercent}%):`, { x: totalsX, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
-    page.drawText(`${data.currency} ${data.gstAmount.toFixed(2)}`, { x: rightMargin - 70, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    yPos += 6;
+    doc.text(`GST (${data.gstPercent}%):`, totalsX, yPos);
+    doc.text(`${data.currency} ${data.gstAmount.toFixed(2)}`, amountX, yPos, { align: 'right' });
   }
   
-  yPos -= 5;
-  page.drawLine({
-    start: { x: totalsX, y: yPos },
-    end: { x: rightMargin - 10, y: yPos },
-    thickness: 0.5,
-    color: BRAND_COLORS.dark,
-  });
+  yPos += 3;
+  doc.setDrawColor(33, 33, 33);
+  doc.setLineWidth(0.3);
+  doc.line(totalsX, yPos, amountX, yPos);
   
-  yPos -= 14;
-  page.drawText('TOTAL:', { x: totalsX, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.dark });
-  page.drawText(`${data.currency} ${data.totalAmount.toFixed(2)}`, { x: rightMargin - 70, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.dark });
+  yPos += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('TOTAL:', totalsX, yPos);
+  doc.text(`${data.currency} ${data.totalAmount.toFixed(2)}`, amountX, yPos, { align: 'right' });
   
-  // === PAYMENT TERMS BOX ===
-  yPos -= 30;
-  const boxWidth = (contentWidth - 20) / 2;
-  const boxHeight = 55;
+  // ============= PAYMENT TERMS BOX =============
+  yPos += 12;
+  const boxWidth = contentWidth / 2 - 5;
+  const boxHeight = 30;
   
-  page.drawRectangle({
-    x: leftMargin,
-    y: yPos - boxHeight + 10,
-    width: boxWidth,
-    height: boxHeight,
-    color: BRAND_COLORS.light,
-  });
+  doc.setFillColor(245, 245, 245);
+  doc.rect(leftMargin, yPos, boxWidth, boxHeight, 'F');
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.rect(leftMargin, yPos, boxWidth, boxHeight, 'S');
   
-  page.drawText('Payment Terms', { x: leftMargin + 8, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(30, 74, 141);
+  doc.text('Payment Terms', leftMargin + 3, yPos + 6);
   
-  yPos -= 14;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(33, 33, 33);
+  
+  let paymentY = yPos + 12;
   if (data.advancePercent && data.advancePercent > 0) {
-    page.drawText(`Advance: ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, { 
-      x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark 
-    });
-    yPos -= 12;
+    doc.text(`Advance: ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, leftMargin + 3, paymentY);
+    paymentY += 5;
     const balance = data.totalAmount - (data.advanceAmount || 0);
-    page.drawText(`Balance: ${data.currency} ${balance.toFixed(2)}`, { 
-      x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark 
-    });
+    doc.text(`Balance: ${data.currency} ${balance.toFixed(2)}`, leftMargin + 3, paymentY);
+    paymentY += 5;
   }
   
-  yPos -= 12;
   if (data.balanceTerms) {
-    page.drawText(`Terms: ${data.balanceTerms}`, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.text(data.balanceTerms, leftMargin + 3, paymentY);
   } else if (data.paymentTermsDays) {
-    page.drawText(`Net ${data.paymentTermsDays} days`, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.text(`Net ${data.paymentTermsDays} days`, leftMargin + 3, paymentY);
   }
   
-  // === EXPORT DETAILS BOX (for export orders) ===
+  // ============= EXPORT DETAILS BOX (for export orders) =============
   if (data.isExport) {
-    let expY = yPos + 26;
-    page.drawRectangle({
-      x: leftMargin + boxWidth + 20,
-      y: expY - boxHeight + 10,
-      width: boxWidth,
-      height: boxHeight,
-      color: BRAND_COLORS.light,
-    });
+    const exportBoxX = leftMargin + boxWidth + 10;
+    doc.setFillColor(245, 245, 245);
+    doc.rect(exportBoxX, yPos, boxWidth, boxHeight, 'F');
+    doc.setDrawColor(200, 200, 200);
+    doc.rect(exportBoxX, yPos, boxWidth, boxHeight, 'S');
     
-    page.drawText('Export Details', { x: leftMargin + boxWidth + 28, y: expY, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 74, 141);
+    doc.text('Export Details', exportBoxX + 3, yPos + 6);
     
-    expY -= 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(33, 33, 33);
+    
+    let exportY = yPos + 12;
     if (data.incoterm) {
-      page.drawText(`Incoterms: ${data.incoterm}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
-      expY -= 12;
+      doc.text(`Incoterms: ${data.incoterm}`, exportBoxX + 3, exportY);
+      exportY += 5;
     }
     if (data.portOfLoading) {
-      page.drawText(`Port of Loading: ${data.portOfLoading}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
-      expY -= 12;
+      doc.text(`Port of Loading: ${data.portOfLoading}`, exportBoxX + 3, exportY);
+      exportY += 5;
     }
     if (data.portOfDischarge) {
-      page.drawText(`Port of Discharge: ${data.portOfDischarge}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
-      expY -= 12;
+      doc.text(`Port of Discharge: ${data.portOfDischarge}`, exportBoxX + 3, exportY);
+      exportY += 5;
     }
-    page.drawText(`Country of Origin: ${data.countryOfOrigin || 'India'}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    doc.text(`Country of Origin: ${data.countryOfOrigin || 'India'}`, exportBoxX + 3, exportY);
   }
   
-  // === BANK DETAILS ===
-  yPos -= 40;
-  page.drawText('Bank Details for Remittance', { x: leftMargin, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+  yPos += boxHeight + 10;
+  
+  // ============= BANK DETAILS =============
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(30, 74, 141);
+  doc.text('Bank Details for Remittance', leftMargin, yPos);
+  
+  yPos += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(33, 33, 33);
   
   const bankDetails = [
     'Account Name: R.V. INDUSTRIES',
@@ -480,53 +492,34 @@ async function generateProfessionalPdf(data: ProformaData): Promise<Uint8Array> 
     'Swift Code: BARBINBBRAN',
   ];
   
-  yPos -= 12;
   for (const detail of bankDetails) {
-    page.drawText(detail, { x: leftMargin, y: yPos, size: 8, font: helvetica, color: BRAND_COLORS.dark });
-    yPos -= 10;
+    doc.text(detail, leftMargin, yPos);
+    yPos += 4;
   }
   
-  // === FOOTER ===
-  const footerY = 50;
+  // ============= FOOTER =============
+  const footerY = pageHeight - 20;
   
-  page.drawLine({
-    start: { x: leftMargin, y: footerY + 25 },
-    end: { x: rightMargin, y: footerY + 25 },
-    thickness: 0.5,
-    color: BRAND_COLORS.primary,
-  });
+  // Footer divider line (two-color)
+  doc.setDrawColor(30, 74, 141);
+  doc.setLineWidth(0.8);
+  doc.line(leftMargin, footerY, leftMargin + contentWidth / 2, footerY);
+  doc.setDrawColor(211, 47, 47);
+  doc.line(leftMargin + contentWidth / 2, footerY, rightMargin, footerY);
   
-  const footerText1 = 'Email: sales@brasspartsindia.net | mitul@brasspartsindia.net';
-  const footerText2 = 'Web: www.brasspartsindia.net | Ph: +91-288-2541871';
-  const footer1Width = helvetica.widthOfTextAtSize(footerText1, 8);
-  const footer2Width = helvetica.widthOfTextAtSize(footerText2, 8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(33, 33, 33);
+  doc.text('Email: sales@brasspartsindia.net | mitul@brasspartsindia.net', pageWidth / 2, footerY + 5, { align: 'center' });
+  doc.text('Web: www.brasspartsindia.net | Ph: +91-288-2541871', pageWidth / 2, footerY + 10, { align: 'center' });
   
-  page.drawText(footerText1, { 
-    x: leftMargin + (contentWidth - footer1Width) / 2, 
-    y: footerY + 15, 
-    size: 8, 
-    font: helvetica, 
-    color: BRAND_COLORS.dark 
-  });
-  page.drawText(footerText2, { 
-    x: leftMargin + (contentWidth - footer2Width) / 2, 
-    y: footerY + 5, 
-    size: 8, 
-    font: helvetica, 
-    color: BRAND_COLORS.dark 
-  });
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text('This is a computer-generated Proforma Invoice and is valid without signature.', pageWidth / 2, footerY + 15, { align: 'center' });
   
-  const disclaimerText = 'This is a computer-generated Proforma Invoice and is valid without signature.';
-  const disclaimerWidth = helveticaOblique.widthOfTextAtSize(disclaimerText, 7);
-  page.drawText(disclaimerText, { 
-    x: leftMargin + (contentWidth - disclaimerWidth) / 2, 
-    y: footerY - 8, 
-    size: 7, 
-    font: helveticaOblique, 
-    color: rgb(0.4, 0.4, 0.4),
-  });
-  
-  return await pdfDoc.save();
+  // Return as bytes
+  return doc.output('arraybuffer') as unknown as Uint8Array;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -596,7 +589,7 @@ const handler = async (req: Request): Promise<Response> => {
       customer = customerData;
     }
     
-    // Check for existing proforma (avoid duplicates)
+    // Check for existing proforma (avoid duplicates) - DELETE if exists to regenerate
     const proformaNo = `${order.so_id}-PI`;
     const { data: existingProforma } = await supabase
       .from('proforma_invoices')
@@ -605,28 +598,22 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('proforma_no', proformaNo)
       .maybeSingle();
     
-    // If proforma already exists, return signed URL for existing file
-    if (existingProforma?.file_path) {
-      console.log('Proforma already exists, returning signed URL');
+    // Delete existing proforma to regenerate with new formatting
+    if (existingProforma) {
+      console.log('Deleting existing proforma to regenerate with new format...');
       
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from('proforma-invoices')
-        .createSignedUrl(existingProforma.file_path, 3600);
-      
-      if (signedUrlError) {
-        throw new Error(`Failed to create signed URL: ${signedUrlError.message}`);
+      // Delete from storage
+      if (existingProforma.file_path) {
+        await supabase.storage
+          .from('proforma-invoices')
+          .remove([existingProforma.file_path]);
       }
       
-      return new Response(JSON.stringify({
-        success: true,
-        proformaId: existingProforma.id,
-        proformaNo,
-        downloadUrl: signedUrlData.signedUrl,
-        isExisting: true
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders }
-      });
+      // Delete from database
+      await supabase
+        .from('proforma_invoices')
+        .delete()
+        .eq('id', existingProforma.id);
     }
     
     // Parse items from sales order
@@ -668,9 +655,9 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     
-    // Generate professional PDF
-    console.log('Generating professional PDF with branding...');
-    const pdfBytes = await generateProfessionalPdf({
+    // Generate professional PDF using jsPDF with autoTable
+    console.log('Generating professional PDF with jsPDF and autoTable...');
+    const pdfBytes = generateProfessionalPdf({
       proformaNo,
       date: new Date().toLocaleDateString('en-GB'),
       soId: order.so_id,
@@ -768,7 +755,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(`Failed to save proforma record: ${dbError.message}`);
     }
     
-    console.log(`Proforma ${proformaNo} generated successfully with professional formatting`);
+    console.log(`Proforma ${proformaNo} generated successfully with jsPDF professional formatting`);
     
     return new Response(JSON.stringify({
       success: true,
