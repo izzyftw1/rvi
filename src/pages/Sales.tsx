@@ -143,17 +143,27 @@ export default function Sales() {
       .order("created_at", { ascending: false });
     
     if (orders) {
-      const { data: lineItems } = await supabase
-        .from("sales_order_line_items" as any)
-        .select("*");
+      // Use items JSONB from sales_orders - this is the source of truth
+      // Calculate totals from line items if total_amount is missing
+      const ordersWithCalculatedTotals = orders.map(order => {
+        const items = Array.isArray(order.items) ? order.items : [];
+        const calculatedSubtotal = items.reduce((sum: number, item: any) => {
+          const lineAmount = item.line_amount ?? ((item.quantity || 0) * (item.price_per_pc || 0));
+          return sum + lineAmount;
+        }, 0);
+        
+        return {
+          ...order,
+          // Use items JSONB directly as the line items source
+          sales_order_items: items,
+          // Use stored total_amount, or calculate from items if missing/zero
+          total_amount: order.total_amount && order.total_amount > 0 
+            ? order.total_amount 
+            : calculatedSubtotal
+        };
+      });
       
-      const ordersWithItems = orders.map(order => ({
-        ...order,
-        sales_order_items: lineItems?.filter((li: any) => li.sales_order_id === order.id) || [],
-        total_amount: 0 // Will be calculated from line items after migration
-      }));
-      
-      setSalesOrders(ordersWithItems);
+      setSalesOrders(ordersWithCalculatedTotals);
     }
   };
 
@@ -896,112 +906,219 @@ export default function Sales() {
             <CardTitle>Sales Orders</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {loading && <p className="text-muted-foreground">Loading...</p>}
-              {salesOrders.map(order => (
-                <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold">{order.so_id}</span>
-                      <Badge variant="outline">{order.status}</Badge>
-                      <span className="text-sm text-muted-foreground">{order.customer}</span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      PO: {order.po_number} | {order.sales_order_items?.length || 0} items | {order.currency} {order.total_amount?.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    {order.status === 'approved' && (
-                      <>
-                        <Button 
-                          size="sm" 
-                          variant="default"
-                          onClick={() => handleDownloadProforma(order)}
-                          title="Generate & Download Proforma Invoice"
-                          disabled={loading}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>SO #</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="text-center">Items</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && salesOrders.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      No sales orders found
+                    </TableCell>
+                  </TableRow>
+                )}
+                {salesOrders.map(order => {
+                  const itemCount = order.sales_order_items?.length || 0;
+                  const total = order.total_amount || 0;
+                  
+                  return (
+                    <TableRow key={order.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{order.so_id}</TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={order.status === 'approved' ? 'default' : 'secondary'}
+                          className={order.status === 'approved' ? 'bg-green-600' : ''}
                         >
-                          <Download className="h-4 w-4 mr-1" />
-                          Download PI
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleEmailProforma(order)}
-                          title="Email Proforma Invoice to Customer"
-                          disabled={loading}
-                        >
-                          Email PI
-                        </Button>
-                      </>
-                    )}
-                    <Button size="sm" variant="outline" onClick={() => {
-                      setSelectedOrder(order);
-                      setIsViewDialogOpen(true);
-                    }}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDeleteOrder(order.id, order.so_id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">{order.customer}</TableCell>
+                      <TableCell className="text-center">
+                        {itemCount > 0 ? itemCount : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {total > 0 ? (
+                          <span>{order.currency} {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {order.status === 'approved' && (
+                            <>
+                              <Button 
+                                size="sm" 
+                                variant="default"
+                                onClick={() => handleDownloadProforma(order)}
+                                title="Download Proforma Invoice"
+                                disabled={loading}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setIsViewDialogOpen(true);
+                            }}
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => handleDeleteOrder(order.id, order.so_id)}
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </div>
 
       {/* View Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-6xl">
-          <DialogHeader>
-            <DialogTitle>Sales Order: {selectedOrder?.so_id}</DialogTitle>
-          </DialogHeader>
-          {selectedOrder && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Customer:</span>
-                  <p className="font-medium">{selectedOrder.customer}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">PO Number:</span>
-                  <p className="font-medium">{selectedOrder.po_number}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Total:</span>
-                  <p className="font-medium">{selectedOrder.currency} {selectedOrder.total_amount?.toFixed(2)}</p>
-                </div>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader className="border-b pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-xl">{selectedOrder?.so_id}</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">{selectedOrder?.customer}</p>
               </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Item Code</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Alloy</TableHead>
-                    <TableHead>Cycle Time</TableHead>
-                    <TableHead>Price/pc</TableHead>
-                    <TableHead>Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedOrder.sales_order_items?.map((item: any) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.line_number}</TableCell>
-                      <TableCell>{item.item_code}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>{item.alloy}</TableCell>
-                      <TableCell>{item.cycle_time_seconds ? `${item.cycle_time_seconds}s` : '-'}</TableCell>
-                      <TableCell>{item.price_per_pc?.toFixed(4)}</TableCell>
-                      <TableCell className="font-medium">{item.line_amount?.toFixed(2)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="text-right">
+                <Badge 
+                  variant={selectedOrder?.status === 'approved' ? 'default' : 'secondary'}
+                  className={selectedOrder?.status === 'approved' ? 'bg-green-600' : ''}
+                >
+                  {selectedOrder?.status}
+                </Badge>
+              </div>
             </div>
-          )}
+          </DialogHeader>
+          
+          {selectedOrder && (() => {
+            const items = selectedOrder.sales_order_items || [];
+            const subtotal = items.reduce((sum: number, item: any) => {
+              const lineAmt = item.line_amount ?? ((item.quantity || 0) * (item.price_per_pc || 0));
+              return sum + lineAmt;
+            }, 0);
+            const hasItems = items.length > 0;
+            
+            return (
+              <div className="space-y-6 py-2">
+                {/* Header Info */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">PO Number</span>
+                    <p className="font-medium">{selectedOrder.po_number || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">PO Date</span>
+                    <p className="font-medium">{selectedOrder.po_date || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">Currency</span>
+                    <p className="font-medium">{selectedOrder.currency}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">Total</span>
+                    <p className="font-semibold text-lg">
+                      {selectedOrder.currency} {(selectedOrder.total_amount || subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Line Items */}
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Line Items</h4>
+                  {!hasItems ? (
+                    <div className="text-center py-8 border rounded-lg bg-muted/20">
+                      <p className="text-muted-foreground">No line items in this order</p>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="w-16">#</TableHead>
+                            <TableHead>Item Code</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
+                            <TableHead className="text-right">Price/pc</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {items.map((item: any, idx: number) => {
+                            const lineAmount = item.line_amount ?? ((item.quantity || 0) * (item.price_per_pc || 0));
+                            return (
+                              <TableRow key={idx}>
+                                <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                                <TableCell className="font-medium">{item.item_code}</TableCell>
+                                <TableCell className="text-right">{(item.quantity || 0).toLocaleString()}</TableCell>
+                                <TableCell className="text-right">
+                                  {item.price_per_pc ? item.price_per_pc.toFixed(4) : '—'}
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
+                                  {lineAmount > 0 ? lineAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Totals */}
+                {hasItems && subtotal > 0 && (
+                  <div className="flex justify-end">
+                    <div className="w-64 space-y-2 bg-muted/20 p-4 rounded-lg text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-medium">
+                          {selectedOrder.currency} {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-t pt-2 text-base font-semibold">
+                        <span>Total</span>
+                        <span>
+                          {selectedOrder.currency} {(selectedOrder.total_amount || subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
