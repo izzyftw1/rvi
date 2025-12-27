@@ -100,8 +100,11 @@ export default function Sales() {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders(), loadHistoricalLineItems(), loadMaterialSpecs()]);
+    // Load only essential data first - historical line items loaded lazily on demand
+    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders(), loadMaterialSpecs()]);
     setLoading(false);
+    // Load historical line items in background (not blocking)
+    loadHistoricalLineItems();
   };
 
   const loadMaterialSpecs = async () => {
@@ -113,10 +116,12 @@ export default function Sales() {
   };
 
   const loadHistoricalLineItems = async () => {
+    // Only fetch recent line items for auto-populate (limit to last 100)
     const { data } = await supabase
       .from("sales_order_line_items" as any)
-      .select("*")
-      .order("created_at", { ascending: false });
+      .select("item_code, alloy, material_size_mm, gross_weight_per_pc_grams, net_weight_per_pc_grams, drawing_number, price_per_pc, cycle_time_seconds, created_at")
+      .order("created_at", { ascending: false })
+      .limit(100);
     if (data) setHistoricalLineItems(data);
   };
 
