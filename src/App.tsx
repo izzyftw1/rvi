@@ -2,12 +2,14 @@
  * IMPORTANT: When adding new routes, also update src/config/navigationConfig.ts
  * to make them accessible in the navigation menu!
  */
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { MainLayout } from "@/components/MainLayout";
+import { ensureCompanyLogoUploaded } from "@/utils/uploadCompanyLogo";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
@@ -90,6 +92,8 @@ import PartnerDashboard from "./pages/PartnerDashboard";
 import ExternalAnalytics from "./pages/ExternalAnalytics";
 import FinishedGoodsInventory from "./pages/FinishedGoodsInventory";
 
+// Initialize company logo upload once on app load
+ensureCompanyLogoUploaded();
 
 const App = () => (
   <>

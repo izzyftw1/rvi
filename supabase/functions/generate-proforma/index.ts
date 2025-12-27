@@ -69,25 +69,73 @@ const BRAND_COLORS = {
   tableBorder: '#1E4A8D',
 };
 
-// Function to fetch logo and convert to base64
-async function fetchLogoAsBase64(supabaseUrl: string): Promise<string | null> {
+// deno-lint-ignore no-explicit-any
+async function fetchLogoFromStorage(supabaseClient: any): Promise<{ base64: string | null; bytes: number; status: string }> {
+  const LOGO_PATH = 'rv-logo.png';
+  const BUCKET = 'company-assets';
+  
+  console.log(`[LOGO] Fetching logo from bucket: ${BUCKET}, path: ${LOGO_PATH}`);
+  
   try {
-    // Try to fetch from company-assets bucket
-    const logoUrl = `${supabaseUrl}/storage/v1/object/public/company-assets/rv-logo.png`;
-    console.log('Fetching logo from:', logoUrl);
+    // Use service role client to download the file
+    const { data, error } = await supabaseClient.storage
+      .from(BUCKET)
+      .download(LOGO_PATH);
     
-    const response = await fetch(logoUrl);
-    if (!response.ok) {
-      console.log('Logo not found in storage, will skip logo');
-      return null;
+    if (error) {
+      console.log(`[LOGO] Storage error: ${error.message}`);
+      return { base64: null, bytes: 0, status: `storage_error: ${error.message}` };
     }
     
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    return `data:image/png;base64,${base64}`;
+    if (!data) {
+      console.log('[LOGO] No data returned from storage');
+      return { base64: null, bytes: 0, status: 'no_data_returned' };
+    }
+    
+    // Convert blob to ArrayBuffer
+    const arrayBuffer = await data.arrayBuffer();
+    const bytes = arrayBuffer.byteLength;
+    
+    console.log(`[LOGO] Downloaded ${bytes} bytes, type: ${data.type}`);
+    
+    if (bytes === 0) {
+      console.log('[LOGO] File is empty (0 bytes)');
+      return { base64: null, bytes: 0, status: 'empty_file' };
+    }
+    
+    // Validate it's a PNG by checking magic bytes
+    const uint8 = new Uint8Array(arrayBuffer);
+    const isPng = uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47;
+    const isJpeg = uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF;
+    
+    if (!isPng && !isJpeg) {
+      console.log(`[LOGO] Invalid image format. First 4 bytes: ${uint8[0]}, ${uint8[1]}, ${uint8[2]}, ${uint8[3]}`);
+      return { base64: null, bytes, status: 'invalid_format' };
+    }
+    
+    const imageType = isPng ? 'PNG' : 'JPEG';
+    console.log(`[LOGO] Valid ${imageType} image detected`);
+    
+    // Convert to base64
+    let binary = '';
+    for (let i = 0; i < uint8.length; i++) {
+      binary += String.fromCharCode(uint8[i]);
+    }
+    const base64 = btoa(binary);
+    const mimeType = isPng ? 'image/png' : 'image/jpeg';
+    
+    console.log(`[LOGO] Successfully converted to base64, length: ${base64.length} chars`);
+    
+    return { 
+      base64: `data:${mimeType};base64,${base64}`, 
+      bytes, 
+      status: `success_${imageType.toLowerCase()}` 
+    };
+    
   } catch (error) {
-    console.error('Error fetching logo:', error);
-    return null;
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[LOGO] Exception during fetch: ${errMsg}`);
+    return { base64: null, bytes: 0, status: `exception: ${errMsg}` };
   }
 }
 
@@ -111,17 +159,22 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   let textStartX = leftMargin;
   
   // Add actual logo image if available
-  if (logoBase64) {
+  if (logoBase64 && logoBase64.startsWith('data:image')) {
     try {
-      doc.addImage(logoBase64, 'PNG', leftMargin, yPos, logoWidth, logoHeight);
+      // Determine format from data URI
+      const format = logoBase64.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(logoBase64, format, leftMargin, yPos, logoWidth, logoHeight);
       textStartX = leftMargin + logoWidth + 5;
-      console.log('Logo added successfully');
+      console.log(`[PDF] Logo added successfully as ${format}`);
     } catch (e) {
-      console.error('Error adding logo image:', e);
+      console.error('[PDF] Error adding logo image:', e);
+      // Fallback: show company name prominently
+      console.log('[PDF] Using text fallback for logo');
       textStartX = leftMargin;
     }
   } else {
-    // No logo available, just use text
+    // No logo available - use text header as fallback
+    console.log('[PDF] No valid logo, using text-only header');
     textStartX = leftMargin;
   }
   
@@ -678,9 +731,11 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     
-    // Fetch the company logo
-    console.log('Fetching company logo...');
-    const logoBase64 = await fetchLogoAsBase64(supabaseUrl);
+    // Fetch the company logo using service role client
+    console.log('[LOGO] Starting logo fetch...');
+    const logoResult = await fetchLogoFromStorage(supabase);
+    console.log(`[LOGO] Fetch result - Status: ${logoResult.status}, Bytes: ${logoResult.bytes}, Has base64: ${!!logoResult.base64}`);
+    const logoBase64 = logoResult.base64;
     
     // Generate professional PDF using jsPDF with autoTable
     console.log('Generating professional PDF with jsPDF and autoTable...');
@@ -782,14 +837,17 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(`Failed to save proforma record: ${dbError.message}`);
     }
     
-    console.log(`Proforma ${proformaNo} generated successfully with jsPDF professional formatting`);
+    console.log(`[SUCCESS] Proforma ${proformaNo} generated with logo status: ${logoResult.status}`);
     
     return new Response(JSON.stringify({
       success: true,
       proformaId: proformaRecord.id,
       proformaNo,
       downloadUrl: signedUrlData.signedUrl,
-      isExisting: false
+      isExisting: false,
+      logoPath: 'company-assets/rv-logo.png',
+      logoBytesLoaded: logoResult.bytes,
+      logoRenderResult: logoResult.status
     }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }
