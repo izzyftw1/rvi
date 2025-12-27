@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { PDFDocument, rgb, StandardFonts, PageSizes } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,11 +24,7 @@ interface LineItem {
   hs_code?: string;
 }
 
-// Generate PDF content using jsPDF-compatible structure
-// Since we can't use jsPDF in Deno, we'll generate a proper PDF manually
-// Using a simplified approach with PDF primitives
-
-function generatePdfBytes(data: {
+interface ProformaData {
   proformaNo: string;
   date: string;
   soId: string;
@@ -59,193 +56,477 @@ function generatePdfBytes(data: {
   countryOfOrigin?: string;
   validityDays?: number;
   notes?: string;
-}): Uint8Array {
-  // Create a simple PDF structure
-  // This is a minimal PDF that will display the proforma invoice information
+}
+
+// RV Industries Brand Colors (RGB 0-1 scale for pdf-lib)
+const BRAND_COLORS = {
+  primary: rgb(30/255, 74/255, 141/255),     // Brand Blue #1E4A8D
+  accent: rgb(211/255, 47/255, 47/255),      // Brand Red #D32F2F
+  dark: rgb(33/255, 33/255, 33/255),         // Dark gray
+  light: rgb(245/255, 245/255, 245/255),     // Light gray
+  white: rgb(1, 1, 1),                        // White
+  tableHeader: rgb(30/255, 74/255, 141/255), // Same as primary
+};
+
+async function generateProfessionalPdf(data: ProformaData): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage(PageSizes.A4);
+  const { width, height } = page.getSize();
   
-  const encoder = new TextEncoder();
+  // Load fonts
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
   
-  // Build content string for the PDF
-  const lines: string[] = [];
+  const leftMargin = 40;
+  const rightMargin = width - 40;
+  const contentWidth = rightMargin - leftMargin;
+  let yPos = height - 40;
   
-  // Header
-  lines.push("R.V. INDUSTRIES");
-  lines.push("Precision Brass Components");
-  lines.push("Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India");
-  lines.push("");
-  lines.push("PROFORMA INVOICE");
-  lines.push("");
-  lines.push(`Proforma Invoice No: ${data.proformaNo}`);
-  lines.push(`Date: ${data.date}`);
-  if (data.soId) lines.push(`Sales Order No: ${data.soId}`);
-  if (data.poNumber) lines.push(`Customer PO No: ${data.poNumber}`);
-  if (data.poDate) lines.push(`PO Date: ${data.poDate}`);
+  // === HEADER SECTION ===
+  // Company Name - Large Blue Title
+  page.drawText('R.V. INDUSTRIES', {
+    x: leftMargin,
+    y: yPos,
+    size: 22,
+    font: helveticaBold,
+    color: BRAND_COLORS.primary,
+  });
+  
+  // Certifications on the right
+  const certX = rightMargin;
+  page.drawText('ISO 9001:2015', {
+    x: certX - 70,
+    y: yPos,
+    size: 7,
+    font: helveticaBold,
+    color: BRAND_COLORS.primary,
+  });
+  page.drawText('TÜV SÜD CERTIFIED', {
+    x: certX - 85,
+    y: yPos - 10,
+    size: 7,
+    font: helveticaBold,
+    color: BRAND_COLORS.accent,
+  });
+  page.drawText('RoHS COMPLIANT', {
+    x: certX - 75,
+    y: yPos - 20,
+    size: 7,
+    font: helveticaBold,
+    color: BRAND_COLORS.primary,
+  });
+  page.drawText('CE MARKED', {
+    x: certX - 60,
+    y: yPos - 30,
+    size: 7,
+    font: helveticaBold,
+    color: BRAND_COLORS.accent,
+  });
+  
+  yPos -= 18;
+  page.drawText('Precision Brass Components', {
+    x: leftMargin,
+    y: yPos,
+    size: 10,
+    font: helvetica,
+    color: BRAND_COLORS.dark,
+  });
+  
+  yPos -= 14;
+  page.drawText('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', {
+    x: leftMargin,
+    y: yPos,
+    size: 8,
+    font: helvetica,
+    color: BRAND_COLORS.dark,
+  });
+  
+  // Header divider line (two-color)
+  yPos -= 12;
+  const midPoint = leftMargin + contentWidth / 2;
+  page.drawLine({
+    start: { x: leftMargin, y: yPos },
+    end: { x: midPoint, y: yPos },
+    thickness: 2,
+    color: BRAND_COLORS.primary,
+  });
+  page.drawLine({
+    start: { x: midPoint, y: yPos },
+    end: { x: rightMargin, y: yPos },
+    thickness: 2,
+    color: BRAND_COLORS.accent,
+  });
+  
+  // === PROFORMA INVOICE TITLE BAR ===
+  yPos -= 20;
+  page.drawRectangle({
+    x: leftMargin,
+    y: yPos - 8,
+    width: contentWidth,
+    height: 22,
+    color: BRAND_COLORS.primary,
+  });
+  
+  page.drawText('PROFORMA INVOICE', {
+    x: leftMargin + contentWidth / 2 - 55,
+    y: yPos,
+    size: 14,
+    font: helveticaBold,
+    color: BRAND_COLORS.white,
+  });
+  
+  // === DOCUMENT DETAILS (Two columns) ===
+  yPos -= 35;
+  const col1X = leftMargin;
+  const col2X = leftMargin + contentWidth / 2 + 10;
+  
+  // Left column
+  page.drawText('Proforma Invoice No:', { x: col1X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+  page.drawText(data.proformaNo, { x: col1X + 95, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  
+  // Right column
+  page.drawText('Date:', { x: col2X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+  page.drawText(data.date, { x: col2X + 30, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  
+  yPos -= 14;
+  if (data.soId) {
+    page.drawText('Sales Order No:', { x: col1X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+    page.drawText(data.soId, { x: col1X + 80, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  }
+  
   if (data.validityDays) {
     const validDate = new Date();
     validDate.setDate(validDate.getDate() + data.validityDays);
-    lines.push(`Valid Until: ${validDate.toLocaleDateString('en-GB')}`);
+    page.drawText('Valid Until:', { x: col2X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+    page.drawText(validDate.toLocaleDateString('en-GB'), { x: col2X + 55, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
   }
-  lines.push("");
   
-  // Customer
-  lines.push("Bill To:");
-  lines.push(data.customer.name);
-  if (data.customer.address) lines.push(data.customer.address);
-  const location = [data.customer.city, data.customer.state, data.customer.pincode].filter(Boolean).join(', ');
-  if (location) lines.push(location);
-  if (data.customer.country) lines.push(data.customer.country);
-  if (data.customer.gst_number && !data.isExport) lines.push(`GST No: ${data.customer.gst_number}`);
-  lines.push("");
-  
-  // Items table header
-  if (data.isExport) {
-    lines.push("Sr | Item Code | Description | HS Code | Qty | Unit | Rate | Amount");
-  } else {
-    lines.push("Sr | Item Code | Description | Qty | Unit | Rate | Amount");
+  yPos -= 14;
+  if (data.poNumber) {
+    page.drawText('Customer PO No:', { x: col1X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+    page.drawText(data.poNumber, { x: col1X + 85, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
   }
-  lines.push("-".repeat(80));
   
-  // Items
-  data.items.forEach((item, index) => {
-    const desc = [item.description, item.material_grade].filter(Boolean).join(' - ') || 'As per specification';
-    if (data.isExport) {
-      lines.push(`${index + 1} | ${item.item_code || '-'} | ${desc} | ${item.hs_code || '-'} | ${item.quantity} | ${item.unit || 'PCS'} | ${item.price_per_pc?.toFixed(4) || '-'} | ${item.line_amount?.toFixed(2) || '-'}`);
-    } else {
-      lines.push(`${index + 1} | ${item.item_code || '-'} | ${desc} | ${item.quantity} | ${item.unit || 'PCS'} | ${item.price_per_pc?.toFixed(4) || '-'} | ${item.line_amount?.toFixed(2) || '-'}`);
-    }
+  if (data.poDate) {
+    page.drawText('PO Date:', { x: col2X, y: yPos, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+    page.drawText(data.poDate, { x: col2X + 45, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  }
+  
+  // === CUSTOMER DETAILS BOX ===
+  yPos -= 25;
+  const customerBoxHeight = 65;
+  page.drawRectangle({
+    x: leftMargin,
+    y: yPos - customerBoxHeight + 10,
+    width: contentWidth,
+    height: customerBoxHeight,
+    color: BRAND_COLORS.light,
   });
-  lines.push("-".repeat(80));
-  lines.push("");
   
-  // Totals
-  lines.push(`Subtotal: ${data.currency} ${data.subtotal.toFixed(2)}`);
+  page.drawText('Bill To:', { x: leftMargin + 8, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+  
+  yPos -= 14;
+  page.drawText(data.customer.name, { x: leftMargin + 8, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.dark });
+  
+  if (data.customer.address) {
+    yPos -= 12;
+    page.drawText(data.customer.address, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  }
+  
+  const location = [data.customer.city, data.customer.state, data.customer.pincode].filter(Boolean).join(', ');
+  if (location) {
+    yPos -= 12;
+    page.drawText(location, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  }
+  
+  if (data.customer.country) {
+    yPos -= 12;
+    page.drawText(data.customer.country, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  }
+  
+  // GST on the right side of customer box (for domestic orders)
+  if (data.customer.gst_number && !data.isExport) {
+    page.drawText('GST No:', { x: col2X, y: yPos + 24, size: 9, font: helveticaBold, color: BRAND_COLORS.dark });
+    page.drawText(data.customer.gst_number, { x: col2X + 45, y: yPos + 24, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  }
+  
+  // === ITEMS TABLE ===
+  yPos -= 25;
+  
+  // Table column definitions
+  const columns = data.isExport
+    ? [
+        { header: 'Sr', width: 25, align: 'center' as const },
+        { header: 'Item Code', width: 60, align: 'left' as const },
+        { header: 'Description / Material', width: 130, align: 'left' as const },
+        { header: 'HS Code', width: 50, align: 'center' as const },
+        { header: 'Qty', width: 40, align: 'right' as const },
+        { header: 'Unit', width: 35, align: 'center' as const },
+        { header: `Rate (${data.currency})`, width: 55, align: 'right' as const },
+        { header: `Amount (${data.currency})`, width: 65, align: 'right' as const },
+      ]
+    : [
+        { header: 'Sr', width: 25, align: 'center' as const },
+        { header: 'Item Code', width: 70, align: 'left' as const },
+        { header: 'Description / Material Grade', width: 155, align: 'left' as const },
+        { header: 'Qty', width: 45, align: 'right' as const },
+        { header: 'Unit', width: 35, align: 'center' as const },
+        { header: `Rate (${data.currency})`, width: 60, align: 'right' as const },
+        { header: `Amount (${data.currency})`, width: 70, align: 'right' as const },
+      ];
+  
+  const tableWidth = columns.reduce((sum, col) => sum + col.width, 0);
+  const tableStartX = leftMargin + (contentWidth - tableWidth) / 2;
+  const rowHeight = 16;
+  const headerHeight = 18;
+  
+  // Draw table header background
+  page.drawRectangle({
+    x: tableStartX,
+    y: yPos - headerHeight + 5,
+    width: tableWidth,
+    height: headerHeight,
+    color: BRAND_COLORS.tableHeader,
+  });
+  
+  // Draw header text
+  let colX = tableStartX;
+  for (const col of columns) {
+    const textWidth = helveticaBold.widthOfTextAtSize(col.header, 8);
+    let textX = colX + 3;
+    if (col.align === 'center') textX = colX + (col.width - textWidth) / 2;
+    if (col.align === 'right') textX = colX + col.width - textWidth - 3;
+    
+    page.drawText(col.header, {
+      x: textX,
+      y: yPos - 8,
+      size: 8,
+      font: helveticaBold,
+      color: BRAND_COLORS.white,
+    });
+    colX += col.width;
+  }
+  
+  yPos -= headerHeight;
+  
+  // Draw table rows
+  for (let i = 0; i < data.items.length; i++) {
+    const item = data.items[i];
+    const desc = [item.description, item.material_grade].filter(Boolean).join(' - ') || 'As per specification';
+    
+    // Alternate row background
+    if (i % 2 === 1) {
+      page.drawRectangle({
+        x: tableStartX,
+        y: yPos - rowHeight + 5,
+        width: tableWidth,
+        height: rowHeight,
+        color: BRAND_COLORS.light,
+      });
+    }
+    
+    const rowData = data.isExport
+      ? [
+          (i + 1).toString(),
+          item.item_code || '-',
+          desc.substring(0, 35),
+          item.hs_code || '-',
+          item.quantity?.toString() || '0',
+          item.unit || 'PCS',
+          item.price_per_pc ? item.price_per_pc.toFixed(4) : '-',
+          item.line_amount ? item.line_amount.toFixed(2) : '-',
+        ]
+      : [
+          (i + 1).toString(),
+          item.item_code || '-',
+          desc.substring(0, 40),
+          item.quantity?.toString() || '0',
+          item.unit || 'PCS',
+          item.price_per_pc ? item.price_per_pc.toFixed(4) : '-',
+          item.line_amount ? item.line_amount.toFixed(2) : '-',
+        ];
+    
+    colX = tableStartX;
+    for (let j = 0; j < columns.length; j++) {
+      const col = columns[j];
+      const text = rowData[j];
+      const textWidth = helvetica.widthOfTextAtSize(text, 8);
+      let textX = colX + 3;
+      if (col.align === 'center') textX = colX + (col.width - textWidth) / 2;
+      if (col.align === 'right') textX = colX + col.width - textWidth - 3;
+      
+      page.drawText(text, {
+        x: textX,
+        y: yPos - 10,
+        size: 8,
+        font: helvetica,
+        color: BRAND_COLORS.dark,
+      });
+      colX += col.width;
+    }
+    
+    yPos -= rowHeight;
+  }
+  
+  // Table border
+  page.drawRectangle({
+    x: tableStartX,
+    y: yPos + 5,
+    width: tableWidth,
+    height: headerHeight + (data.items.length * rowHeight),
+    borderColor: BRAND_COLORS.primary,
+    borderWidth: 0.5,
+  });
+  
+  // === TOTALS SECTION ===
+  yPos -= 20;
+  const totalsX = rightMargin - 150;
+  
+  page.drawText('Subtotal:', { x: totalsX, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  page.drawText(`${data.currency} ${data.subtotal.toFixed(2)}`, { x: rightMargin - 70, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+  
   if (!data.isExport && data.gstPercent > 0) {
-    lines.push(`GST (${data.gstPercent}%): ${data.currency} ${data.gstAmount.toFixed(2)}`);
+    yPos -= 14;
+    page.drawText(`GST (${data.gstPercent}%):`, { x: totalsX, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+    page.drawText(`${data.currency} ${data.gstAmount.toFixed(2)}`, { x: rightMargin - 70, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
   }
-  lines.push(`TOTAL: ${data.currency} ${data.totalAmount.toFixed(2)}`);
-  lines.push("");
   
-  // Payment Terms
-  lines.push("Payment Terms:");
+  yPos -= 5;
+  page.drawLine({
+    start: { x: totalsX, y: yPos },
+    end: { x: rightMargin - 10, y: yPos },
+    thickness: 0.5,
+    color: BRAND_COLORS.dark,
+  });
+  
+  yPos -= 14;
+  page.drawText('TOTAL:', { x: totalsX, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.dark });
+  page.drawText(`${data.currency} ${data.totalAmount.toFixed(2)}`, { x: rightMargin - 70, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.dark });
+  
+  // === PAYMENT TERMS BOX ===
+  yPos -= 30;
+  const boxWidth = (contentWidth - 20) / 2;
+  const boxHeight = 55;
+  
+  page.drawRectangle({
+    x: leftMargin,
+    y: yPos - boxHeight + 10,
+    width: boxWidth,
+    height: boxHeight,
+    color: BRAND_COLORS.light,
+  });
+  
+  page.drawText('Payment Terms', { x: leftMargin + 8, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+  
+  yPos -= 14;
   if (data.advancePercent && data.advancePercent > 0) {
-    lines.push(`Advance: ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`);
+    page.drawText(`Advance: ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, { 
+      x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark 
+    });
+    yPos -= 12;
     const balance = data.totalAmount - (data.advanceAmount || 0);
-    lines.push(`Balance: ${data.currency} ${balance.toFixed(2)}`);
+    page.drawText(`Balance: ${data.currency} ${balance.toFixed(2)}`, { 
+      x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark 
+    });
   }
+  
+  yPos -= 12;
   if (data.balanceTerms) {
-    lines.push(`Terms: ${data.balanceTerms}`);
+    page.drawText(`Terms: ${data.balanceTerms}`, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
   } else if (data.paymentTermsDays) {
-    lines.push(`Net ${data.paymentTermsDays} days`);
+    page.drawText(`Net ${data.paymentTermsDays} days`, { x: leftMargin + 8, y: yPos, size: 9, font: helvetica, color: BRAND_COLORS.dark });
   }
-  lines.push("");
   
-  // Export details
+  // === EXPORT DETAILS BOX (for export orders) ===
   if (data.isExport) {
-    lines.push("Export Details:");
-    if (data.incoterm) lines.push(`Incoterms: ${data.incoterm}`);
-    if (data.portOfLoading) lines.push(`Port of Loading: ${data.portOfLoading}`);
-    if (data.portOfDischarge) lines.push(`Port of Discharge: ${data.portOfDischarge}`);
-    lines.push(`Country of Origin: ${data.countryOfOrigin || 'India'}`);
-    lines.push("");
+    let expY = yPos + 26;
+    page.drawRectangle({
+      x: leftMargin + boxWidth + 20,
+      y: expY - boxHeight + 10,
+      width: boxWidth,
+      height: boxHeight,
+      color: BRAND_COLORS.light,
+    });
+    
+    page.drawText('Export Details', { x: leftMargin + boxWidth + 28, y: expY, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
+    
+    expY -= 14;
+    if (data.incoterm) {
+      page.drawText(`Incoterms: ${data.incoterm}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+      expY -= 12;
+    }
+    if (data.portOfLoading) {
+      page.drawText(`Port of Loading: ${data.portOfLoading}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+      expY -= 12;
+    }
+    if (data.portOfDischarge) {
+      page.drawText(`Port of Discharge: ${data.portOfDischarge}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
+      expY -= 12;
+    }
+    page.drawText(`Country of Origin: ${data.countryOfOrigin || 'India'}`, { x: leftMargin + boxWidth + 28, y: expY, size: 9, font: helvetica, color: BRAND_COLORS.dark });
   }
   
-  // Bank Details
-  lines.push("Bank Details for Remittance:");
-  lines.push("Account Name: R.V. INDUSTRIES");
-  lines.push("Bank Name: BANK OF BARODA");
-  lines.push("Account No: 25970500001613");
-  lines.push("Branch: S.S.I. Jamnagar");
-  lines.push("IFSC Code: BARB0SSIJAM (5th character is Zero)");
-  lines.push("Swift Code: BARBINBBRAN");
-  lines.push("");
+  // === BANK DETAILS ===
+  yPos -= 40;
+  page.drawText('Bank Details for Remittance', { x: leftMargin, y: yPos, size: 10, font: helveticaBold, color: BRAND_COLORS.primary });
   
-  // Notes
-  if (data.notes) {
-    lines.push(`Notes: ${data.notes}`);
-    lines.push("");
+  const bankDetails = [
+    'Account Name: R.V. INDUSTRIES',
+    'Bank Name: BANK OF BARODA',
+    'Account No: 25970500001613',
+    'Branch: S.S.I. Jamnagar',
+    'IFSC Code: BARB0SSIJAM (5th character is Zero)',
+    'Swift Code: BARBINBBRAN',
+  ];
+  
+  yPos -= 12;
+  for (const detail of bankDetails) {
+    page.drawText(detail, { x: leftMargin, y: yPos, size: 8, font: helvetica, color: BRAND_COLORS.dark });
+    yPos -= 10;
   }
   
-  // Footer
-  lines.push("Email: sales@brasspartsindia.net | mitul@brasspartsindia.net");
-  lines.push("Web: www.brasspartsindia.net | Ph: +91-288-2541871");
-  lines.push("");
-  lines.push("This is a computer-generated Proforma Invoice and is valid without signature.");
+  // === FOOTER ===
+  const footerY = 50;
   
-  const content = lines.join('\n');
+  page.drawLine({
+    start: { x: leftMargin, y: footerY + 25 },
+    end: { x: rightMargin, y: footerY + 25 },
+    thickness: 0.5,
+    color: BRAND_COLORS.primary,
+  });
   
-  // Build minimal PDF structure
-  // This creates a valid PDF 1.4 document
-  const pdfContent = buildPdf(content);
+  const footerText1 = 'Email: sales@brasspartsindia.net | mitul@brasspartsindia.net';
+  const footerText2 = 'Web: www.brasspartsindia.net | Ph: +91-288-2541871';
+  const footer1Width = helvetica.widthOfTextAtSize(footerText1, 8);
+  const footer2Width = helvetica.widthOfTextAtSize(footerText2, 8);
   
-  return encoder.encode(pdfContent);
-}
-
-function buildPdf(textContent: string): string {
-  // Escape special PDF characters in text
-  const escapeText = (text: string) => text.replace(/[()\\]/g, '\\$&');
+  page.drawText(footerText1, { 
+    x: leftMargin + (contentWidth - footer1Width) / 2, 
+    y: footerY + 15, 
+    size: 8, 
+    font: helvetica, 
+    color: BRAND_COLORS.dark 
+  });
+  page.drawText(footerText2, { 
+    x: leftMargin + (contentWidth - footer2Width) / 2, 
+    y: footerY + 5, 
+    size: 8, 
+    font: helvetica, 
+    color: BRAND_COLORS.dark 
+  });
   
-  // Split content into lines for proper PDF text formatting
-  const lines = textContent.split('\n');
+  const disclaimerText = 'This is a computer-generated Proforma Invoice and is valid without signature.';
+  const disclaimerWidth = helveticaOblique.widthOfTextAtSize(disclaimerText, 7);
+  page.drawText(disclaimerText, { 
+    x: leftMargin + (contentWidth - disclaimerWidth) / 2, 
+    y: footerY - 8, 
+    size: 7, 
+    font: helveticaOblique, 
+    color: rgb(0.4, 0.4, 0.4),
+  });
   
-  // Build text stream with proper positioning
-  let textStream = 'BT\n';
-  textStream += '/F1 10 Tf\n';
-  textStream += '50 800 Td\n';
-  textStream += '12 TL\n'; // Leading (line spacing)
-  
-  for (const line of lines) {
-    textStream += `(${escapeText(line)}) Tj T*\n`;
-  }
-  textStream += 'ET';
-  
-  // Calculate stream length
-  const streamBytes = new TextEncoder().encode(textStream);
-  const streamLength = streamBytes.length;
-  
-  // Build PDF structure
-  const objects: string[] = [];
-  
-  // Object 1: Catalog
-  objects.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj');
-  
-  // Object 2: Pages
-  objects.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj');
-  
-  // Object 3: Page
-  objects.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj');
-  
-  // Object 4: Content stream
-  objects.push(`4 0 obj\n<< /Length ${streamLength} >>\nstream\n${textStream}\nendstream\nendobj`);
-  
-  // Object 5: Font
-  objects.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj');
-  
-  // Build PDF
-  let pdf = '%PDF-1.4\n';
-  const offsets: number[] = [];
-  
-  for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj + '\n';
-  }
-  
-  // Cross-reference table
-  const xrefOffset = pdf.length;
-  pdf += 'xref\n';
-  pdf += `0 ${objects.length + 1}\n`;
-  pdf += '0000000000 65535 f \n';
-  for (const offset of offsets) {
-    pdf += `${offset.toString().padStart(10, '0')} 00000 n \n`;
-  }
-  
-  // Trailer
-  pdf += 'trailer\n';
-  pdf += `<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
-  pdf += 'startxref\n';
-  pdf += `${xrefOffset}\n`;
-  pdf += '%%EOF';
-  
-  return pdf;
+  return await pdfDoc.save();
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -268,10 +549,7 @@ const handler = async (req: Request): Promise<Response> => {
     let userId: string | null = null;
     
     if (authHeader) {
-      // Extract the token (remove 'Bearer ' prefix if present)
       const token = authHeader.replace('Bearer ', '');
-      
-      // Verify the token using getUser with the token directly
       const { data: { user }, error: authError } = await supabase.auth.getUser(token);
       
       if (authError) {
@@ -284,8 +562,6 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     
-    // For this function, we allow unauthenticated access but log it
-    // The service role will handle all DB operations
     if (!userId) {
       console.log('No authenticated user, proceeding with service role only');
     }
@@ -335,7 +611,7 @@ const handler = async (req: Request): Promise<Response> => {
       
       const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from('proforma-invoices')
-        .createSignedUrl(existingProforma.file_path, 3600); // 1 hour expiry
+        .createSignedUrl(existingProforma.file_path, 3600);
       
       if (signedUrlError) {
         throw new Error(`Failed to create signed URL: ${signedUrlError.message}`);
@@ -392,8 +668,9 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     
-    // Generate PDF bytes
-    const pdfBytes = generatePdfBytes({
+    // Generate professional PDF
+    console.log('Generating professional PDF with branding...');
+    const pdfBytes = await generateProfessionalPdf({
       proformaNo,
       date: new Date().toLocaleDateString('en-GB'),
       soId: order.so_id,
@@ -458,7 +735,7 @@ const handler = async (req: Request): Promise<Response> => {
         sales_order_id: salesOrderId,
         proforma_no: proformaNo,
         file_path: filePath,
-        file_url: signedUrlData.signedUrl, // Store signed URL
+        file_url: signedUrlData.signedUrl,
         generated_by: userId,
         customer_id: order.customer_id,
         customer_name: customer?.customer_name || order.customer,
@@ -491,7 +768,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(`Failed to save proforma record: ${dbError.message}`);
     }
     
-    console.log(`Proforma ${proformaNo} generated successfully`);
+    console.log(`Proforma ${proformaNo} generated successfully with professional formatting`);
     
     return new Response(JSON.stringify({
       success: true,
@@ -503,12 +780,13 @@ const handler = async (req: Request): Promise<Response> => {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
-    
-  } catch (error: any) {
-    console.error("Error in generate-proforma function:", error);
+
+  } catch (error: unknown) {
+    console.error('Error generating proforma:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to generate proforma invoice';
     return new Response(JSON.stringify({
       success: false,
-      error: error.message
+      error: errorMessage
     }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...corsHeaders }
