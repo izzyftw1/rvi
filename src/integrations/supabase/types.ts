@@ -387,6 +387,27 @@ export type Database = {
           },
         ]
       }
+      cross_section_shapes: {
+        Row: {
+          created_at: string | null
+          has_inner_diameter: boolean | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          has_inner_diameter?: boolean | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          has_inner_diameter?: boolean | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       customer_credit_adjustments: {
         Row: {
           adjustment_type: string
@@ -2894,10 +2915,21 @@ export type Database = {
         Row: {
           alloy: string | null
           created_at: string | null
+          customer_id: string | null
           cycle_time_seconds: number | null
+          default_cross_section_shape: string | null
+          default_inner_diameter_mm: number | null
+          default_material_form: string | null
+          default_material_grade: string | null
+          default_nominal_size_mm: number | null
+          default_process_route_id: string | null
+          estimated_cycle_time_s: number | null
+          estimated_gross_weight_g: number | null
+          estimated_net_weight_g: number | null
           gross_weight_grams: number | null
           id: string
           item_code: string
+          item_name: string | null
           last_used: string | null
           material_size_mm: string | null
           net_weight_grams: number | null
@@ -2906,10 +2938,21 @@ export type Database = {
         Insert: {
           alloy?: string | null
           created_at?: string | null
+          customer_id?: string | null
           cycle_time_seconds?: number | null
+          default_cross_section_shape?: string | null
+          default_inner_diameter_mm?: number | null
+          default_material_form?: string | null
+          default_material_grade?: string | null
+          default_nominal_size_mm?: number | null
+          default_process_route_id?: string | null
+          estimated_cycle_time_s?: number | null
+          estimated_gross_weight_g?: number | null
+          estimated_net_weight_g?: number | null
           gross_weight_grams?: number | null
           id?: string
           item_code: string
+          item_name?: string | null
           last_used?: string | null
           material_size_mm?: string | null
           net_weight_grams?: number | null
@@ -2918,16 +2961,49 @@ export type Database = {
         Update: {
           alloy?: string | null
           created_at?: string | null
+          customer_id?: string | null
           cycle_time_seconds?: number | null
+          default_cross_section_shape?: string | null
+          default_inner_diameter_mm?: number | null
+          default_material_form?: string | null
+          default_material_grade?: string | null
+          default_nominal_size_mm?: number | null
+          default_process_route_id?: string | null
+          estimated_cycle_time_s?: number | null
+          estimated_gross_weight_g?: number | null
+          estimated_net_weight_g?: number | null
           gross_weight_grams?: number | null
           id?: string
           item_code?: string
+          item_name?: string | null
           last_used?: string | null
           material_size_mm?: string | null
           net_weight_grams?: number | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "item_master_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "item_master_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_master_default_process_route_id_fkey"
+            columns: ["default_process_route_id"]
+            isOneToOne: false
+            referencedRelation: "process_routes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       laser_marking: {
         Row: {
@@ -3360,6 +3436,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      material_forms: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      material_grades: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       material_issues: {
         Row: {
@@ -3800,27 +3921,155 @@ export type Database = {
       }
       material_requirements: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           created_at: string | null
+          created_by: string | null
+          cross_section_shape: string | null
+          external_process_required: boolean | null
+          external_process_type: string | null
+          external_supplier_id: string | null
           id: string
-          material_size_mm: number
+          inner_diameter_mm: number | null
+          item_code: string
+          locked_at: string | null
+          locked_by: string | null
+          locked_reason: string | null
+          material_form: string | null
+          material_grade: string
+          nominal_size_mm: number | null
+          process_route_id: string | null
+          process_route_name: string | null
+          quantity_required: number
+          required_qty_kg: number | null
+          sales_order_id: string | null
+          sales_order_item_id: string | null
+          scrap_percent: number | null
           status: string
+          target_gross_weight_g: number | null
+          target_net_weight_g: number | null
+          thickness_mm: number | null
           updated_at: string | null
+          work_order_id: string | null
+          yield_percent: number | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string | null
+          created_by?: string | null
+          cross_section_shape?: string | null
+          external_process_required?: boolean | null
+          external_process_type?: string | null
+          external_supplier_id?: string | null
           id?: string
-          material_size_mm: number
+          inner_diameter_mm?: number | null
+          item_code: string
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_reason?: string | null
+          material_form?: string | null
+          material_grade: string
+          nominal_size_mm?: number | null
+          process_route_id?: string | null
+          process_route_name?: string | null
+          quantity_required: number
+          required_qty_kg?: number | null
+          sales_order_id?: string | null
+          sales_order_item_id?: string | null
+          scrap_percent?: number | null
           status?: string
+          target_gross_weight_g?: number | null
+          target_net_weight_g?: number | null
+          thickness_mm?: number | null
           updated_at?: string | null
+          work_order_id?: string | null
+          yield_percent?: number | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string | null
+          created_by?: string | null
+          cross_section_shape?: string | null
+          external_process_required?: boolean | null
+          external_process_type?: string | null
+          external_supplier_id?: string | null
           id?: string
-          material_size_mm?: number
+          inner_diameter_mm?: number | null
+          item_code?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          locked_reason?: string | null
+          material_form?: string | null
+          material_grade?: string
+          nominal_size_mm?: number | null
+          process_route_id?: string | null
+          process_route_name?: string | null
+          quantity_required?: number
+          required_qty_kg?: number | null
+          sales_order_id?: string | null
+          sales_order_item_id?: string | null
+          scrap_percent?: number | null
           status?: string
+          target_gross_weight_g?: number | null
+          target_net_weight_g?: number | null
+          thickness_mm?: number | null
           updated_at?: string | null
+          work_order_id?: string | null
+          yield_percent?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "material_requirements_external_supplier_id_fkey"
+            columns: ["external_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_external_supplier_id_fkey"
+            columns: ["external_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_process_route_id_fkey"
+            columns: ["process_route_id"]
+            isOneToOne: false
+            referencedRelation: "process_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "material_requirements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       material_requirements_v2: {
         Row: {
@@ -4271,6 +4520,41 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nominal_sizes: {
+        Row: {
+          created_at: string | null
+          display_label: string | null
+          id: string
+          shape_id: string | null
+          size_value: number
+          unit: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_label?: string | null
+          id?: string
+          shape_id?: string | null
+          size_value: number
+          unit?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_label?: string | null
+          id?: string
+          shape_id?: string | null
+          size_value?: number
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nominal_sizes_shape_id_fkey"
+            columns: ["shape_id"]
+            isOneToOne: false
+            referencedRelation: "cross_section_shapes"
             referencedColumns: ["id"]
           },
         ]
@@ -4939,6 +5223,33 @@ export type Database = {
           process_type?: string
           sequence_no?: number
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      process_routes: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          sequence: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          sequence?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          sequence?: Json | null
         }
         Relationships: []
       }
@@ -6151,8 +6462,11 @@ export type Database = {
           created_at: string
           created_by: string | null
           expected_delivery_date: string | null
+          heat_number: string | null
           id: string
+          incoming_qc_status: string | null
           item_code: string | null
+          material_requirement_id: string | null
           material_size_mm: string | null
           qty_ordered_kg: number
           rate_per_kg: number
@@ -6161,6 +6475,7 @@ export type Database = {
           so_id: string | null
           status: Database["public"]["Enums"]["rpo_status"]
           supplier_id: string | null
+          supplier_test_cert_path: string | null
           updated_at: string
           wo_id: string | null
         }
@@ -6172,8 +6487,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           expected_delivery_date?: string | null
+          heat_number?: string | null
           id?: string
+          incoming_qc_status?: string | null
           item_code?: string | null
+          material_requirement_id?: string | null
           material_size_mm?: string | null
           qty_ordered_kg: number
           rate_per_kg: number
@@ -6182,6 +6500,7 @@ export type Database = {
           so_id?: string | null
           status?: Database["public"]["Enums"]["rpo_status"]
           supplier_id?: string | null
+          supplier_test_cert_path?: string | null
           updated_at?: string
           wo_id?: string | null
         }
@@ -6193,8 +6512,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           expected_delivery_date?: string | null
+          heat_number?: string | null
           id?: string
+          incoming_qc_status?: string | null
           item_code?: string | null
+          material_requirement_id?: string | null
           material_size_mm?: string | null
           qty_ordered_kg?: number
           rate_per_kg?: number
@@ -6203,6 +6525,7 @@ export type Database = {
           so_id?: string | null
           status?: Database["public"]["Enums"]["rpo_status"]
           supplier_id?: string | null
+          supplier_test_cert_path?: string | null
           updated_at?: string
           wo_id?: string | null
         }
@@ -6234,6 +6557,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_operator_daily"
             referencedColumns: ["operator_id"]
+          },
+          {
+            foreignKeyName: "raw_purchase_orders_material_requirement_id_fkey"
+            columns: ["material_requirement_id"]
+            isOneToOne: false
+            referencedRelation: "material_requirements"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "raw_purchase_orders_so_id_fkey"
@@ -8043,6 +8373,71 @@ export type Database = {
           },
         ]
       }
+      work_order_heat_issues: {
+        Row: {
+          created_at: string | null
+          heat_number: string
+          id: string
+          issue_date: string | null
+          issued_by: string | null
+          quantity_kg: number | null
+          quantity_pcs: number
+          rpo_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          heat_number: string
+          id?: string
+          issue_date?: string | null
+          issued_by?: string | null
+          quantity_kg?: number | null
+          quantity_pcs: number
+          rpo_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string | null
+          heat_number?: string
+          id?: string
+          issue_date?: string | null
+          issued_by?: string | null
+          quantity_kg?: number | null
+          quantity_pcs?: number
+          rpo_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_heat_issues_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_heat_issues_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "work_order_heat_issues_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_heat_issues_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           actual_cycle_time_hours: number | null
@@ -8069,6 +8464,7 @@ export type Database = {
           id: string
           item_code: string
           material_location: string | null
+          material_requirement_id: string | null
           material_size_mm: string | null
           net_weight_per_pc: number | null
           priority: number | null
@@ -8150,6 +8546,7 @@ export type Database = {
           id?: string
           item_code: string
           material_location?: string | null
+          material_requirement_id?: string | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           priority?: number | null
@@ -8231,6 +8628,7 @@ export type Database = {
           id?: string
           item_code?: string
           material_location?: string | null
+          material_requirement_id?: string | null
           material_size_mm?: string | null
           net_weight_per_pc?: number | null
           priority?: number | null
@@ -8300,6 +8698,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_material_requirement_id_fkey"
+            columns: ["material_requirement_id"]
+            isOneToOne: false
+            referencedRelation: "material_requirements"
             referencedColumns: ["id"]
           },
           {
