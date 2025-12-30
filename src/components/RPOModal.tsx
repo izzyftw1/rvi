@@ -410,7 +410,7 @@ export function RPOModal({
               <SelectTrigger>
                 <SelectValue placeholder="Select size" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-background z-50">
                 <SelectItem value="__manual__">Manual entry…</SelectItem>
                 {sizeOptions.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
@@ -448,7 +448,7 @@ export function RPOModal({
               <SelectTrigger>
                 <SelectValue placeholder="Select alloy" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-background z-50">
                 <SelectItem value="__manual__">Manual entry…</SelectItem>
                 {alloyOptions.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
@@ -476,7 +476,7 @@ export function RPOModal({
                 <SelectTrigger className="flex-1">
                   <SelectValue placeholder="Select Supplier" />
                 </SelectTrigger>
-                <SelectContent className="z-[100]">
+                <SelectContent className="bg-background z-[100]">
                   {suppliers.length === 0 ? (
                     <div className="px-4 py-2 text-sm text-muted-foreground">No suppliers found</div>
                   ) : (
