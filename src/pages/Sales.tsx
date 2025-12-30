@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download, AlertCircle } from "lucide-react";
+import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download, AlertCircle, Info } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -15,19 +15,15 @@ import { AddItemDialog } from "@/components/sales/AddItemDialog";
 import { getTdsRate, getPanEntityType, isValidPan } from "@/lib/tdsUtils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+// Simplified line item - ONLY commercial data, NO manufacturing specs
 interface LineItem {
   line_number: number;
   item_code: string;
   quantity: number;
-  alloy: string;
-  material_size: string;
-  net_weight_per_pc_g?: number;
-  gross_weight_per_pc_g?: number;
   price_per_pc?: number;
   line_amount?: number;
   drawing_number?: string;
   due_date: string;
-  cycle_time_seconds?: number;
 }
 
 const INCOTERMS = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"];
@@ -40,8 +36,6 @@ export default function Sales() {
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
-  const [historicalLineItems, setHistoricalLineItems] = useState<any[]>([]);
-  const [materialSpecs, setMaterialSpecs] = useState<any[]>([]);
   const [customerItemHistory, setCustomerItemHistory] = useState<Record<string, string[]>>({});
   
   const [formData, setFormData] = useState({
@@ -53,14 +47,13 @@ export default function Sales() {
     drawing_number: "",
     currency: "USD",
     payment_terms_days: 30,
-    payment_terms_override: false, // Track if user manually changed
+    payment_terms_override: false,
     gst_type: "not_applicable" as "domestic" | "export" | "not_applicable",
     gst_number: "",
     incoterm: "EXW",
     gst_percent: 18,
     advance_payment_value: "",
     advance_payment_type: "percent" as "percent" | "fixed",
-    // Customer metadata for TDS
     pan_number: "",
     is_export_customer: false,
     customer_country: ""
@@ -70,15 +63,10 @@ export default function Sales() {
     line_number: 1,
     item_code: "",
     quantity: 0,
-    alloy: "",
-    material_size: "",
-    net_weight_per_pc_g: undefined,
-    gross_weight_per_pc_g: undefined,
     price_per_pc: undefined,
     line_amount: 0,
     drawing_number: "",
-    due_date: "",
-    cycle_time_seconds: undefined
+    due_date: ""
   }]);
 
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -86,10 +74,8 @@ export default function Sales() {
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
 
-  // Derived: Check if customer is from India (for GST applicability)
   const isIndianCustomer = formData.customer_country?.toLowerCase() === 'india';
   
-  // Derived: TDS calculation based on PAN
   const tdsRate = useMemo(() => {
     return getTdsRate(formData.pan_number, formData.is_export_customer);
   }, [formData.pan_number, formData.is_export_customer]);
@@ -98,40 +84,21 @@ export default function Sales() {
     return getPanEntityType(formData.pan_number);
   }, [formData.pan_number]);
 
-  // Derived: Items filtered by customer (if customer selected)
   const filteredItems = useMemo(() => {
-    if (!formData.customer_id) {
-      // No customer selected - show all items
-      return items;
-    }
-    
+    if (!formData.customer_id) return items;
     const customerItems = customerItemHistory[formData.customer_id] || [];
-    if (customerItems.length === 0) {
-      // No history for this customer - show all items
-      return items;
-    }
-    
-    // Filter to items this customer has ordered before
+    if (customerItems.length === 0) return items;
     const filtered = items.filter(item => customerItems.includes(item.item_code));
-    
-    // If filtered is empty (edge case), show all
     return filtered.length > 0 ? filtered : items;
   }, [formData.customer_id, items, customerItemHistory]);
 
-  // Advance payment calculated amount
   const advancePaymentCalculated = useMemo(() => {
-    // Inline calculation to avoid hoisting issues
     const subtotal = lineItems.reduce((sum, item) => sum + (item.line_amount || 0), 0);
     const gstAmount = formData.gst_type === 'domestic' && isIndianCustomer ? (subtotal * formData.gst_percent) / 100 : 0;
     const total = subtotal + gstAmount;
-    
     const value = parseFloat(formData.advance_payment_value) || 0;
     if (value <= 0) return 0;
-    
-    if (formData.advance_payment_type === 'percent') {
-      return (total * value) / 100;
-    }
-    return value;
+    return formData.advance_payment_type === 'percent' ? (total * value) / 100 : value;
   }, [formData.advance_payment_value, formData.advance_payment_type, lineItems, formData.gst_type, formData.gst_percent, isIndianCustomer]);
 
   useEffect(() => {
@@ -141,31 +108,11 @@ export default function Sales() {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders(), loadMaterialSpecs()]);
+    await Promise.all([loadCustomers(), loadItems(), loadSalesOrders()]);
     setLoading(false);
-    // Load customer-item mapping and historical line items in background
     loadCustomerItemHistory();
-    loadHistoricalLineItems();
   };
 
-  const loadMaterialSpecs = async () => {
-    const { data } = await supabase
-      .from("material_specs")
-      .select("*")
-      .order("size_label", { ascending: true });
-    if (data) setMaterialSpecs(data);
-  };
-
-  const loadHistoricalLineItems = async () => {
-    const { data } = await supabase
-      .from("sales_order_line_items" as any)
-      .select("item_code, alloy, material_size_mm, gross_weight_per_pc_grams, net_weight_per_pc_grams, drawing_number, price_per_pc, cycle_time_seconds, created_at")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (data) setHistoricalLineItems(data);
-  };
-
-  // Load customer-item history mapping from sales orders
   const loadCustomerItemHistory = async () => {
     const { data } = await supabase
       .from("sales_order_line_items" as any)
@@ -181,8 +128,6 @@ export default function Sales() {
           mapping[customerId].add(row.item_code);
         }
       });
-      
-      // Convert Sets to arrays
       const result: Record<string, string[]> = {};
       Object.keys(mapping).forEach(key => {
         result[key] = Array.from(mapping[key]);
@@ -220,16 +165,12 @@ export default function Sales() {
           const lineAmount = item.line_amount ?? ((item.quantity || 0) * (item.price_per_pc || 0));
           return sum + lineAmount;
         }, 0);
-        
         return {
           ...order,
           sales_order_items: items,
-          total_amount: order.total_amount && order.total_amount > 0 
-            ? order.total_amount 
-            : calculatedSubtotal
+          total_amount: order.total_amount && order.total_amount > 0 ? order.total_amount : calculatedSubtotal
         };
       });
-      
       setSalesOrders(ordersWithCalculatedTotals);
     }
   };
@@ -240,7 +181,6 @@ export default function Sales() {
       const isIndia = customer.country?.toLowerCase() === 'india';
       const isExport = customer.is_export_customer || false;
       
-      // Determine GST type based on customer
       let gstType: "domestic" | "export" | "not_applicable" = "not_applicable";
       if (isExport) {
         gstType = "export";
@@ -253,16 +193,13 @@ export default function Sales() {
         customer_id: customerId,
         customer_name: customer.customer_name,
         currency: customer.credit_limit_currency || "USD",
-        // Auto-fill payment terms from customer (unless user already overrode)
         payment_terms_days: formData.payment_terms_override 
           ? formData.payment_terms_days 
           : (customer.payment_terms_days || 30),
-        payment_terms_override: false, // Reset override on customer change
-        // GST auto-populated from customer
+        payment_terms_override: false,
         gst_number: isIndia ? (customer.gst_number || "") : "",
         gst_type: gstType,
         gst_percent: isIndia && !isExport ? 18 : 0,
-        // Store customer metadata for TDS
         pan_number: customer.pan_number || "",
         is_export_customer: isExport,
         customer_country: customer.country || ""
@@ -274,7 +211,7 @@ export default function Sales() {
     setFormData({
       ...formData,
       payment_terms_days: value,
-      payment_terms_override: true // Mark as manually overridden
+      payment_terms_override: true
     });
   };
 
@@ -284,22 +221,11 @@ export default function Sales() {
       return;
     }
     
-    const item = items.find(i => i.item_code === value);
-    const historicalItem = historicalLineItems
-      .filter((li: any) => li.item_code === value)
-      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-    
     const updated = [...lineItems];
     updated[index] = {
       ...updated[index],
       item_code: value,
-      alloy: item?.alloy || historicalItem?.alloy || updated[index].alloy,
-      material_size: item?.material_size_mm || historicalItem?.material_size_mm || updated[index].material_size,
-      gross_weight_per_pc_g: item?.gross_weight_grams || historicalItem?.gross_weight_per_pc_grams || updated[index].gross_weight_per_pc_g,
-      net_weight_per_pc_g: item?.net_weight_grams || historicalItem?.net_weight_per_pc_grams || updated[index].net_weight_per_pc_g,
-      drawing_number: historicalItem?.drawing_number || formData.drawing_number || updated[index].drawing_number,
-      price_per_pc: historicalItem?.price_per_pc || updated[index].price_per_pc,
-      cycle_time_seconds: item?.cycle_time_seconds || historicalItem?.cycle_time_seconds || updated[index].cycle_time_seconds
+      drawing_number: formData.drawing_number || updated[index].drawing_number
     };
     
     if (updated[index].quantity && updated[index].price_per_pc) {
@@ -336,15 +262,10 @@ export default function Sales() {
       line_number: lineItems.length + 1,
       item_code: "",
       quantity: 0,
-      alloy: "",
-      material_size: "",
-      net_weight_per_pc_g: undefined,
-      gross_weight_per_pc_g: undefined,
       price_per_pc: undefined,
       line_amount: 0,
       drawing_number: formData.drawing_number,
-      due_date: "",
-      cycle_time_seconds: undefined
+      due_date: ""
     }]);
   };
 
@@ -373,13 +294,12 @@ export default function Sales() {
     setLoading(true);
 
     try {
-      if (lineItems.some(li => !li.item_code || !li.quantity || !li.alloy)) {
-        throw new Error("All line items must have item code, quantity, and alloy");
+      if (lineItems.some(li => !li.item_code || !li.quantity)) {
+        throw new Error("All line items must have item code and quantity");
       }
 
       const { subtotal, gstAmount, total } = calculateTotals();
 
-      // Build explicit advance payment data
       let advancePaymentData = null;
       const advanceValue = parseFloat(formData.advance_payment_value) || 0;
       if (advanceValue > 0) {
@@ -396,6 +316,7 @@ export default function Sales() {
       const selectedCustomer = customers.find(c => c.id === formData.customer_id);
       if (!selectedCustomer) throw new Error("Selected customer not found");
 
+      // Create sales order - NO manufacturing data
       const { data: newOrder, error: orderError } = await supabase
         .from("sales_orders")
         .insert([{ 
@@ -411,23 +332,21 @@ export default function Sales() {
           expected_delivery_date: formData.expected_delivery_date || null,
           drawing_number: formData.drawing_number || null,
           advance_payment: advancePaymentData,
-          items: (lineItems || []).map((item: any) => ({
+          // Line items with ONLY commercial data
+          items: lineItems.map(item => ({
             item_code: String(item.item_code || ''),
             quantity: Number(item.quantity) || 0,
             due_date: item.due_date || null,
             price_per_pc: item.price_per_pc != null ? Number(item.price_per_pc) : null,
             line_amount: item.price_per_pc != null && item.quantity != null ? Number(item.price_per_pc) * Number(item.quantity) : null,
             drawing_number: item.drawing_number ? String(item.drawing_number) : null,
-            priority: 3,
-            alloy: item.alloy ? String(item.alloy) : null,
-            material_size_mm: item.material_size ? String(item.material_size) : null,
-            net_weight_per_pc_grams: item.net_weight_per_pc_g != null ? Number(item.net_weight_per_pc_g) : null,
-            gross_weight_per_pc_grams: item.gross_weight_per_pc_g != null ? Number(item.gross_weight_per_pc_g) : null,
-            cycle_time_seconds: item.cycle_time_seconds != null ? Number(item.cycle_time_seconds) : null
+            priority: 3
+            // NO alloy, material_size, weights, cycle_time - these are defined in Material Requirements
           })),
           total_amount: total,
           status: "pending",
           created_by: user?.id,
+          // Clear all manufacturing fields
           material_rod_forging_size_mm: null,
           gross_weight_per_pc_grams: null,
           net_weight_per_pc_grams: null,
@@ -438,17 +357,16 @@ export default function Sales() {
 
       if (orderError) throw orderError;
 
+      // Insert line items - NO manufacturing data
       const lineItemsToInsert = lineItems.map(item => ({
         sales_order_id: newOrder.id,
         line_number: item.line_number,
         item_code: item.item_code,
         quantity: item.quantity,
-        alloy: item.alloy,
-        material_size_mm: item.material_size,
-        net_weight_per_pc_grams: item.net_weight_per_pc_g || null,
-        gross_weight_per_pc_grams: item.gross_weight_per_pc_g || null,
-        cycle_time_seconds: item.cycle_time_seconds || null,
-        due_date: item.due_date || null
+        price_per_pc: item.price_per_pc || null,
+        due_date: item.due_date || null,
+        drawing_number: item.drawing_number || null
+        // NO alloy, material_size_mm, net_weight, gross_weight, cycle_time
       }));
 
       const { data: insertedLineItems, error: lineItemsError } = await supabase
@@ -473,7 +391,7 @@ export default function Sales() {
             .update({ status: 'approved' })
             .eq('id', newOrder.id);
           
-          toast({ description: `Sales order ${newOrder.so_id} created with ${lineItems.length} line items and work orders generated` });
+          toast({ description: `Sales order ${newOrder.so_id} created. Material Requirements must be defined by Production before procurement/manufacturing.` });
         }
       } else {
         toast({ description: `Sales order ${newOrder.so_id} created with ${lineItems.length} line items` });
@@ -504,10 +422,10 @@ export default function Sales() {
         line_number: 1,
         item_code: "",
         quantity: 0,
-        alloy: "",
-        material_size: "",
-        due_date: "",
-        cycle_time_seconds: undefined
+        price_per_pc: undefined,
+        line_amount: 0,
+        drawing_number: "",
+        due_date: ""
       }]);
       
       await loadData();
@@ -536,18 +454,14 @@ export default function Sales() {
   const handleDownloadProforma = async (order: any) => {
     try {
       setLoading(true);
-      
       const { data, error } = await supabase.functions.invoke('generate-proforma', {
         body: { salesOrderId: order.id }
       });
-      
       if (error) throw new Error(error.message || 'Failed to generate proforma');
       if (!data?.success) throw new Error(data?.error || 'Failed to generate proforma');
-      
       if (data.downloadUrl) {
         window.open(data.downloadUrl, '_blank');
       }
-      
       toast({ description: data.isExisting 
         ? `Proforma invoice ${data.proformaNo} downloaded`
         : `Proforma invoice ${data.proformaNo} generated and saved` 
@@ -565,6 +479,15 @@ export default function Sales() {
   return (
     <div className="min-h-screen bg-background">
       <div className="p-6 space-y-6">
+        {/* Info Alert - Sales Role */}
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Sales Order Entry:</strong> Enter commercial terms only. Manufacturing specifications (alloy, size, weight, cycle time) 
+            are defined by Production in Material Requirements after the order is received.
+          </AlertDescription>
+        </Alert>
+
         {/* Create Form */}
         <Card>
           <CardHeader>
@@ -653,7 +576,6 @@ export default function Sales() {
                     </Select>
                   </div>
 
-                  {/* Payment Terms - auto-filled from customer, override allowed */}
                   <div className="space-y-2">
                     <Label>
                       Payment Terms (Days)
@@ -669,7 +591,6 @@ export default function Sales() {
                     <p className="text-xs text-muted-foreground">Auto-filled from customer</p>
                   </div>
 
-                  {/* GST Type - only for India */}
                   <div className="space-y-2">
                     <Label>GST Type</Label>
                     <Select 
@@ -691,7 +612,6 @@ export default function Sales() {
                     )}
                   </div>
 
-                  {/* GST Number - auto-populated, disabled for non-India */}
                   <div className="space-y-2">
                     <Label>GST Number</Label>
                     <Input
@@ -717,7 +637,6 @@ export default function Sales() {
                     </Select>
                   </div>
 
-                  {/* GST % - only for domestic India */}
                   {formData.gst_type === 'domestic' && isIndianCustomer && (
                     <div className="space-y-2">
                       <Label>GST %</Label>
@@ -729,7 +648,6 @@ export default function Sales() {
                     </div>
                   )}
 
-                  {/* Advance Payment - explicit type selection */}
                   <div className="space-y-2">
                     <Label>Advance Payment</Label>
                     <div className="flex gap-2">
@@ -762,7 +680,6 @@ export default function Sales() {
                   </div>
                 </div>
 
-                {/* TDS Info Alert - show when customer has PAN */}
                 {formData.pan_number && isValidPan(formData.pan_number) && (
                   <Alert className="mt-4">
                     <AlertCircle className="h-4 w-4" />
@@ -774,13 +691,16 @@ export default function Sales() {
                 )}
               </div>
 
-              {/* Line Items */}
+              {/* Line Items - SIMPLIFIED: Only Item, Qty, Price, Drawing, Due Date */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="font-semibold text-lg">Line Items</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Enter item code, quantity, price, and due date. Manufacturing specs are defined by Production.
+                    </p>
                     {formData.customer_id && customerItemHistory[formData.customer_id]?.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Showing items previously ordered by this customer ({customerItemHistory[formData.customer_id].length} items)
                       </p>
                     )}
@@ -796,17 +716,12 @@ export default function Sales() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
-                        <TableHead className="min-w-[180px]">Item Code *</TableHead>
-                        <TableHead className="min-w-[100px]">Qty (pcs) *</TableHead>
-                        <TableHead className="min-w-[120px]">Alloy *</TableHead>
-                        <TableHead className="min-w-[150px]">Material Size</TableHead>
-                        <TableHead className="min-w-[100px]">Net Wt (g/pc)</TableHead>
-                        <TableHead className="min-w-[100px]">Gross Wt (g/pc)</TableHead>
-                        <TableHead className="min-w-[90px]">Cycle Time (s)</TableHead>
-                        <TableHead className="min-w-[120px]">Drawing #</TableHead>
-                        <TableHead className="min-w-[120px]">Price/pc ({formData.currency})</TableHead>
-                        <TableHead className="min-w-[120px]">Line Amt</TableHead>
-                        <TableHead className="min-w-[130px]">Due Date</TableHead>
+                        <TableHead className="min-w-[200px]">Item Code *</TableHead>
+                        <TableHead className="min-w-[120px]">Quantity (pcs) *</TableHead>
+                        <TableHead className="min-w-[140px]">Price/pc ({formData.currency})</TableHead>
+                        <TableHead className="min-w-[140px]">Line Amount</TableHead>
+                        <TableHead className="min-w-[140px]">Drawing #</TableHead>
+                        <TableHead className="min-w-[140px]">Due Date</TableHead>
                         <TableHead className="w-16"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -831,16 +746,15 @@ export default function Sales() {
                                 </SelectItem>
                                 {filteredItems.map((itm) => (
                                   <SelectItem key={itm.id} value={itm.item_code}>
-                                    {itm.item_code}
+                                    {itm.item_code} {itm.item_name ? `- ${itm.item_name}` : ''}
                                   </SelectItem>
                                 ))}
-                                {/* Show all items option if filtered */}
                                 {formData.customer_id && customerItemHistory[formData.customer_id]?.length > 0 && filteredItems.length < items.length && (
                                   <>
                                     <div className="px-2 py-1 text-xs text-muted-foreground border-t mt-1">All items:</div>
                                     {items.filter(i => !filteredItems.some(f => f.id === i.id)).map((itm) => (
                                       <SelectItem key={itm.id} value={itm.item_code}>
-                                        {itm.item_code}
+                                        {itm.item_code} {itm.item_name ? `- ${itm.item_name}` : ''}
                                       </SelectItem>
                                     ))}
                                   </>
@@ -849,52 +763,37 @@ export default function Sales() {
                             </Select>
                           </TableCell>
                           <TableCell>
-                            <Input type="number" value={item.quantity || ""} onChange={(e) => updateLineItemField(idx, 'quantity', parseInt(e.target.value) || 0)} required />
+                            <Input 
+                              type="number" 
+                              value={item.quantity || ""} 
+                              onChange={(e) => updateLineItemField(idx, 'quantity', parseInt(e.target.value) || 0)} 
+                              required 
+                            />
                           </TableCell>
                           <TableCell>
-                            <Select value={item.alloy} onValueChange={(v) => updateLineItemField(idx, 'alloy', v)} required>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-background z-50">
-                                {[...new Set(materialSpecs.map(s => s.grade_label))].map(grade => (
-                                  <SelectItem key={grade} value={grade}>{grade}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Select value={item.material_size} onValueChange={(v) => updateLineItemField(idx, 'material_size', v)}>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-background z-50">
-                                {[...new Set(materialSpecs.map(s => s.size_label))].sort((a, b) => parseInt(a) - parseInt(b)).map(size => (
-                                  <SelectItem key={size} value={size}>{size}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Input type="number" step="0.01" value={item.net_weight_per_pc_g || ""} onChange={(e) => updateLineItemField(idx, 'net_weight_per_pc_g', parseFloat(e.target.value))} />
-                          </TableCell>
-                          <TableCell>
-                            <Input type="number" step="0.01" value={item.gross_weight_per_pc_g || ""} onChange={(e) => updateLineItemField(idx, 'gross_weight_per_pc_g', parseFloat(e.target.value))} />
-                          </TableCell>
-                          <TableCell>
-                            <Input type="number" step="0.1" value={item.cycle_time_seconds || ""} onChange={(e) => updateLineItemField(idx, 'cycle_time_seconds', parseFloat(e.target.value) || undefined)} />
-                          </TableCell>
-                          <TableCell>
-                            <Input value={item.drawing_number || ""} onChange={(e) => updateLineItemField(idx, 'drawing_number', e.target.value)} placeholder={formData.drawing_number} />
-                          </TableCell>
-                          <TableCell>
-                            <Input type="number" step="0.0001" value={item.price_per_pc || ""} onChange={(e) => updateLineItemField(idx, 'price_per_pc', parseFloat(e.target.value))} />
+                            <Input 
+                              type="number" 
+                              step="0.0001" 
+                              value={item.price_per_pc || ""} 
+                              onChange={(e) => updateLineItemField(idx, 'price_per_pc', parseFloat(e.target.value))} 
+                            />
                           </TableCell>
                           <TableCell className="font-medium">
                             {(item.line_amount || 0).toFixed(2)}
                           </TableCell>
                           <TableCell>
-                            <Input type="date" value={item.due_date} onChange={(e) => updateLineItemField(idx, 'due_date', e.target.value)} />
+                            <Input 
+                              value={item.drawing_number || ""} 
+                              onChange={(e) => updateLineItemField(idx, 'drawing_number', e.target.value)} 
+                              placeholder={formData.drawing_number} 
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input 
+                              type="date" 
+                              value={item.due_date} 
+                              onChange={(e) => updateLineItemField(idx, 'due_date', e.target.value)} 
+                            />
                           </TableCell>
                           <TableCell>
                             {lineItems.length > 1 && (
@@ -998,42 +897,39 @@ export default function Sales() {
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {orderTotal > 0 ? (
-                          <span>{order.currency} {orderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          `${order.currency || 'USD'} ${orderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {order.status === 'approved' && (
-                            <Button 
-                              size="sm" 
-                              variant="default"
-                              onClick={() => handleDownloadProforma(order)}
-                              title="Download Proforma Invoice"
-                              disabled={loading}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button 
+                            variant="ghost" 
                             size="sm" 
-                            variant="outline" 
                             onClick={() => {
                               setSelectedOrder(order);
                               setIsViewDialogOpen(true);
                             }}
-                            title="View Details"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => handleDeleteOrder(order.id, order.so_id)}
-                            title="Delete"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDownloadProforma(order)}
+                            disabled={loading}
+                            title="Download Proforma"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDeleteOrder(order.id, order.so_id)}
+                            disabled={loading}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
                       </TableCell>
@@ -1044,135 +940,105 @@ export default function Sales() {
             </Table>
           </CardContent>
         </Card>
-      </div>
 
-      {/* View Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader className="border-b pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="text-xl">{selectedOrder?.so_id}</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">{selectedOrder?.customer}</p>
-              </div>
-              <div className="text-right">
-                <Badge 
-                  variant={selectedOrder?.status === 'approved' ? 'default' : 'secondary'}
-                  className={selectedOrder?.status === 'approved' ? 'bg-green-600' : ''}
-                >
-                  {selectedOrder?.status}
-                </Badge>
-              </div>
-            </div>
-          </DialogHeader>
-          
-          {selectedOrder && (() => {
-            const orderItems = selectedOrder.sales_order_items || [];
-            const orderSubtotal = orderItems.reduce((sum: number, item: any) => {
-              const lineAmt = item.line_amount ?? ((item.quantity || 0) * (item.price_per_pc || 0));
-              return sum + lineAmt;
-            }, 0);
-            const hasItems = orderItems.length > 0;
-            
-            return (
-              <div className="space-y-6 py-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        {/* View Dialog */}
+        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Sales Order: {selectedOrder?.so_id}</DialogTitle>
+            </DialogHeader>
+            {selectedOrder && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">PO Number</span>
-                    <p className="font-medium">{selectedOrder.po_number || '—'}</p>
+                    <Label className="text-muted-foreground">Customer</Label>
+                    <p className="font-medium">{selectedOrder.customer}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">PO Date</span>
-                    <p className="font-medium">{selectedOrder.po_date || '—'}</p>
+                    <Label className="text-muted-foreground">PO Number</Label>
+                    <p className="font-medium">{selectedOrder.po_number}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">Currency</span>
+                    <Label className="text-muted-foreground">PO Date</Label>
+                    <p className="font-medium">{selectedOrder.po_date}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Status</Label>
+                    <Badge variant={selectedOrder.status === 'approved' ? 'default' : 'secondary'}>
+                      {selectedOrder.status}
+                    </Badge>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Currency</Label>
                     <p className="font-medium">{selectedOrder.currency}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-xs uppercase tracking-wide">Total</span>
-                    <p className="font-semibold text-lg">
-                      {selectedOrder.currency} {(selectedOrder.total_amount || orderSubtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
+                    <Label className="text-muted-foreground">Incoterm</Label>
+                    <p className="font-medium">{selectedOrder.incoterm || '-'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Payment Terms</Label>
+                    <p className="font-medium">{selectedOrder.payment_terms_days || '-'} days</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Expected Delivery</Label>
+                    <p className="font-medium">{selectedOrder.expected_delivery_date || '-'}</p>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Line Items</h4>
-                  {!hasItems ? (
-                    <div className="text-center py-8 border rounded-lg bg-muted/20">
-                      <p className="text-muted-foreground">No line items in this order</p>
-                    </div>
-                  ) : (
-                    <div className="border rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/30">
-                            <TableHead className="w-16">#</TableHead>
-                            <TableHead>Item Code</TableHead>
-                            <TableHead className="text-right">Qty</TableHead>
-                            <TableHead className="text-right">Price/pc</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {orderItems.map((item: any, idx: number) => {
-                            const lineAmount = item.line_amount ?? ((item.quantity || 0) * (item.price_per_pc || 0));
-                            return (
-                              <TableRow key={idx}>
-                                <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
-                                <TableCell className="font-medium">{item.item_code}</TableCell>
-                                <TableCell className="text-right">{(item.quantity || 0).toLocaleString()}</TableCell>
-                                <TableCell className="text-right">
-                                  {item.price_per_pc ? item.price_per_pc.toFixed(4) : '—'}
-                                </TableCell>
-                                <TableCell className="text-right font-medium">
-                                  {lineAmount > 0 ? lineAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
+                  <Label className="text-muted-foreground mb-2 block">Line Items</Label>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>#</TableHead>
+                        <TableHead>Item Code</TableHead>
+                        <TableHead>Qty</TableHead>
+                        <TableHead>Price/pc</TableHead>
+                        <TableHead>Line Amt</TableHead>
+                        <TableHead>Due Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(selectedOrder.sales_order_items || []).map((item: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell>{idx + 1}</TableCell>
+                          <TableCell className="font-medium">{item.item_code}</TableCell>
+                          <TableCell>{item.quantity?.toLocaleString() || '-'}</TableCell>
+                          <TableCell>{item.price_per_pc?.toFixed(4) || '-'}</TableCell>
+                          <TableCell>{item.line_amount?.toFixed(2) || '-'}</TableCell>
+                          <TableCell>{item.due_date || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
 
-                {hasItems && orderSubtotal > 0 && (
-                  <div className="flex justify-end">
-                    <div className="w-64 space-y-2 bg-muted/20 p-4 rounded-lg text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-medium">
-                          {selectedOrder.currency} {orderSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2 text-base font-semibold">
-                        <span>Total</span>
-                        <span>
-                          {selectedOrder.currency} {(selectedOrder.total_amount || orderSubtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                <div className="flex justify-end">
+                  <div className="w-64 space-y-1 bg-muted/20 p-3 rounded-lg text-sm">
+                    <div className="flex justify-between font-bold text-lg">
+                      <span>Total:</span>
+                      <span>{selectedOrder.currency} {(selectedOrder.total_amount || 0).toFixed(2)}</span>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
+            )}
+          </DialogContent>
+        </Dialog>
 
-      <AddCustomerDialog
-        open={isAddCustomerDialogOpen}
-        onOpenChange={setIsAddCustomerDialogOpen}
-        onCustomerAdded={handleCustomerAdded}
-      />
+        <AddCustomerDialog
+          open={isAddCustomerDialogOpen}
+          onOpenChange={setIsAddCustomerDialogOpen}
+          onCustomerAdded={handleCustomerAdded}
+        />
 
-      <AddItemDialog
-        open={isAddItemDialogOpen}
-        onOpenChange={setIsAddItemDialogOpen}
-        onItemAdded={handleItemAdded}
-      />
+        <AddItemDialog
+          open={isAddItemDialogOpen}
+          onOpenChange={setIsAddItemDialogOpen}
+          onItemAdded={handleItemAdded}
+        />
+      </div>
     </div>
   );
 }
