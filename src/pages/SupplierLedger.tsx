@@ -190,7 +190,7 @@ export default function SupplierLedger() {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href="/purchase/rpo">Raw Purchase Orders</BreadcrumbLink>
+              <BreadcrumbLink href="/purchase/raw-po">Raw Purchase Orders</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>

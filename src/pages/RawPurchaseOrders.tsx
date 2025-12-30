@@ -106,12 +106,6 @@ export default function RawPurchaseOrders() {
 
   useEffect(() => {
     loadData();
-    
-    // Check URL params for specific RPO
-    const rpoNo = searchParams.get("rpo_no");
-    if (rpoNo) {
-      loadRPODetail(rpoNo);
-    }
 
     // Realtime subscription
     const channel = supabase
@@ -124,6 +118,14 @@ export default function RawPurchaseOrders() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // If we open via deep-link (?rpo_no=...), wait until list loads then open detail
+  useEffect(() => {
+    const rpoNo = searchParams.get("rpo_no");
+    if (rpoNo && rpos.length > 0) {
+      loadRPODetail(rpoNo);
+    }
+  }, [searchParams, rpos]);
 
   const loadData = async () => {
     setLoading(true);

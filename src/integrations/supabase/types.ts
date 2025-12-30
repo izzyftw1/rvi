@@ -6962,6 +6962,7 @@ export type Database = {
           approved_by: string | null
           created_at: string
           cycle_time_seconds: number | null
+          drawing_number: string | null
           due_date: string
           gross_weight_per_pc_grams: number | null
           id: string
@@ -6986,6 +6987,7 @@ export type Database = {
           approved_by?: string | null
           created_at?: string
           cycle_time_seconds?: number | null
+          drawing_number?: string | null
           due_date: string
           gross_weight_per_pc_grams?: number | null
           id?: string
@@ -7010,6 +7012,7 @@ export type Database = {
           approved_by?: string | null
           created_at?: string
           cycle_time_seconds?: number | null
+          drawing_number?: string | null
           due_date?: string
           gross_weight_per_pc_grams?: number | null
           id?: string

@@ -294,8 +294,8 @@ export default function Sales() {
     setLoading(true);
 
     try {
-      if (lineItems.some(li => !li.item_code || !li.quantity)) {
-        throw new Error("All line items must have item code and quantity");
+      if (lineItems.some(li => !li.item_code || !li.quantity || li.quantity <= 0 || !li.due_date)) {
+        throw new Error("All line items must have item code, quantity, and due date");
       }
 
       const { subtotal, gstAmount, total } = calculateTotals();
@@ -357,17 +357,25 @@ export default function Sales() {
 
       if (orderError) throw orderError;
 
-      // Insert line items - NO manufacturing data
-      const lineItemsToInsert = lineItems.map(item => ({
-        sales_order_id: newOrder.id,
-        line_number: item.line_number,
-        item_code: item.item_code,
-        quantity: item.quantity,
-        price_per_pc: item.price_per_pc || null,
-        due_date: item.due_date || null,
-        drawing_number: item.drawing_number || null
-        // NO alloy, material_size_mm, net_weight, gross_weight, cycle_time
-      }));
+      // Insert line items (must match DB schema)
+      const lineItemsToInsert = lineItems.map(item => {
+        const master = items.find(i => i.item_code === item.item_code);
+        return {
+          sales_order_id: newOrder.id,
+          line_number: item.line_number,
+          item_code: item.item_code,
+          quantity: item.quantity,
+          due_date: item.due_date,
+          drawing_number: item.drawing_number || null,
+          // Required/standardized spec fields (sourced from master data when available)
+          alloy: (master?.alloy || 'Unknown') as string,
+          material_size_mm: master?.material_size_mm || null,
+          cycle_time_seconds: master?.cycle_time_seconds || null,
+          gross_weight_per_pc_grams: master?.gross_weight_grams || null,
+          net_weight_per_pc_grams: master?.net_weight_grams || null,
+          item_id: master?.id || null
+        };
+      });
 
       const { data: insertedLineItems, error: lineItemsError } = await supabase
         .from("sales_order_line_items" as any)
