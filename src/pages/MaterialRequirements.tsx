@@ -552,7 +552,7 @@ export default function MaterialRequirements() {
             <Button variant="outline" onClick={exportToExcel}>
               <FileSpreadsheet className="w-4 h-4 mr-2" />Export Excel
             </Button>
-            <Button onClick={() => navigate('/purchase/rpo')}>
+            <Button onClick={() => navigate('/purchase/raw-po')}>
               <Package className="w-4 h-4 mr-2" />View All RPOs
             </Button>
           </div>
@@ -769,7 +769,7 @@ export default function MaterialRequirements() {
                             {group.work_orders.map(wo => (
                               <TableRow key={wo.wo_id} className="hover:bg-muted/50">
                                 <TableCell>
-                                  <Button variant="link" className="p-0 h-auto" onClick={() => navigate(`/work-order/${wo.wo_id}`)}>
+                                  <Button variant="link" className="p-0 h-auto" onClick={() => navigate(`/work-orders/${wo.wo_id}`)}>
                                     {wo.display_id}
                                   </Button>
                                 </TableCell>
@@ -798,7 +798,7 @@ export default function MaterialRequirements() {
                             </Button>
                           )}
                           {group.rpo_no && (
-                            <Button variant="outline" onClick={() => navigate(`/purchase/rpo?rpo_no=${group.rpo_no}`)}>
+                            <Button variant="outline" onClick={() => navigate(`/purchase/raw-po?rpo_no=${group.rpo_no}`)}>
                               View {group.rpo_no}
                             </Button>
                           )}
@@ -867,6 +867,7 @@ export default function MaterialRequirements() {
             setSelectedGroup(null);
           }}
           materialSize={`${selectedGroup.size_mm} ${selectedGroup.shape}`}
+          suggestedAlloy={selectedGroup.alloy}
           deficitKg={Math.abs(selectedGroup.surplus_deficit_kg)}
           linkedWorkOrders={selectedGroup.work_orders.map(wo => ({
             wo_number: wo.display_id,

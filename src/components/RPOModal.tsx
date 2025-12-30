@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { WorkOrderSelect, WorkOrderOption } from "@/components/ui/work-order-select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -14,6 +15,7 @@ interface RPOModalProps {
   open: boolean;
   onClose: () => void;
   materialSize: string;
+  suggestedAlloy?: string;
   deficitKg: number;
   linkedWorkOrders: WorkOrderOption[];
   linkedSalesOrders: Array<{ so_id: string; id: string }>;
@@ -25,10 +27,13 @@ interface Supplier {
   name: string;
 }
 
+type SpecOption = { value: string; label: string };
+
 export function RPOModal({
   open,
   onClose,
   materialSize,
+  suggestedAlloy,
   deficitKg,
   linkedWorkOrders,
   linkedSalesOrders,
@@ -38,18 +43,27 @@ export function RPOModal({
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showAddSupplier, setShowAddSupplier] = useState(false);
-  
+
+  // Controlled-spec options
+  const [sizeOptions, setSizeOptions] = useState<SpecOption[]>([]);
+  const [alloyOptions, setAlloyOptions] = useState<SpecOption[]>([]);
+
+  // Override controls
+  const [overrideSpec, setOverrideSpec] = useState(false);
+  const [sizeMode, setSizeMode] = useState<"select" | "manual">("select");
+  const [alloyMode, setAlloyMode] = useState<"select" | "manual">("select");
+
   // Form state
   const [selectedWO, setSelectedWO] = useState<string>("");
   const [itemCode, setItemCode] = useState<string>("");
   const [qtyToOrder, setQtyToOrder] = useState<string>(deficitKg.toFixed(3));
   const [materialSizeMM, setMaterialSizeMM] = useState<string>(materialSize);
-  const [alloy, setAlloy] = useState<string>("");
+  const [alloy, setAlloy] = useState<string>(suggestedAlloy || "");
   const [supplierId, setSupplierId] = useState<string>("");
   const [ratePerKg, setRatePerKg] = useState<string>("");
   const [expectedDelivery, setExpectedDelivery] = useState<string>("");
   const [remarks, setRemarks] = useState<string>("");
-  
+
   // New supplier form state
   const [newSupplierName, setNewSupplierName] = useState<string>("");
   const [newSupplierContact, setNewSupplierContact] = useState<string>("");
@@ -58,31 +72,86 @@ export function RPOModal({
   const [addingSupplier, setAddingSupplier] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      loadSuppliers();
-      // Pre-select first WO if available
-      if (linkedWorkOrders.length > 0) {
-        setSelectedWO(linkedWorkOrders[0].id);
-        setItemCode(linkedWorkOrders[0].item_code);
-      }
-      // Reset qty to deficit
-      setQtyToOrder(deficitKg.toFixed(3));
-      setMaterialSizeMM(materialSize);
+    if (!open) return;
+
+    loadSuppliers();
+    loadSpecOptions(materialSize, suggestedAlloy || "");
+
+    // Pre-select first WO if available
+    if (linkedWorkOrders.length > 0) {
+      setSelectedWO(linkedWorkOrders[0].id);
+      setItemCode(linkedWorkOrders[0].item_code);
     }
-  }, [open, linkedWorkOrders, deficitKg, materialSize]);
+
+    // Reset to deficit
+    setQtyToOrder(deficitKg.toFixed(3));
+
+    // Lock to suggested spec by default, allow explicit override
+    setOverrideSpec(false);
+    setSizeMode("select");
+    setAlloyMode("select");
+    setMaterialSizeMM(materialSize);
+    setAlloy(suggestedAlloy || "");
+  }, [open, linkedWorkOrders, deficitKg, materialSize, suggestedAlloy]);
 
   const loadSuppliers = async () => {
     const { data, error } = await supabase
       .from("suppliers")
       .select("id, name")
       .order("name");
-    
+
     if (error) {
       console.error("Error loading suppliers:", error);
       return;
     }
-    
+
     setSuppliers(data || []);
+  };
+
+  const loadSpecOptions = async (currentSize: string, currentAlloy: string) => {
+    try {
+      const [itemsRes, rpoRes] = await Promise.all([
+        supabase.from("item_master").select("material_size_mm, alloy").limit(1000),
+        supabase.from("raw_purchase_orders").select("material_size_mm, alloy").limit(1000),
+      ]);
+
+      const rows = [...(itemsRes.data || []), ...(rpoRes.data || [])] as Array<{
+        material_size_mm: string | null;
+        alloy: string | null;
+      }>;
+
+      const sizeSet = new Set<string>();
+      const alloySet = new Set<string>();
+
+      rows.forEach((r) => {
+        const s = (r.material_size_mm || "").trim();
+        const a = (r.alloy || "").trim();
+        if (s) sizeSet.add(s);
+        if (a) alloySet.add(a);
+      });
+
+      const sortAlphaNum = (a: string, b: string) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+      const sortedSizes = Array.from(sizeSet).sort(sortAlphaNum);
+      const sortedAlloys = Array.from(alloySet).sort(sortAlphaNum);
+
+      const sizes = (currentSize ? [currentSize, ...sortedSizes.filter((s) => s !== currentSize)] : sortedSizes).map(
+        (v) => ({ value: v, label: v })
+      );
+
+      const alloys = (currentAlloy ? [currentAlloy, ...sortedAlloys.filter((a) => a !== currentAlloy)] : sortedAlloys).map(
+        (v) => ({ value: v, label: v })
+      );
+
+      setSizeOptions(sizes);
+      setAlloyOptions(alloys);
+    } catch (e) {
+      console.error("Error loading spec options", e);
+      // Keep UI usable even if options fail to load
+      setSizeOptions(currentSize ? [{ value: currentSize, label: currentSize }] : []);
+      setAlloyOptions(currentAlloy ? [{ value: currentAlloy, label: currentAlloy }] : []);
+    }
   };
 
   const handleWOChange = (woId: string) => {
@@ -111,6 +180,14 @@ export function RPOModal({
       toast({ variant: "destructive", description: "Please enter a valid quantity" });
       return false;
     }
+    if (!materialSizeMM?.trim()) {
+      toast({ variant: "destructive", description: "Material size is required" });
+      return false;
+    }
+    if (!alloy?.trim()) {
+      toast({ variant: "destructive", description: "Alloy is required" });
+      return false;
+    }
     return true;
   };
 
@@ -129,7 +206,7 @@ export function RPOModal({
       toast({ variant: "destructive", description: "Supplier name is required" });
       return;
     }
-    
+
     setAddingSupplier(true);
     try {
       const { data, error } = await supabase
@@ -142,19 +219,17 @@ export function RPOModal({
         })
         .select()
         .single();
-      
+
       if (error) throw error;
-      
+
       toast({
         title: "Supplier Added",
         description: `${newSupplierName} has been added successfully`
       });
-      
-      // Reload suppliers and select the new one
+
       await loadSuppliers();
       setSupplierId(data.id);
-      
-      // Reset form and close
+
       setNewSupplierName("");
       setNewSupplierContact("");
       setNewSupplierEmail("");
@@ -246,13 +321,19 @@ export function RPOModal({
     }
   };
 
+  const totalAmount = useMemo(() => {
+    const qty = parseFloat(qtyToOrder || "0") || 0;
+    const rate = parseFloat(ratePerKg || "0") || 0;
+    return qty * rate;
+  }, [qtyToOrder, ratePerKg]);
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Raw Purchase Order</DialogTitle>
           <DialogDescription>
-            Pre-filled with requirement details. Review and submit for approval.
+            Auto-filled from material requirement. Use override only if required.
           </DialogDescription>
         </DialogHeader>
 
@@ -299,24 +380,92 @@ export function RPOModal({
             </p>
           </div>
 
+          {/* Spec override toggle */}
+          <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Material Spec</p>
+              <p className="text-xs text-muted-foreground">Locked to requirement for consistency</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground">Override</Label>
+              <Switch checked={overrideSpec} onCheckedChange={setOverrideSpec} />
+            </div>
+          </div>
+
           {/* Material Size */}
           <div>
-            <Label>Material/Rod Size (mm) *</Label>
-            <Input
-              value={materialSizeMM}
-              onChange={(e) => setMaterialSizeMM(e.target.value)}
-              placeholder="e.g. 12.7"
-            />
+            <Label>Material/Rod Size *</Label>
+            <Select
+              value={sizeMode === "manual" ? "__manual__" : materialSizeMM}
+              onValueChange={(v) => {
+                if (v === "__manual__") {
+                  setSizeMode("manual");
+                } else {
+                  setSizeMode("select");
+                  setMaterialSizeMM(v);
+                }
+              }}
+              disabled={!overrideSpec}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__manual__">Manual entry…</SelectItem>
+                {sizeOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {sizeMode === "manual" && (
+              <Input
+                className="mt-2"
+                value={materialSizeMM}
+                onChange={(e) => setMaterialSizeMM(e.target.value)}
+                placeholder="e.g. 16 ROUND"
+                disabled={!overrideSpec}
+              />
+            )}
           </div>
 
           {/* Alloy */}
           <div>
             <Label>Alloy *</Label>
-            <Input
-              value={alloy}
-              onChange={(e) => setAlloy(e.target.value)}
-              placeholder="e.g. CuZn39Pb3"
-            />
+            <Select
+              value={alloyMode === "manual" ? "__manual__" : alloy}
+              onValueChange={(v) => {
+                if (v === "__manual__") {
+                  setAlloyMode("manual");
+                } else {
+                  setAlloyMode("select");
+                  setAlloy(v);
+                }
+              }}
+              disabled={!overrideSpec}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select alloy" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__manual__">Manual entry…</SelectItem>
+                {alloyOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {alloyMode === "manual" && (
+              <Input
+                className="mt-2"
+                value={alloy}
+                onChange={(e) => setAlloy(e.target.value)}
+                placeholder="e.g. CuZn39Pb3"
+                disabled={!overrideSpec}
+              />
+            )}
           </div>
 
           {/* Supplier */}
@@ -327,13 +476,11 @@ export function RPOModal({
                 <SelectTrigger className="flex-1">
                   <SelectValue placeholder="Select Supplier" />
                 </SelectTrigger>
-                <SelectContent className="z-[100] bg-background">
+                <SelectContent className="z-[100]">
                   {suppliers.length === 0 ? (
-                    <div className="px-4 py-2 text-sm text-muted-foreground">
-                      No suppliers found
-                    </div>
+                    <div className="px-4 py-2 text-sm text-muted-foreground">No suppliers found</div>
                   ) : (
-                    suppliers.map(sup => (
+                    suppliers.map((sup) => (
                       <SelectItem key={sup.id} value={sup.id}>
                         {sup.name}
                       </SelectItem>
@@ -351,60 +498,33 @@ export function RPOModal({
               </Button>
             </div>
           </div>
-          
-          {/* Add New Supplier Dialog */}
+
+          {/* Add New Supplier */}
           {showAddSupplier && (
             <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold">Add New Supplier</h4>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAddSupplier(false)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddSupplier(false)}>
                   Cancel
                 </Button>
               </div>
               <div>
                 <Label className="text-xs">Supplier Name *</Label>
-                <Input
-                  value={newSupplierName}
-                  onChange={(e) => setNewSupplierName(e.target.value)}
-                  placeholder="Enter supplier name"
-                />
+                <Input value={newSupplierName} onChange={(e) => setNewSupplierName(e.target.value)} placeholder="Enter supplier name" />
               </div>
               <div>
                 <Label className="text-xs">Contact Person</Label>
-                <Input
-                  value={newSupplierContact}
-                  onChange={(e) => setNewSupplierContact(e.target.value)}
-                  placeholder="Contact person name"
-                />
+                <Input value={newSupplierContact} onChange={(e) => setNewSupplierContact(e.target.value)} placeholder="Contact person name" />
               </div>
               <div>
                 <Label className="text-xs">Email</Label>
-                <Input
-                  type="email"
-                  value={newSupplierEmail}
-                  onChange={(e) => setNewSupplierEmail(e.target.value)}
-                  placeholder="Email address"
-                />
+                <Input type="email" value={newSupplierEmail} onChange={(e) => setNewSupplierEmail(e.target.value)} placeholder="Email address" />
               </div>
               <div>
                 <Label className="text-xs">Phone</Label>
-                <Input
-                  value={newSupplierPhone}
-                  onChange={(e) => setNewSupplierPhone(e.target.value)}
-                  placeholder="Phone number"
-                />
+                <Input value={newSupplierPhone} onChange={(e) => setNewSupplierPhone(e.target.value)} placeholder="Phone number" />
               </div>
-              <Button
-                type="button"
-                onClick={handleAddSupplier}
-                disabled={addingSupplier}
-                className="w-full"
-              >
+              <Button type="button" onClick={handleAddSupplier} disabled={addingSupplier} className="w-full">
                 {addingSupplier ? "Adding..." : "Add Supplier"}
               </Button>
             </div>
@@ -420,21 +540,15 @@ export function RPOModal({
               onChange={(e) => setRatePerKg(e.target.value)}
               placeholder="Enter rate per kg"
             />
-            {qtyToOrder && ratePerKg && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Total Amount: ₹{(parseFloat(qtyToOrder) * parseFloat(ratePerKg)).toFixed(2)}
-              </p>
+            {totalAmount > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">Total Amount: ₹{totalAmount.toFixed(2)}</p>
             )}
           </div>
 
           {/* Expected Delivery */}
           <div>
             <Label>Expected Delivery Date</Label>
-            <Input
-              type="date"
-              value={expectedDelivery}
-              onChange={(e) => setExpectedDelivery(e.target.value)}
-            />
+            <Input type="date" value={expectedDelivery} onChange={(e) => setExpectedDelivery(e.target.value)} />
           </div>
 
           {/* Remarks */}
