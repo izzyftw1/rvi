@@ -6957,7 +6957,7 @@ export type Database = {
       }
       sales_order_line_items: {
         Row: {
-          alloy: string
+          alloy: string | null
           approved_at: string | null
           approved_by: string | null
           created_at: string
@@ -6982,7 +6982,7 @@ export type Database = {
           work_order_id: string | null
         }
         Insert: {
-          alloy: string
+          alloy?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
@@ -7007,7 +7007,7 @@ export type Database = {
           work_order_id?: string | null
         }
         Update: {
-          alloy?: string
+          alloy?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string

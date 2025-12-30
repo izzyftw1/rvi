@@ -358,6 +358,8 @@ export default function Sales() {
       if (orderError) throw orderError;
 
       // Insert line items (must match DB schema)
+      // Manufacturing specs (alloy, size, weights, cycle_time) are now defined in Material Requirements
+      // Sales only provides commercial data
       const lineItemsToInsert = lineItems.map(item => {
         const master = items.find(i => i.item_code === item.item_code);
         return {
@@ -367,12 +369,12 @@ export default function Sales() {
           quantity: item.quantity,
           due_date: item.due_date,
           drawing_number: item.drawing_number || null,
-          // Required/standardized spec fields (sourced from master data when available)
-          alloy: (master?.alloy || 'Unknown') as string,
-          material_size_mm: master?.material_size_mm || null,
-          cycle_time_seconds: master?.cycle_time_seconds || null,
-          gross_weight_per_pc_grams: master?.gross_weight_grams || null,
-          net_weight_per_pc_grams: master?.net_weight_grams || null,
+          // Manufacturing specs are NULL - will be defined by Production in Material Requirements
+          alloy: null,
+          material_size_mm: null,
+          cycle_time_seconds: null,
+          gross_weight_per_pc_grams: null,
+          net_weight_per_pc_grams: null,
           item_id: master?.id || null
         };
       });

@@ -312,7 +312,7 @@ export const FinalQCInspectionForm = ({
           qc_final_approved_at: new Date().toISOString(),
           qc_final_approved_by: user?.id,
           qc_final_remarks: generalRemarks,
-          final_qc_result: result === 'pass' ? 'passed' : 'blocked'
+          final_qc_result: result === 'pass' ? 'pass' : 'fail'
         })
         .eq('id', workOrderId);
 

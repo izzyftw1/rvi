@@ -303,7 +303,7 @@ const FinalQC = () => {
         quality_released_at: new Date().toISOString(),
         quality_released_by: user?.id,
         sampling_plan_reference: samplingPlan,
-        final_qc_result: 'passed',
+        final_qc_result: 'pass',
         qc_final_status: 'passed',
         qc_final_remarks: remarks,
         current_stage: 'packing' as const
