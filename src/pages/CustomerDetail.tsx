@@ -73,9 +73,9 @@ export default function CustomerDetail() {
       const totalAR = filteredInv.reduce((sum: number, inv: any) => sum + Number(inv.balance_amount), 0);
       const overdueAR = filteredInv.filter((inv: any) => inv.status === "overdue").reduce((sum: number, inv: any) => sum + Number(inv.balance_amount), 0);
 
-      const { data: soData } = await supabase.from("sales_orders").select("id").eq("customer_id", id).in("status", ["draft", "pending", "approved"]);
-      const { data: woData } = await supabase.from("work_orders").select("id").eq("customer_id", id).neq("status", "completed");
-      const { data: shipData } = await supabase.from("shipments").select("id").eq("customer_id", id).is("delivered_date", null);
+      const { data: soData } = await (supabase.from("sales_orders") as any).select("id").eq("customer_id", id).in("status", ["draft", "pending", "approved"]);
+      const { data: woData } = await (supabase.from("work_orders") as any).select("id").eq("customer_id", id).neq("status", "completed");
+      const { data: shipData } = await (supabase.from("shipments") as any).select("id").eq("customer_id", id).is("delivered_date", null);
 
       setStats({ totalAR, overdueAR, avgDaysToPay: 0, openSOs: soData?.length || 0, openWOs: woData?.length || 0, activeShipments: shipData?.length || 0 });
     } catch (error: any) {
