@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,128 +7,138 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Download, FileSpreadsheet, ShoppingCart } from "lucide-react";
+import { Download, FileSpreadsheet, ShoppingCart, Package, AlertTriangle, CheckCircle, Clock, TrendingUp, Layers } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { RPOModal } from "@/components/RPOModal";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Home } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface MaterialRequirement {
+interface WorkOrderMaterial {
+  wo_id: string;
+  display_id: string;
+  item_code: string;
+  customer: string;
+  customer_id: string | null;
+  quantity: number;
+  due_date: string;
   material_size_mm: string;
+  material_grade: string;
+  shape: string;
   alloy: string;
-  total_pcs: number;
-  total_gross_weight_kg: number;
-  total_net_weight_kg: number;
-  inventory_gross_kg: number;
-  inventory_net_kg: number;
+  gross_weight_per_pc: number;
+  net_weight_per_pc: number;
+  total_gross_kg: number;
+  total_net_kg: number;
+  current_stage: string;
+  so_id: string | null;
+  so_display_id: string | null;
+  priority: number;
+}
+
+interface MaterialGroup {
+  key: string;
+  material_grade: string;
+  shape: string;
+  size_mm: string;
+  alloy: string;
+  total_required_kg: number;
+  total_required_pcs: number;
+  inventory_kg: number;
+  issued_kg: number;
   surplus_deficit_kg: number;
-  last_gi_reference: string | null;
-  last_gi_date: string | null;
-  linked_sales_orders: Array<{
-    so_id: string;
-    customer: string;
-    pcs: number;
-    id: string;
-  }>;
-  linked_work_orders: Array<{
-    wo_number: string;
-    id: string;
-    item_code: string;
-    customer: string | null;
-    quantity: number | null;
-  }>;
-  procurement_status: "none" | "draft" | "pending_approval" | "approved" | "part_received";
-  rpo_no?: string | null;
+  on_order_kg: number;
+  pending_receipt_kg: number;
+  work_orders: WorkOrderMaterial[];
+  rpo_status: 'none' | 'draft' | 'pending_approval' | 'approved' | 'part_received' | 'closed';
+  rpo_no: string | null;
+  urgency: 'critical' | 'high' | 'medium' | 'low';
+}
+
+interface SummaryStats {
+  totalRequiredKg: number;
+  totalDeficitKg: number;
+  totalOnOrderKg: number;
+  totalInventoryKg: number;
+  totalIssuedKg: number;
+  openWoCount: number;
+  criticalCount: number;
+  pendingPoCount: number;
+}
+
+interface MasterGrade {
+  id: string;
+  name: string;
+  category: string;
+}
+
+interface MasterShape {
+  id: string;
+  name: string;
+}
+
+interface MasterSize {
+  id: string;
+  size_value: number;
+  display_label: string;
 }
 
 export default function MaterialRequirements() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [requirements, setRequirements] = useState<MaterialRequirement[]>([]);
-  const [filterCustomer, setFilterCustomer] = useState("");
+  const [workOrders, setWorkOrders] = useState<WorkOrderMaterial[]>([]);
+  const [inventoryData, setInventoryData] = useState<Map<string, number>>(new Map());
+  const [issuedData, setIssuedData] = useState<Map<string, number>>(new Map());
+  const [rpoData, setRpoData] = useState<any[]>([]);
+  
+  // Master data
+  const [masterGrades, setMasterGrades] = useState<MasterGrade[]>([]);
+  const [masterShapes, setMasterShapes] = useState<MasterShape[]>([]);
+  const [masterSizes, setMasterSizes] = useState<MasterSize[]>([]);
+  
+  // Filters
+  const [filterGrade, setFilterGrade] = useState("all");
+  const [filterShape, setFilterShape] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterDueDate, setFilterDueDate] = useState("");
-  const [filterSupplier, setFilterSupplier] = useState("");
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterSize, setFilterSize] = useState<string>("");
-  const [customers, setCustomers] = useState<string[]>([]);
-  const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [filterCustomer, setFilterCustomer] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewMode, setViewMode] = useState<"grouped" | "detailed">("grouped");
+  
+  // Expanded groups
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  
+  // RPO Modal
+  const [rpoModalOpen, setRpoModalOpen] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<MaterialGroup | null>(null);
+
+  // Session
   const [session, setSession] = useState<any>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [debug, setDebug] = useState<{ approved: number; grouped: number; inventory: number; error: string }>({ approved: 0, grouped: 0, inventory: 0, error: "" });
-  const [rpoModalOpen, setRpoModalOpen] = useState(false);
-  const [selectedRequirement, setSelectedRequirement] = useState<MaterialRequirement | null>(null);
-
-  // Normalize and format material size values like "20 hex" / "hex 20" / "20" → "20 HEX" or "20 mm"
-  const normalizeSize = (raw: any): string => {
-    if (!raw) return "";
-    const s = String(raw).trim();
-    // Extract numeric and textual parts regardless of order
-    const numMatch = s.match(/\d+(?:\.\d+)?/);
-    const textMatch = s.match(/[a-zA-Z]+/g);
-    const num = numMatch ? numMatch[0] : "";
-    const text = textMatch ? textMatch.join(" ").toUpperCase() : "";
-    if (num && text) return `${num} ${text}`;
-    if (num) return `${num} mm`;
-    return s.toUpperCase();
-  };
 
   useEffect(() => {
-    // Auth: set up listener FIRST, then check existing session
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setSessionChecked(true);
-      if (nextSession) {
-        setLoading(true);
-        // Defer data load to avoid doing async work inside the callback
-        setTimeout(() => {
-          loadRequirements();
-        }, 0);
-      } else {
-        setLoading(false);
-      }
+      if (nextSession) loadAllData();
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setSessionChecked(true);
-      if (session) {
-        setLoading(true);
-        loadRequirements();
-      } else {
-        setLoading(false);
-      }
+      if (session) loadAllData();
     });
-    
-    // Set up realtime subscriptions
+
+    // Realtime subscription
     const channel = supabase
-      .channel('material-requirements-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
-        console.log('Work orders updated - refreshing requirements');
-        loadRequirements();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => {
-        console.log('Sales orders updated - refreshing requirements');
-        loadRequirements();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, () => {
-        console.log('Inventory lots updated - refreshing requirements');
-        loadRequirements();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, () => {
-        console.log('Raw purchase orders updated - refreshing requirements');
-        loadRequirements();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
-        console.log('Suppliers updated - refreshing requirements');
-        loadRequirements();
-      })
-      .subscribe((status) => {
-        console.log('Material Requirements realtime subscription status:', status);
-      });
+      .channel('material-requirements-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadAllData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, loadAllData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, loadAllData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_material_issues' }, loadAllData)
+      .subscribe();
 
     return () => {
       subscription.unsubscribe();
@@ -136,270 +146,354 @@ export default function MaterialRequirements() {
     };
   }, []);
 
-  const loadRequirements = async () => {
+  const loadAllData = async () => {
     setLoading(true);
     try {
-      // Fetch WOs that haven't started production (goods_in stage only)
-      const { data: workOrders, error: woError } = await supabase
-        .from("work_orders")
-        .select("id, wo_number, item_code, quantity, gross_weight_per_pc, net_weight_per_pc, material_size_mm, sales_order, current_stage, financial_snapshot, customer")
-        .eq("current_stage", "goods_in");
-
-      if (woError) throw woError;
-
-      // Fetch related SOs
-      const soIds = [...new Set(workOrders?.map(wo => wo.sales_order).filter(Boolean))];
-      
-      // Filter out invalid UUIDs (must be valid UUID format)
-      const validSoIds = soIds.filter(id => {
-        if (!id) return false;
-        // UUID format: 8-4-4-4-12 hexadecimal characters
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        return uuidRegex.test(id);
-      });
-      
-      let salesOrders = [];
-      if (validSoIds.length > 0) {
-        const { data, error: soError } = await supabase
-          .from("sales_orders")
-          .select("id, so_id, customer")
-          .in("id", validSoIds);
-
-        if (soError) throw soError;
-        salesOrders = data || [];
-      }
-
-      // Fetch inventory from inventory_lots
-      const { data: inventoryLots, error: invError } = await supabase
-        .from("inventory_lots")
-        .select("*");
-
-      if (invError) throw invError;
-
-      // Fetch all RPOs
-      const { data: rpos, error: rpoError } = await supabase
-        .from("raw_purchase_orders")
-        .select("*")
-        .in("status", ["draft", "pending_approval", "approved", "part_received"]);
-
-      if (rpoError) throw rpoError;
-
-      // Group by size/alloy
-      const grouped = new Map<string, MaterialRequirement>();
-
-      // Process WOs for requirements (only if no approved RPO exists)
-      for (const wo of workOrders || []) {
-        const size = normalizeSize(wo.material_size_mm);
-        const alloy = (wo.financial_snapshot as any)?.line_item?.alloy || "";
-        const key = `${size}-${alloy}`;
-
-        // Check if approved RPO exists for this WO
-        const hasApprovedRPO = rpos?.some(
-          rpo => rpo.wo_id === wo.id && rpo.status === "approved"
-        );
-
-        if (hasApprovedRPO) continue; // Skip this WO
-
-        if (!grouped.has(key)) {
-          grouped.set(key, {
-            material_size_mm: size,
-            alloy,
-            total_pcs: 0,
-            total_gross_weight_kg: 0,
-            total_net_weight_kg: 0,
-            inventory_gross_kg: 0,
-            inventory_net_kg: 0,
-            surplus_deficit_kg: 0,
-            last_gi_reference: null,
-            last_gi_date: null,
-            linked_sales_orders: [],
-            linked_work_orders: [],
-            procurement_status: "none"
-          });
-        }
-
-        const req = grouped.get(key)!;
-        req.total_pcs += wo.quantity;
-        req.total_gross_weight_kg += (wo.quantity * (wo.gross_weight_per_pc || 0)) / 1000;
-        req.total_net_weight_kg += (wo.quantity * (wo.net_weight_per_pc || 0)) / 1000;
-
-        req.linked_work_orders.push({
-          wo_number: wo.wo_number,
-          id: wo.id,
-          item_code: wo.item_code,
-          customer: wo.customer,
-          quantity: wo.quantity
-        });
-
-        // Find related SO
-        const relatedSO = salesOrders?.find(so => so.id === wo.sales_order);
-        if (relatedSO && !req.linked_sales_orders.find(s => s.id === relatedSO.id)) {
-          req.linked_sales_orders.push({
-            so_id: relatedSO.so_id,
-            customer: relatedSO.customer,
-            pcs: 0,
-            id: relatedSO.id
-          });
-        }
-      }
-
-      // Add inventory data
-      for (const lot of inventoryLots || []) {
-        const size = normalizeSize(lot.material_size_mm);
-        const alloy = lot.alloy || "";
-        const key = `${size}-${alloy}`;
-
-        if (!grouped.has(key)) {
-          grouped.set(key, {
-            material_size_mm: size,
-            alloy,
-            total_pcs: 0,
-            total_gross_weight_kg: 0,
-            total_net_weight_kg: 0,
-            inventory_gross_kg: 0,
-            inventory_net_kg: 0,
-            surplus_deficit_kg: 0,
-            last_gi_reference: lot.lot_id,
-            last_gi_date: new Date(lot.received_date).toLocaleDateString(),
-            linked_sales_orders: [],
-            linked_work_orders: [],
-            procurement_status: "none"
-          });
-        }
-
-        const req = grouped.get(key)!;
-        req.inventory_gross_kg += Number(lot.qty_kg || 0);
-        req.last_gi_reference = lot.lot_id;
-        req.last_gi_date = new Date(lot.received_date).toLocaleDateString();
-      }
-
-      // Calculate surplus/deficit and procurement status
-      for (const [key, req] of grouped.entries()) {
-        req.surplus_deficit_kg = req.inventory_gross_kg - req.total_gross_weight_kg;
-
-        // Find RPO for this size/alloy
-        const relatedRPO = rpos?.find(
-          rpo => normalizeSize(rpo.material_size_mm) === req.material_size_mm && 
-                 (rpo.alloy === req.alloy || (!rpo.alloy && !req.alloy))
-        );
-
-        if (relatedRPO) {
-          if (relatedRPO.status === "draft") {
-            req.procurement_status = "draft";
-          } else if (relatedRPO.status === "pending_approval") {
-            req.procurement_status = "pending_approval";
-          } else if (relatedRPO.status === "approved") {
-            req.procurement_status = "approved";
-          } else if (relatedRPO.status === "part_received") {
-            req.procurement_status = "part_received";
-          }
-          req.rpo_no = relatedRPO.rpo_no;
-        }
-      }
-
-      const requirementsArray = Array.from(grouped.values());
-      setRequirements(requirementsArray);
-      setDebug({
-        approved: workOrders?.length || 0,
-        grouped: requirementsArray.length,
-        inventory: inventoryLots?.length || 0,
-        error: ""
-      });
-    } catch (err: any) {
-      setDebug({ approved: 0, grouped: 0, inventory: 0, error: err?.message || String(err) });
-      toast({ variant: "destructive", description: `Failed to load: ${err?.message || err}` });
+      await Promise.all([
+        loadMasterData(),
+        loadWorkOrders(),
+        loadInventory(),
+        loadIssuedMaterials(),
+        loadRPOs()
+      ]);
+    } catch (error: any) {
+      toast({ variant: "destructive", description: `Failed to load data: ${error.message}` });
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePlaceOrder = (req: MaterialRequirement) => {
-    setSelectedRequirement(req);
+  const loadMasterData = async () => {
+    const [gradesRes, shapesRes, sizesRes] = await Promise.all([
+      supabase.from('material_grades').select('id, name, category').order('name'),
+      supabase.from('cross_section_shapes').select('id, name').order('name'),
+      supabase.from('nominal_sizes').select('id, size_value, display_label').order('size_value')
+    ]);
+    
+    if (gradesRes.data) setMasterGrades(gradesRes.data);
+    if (shapesRes.data) setMasterShapes(shapesRes.data);
+    if (sizesRes.data) setMasterSizes(sizesRes.data);
+  };
+
+  const loadWorkOrders = async () => {
+    // Get WOs that need material (goods_in stage, not yet in production)
+    const { data, error } = await supabase
+      .from('work_orders')
+      .select('id, display_id, item_code, customer, customer_id, quantity, due_date, material_size_mm, gross_weight_per_pc, net_weight_per_pc, current_stage, so_id, priority, financial_snapshot')
+      .in('current_stage', ['goods_in', 'cutting'] as any)
+      .order('due_date', { ascending: true });
+
+    if (error) throw error;
+
+    const processed = (data || []).map(wo => {
+      // Extract material info from various sources
+      const financialSnapshot = wo.financial_snapshot as any;
+      const lineItem = financialSnapshot?.line_item || {};
+      
+      // Parse material_size_mm to extract shape and size
+      const sizeStr = wo.material_size_mm || '';
+      const { shape, size } = parseSize(sizeStr);
+      
+      // Get alloy from financial snapshot or material grade
+      const alloy = lineItem?.alloy || extractAlloy(sizeStr) || '';
+      const grade = lineItem?.material_grade || `${size}mm ${shape}`.trim();
+
+      return {
+        wo_id: wo.id,
+        display_id: wo.display_id || wo.id.slice(0, 8),
+        item_code: wo.item_code || '',
+        customer: wo.customer || '',
+        customer_id: wo.customer_id,
+        quantity: wo.quantity || 0,
+        due_date: wo.due_date,
+        material_size_mm: sizeStr,
+        material_grade: grade,
+        shape: shape,
+        alloy: alloy,
+        gross_weight_per_pc: wo.gross_weight_per_pc || 0,
+        net_weight_per_pc: wo.net_weight_per_pc || 0,
+        total_gross_kg: ((wo.quantity || 0) * (wo.gross_weight_per_pc || 0)) / 1000,
+        total_net_kg: ((wo.quantity || 0) * (wo.net_weight_per_pc || 0)) / 1000,
+        current_stage: wo.current_stage || 'goods_in',
+        so_id: wo.so_id,
+        so_display_id: null, // Will be fetched separately if needed
+        priority: wo.priority || 3
+      };
+    });
+
+    setWorkOrders(processed);
+  };
+
+  const parseSize = (sizeStr: string): { shape: string; size: string } => {
+    if (!sizeStr) return { shape: '', size: '' };
+    
+    const normalized = sizeStr.toUpperCase().trim();
+    
+    // Extract shape
+    let shape = 'ROUND';
+    if (normalized.includes('HEX')) shape = 'HEX';
+    else if (normalized.includes('SQUARE') || normalized.includes('SQ')) shape = 'SQUARE';
+    else if (normalized.includes('FLAT')) shape = 'FLAT';
+    else if (normalized.includes('TUBE') || normalized.includes('HOLLOW')) shape = 'TUBE';
+    else if (normalized.includes('PIPE')) shape = 'PIPE';
+    else if (normalized.includes('RECT')) shape = 'RECTANGLE';
+    
+    // Extract size number
+    const numMatch = normalized.match(/(\d+(?:\.\d+)?)/);
+    const size = numMatch ? numMatch[1] : '';
+    
+    return { shape, size };
+  };
+
+  const extractAlloy = (sizeStr: string): string => {
+    if (!sizeStr) return '';
+    const upper = sizeStr.toUpperCase();
+    
+    // Common alloy patterns
+    const alloyPatterns = ['CW614N', 'CW617N', 'CW602N', 'C36000', 'C38500', 'SS304', 'SS316', 'SS316L'];
+    for (const pattern of alloyPatterns) {
+      if (upper.includes(pattern)) return pattern;
+    }
+    return '';
+  };
+
+  const loadInventory = async () => {
+    const { data, error } = await supabase
+      .from('inventory_lots')
+      .select('material_size_mm, alloy, qty_kg');
+
+    if (error) throw error;
+
+    const inventoryMap = new Map<string, number>();
+    (data || []).forEach(lot => {
+      const key = normalizeKey(lot.material_size_mm || '', lot.alloy || '');
+      const qtyValue = lot.qty_kg ? parseFloat(String(lot.qty_kg)) : 0;
+      inventoryMap.set(key, (inventoryMap.get(key) || 0) + qtyValue);
+    });
+
+    setInventoryData(inventoryMap);
+  };
+
+  const loadIssuedMaterials = async () => {
+    const { data, error } = await supabase
+      .from('wo_material_issues')
+      .select('wo_id, quantity_kg');
+
+    if (error) throw error;
+
+    const issuedMap = new Map<string, number>();
+    (data || []).forEach(issue => {
+      const qtyValue = issue.quantity_kg ? parseFloat(String(issue.quantity_kg)) : 0;
+      issuedMap.set(issue.wo_id, (issuedMap.get(issue.wo_id) || 0) + qtyValue);
+    });
+
+    setIssuedData(issuedMap);
+  };
+
+  const loadRPOs = async () => {
+    const { data, error } = await supabase
+      .from('raw_purchase_orders')
+      .select('*')
+      .in('status', ['draft', 'pending_approval', 'approved', 'part_received']);
+
+    if (error) throw error;
+    setRpoData(data || []);
+  };
+
+  const normalizeKey = (size: string, alloy: string): string => {
+    const { shape, size: sizeNum } = parseSize(size || '');
+    return `${sizeNum}-${shape}-${(alloy || '').toUpperCase()}`.replace(/\s+/g, '');
+  };
+
+  // Compute grouped materials
+  const groupedMaterials = useMemo((): MaterialGroup[] => {
+    const groups = new Map<string, MaterialGroup>();
+
+    workOrders.forEach(wo => {
+      const key = `${wo.shape}-${parseSize(wo.material_size_mm).size}-${wo.alloy}`;
+      
+      if (!groups.has(key)) {
+        const invKey = normalizeKey(wo.material_size_mm, wo.alloy);
+        const inventoryKg = inventoryData.get(invKey) || 0;
+        
+        // Find related RPO
+        const relatedRPO = rpoData.find(rpo => {
+          const rpoKey = normalizeKey(rpo.material_size_mm, rpo.alloy);
+          return rpoKey === invKey;
+        });
+
+        groups.set(key, {
+          key,
+          material_grade: wo.material_grade,
+          shape: wo.shape,
+          size_mm: parseSize(wo.material_size_mm).size,
+          alloy: wo.alloy,
+          total_required_kg: 0,
+          total_required_pcs: 0,
+          inventory_kg: inventoryKg,
+          issued_kg: 0,
+          surplus_deficit_kg: inventoryKg,
+          on_order_kg: relatedRPO ? parseFloat(relatedRPO.qty_ordered_kg || 0) : 0,
+          pending_receipt_kg: 0,
+          work_orders: [],
+          rpo_status: relatedRPO?.status || 'none',
+          rpo_no: relatedRPO?.rpo_no || null,
+          urgency: 'low'
+        });
+      }
+
+      const group = groups.get(key)!;
+      group.total_required_kg += wo.total_gross_kg;
+      group.total_required_pcs += wo.quantity;
+      group.issued_kg += issuedData.get(wo.wo_id) || 0;
+      group.work_orders.push(wo);
+    });
+
+    // Calculate surplus/deficit and urgency
+    groups.forEach((group, key) => {
+      group.surplus_deficit_kg = group.inventory_kg + group.on_order_kg - group.total_required_kg;
+      
+      // Calculate urgency based on deficit and due dates
+      const hasDeficit = group.surplus_deficit_kg < 0;
+      const earliestDue = Math.min(...group.work_orders.map(wo => new Date(wo.due_date).getTime()));
+      const daysUntilDue = Math.ceil((earliestDue - Date.now()) / (1000 * 60 * 60 * 24));
+      
+      if (hasDeficit && daysUntilDue <= 7) group.urgency = 'critical';
+      else if (hasDeficit && daysUntilDue <= 14) group.urgency = 'high';
+      else if (hasDeficit) group.urgency = 'medium';
+      else group.urgency = 'low';
+
+      groups.set(key, group);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => {
+      const urgencyOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      return urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
+    });
+  }, [workOrders, inventoryData, issuedData, rpoData]);
+
+  // Filter groups
+  const filteredGroups = useMemo(() => {
+    return groupedMaterials.filter(group => {
+      if (filterGrade !== "all" && !group.alloy.toUpperCase().includes(filterGrade.toUpperCase())) return false;
+      if (filterShape !== "all" && group.shape !== filterShape) return false;
+      if (filterStatus === "deficit" && group.surplus_deficit_kg >= 0) return false;
+      if (filterStatus === "covered" && group.surplus_deficit_kg < 0) return false;
+      if (filterCustomer !== "all" && !group.work_orders.some(wo => wo.customer === filterCustomer)) return false;
+      if (searchTerm && !group.material_grade.toLowerCase().includes(searchTerm.toLowerCase()) &&
+          !group.alloy.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+      return true;
+    });
+  }, [groupedMaterials, filterGrade, filterShape, filterStatus, filterCustomer, searchTerm]);
+
+  // Summary stats
+  const summaryStats = useMemo((): SummaryStats => {
+    return filteredGroups.reduce((acc, group) => ({
+      totalRequiredKg: acc.totalRequiredKg + group.total_required_kg,
+      totalDeficitKg: acc.totalDeficitKg + (group.surplus_deficit_kg < 0 ? Math.abs(group.surplus_deficit_kg) : 0),
+      totalOnOrderKg: acc.totalOnOrderKg + group.on_order_kg,
+      totalInventoryKg: acc.totalInventoryKg + group.inventory_kg,
+      totalIssuedKg: acc.totalIssuedKg + group.issued_kg,
+      openWoCount: acc.openWoCount + group.work_orders.length,
+      criticalCount: acc.criticalCount + (group.urgency === 'critical' ? 1 : 0),
+      pendingPoCount: acc.pendingPoCount + (group.rpo_status !== 'none' && group.rpo_status !== 'closed' ? 1 : 0)
+    }), {
+      totalRequiredKg: 0,
+      totalDeficitKg: 0,
+      totalOnOrderKg: 0,
+      totalInventoryKg: 0,
+      totalIssuedKg: 0,
+      openWoCount: 0,
+      criticalCount: 0,
+      pendingPoCount: 0
+    });
+  }, [filteredGroups]);
+
+  // Get unique customers for filter
+  const uniqueCustomers = useMemo(() => {
+    return [...new Set(workOrders.map(wo => wo.customer).filter(Boolean))].sort();
+  }, [workOrders]);
+
+  const toggleGroup = (key: string) => {
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(key)) newExpanded.delete(key);
+    else newExpanded.add(key);
+    setExpandedGroups(newExpanded);
+  };
+
+  const handlePlaceOrder = (group: MaterialGroup) => {
+    setSelectedGroup(group);
     setRpoModalOpen(true);
   };
 
-  const checkExistingRPO = (req: MaterialRequirement): { hasDraft: boolean; rpoNo: string | null } => {
-    // Check if a draft or pending_approval RPO exists for the same size/alloy with matching WO
-    const existingRPO = requirements.find(r => 
-      r.material_size_mm === req.material_size_mm && 
-      r.alloy === req.alloy &&
-      (r.procurement_status === 'draft' || r.procurement_status === 'pending_approval') &&
-      r.linked_work_orders.some(wo => req.linked_work_orders.some(rwo => rwo.id === wo.id))
-    );
-    
-    return {
-      hasDraft: !!existingRPO,
-      rpoNo: existingRPO?.rpo_no || null
-    };
+  const getUrgencyBadge = (urgency: string) => {
+    switch (urgency) {
+      case 'critical':
+        return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Critical</Badge>;
+      case 'high':
+        return <Badge className="bg-orange-500 text-white"><Clock className="w-3 h-3 mr-1" />High</Badge>;
+      case 'medium':
+        return <Badge variant="secondary"><TrendingUp className="w-3 h-3 mr-1" />Medium</Badge>;
+      default:
+        return <Badge variant="outline"><CheckCircle className="w-3 h-3 mr-1" />OK</Badge>;
+    }
+  };
+
+  const getStatusBadge = (status: string, rpoNo: string | null) => {
+    switch (status) {
+      case 'draft':
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950">{rpoNo}</Badge>;
+      case 'pending_approval':
+        return <Badge className="bg-amber-500 text-white">{rpoNo}</Badge>;
+      case 'approved':
+        return <Badge className="bg-green-600 text-white">{rpoNo}</Badge>;
+      case 'part_received':
+        return <Badge className="bg-purple-600 text-white">{rpoNo}</Badge>;
+      default:
+        return <Badge variant="outline">No PO</Badge>;
+    }
   };
 
   const exportToExcel = async () => {
-    const data = filteredRequirements.map(req => ({
-      "Raw Material Size (mm)": req.material_size_mm,
-      "Alloy": req.alloy,
-      "Requirement Gross (kg)": req.total_gross_weight_kg.toFixed(2),
-      "Requirement Net (kg)": req.total_net_weight_kg.toFixed(2),
-      "Requirement (pcs)": req.total_pcs,
-      "Inventory Gross (kg)": req.inventory_gross_kg.toFixed(2),
-      "Inventory Net (kg)": req.inventory_net_kg.toFixed(2),
-      "Surplus/Deficit (kg)": req.surplus_deficit_kg.toFixed(2),
-      "Linked Sales Orders": req.linked_sales_orders.map(so => so.so_id).join(", "),
-      "Linked Work Orders": req.linked_work_orders.map(wo => wo.wo_number).join(", "),
-      "Last GI Reference": req.last_gi_reference || "N/A",
-      "Last GI Date": req.last_gi_date || "N/A",
-      "Procurement Status": req.procurement_status,
-      "RPO No": req.rpo_no || "N/A"
-    }));
+    const data = filteredGroups.flatMap(group => 
+      group.work_orders.map(wo => ({
+        "Material Grade": group.material_grade,
+        "Shape": group.shape,
+        "Size (mm)": group.size_mm,
+        "Alloy": group.alloy,
+        "WO Number": wo.display_id,
+        "Item Code": wo.item_code,
+        "Customer": wo.customer,
+        "Qty (pcs)": wo.quantity,
+        "Gross Wt (kg)": wo.total_gross_kg.toFixed(2),
+        "Net Wt (kg)": wo.total_net_kg.toFixed(2),
+        "Due Date": wo.due_date,
+        "Inventory (kg)": group.inventory_kg.toFixed(2),
+        "On Order (kg)": group.on_order_kg.toFixed(2),
+        "Surplus/Deficit (kg)": group.surplus_deficit_kg.toFixed(2),
+        "RPO Status": group.rpo_status,
+        "RPO No": group.rpo_no || '',
+        "Urgency": group.urgency
+      }))
+    );
 
     const XLSX = await import("xlsx");
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Material Requirements");
-    XLSX.writeFile(wb, "material_requirements.xlsx");
+    XLSX.writeFile(wb, `Material_Requirements_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const exportToPDF = async () => {
-    const { default: jsPDF } = await import("jspdf");
-    await import("jspdf-autotable");
-
-    const doc = new jsPDF("landscape");
-    
-    doc.setFontSize(18);
-    doc.text("Raw Material Requirements", 14, 20);
-    
-    const tableData = filteredRequirements.map(req => [
-      req.material_size_mm,
-      req.alloy || "N/A",
-      `${req.total_gross_weight_kg.toFixed(2)} kg (${req.total_pcs} pcs)`,
-      `${req.inventory_gross_kg.toFixed(2)} kg`,
-      `${req.surplus_deficit_kg >= 0 ? '+' : ''}${req.surplus_deficit_kg.toFixed(2)} kg`,
-      req.linked_work_orders.map(wo => wo.wo_number).join(", "),
-      req.procurement_status,
-      req.rpo_no || "N/A"
-    ]);
-
-    (doc as any).autoTable({
-      head: [["Size", "Alloy", "Requirement", "Inventory", "Surplus/Deficit", "Work Orders", "Status", "RPO"]],
-      body: tableData,
-      startY: 30,
-    });
-
-    doc.save("material_requirements.pdf");
-  };
-
-  const filteredRequirements = requirements.filter(req => {
-    if (filterSize && filterSize !== "all" && req.material_size_mm !== filterSize) {
-      return false;
-    }
-    if (filterCustomer && filterCustomer !== "all" && !req.linked_sales_orders.some(so => so.customer === filterCustomer)) {
-      return false;
-    }
-    if (filterStatus !== "all") {
-      if (filterStatus === "covered" && req.surplus_deficit_kg < 0) return false;
-      if (filterStatus === "shortfall" && req.surplus_deficit_kg >= 0) return false;
-    }
-    return true;
-  });
+  if (!sessionChecked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent" />
+          <p className="mt-4 text-muted-foreground">Checking session...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (sessionChecked && !session) {
     return (
@@ -409,25 +503,10 @@ export default function MaterialRequirements() {
             <CardTitle>Login Required</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Please log in to view the Raw Material Requirements dashboard.
-            </p>
+            <p className="text-sm text-muted-foreground mb-4">Please log in to view Material Requirements.</p>
             <Button onClick={() => navigate('/auth')}>Go to Login</Button>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  if (!sessionChecked) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
-            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-          </div>
-          <p className="mt-4 text-muted-foreground">Checking session...</p>
-        </div>
       </div>
     );
   }
@@ -436,9 +515,7 @@ export default function MaterialRequirements() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
-            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
-          </div>
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent" />
           <p className="mt-4 text-muted-foreground">Loading material requirements...</p>
         </div>
       </div>
@@ -447,13 +524,13 @@ export default function MaterialRequirements() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="p-6 pb-0">
-        <Breadcrumb>
+      <div className="p-6">
+        {/* Breadcrumb */}
+        <Breadcrumb className="mb-6">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink href="/" className="flex items-center gap-1">
-                <Home className="h-4 w-4" />
-                Home
+                <Home className="h-4 w-4" />Home
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
@@ -462,312 +539,352 @@ export default function MaterialRequirements() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-      </div>
-      
-      <div className="p-6">
-        <div className="flex justify-end gap-2 mb-6">
-          <Button onClick={exportToExcel} variant="outline">
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Export Excel
-          </Button>
-          <Button onClick={exportToPDF} variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export PDF
-          </Button>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold">Material Requirements Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              Single source of truth for material planning • {summaryStats.openWoCount} Work Orders
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={exportToExcel}>
+              <FileSpreadsheet className="w-4 h-4 mr-2" />Export Excel
+            </Button>
+            <Button onClick={() => navigate('/purchase/rpo')}>
+              <Package className="w-4 h-4 mr-2" />View All RPOs
+            </Button>
+          </div>
         </div>
-      </div>
 
-      <h1 className="text-3xl font-bold mb-2">Raw Material Requirements Dashboard</h1>
-      {debug.error ? (
-        <div className="mb-4 text-sm text-destructive">Error: {debug.error}</div>
-      ) : (
-        <p className="mb-4 text-sm text-muted-foreground">
-          Approved orders: {debug.approved} • Groups: {debug.grouped} • Inventory lots: {debug.inventory}
-        </p>
-      )}
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">Total Required</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{summaryStats.totalRequiredKg.toFixed(0)} kg</div>
+            </CardContent>
+          </Card>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Material Size</label>
-              <Select value={filterSize} onValueChange={setFilterSize}>
+          <Card className={`border-2 ${summaryStats.totalDeficitKg > 0 ? 'bg-red-50 dark:bg-red-950 border-red-300' : 'bg-green-50 dark:bg-green-950 border-green-300'}`}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Total Deficit</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${summaryStats.totalDeficitKg > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {summaryStats.totalDeficitKg.toFixed(0)} kg
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">On Order</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">{summaryStats.totalOnOrderKg.toFixed(0)} kg</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">In Inventory</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{summaryStats.totalInventoryKg.toFixed(0)} kg</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Issued to WOs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{summaryStats.totalIssuedKg.toFixed(0)} kg</div>
+            </CardContent>
+          </Card>
+
+          <Card className={summaryStats.criticalCount > 0 ? 'bg-red-50 dark:bg-red-950 border-red-300' : ''}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Critical Items</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${summaryStats.criticalCount > 0 ? 'text-red-600' : ''}`}>
+                {summaryStats.criticalCount}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Layers className="w-4 h-4" />Filters
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <Input
+                placeholder="Search grade, alloy..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              
+              <Select value={filterGrade} onValueChange={setFilterGrade}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Sizes" />
+                  <SelectValue placeholder="All Grades" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Sizes</SelectItem>
-                  {[...new Set(requirements.map(r => r.material_size_mm))].filter(Boolean).map(size => (
-                    <SelectItem key={size} value={size.toString()}>{size} mm</SelectItem>
+                  <SelectItem value="all">All Grades</SelectItem>
+                  {masterGrades.map(g => (
+                    <SelectItem key={g.id} value={g.name}>{g.name} ({g.category})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">Customer</label>
+              <Select value={filterShape} onValueChange={setFilterShape}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Shapes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Shapes</SelectItem>
+                  {masterShapes.map(s => (
+                    <SelectItem key={s.id} value={s.name.toUpperCase()}>{s.name.toUpperCase()}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="deficit">⚠️ Deficit Only</SelectItem>
+                  <SelectItem value="covered">✓ Covered Only</SelectItem>
+                </SelectContent>
+              </Select>
+
               <Select value={filterCustomer} onValueChange={setFilterCustomer}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Customers" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Customers</SelectItem>
-                  {customers.filter(c => c && c.trim()).map(customer => (
-                    <SelectItem key={customer} value={customer}>{customer}</SelectItem>
+                  {uniqueCustomers.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">Supplier</label>
-              <Select value={filterSupplier} onValueChange={setFilterSupplier}>
+              <Select value={viewMode} onValueChange={(v) => setViewMode(v as any)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Suppliers" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Suppliers</SelectItem>
-                  {suppliers.filter(s => s && s.trim()).map(supplier => (
-                    <SelectItem key={supplier} value={supplier}>{supplier}</SelectItem>
-                  ))}
+                  <SelectItem value="grouped">Grouped View</SelectItem>
+                  <SelectItem value="detailed">Detailed View</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">Status</label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="covered">✓ Covered</SelectItem>
-                  <SelectItem value="shortfall">⚠ Shortfall</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-2 block">Date Range</label>
-              <div className="flex gap-2">
-                <Input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                  placeholder="From"
-                  className="text-xs"
-                />
-                <Input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                  placeholder="To"
-                  className="text-xs"
-                />
+        {/* Main Content */}
+        <Card>
+          <CardContent className="p-0">
+            {filteredGroups.length === 0 ? (
+              <div className="text-center py-12">
+                <Package className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-lg font-medium">No material requirements found</p>
+                <p className="text-muted-foreground mb-4">Work orders in goods_in stage will appear here</p>
+                <Button onClick={() => navigate('/work-orders')} variant="outline">View Work Orders</Button>
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Size (mm) / Alloy</TableHead>
-                <TableHead>Requirement (kg)</TableHead>
-                <TableHead>Inventory (kg)</TableHead>
-                <TableHead>Surplus/Deficit</TableHead>
-                <TableHead>Linked SO/WO</TableHead>
-                <TableHead>Last GI Ref</TableHead>
-                <TableHead>Procurement Status</TableHead>
-                <TableHead>Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center">Loading...</TableCell>
-                </TableRow>
-              ) : filteredRequirements.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center">No Data Available</TableCell>
-                </TableRow>
-              ) : (
-                filteredRequirements.map((req, idx) => (
-                  <TableRow key={`${req.material_size_mm}-${req.alloy}-${idx}`} className={req.surplus_deficit_kg < 0 ? "bg-destructive/5" : "bg-green-50/50 dark:bg-green-950/20"}>
-                    <TableCell>
-                      <div className="font-bold">{req.material_size_mm}</div>
-                      {req.alloy && <div className="text-xs text-muted-foreground">{req.alloy}</div>}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{req.total_gross_weight_kg.toFixed(2)} kg</div>
-                        <div className="text-xs text-muted-foreground">{req.total_pcs} pcs</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{req.inventory_gross_kg.toFixed(2)} kg</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={req.surplus_deficit_kg >= 0 ? "default" : "destructive"} className={req.surplus_deficit_kg >= 0 ? "bg-green-600" : ""}>
-                        {req.surplus_deficit_kg >= 0 ? '+' : ''}{req.surplus_deficit_kg.toFixed(2)} kg
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex flex-wrap gap-1">
-                          {req.linked_sales_orders.map((so) => (
-                            <Badge key={so.id} variant="outline" className="text-xs cursor-pointer hover:bg-accent" onClick={() => navigate(`/sales?so_id=${so.so_id}`)}>
-                              {so.so_id}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {req.linked_work_orders.map((wo) => (
-                            <Badge key={wo.id} variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => navigate(`/work-order/${wo.id}`)}>
-                              {wo.wo_number}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-xs">
-                        {req.last_gi_reference ? (
-                          <>
-                            <div className="font-medium">{req.last_gi_reference}</div>
-                            <div className="text-muted-foreground">{req.last_gi_date}</div>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">No GI</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {req.procurement_status === "none" ? (
-                        <Badge variant="outline">None</Badge>
-                      ) : req.procurement_status === "draft" ? (
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                          Draft RPO: {req.rpo_no}
-                        </Badge>
-                      ) : req.procurement_status === "pending_approval" ? (
-                        <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                          Pending: {req.rpo_no}
-                        </Badge>
-                      ) : req.procurement_status === "approved" ? (
-                        <Badge variant="default" className="bg-green-600">
-                          Approved: {req.rpo_no}
-                        </Badge>
-                      ) : req.procurement_status === "part_received" ? (
-                        <Badge variant="default" className="bg-purple-600">
-                          Part Received: {req.rpo_no}
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        const { hasDraft, rpoNo } = checkExistingRPO(req);
-                        if (hasDraft && rpoNo) {
-                          return (
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="cursor-pointer" onClick={() => navigate(`/purchase/rpo?tab=${req.procurement_status === 'draft' ? 'draft' : 'pending_approval'}`)}>
-                                {req.procurement_status === 'draft' ? 'Draft RPO' : 'RPO PA'}
-                              </Badge>
-                              <Button 
-                                onClick={() => navigate(`/purchase/rpo?tab=${req.procurement_status === 'draft' ? 'draft' : 'pending_approval'}`)}
-                                size="sm"
-                                variant="outline"
-                              >
-                                View {rpoNo}
-                              </Button>
+            ) : viewMode === "grouped" ? (
+              <div className="divide-y">
+                {filteredGroups.map(group => (
+                  <Collapsible
+                    key={group.key}
+                    open={expandedGroups.has(group.key)}
+                    onOpenChange={() => toggleGroup(group.key)}
+                  >
+                    <CollapsibleTrigger className="w-full">
+                      <div className={`flex items-center justify-between p-4 hover:bg-muted/50 transition-colors ${group.surplus_deficit_kg < 0 ? 'bg-red-50/50 dark:bg-red-950/30' : ''}`}>
+                        <div className="flex items-center gap-4">
+                          {expandedGroups.has(group.key) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                          <div className="text-left">
+                            <div className="font-semibold flex items-center gap-2">
+                              {group.size_mm}mm {group.shape}
+                              {group.alloy && <Badge variant="outline">{group.alloy}</Badge>}
                             </div>
-                          );
-                        }
-                        if (req.surplus_deficit_kg < 0 && req.procurement_status === "none") {
-                          return (
-                            <Button 
-                              size="sm" 
-                              onClick={() => handlePlaceOrder(req)}
-                            >
-                              <ShoppingCart className="mr-2 h-4 w-4" />
-                              Place Order
+                            <div className="text-sm text-muted-foreground">
+                              {group.work_orders.length} WOs • {group.total_required_pcs.toLocaleString()} pcs
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <div className="text-sm text-muted-foreground">Required</div>
+                            <div className="font-semibold">{group.total_required_kg.toFixed(1)} kg</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm text-muted-foreground">Inventory</div>
+                            <div className="font-semibold text-green-600">{group.inventory_kg.toFixed(1)} kg</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm text-muted-foreground">On Order</div>
+                            <div className="font-semibold text-blue-600">{group.on_order_kg.toFixed(1)} kg</div>
+                          </div>
+                          <div className="text-right min-w-[100px]">
+                            <div className="text-sm text-muted-foreground">Balance</div>
+                            <Badge variant={group.surplus_deficit_kg >= 0 ? "default" : "destructive"} className={group.surplus_deficit_kg >= 0 ? "bg-green-600" : ""}>
+                              {group.surplus_deficit_kg >= 0 ? '+' : ''}{group.surplus_deficit_kg.toFixed(1)} kg
+                            </Badge>
+                          </div>
+                          <div className="min-w-[80px]">{getUrgencyBadge(group.urgency)}</div>
+                          <div className="min-w-[100px]">{getStatusBadge(group.rpo_status, group.rpo_no)}</div>
+                        </div>
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="border-t bg-muted/30">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>WO Number</TableHead>
+                              <TableHead>Item Code</TableHead>
+                              <TableHead>Customer</TableHead>
+                              <TableHead className="text-right">Qty (pcs)</TableHead>
+                              <TableHead className="text-right">Gross Wt (kg)</TableHead>
+                              <TableHead className="text-right">Net Wt (kg)</TableHead>
+                              <TableHead>Due Date</TableHead>
+                              <TableHead>SO Reference</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {group.work_orders.map(wo => (
+                              <TableRow key={wo.wo_id} className="hover:bg-muted/50">
+                                <TableCell>
+                                  <Button variant="link" className="p-0 h-auto" onClick={() => navigate(`/work-order/${wo.wo_id}`)}>
+                                    {wo.display_id}
+                                  </Button>
+                                </TableCell>
+                                <TableCell className="font-medium">{wo.item_code}</TableCell>
+                                <TableCell>{wo.customer}</TableCell>
+                                <TableCell className="text-right">{wo.quantity.toLocaleString()}</TableCell>
+                                <TableCell className="text-right">{wo.total_gross_kg.toFixed(2)}</TableCell>
+                                <TableCell className="text-right">{wo.total_net_kg.toFixed(2)}</TableCell>
+                                <TableCell>{new Date(wo.due_date).toLocaleDateString()}</TableCell>
+                                <TableCell>
+                                  {wo.so_display_id ? (
+                                    <Badge variant="outline" className="cursor-pointer" onClick={() => navigate(`/sales`)}>
+                                      {wo.so_display_id}
+                                    </Badge>
+                                  ) : '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                        <div className="p-4 flex justify-end border-t">
+                          {group.surplus_deficit_kg < 0 && group.rpo_status === 'none' && (
+                            <Button onClick={() => handlePlaceOrder(group)}>
+                              <ShoppingCart className="w-4 h-4 mr-2" />
+                              Create RPO ({Math.abs(group.surplus_deficit_kg).toFixed(1)} kg deficit)
                             </Button>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </TableCell>
+                          )}
+                          {group.rpo_no && (
+                            <Button variant="outline" onClick={() => navigate(`/purchase/rpo?rpo_no=${group.rpo_no}`)}>
+                              View {group.rpo_no}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                ))}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Material</TableHead>
+                    <TableHead>Shape</TableHead>
+                    <TableHead>Alloy</TableHead>
+                    <TableHead>WO Count</TableHead>
+                    <TableHead className="text-right">Required (kg)</TableHead>
+                    <TableHead className="text-right">Inventory (kg)</TableHead>
+                    <TableHead className="text-right">On Order (kg)</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead>Urgency</TableHead>
+                    <TableHead>PO Status</TableHead>
+                    <TableHead>Action</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          {filteredRequirements.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">No material requirements found</p>
-              <Button onClick={() => navigate('/work-orders/new')} variant="outline">
-                Create Work Order
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Total Material Sizes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{filteredRequirements.length}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Total Pieces</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">
-              {filteredRequirements.reduce((sum, req) => sum + req.total_pcs, 0)}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Total Gross Weight (kg)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">
-              {filteredRequirements.reduce((sum, req) => sum + req.total_gross_weight_kg, 0).toFixed(2)}
-            </p>
+                </TableHeader>
+                <TableBody>
+                  {filteredGroups.map(group => (
+                    <TableRow key={group.key} className={group.surplus_deficit_kg < 0 ? 'bg-red-50/50 dark:bg-red-950/30' : ''}>
+                      <TableCell className="font-medium">{group.size_mm}mm</TableCell>
+                      <TableCell>{group.shape}</TableCell>
+                      <TableCell>{group.alloy || '-'}</TableCell>
+                      <TableCell>{group.work_orders.length}</TableCell>
+                      <TableCell className="text-right">{group.total_required_kg.toFixed(1)}</TableCell>
+                      <TableCell className="text-right text-green-600">{group.inventory_kg.toFixed(1)}</TableCell>
+                      <TableCell className="text-right text-blue-600">{group.on_order_kg.toFixed(1)}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={group.surplus_deficit_kg >= 0 ? "default" : "destructive"} className={group.surplus_deficit_kg >= 0 ? "bg-green-600" : ""}>
+                          {group.surplus_deficit_kg >= 0 ? '+' : ''}{group.surplus_deficit_kg.toFixed(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{getUrgencyBadge(group.urgency)}</TableCell>
+                      <TableCell>{getStatusBadge(group.rpo_status, group.rpo_no)}</TableCell>
+                      <TableCell>
+                        {group.surplus_deficit_kg < 0 && group.rpo_status === 'none' && (
+                          <Button size="sm" onClick={() => handlePlaceOrder(group)}>
+                            <ShoppingCart className="w-3 h-3 mr-1" />Order
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* RPO Modal */}
-      {selectedRequirement && (
+      {selectedGroup && (
         <RPOModal
           open={rpoModalOpen}
           onClose={() => {
             setRpoModalOpen(false);
-            setSelectedRequirement(null);
+            setSelectedGroup(null);
           }}
-          materialSize={selectedRequirement.material_size_mm}
-          deficitKg={Math.abs(selectedRequirement.surplus_deficit_kg)}
-          linkedWorkOrders={selectedRequirement.linked_work_orders}
-          linkedSalesOrders={selectedRequirement.linked_sales_orders}
+          materialSize={`${selectedGroup.size_mm} ${selectedGroup.shape}`}
+          deficitKg={Math.abs(selectedGroup.surplus_deficit_kg)}
+          linkedWorkOrders={selectedGroup.work_orders.map(wo => ({
+            wo_number: wo.display_id,
+            id: wo.wo_id,
+            item_code: wo.item_code,
+            customer: wo.customer,
+            quantity: wo.quantity
+          }))}
+          linkedSalesOrders={selectedGroup.work_orders
+            .filter(wo => wo.so_display_id)
+            .map(wo => ({
+              so_id: wo.so_display_id!,
+              customer: wo.customer,
+              pcs: wo.quantity,
+              id: wo.so_id!
+            }))}
           onSuccess={() => {
-            loadRequirements();
+            loadAllData();
             toast({ title: "Success", description: "RPO created successfully" });
           }}
         />
