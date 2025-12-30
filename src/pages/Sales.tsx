@@ -120,7 +120,11 @@ export default function Sales() {
 
   // Advance payment calculated amount
   const advancePaymentCalculated = useMemo(() => {
-    const { subtotal, gstAmount, total } = calculateTotals();
+    // Inline calculation to avoid hoisting issues
+    const subtotal = lineItems.reduce((sum, item) => sum + (item.line_amount || 0), 0);
+    const gstAmount = formData.gst_type === 'domestic' && isIndianCustomer ? (subtotal * formData.gst_percent) / 100 : 0;
+    const total = subtotal + gstAmount;
+    
     const value = parseFloat(formData.advance_payment_value) || 0;
     if (value <= 0) return 0;
     
@@ -128,7 +132,7 @@ export default function Sales() {
       return (total * value) / 100;
     }
     return value;
-  }, [formData.advance_payment_value, formData.advance_payment_type, lineItems, formData.gst_type, formData.gst_percent]);
+  }, [formData.advance_payment_value, formData.advance_payment_type, lineItems, formData.gst_type, formData.gst_percent, isIndianCustomer]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
