@@ -10285,6 +10285,22 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
+      check_wo_completion_status: {
+        Args: { p_wo_id: string }
+        Returns: {
+          active_batch_id: string
+          all_batches_final_qc_complete: boolean
+          all_batches_production_complete: boolean
+          can_mark_wo_complete: boolean
+          completion_blockers: string[]
+          has_packed_qty: boolean
+          ordered_qty: number
+          total_dispatched: number
+          total_final_qc_approved: number
+          total_packed: number
+          total_produced: number
+        }[]
+      }
       check_wo_production_status: {
         Args: { p_wo_id: string }
         Returns: {
@@ -10403,6 +10419,7 @@ export type Database = {
       }
       mark_overdue_invoices: { Args: never; Returns: undefined }
       mark_overdue_qc_checks: { Args: never; Returns: undefined }
+      mark_wo_complete: { Args: { p_wo_id: string }; Returns: boolean }
       notify_users: {
         Args: {
           _entity_id?: string
