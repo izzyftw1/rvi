@@ -574,6 +574,73 @@ export default function GateRegister() {
 
       if (error) throw error;
 
+      // If this is an external process with a work order, also create/update wo_external_moves
+      if (formData.material_type === 'external_process' && formData.work_order_id && formData.process_type) {
+        if (formDirection === 'OUT') {
+          // Goods OUT = sending to external
+          const qtySent = data.estimated_pcs || 0;
+          
+          const { data: moveData, error: moveError } = await supabase
+            .from("wo_external_moves")
+            .insert([{
+              work_order_id: formData.work_order_id,
+              process: formData.process_type,
+              partner_id: formData.partner_id || null,
+              challan_no: formData.challan_no || data.gate_entry_no,
+              remarks: formData.remarks || null,
+              created_by: user?.id || null,
+              status: 'sent',
+              quantity_sent: qtySent,
+              dispatch_date: new Date().toISOString().split('T')[0],
+            }])
+            .select()
+            .single();
+          
+          if (moveError) {
+            console.warn("Failed to create wo_external_moves record:", moveError);
+          } else if (moveData) {
+            // Link gate register entry to the external move
+            await supabase
+              .from("gate_register")
+              .update({ external_movement_id: moveData.id })
+              .eq("id", data.id);
+          }
+        } else if (formDirection === 'IN') {
+          // Goods IN = receiving from external - try to update existing move
+          // Find the most recent pending external move for this WO and process
+          const { data: pendingMoves } = await supabase
+            .from("wo_external_moves")
+            .select("*")
+            .eq("work_order_id", formData.work_order_id)
+            .eq("process", formData.process_type)
+            .in("status", ["sent", "partial"])
+            .order("dispatch_date", { ascending: false })
+            .limit(1);
+          
+          if (pendingMoves && pendingMoves.length > 0) {
+            const move = pendingMoves[0];
+            const receivedQty = data.estimated_pcs || 0;
+            const newTotalReturned = (move.quantity_returned || 0) + receivedQty;
+            const newStatus = newTotalReturned >= (move.quantity_sent || 0) ? 'completed' : 'partial';
+            
+            await supabase
+              .from("wo_external_moves")
+              .update({ 
+                quantity_returned: newTotalReturned,
+                returned_date: new Date().toISOString().split('T')[0],
+                status: newStatus 
+              })
+              .eq("id", move.id);
+            
+            // Link gate register entry to the external move
+            await supabase
+              .from("gate_register")
+              .update({ external_movement_id: move.id })
+              .eq("id", data.id);
+          }
+        }
+      }
+
       toast({
         title: "Entry Created",
         description: `${data.gate_entry_no}: ${formData.gross_weight_kg} kg ${formDirection === 'IN' ? 'received' : 'dispatched'}`
