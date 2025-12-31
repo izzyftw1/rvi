@@ -91,6 +91,7 @@ import DowntimeAnalytics from "./pages/DowntimeAnalytics";
 import PartnerDashboard from "./pages/PartnerDashboard";
 import ExternalAnalytics from "./pages/ExternalAnalytics";
 import FinishedGoodsInventory from "./pages/FinishedGoodsInventory";
+import GateRegister from "./pages/GateRegister";
 
 // Initialize company logo upload once on app load
 ensureCompanyLogoUploaded();
@@ -177,6 +178,7 @@ const App = () => (
           <Route path="/finance/settings" element={<FinanceSettings />} />
           <Route path="/logistics" element={<Logistics />} />
           <Route path="/logistics-dashboard" element={<LogisticsDashboard />} />
+          <Route path="/gate-register" element={<GateRegister />} />
           <Route path="/partners" element={<Partners />} />
           <Route path="/partner-dashboard" element={<PartnerDashboard />} />
           <Route path="/external-analytics" element={<ExternalAnalytics />} />
