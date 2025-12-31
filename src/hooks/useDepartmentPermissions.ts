@@ -188,14 +188,13 @@ export const PAGE_KEYS: Record<string, string> = {
   'factory-calendar': 'Factory Calendar',
 };
 
-// Admin & Finance roles that bypass all permission checks
-const BYPASS_ROLES = ['admin', 'super_admin', 'finance_admin', 'accounts'];
+// Admin & Finance department types that bypass all permission checks
+const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance'];
 
 export const useDepartmentPermissions = () => {
   const [departmentDefaults, setDepartmentDefaults] = useState<DepartmentDefault[]>([]);
   const [userOverrides, setUserOverrides] = useState<UserOverride[]>([]);
   const [userDepartmentType, setUserDepartmentType] = useState<string | null>(null);
-  const [userRoles, setUserRoles] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissionVersion, setPermissionVersion] = useState(0);
@@ -209,35 +208,6 @@ export const useDepartmentPermissions = () => {
       }
 
       setUserId(user.id);
-
-      // Load user roles
-      const { data: rolesData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
-      
-      const roles = rolesData?.map(r => r.role) || [];
-      setUserRoles(roles);
-
-      // Check if user bypasses permission checks
-      const bypassCheck = roles.some(role => BYPASS_ROLES.includes(role));
-      
-      if (bypassCheck) {
-        // Admin/Finance bypass - set empty defaults, checks will return true
-        setDepartmentDefaults([]);
-        setUserOverrides([]);
-        setUserDepartmentType(null);
-        setLoading(false);
-        return;
-      }
-
-      // Load user's permission overrides
-      const { data: overridesData } = await supabase
-        .from('user_permission_overrides')
-        .select('page_key, can_view, can_access_route, can_mutate')
-        .eq('user_id', user.id);
-      
-      setUserOverrides(overridesData || []);
 
       // Load user's department type from profile
       const { data: profileData } = await supabase
@@ -259,6 +229,23 @@ export const useDepartmentPermissions = () => {
           setUserDepartmentType(deptType);
         }
       }
+
+      // Check if user bypasses permission checks (Admin/Finance departments)
+      if (deptType && BYPASS_DEPARTMENT_TYPES.includes(deptType)) {
+        // Admin/Finance bypass - set empty defaults, checks will return true
+        setDepartmentDefaults([]);
+        setUserOverrides([]);
+        setLoading(false);
+        return;
+      }
+
+      // Load user's permission overrides
+      const { data: overridesData } = await supabase
+        .from('user_permission_overrides')
+        .select('page_key, can_view, can_access_route, can_mutate')
+        .eq('user_id', user.id);
+      
+      setUserOverrides(overridesData || []);
 
       // Load all department defaults
       const { data: defaults } = await supabase
@@ -295,10 +282,10 @@ export const useDepartmentPermissions = () => {
     };
   }, [loadPermissions]);
 
-  // Check if user bypasses all permission checks (Admin/Finance)
+  // Check if user bypasses all permission checks (Admin/Finance departments)
   const isBypassUser = useMemo(() => {
-    return userRoles.some(role => BYPASS_ROLES.includes(role));
-  }, [userRoles]);
+    return userDepartmentType !== null && BYPASS_DEPARTMENT_TYPES.includes(userDepartmentType);
+  }, [userDepartmentType]);
 
   // Get permission for a specific page key with override priority
   const getPagePermission = useCallback((pageKey: string): PermissionResult => {
@@ -389,7 +376,6 @@ export const useDepartmentPermissions = () => {
     loading,
     isBypassUser,
     userDepartmentType,
-    userRoles,
     userId,
     userOverrides,
     permissionVersion,

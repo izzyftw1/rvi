@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle } from "lucide-react";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 interface MachineAssignmentDialogProps {
   open: boolean;
@@ -29,21 +30,14 @@ export const MachineAssignmentDialog = ({
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [overrideCycleTime, setOverrideCycleTime] = useState<string>("");
-  const [userRoles, setUserRoles] = useState<string[]>([]);
+  const { userDepartmentType, isBypassUser } = useDepartmentPermissions();
+  
+  // Production manager check based on department
+  const isProductionManager = userDepartmentType === 'production' || isBypassUser;
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
-      
-      // Load user roles to check for production manager
-      if (user) {
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id);
-        
-        setUserRoles(roles?.map(r => r.role) || []);
-      }
     });
     loadMachines();
     
@@ -217,7 +211,7 @@ export const MachineAssignmentDialog = ({
     : 0;
   
   const effectiveCycleTime = getEffectiveCycleTime();
-  const canOverride = userRoles.includes('production') || userRoles.includes('admin');
+  const canOverride = isProductionManager;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

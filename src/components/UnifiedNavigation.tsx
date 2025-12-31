@@ -32,23 +32,20 @@ import { cn } from "@/lib/utils";
 import rvLogo from "@/assets/rv-logo.jpg";
 import { getActiveNavigationGroups, type NavGroup } from "@/config/navigationConfig";
 
-interface UnifiedNavigationProps {
-  userRoles: string[];
-}
-
-export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
+export const UnifiedNavigation = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [profile, setProfile] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
   const { currentSite, setCurrentSite, availableSites, loading: sitesLoading } = useSiteContext();
-  const { isBypassUser, canViewPage, loading: permissionsLoading } = useDepartmentPermissions();
+  const { isBypassUser, canViewPage, userDepartmentType, loading: permissionsLoading } = useDepartmentPermissions();
   
   const navContainerRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState<number>(10);
 
-  const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+  // Admin access is based on department type, not roles
+  const isAdmin = userDepartmentType === 'admin';
 
   useEffect(() => {
     loadProfile();
