@@ -75,7 +75,7 @@ const HourlyQC = () => {
   });
   
   const [qcResults, setQcResults] = useState({
-    thread: 'ok', visual: 'ok', plating: 'ok', platingThickness: 'ok', remarks: ''
+    thread: 'OK', visual: 'OK', plating: 'OK', platingThickness: 'OK', remarks: ''
   });
 
   // Additional state for enhanced QC features
@@ -253,10 +253,10 @@ const HourlyQC = () => {
 
       let hasBinaryFailure = false;
       if (binaryChecksEnabled) {
-        if (applicableChecks.thread && qcResults.thread !== 'ok' && qcResults.thread !== 'na') hasBinaryFailure = true;
-        if (applicableChecks.visual && qcResults.visual !== 'ok' && qcResults.visual !== 'na') hasBinaryFailure = true;
-        if (applicableChecks.plating && qcResults.plating !== 'ok' && qcResults.plating !== 'na') hasBinaryFailure = true;
-        if (applicableChecks.platingThickness && qcResults.platingThickness !== 'ok' && qcResults.platingThickness !== 'na') hasBinaryFailure = true;
+        if (applicableChecks.thread && qcResults.thread !== 'OK') hasBinaryFailure = true;
+        if (applicableChecks.visual && qcResults.visual !== 'OK') hasBinaryFailure = true;
+        if (applicableChecks.plating && qcResults.plating !== 'OK') hasBinaryFailure = true;
+        if (applicableChecks.platingThickness && qcResults.platingThickness !== 'OK') hasBinaryFailure = true;
       }
 
       const overallStatus = (outOfTolerance.length === 0 && !hasBinaryFailure) ? 'pass' : 'fail';
@@ -294,7 +294,7 @@ const HourlyQC = () => {
 
   const resetForm = () => {
     setMeasurements({});
-    setQcResults({ thread: 'ok', visual: 'ok', plating: 'ok', platingThickness: 'ok', remarks: '' });
+    setQcResults({ thread: 'OK', visual: 'OK', plating: 'OK', platingThickness: 'OK', remarks: '' });
     setBinaryChecksEnabled(false);
     setApplicableChecks({ thread: false, visual: false, plating: false, platingThickness: false });
     setOperation('A');
@@ -497,9 +497,8 @@ const HourlyQC = () => {
                                   >
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="ok">OK</SelectItem>
-                                      <SelectItem value="not_ok">Not OK</SelectItem>
-                                      <SelectItem value="na">N/A</SelectItem>
+                                      <SelectItem value="OK">OK</SelectItem>
+                                      <SelectItem value="Not OK">Not OK</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>

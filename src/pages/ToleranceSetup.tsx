@@ -209,14 +209,18 @@ const ToleranceSetup = () => {
 
         if (error) throw error;
       } else {
+        // Use upsert to handle unique constraint on (item_code, operation)
         const { error } = await supabase
           .from('dimension_tolerances')
-          .insert({
+          .upsert({
             item_code: formData.item_code,
             revision: formData.revision || '0',
             operation: formData.operation,
             dimensions: dimensionsObj,
-            created_by: (await supabase.auth.getUser()).data.user?.id
+            created_by: (await supabase.auth.getUser()).data.user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'item_code,operation'
           });
 
         if (error) throw error;

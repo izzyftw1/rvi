@@ -507,15 +507,15 @@ export const FinalDispatchReportGenerator = ({
         opData.forEach((check: any) => {
           if (check.visual_applicable) {
             binaryChecks['Visual'].total++;
-            if (check.visual_status === 'pass') binaryChecks['Visual'].ok++;
+            if (check.visual_status === 'OK') binaryChecks['Visual'].ok++;
           }
           if (check.thread_applicable) {
             binaryChecks['Thread'].total++;
-            if (check.thread_status === 'pass') binaryChecks['Thread'].ok++;
+            if (check.thread_status === 'OK') binaryChecks['Thread'].ok++;
           }
           if (check.plating_applicable) {
             binaryChecks['Plating'].total++;
-            if (check.plating_status === 'pass') binaryChecks['Plating'].ok++;
+            if (check.plating_status === 'OK') binaryChecks['Plating'].ok++;
           }
         });
 
