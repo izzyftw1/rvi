@@ -845,7 +845,7 @@ export default function RawPurchaseOrders() {
                       <TableHead>WO</TableHead>
                       <TableHead>Item Code</TableHead>
                       <TableHead>Size (mm)</TableHead>
-                      <TableHead>Alloy</TableHead>
+                      <TableHead>Material Grade</TableHead>
                       <TableHead>Supplier</TableHead>
                       <TableHead>Qty Ordered (kg)</TableHead>
                       <TableHead>Rate</TableHead>
