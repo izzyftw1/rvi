@@ -10285,6 +10285,10 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
+      department_type_to_app_role: {
+        Args: { _dept: Database["public"]["Enums"]["department_type"] }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       generate_dispatch_qc_batch_id: { Args: never; Returns: string }
       generate_gate_entry_no: { Args: { direction: string }; Returns: string }
       generate_grn_number: { Args: never; Returns: string }
