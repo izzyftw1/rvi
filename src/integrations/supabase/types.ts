@@ -8217,6 +8217,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_permission_overrides: {
+        Row: {
+          can_access_route: boolean | null
+          can_mutate: boolean | null
+          can_view: boolean | null
+          created_at: string
+          created_by: string | null
+          id: string
+          page_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_access_route?: boolean | null
+          can_mutate?: boolean | null
+          can_view?: boolean | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          page_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_access_route?: boolean | null
+          can_mutate?: boolean | null
+          can_view?: boolean | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          page_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -9740,6 +9776,15 @@ export type Database = {
         }[]
       }
       get_current_batch_for_qc: { Args: { p_wo_id: string }; Returns: string }
+      get_effective_permission: {
+        Args: { _page_key: string; _user_id: string }
+        Returns: {
+          can_access_route: boolean
+          can_mutate: boolean
+          can_view: boolean
+          source: string
+        }[]
+      }
       get_financial_year: { Args: { dt: string }; Returns: string }
       get_material_links: {
         Args: { _alloy: string; _material_grade: string }

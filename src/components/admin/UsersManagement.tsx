@@ -9,11 +9,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter, AlertTriangle } from "lucide-react";
+import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter, AlertTriangle, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { UserPermissionOverrides } from "./UserPermissionOverrides";
 
 interface UserWithRole {
   id: string;
@@ -22,7 +25,7 @@ interface UserWithRole {
   is_active: boolean;
   last_login: string | null;
   created_at: string;
-  departments?: { name: string };
+  departments?: { name: string; type?: string };
   primaryRole?: string;
 }
 
@@ -30,6 +33,9 @@ interface UsersManagementProps {
   roles: any[];
   departments: any[];
 }
+
+// Admin/Finance roles that bypass permission checks
+const BYPASS_ROLES = ['admin', 'super_admin', 'finance_admin', 'accounts'];
 
 export function UsersManagement({ roles, departments }: UsersManagementProps) {
   const [users, setUsers] = useState<UserWithRole[]>([]);
@@ -39,6 +45,8 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
   const [creatingUser, setCreatingUser] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -89,10 +97,10 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
     try {
       setLoading(true);
 
-      // Load users with departments
+      // Load users with departments (including type for permission checks)
       const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, department_id, is_active, last_login, created_at, departments(name)")
+        .select("id, full_name, department_id, is_active, last_login, created_at, departments(name, type)")
         .order("full_name");
 
       if (profilesError) throw profilesError;
@@ -442,10 +450,10 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                       const hasValidDept = user.department_id && user.department_id !== "none";
 
                       return (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">
-                          {user.full_name || "—"}
-                        </TableCell>
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">
+                            {user.full_name || "—"}
+                          </TableCell>
                         
                         <TableCell className="text-sm text-muted-foreground">
                           {user.id?.substring(0, 8) || "—"}...
@@ -547,7 +555,8 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                toast({ title: "Info", description: "Edit user details feature coming soon" });
+                                setEditingUser(user);
+                                setEditSheetOpen(true);
                               }}
                             >
                               <Edit className="h-4 w-4" />
@@ -566,8 +575,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                  )}
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -719,6 +727,54 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit User Sheet with Permission Overrides */}
+      <Sheet open={editSheetOpen} onOpenChange={setEditSheetOpen}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Edit User</SheetTitle>
+            <SheetDescription>
+              {editingUser?.full_name || 'User'} - Manage role, department, and permission overrides
+            </SheetDescription>
+          </SheetHeader>
+          
+          {editingUser && (
+            <div className="space-y-6 py-6">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-muted-foreground">User ID</Label>
+                  <p className="text-sm font-mono">{editingUser.id}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Name</Label>
+                  <p className="font-medium">{editingUser.full_name || '—'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Department</Label>
+                  <p>{editingUser.departments?.name || 'No department assigned'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Role</Label>
+                  <p>{userRoles[editingUser.id] || 'Unassigned'}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Permission Overrides Section */}
+              <UserPermissionOverrides
+                userId={editingUser.id}
+                userDepartmentType={editingUser.departments?.type || null}
+                isAdminOrFinance={BYPASS_ROLES.includes(userRoles[editingUser.id] || '')}
+                onSaved={() => {
+                  toast({ title: 'Permissions Updated', description: 'User permissions have been updated and will take effect immediately.' });
+                }}
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </ErrorBoundary>
   );
 }

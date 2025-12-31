@@ -9,14 +9,22 @@ interface DepartmentDefault {
   can_mutate: boolean;
 }
 
+interface UserOverride {
+  page_key: string;
+  can_view: boolean | null;
+  can_access_route: boolean | null;
+  can_mutate: boolean | null;
+}
+
 interface PermissionResult {
   canView: boolean;
   canAccessRoute: boolean;
   canMutate: boolean;
+  source: 'bypass' | 'override' | 'department' | 'deny';
 }
 
 // Map route paths to page_keys used in department_defaults
-const routeToPageKey: Record<string, string> = {
+export const routeToPageKey: Record<string, string> = {
   '/sales': 'sales-orders',
   '/customers': 'customers',
   '/items': 'items',
@@ -63,26 +71,75 @@ const routeToPageKey: Record<string, string> = {
   '/factory-calendar': 'factory-calendar',
 };
 
+// All page keys with display names
+export const PAGE_KEYS: Record<string, string> = {
+  'sales-orders': 'Sales Orders',
+  'customers': 'Customers',
+  'items': 'Items',
+  'raw-po': 'Raw PO',
+  'material-requirements': 'Material Requirements',
+  'purchase-dashboard': 'Purchase Dashboard',
+  'work-orders': 'Work Orders',
+  'daily-production-log': 'Daily Production Log',
+  'floor-dashboard': 'Floor Dashboard',
+  'cnc-dashboard': 'CNC Dashboard',
+  'production-progress': 'Production Progress',
+  'machine-utilisation': 'Machine Utilisation',
+  'operator-efficiency': 'Operator Efficiency',
+  'setter-efficiency': 'Setter Efficiency',
+  'downtime-analytics': 'Downtime Analytics',
+  'quality-dashboard': 'Quality Dashboard',
+  'qc-incoming': 'Incoming QC',
+  'hourly-qc': 'Hourly QC',
+  'final-qc': 'Final QC',
+  'ncr': 'NCR Management',
+  'traceability': 'Traceability',
+  'quality-documents': 'Quality Documents',
+  'quality-analytics': 'Quality Analytics',
+  'tolerances': 'Tolerances',
+  'instruments': 'Instruments',
+  'finance-dashboard': 'Finance Dashboard',
+  'invoices': 'Invoices',
+  'receipts': 'Customer Receipts',
+  'supplier-payments': 'Supplier Payments',
+  'adjustments': 'Customer Adjustments',
+  'tds-report': 'TDS Report',
+  'aging': 'Aging',
+  'reconciliations': 'Reconciliations',
+  'finance-reports': 'Finance Reports',
+  'finance-settings': 'Finance Settings',
+  'gate-register': 'Gate Register',
+  'logistics-dashboard': 'Logistics Dashboard',
+  'finished-goods': 'Finished Goods',
+  'packing': 'Packing',
+  'dispatch': 'Dispatch',
+  'partner-dashboard': 'Partner Dashboard',
+  'external-analytics': 'External Analytics',
+  'admin-panel': 'Admin Panel',
+  'factory-calendar': 'Factory Calendar',
+};
+
 // Admin & Finance roles that bypass all permission checks
 const BYPASS_ROLES = ['admin', 'super_admin', 'finance_admin', 'accounts'];
 
 export const useDepartmentPermissions = () => {
   const [departmentDefaults, setDepartmentDefaults] = useState<DepartmentDefault[]>([]);
+  const [userOverrides, setUserOverrides] = useState<UserOverride[]>([]);
   const [userDepartmentType, setUserDepartmentType] = useState<string | null>(null);
   const [userRoles, setUserRoles] = useState<string[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [permissionVersion, setPermissionVersion] = useState(0);
 
-  useEffect(() => {
-    loadPermissions();
-  }, []);
-
-  const loadPermissions = async () => {
+  const loadPermissions = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
         return;
       }
+
+      setUserId(user.id);
 
       // Load user roles
       const { data: rolesData } = await supabase
@@ -99,10 +156,19 @@ export const useDepartmentPermissions = () => {
       if (bypassCheck) {
         // Admin/Finance bypass - set empty defaults, checks will return true
         setDepartmentDefaults([]);
+        setUserOverrides([]);
         setUserDepartmentType(null);
         setLoading(false);
         return;
       }
+
+      // Load user's permission overrides
+      const { data: overridesData } = await supabase
+        .from('user_permission_overrides')
+        .select('page_key, can_view, can_access_route, can_mutate')
+        .eq('user_id', user.id);
+      
+      setUserOverrides(overridesData || []);
 
       // Load user's department type from profile
       const { data: profileData } = await supabase
@@ -134,41 +200,65 @@ export const useDepartmentPermissions = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadPermissions();
+
+    // Subscribe to permission override changes for current user
+    const channel = supabase
+      .channel('user-permission-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'user_permission_overrides',
+      }, () => {
+        // Reload permissions when overrides change
+        loadPermissions();
+        setPermissionVersion(v => v + 1);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadPermissions]);
 
   // Check if user bypasses all permission checks (Admin/Finance)
   const isBypassUser = useMemo(() => {
     return userRoles.some(role => BYPASS_ROLES.includes(role));
   }, [userRoles]);
 
-  // Get permission for a specific page key
+  // Get permission for a specific page key with override priority
   const getPagePermission = useCallback((pageKey: string): PermissionResult => {
     // Admin/Finance bypass - full access
     if (isBypassUser) {
-      return { canView: true, canAccessRoute: true, canMutate: true };
+      return { canView: true, canAccessRoute: true, canMutate: true, source: 'bypass' };
     }
 
-    // No department assigned - default deny
-    if (!userDepartmentType) {
-      return { canView: false, canAccessRoute: false, canMutate: false };
-    }
-
-    // Find permission for this department and page
-    const permission = departmentDefaults.find(
+    // Check for user override first
+    const override = userOverrides.find(o => o.page_key === pageKey);
+    
+    // Get department default
+    const deptDefault = departmentDefaults.find(
       d => d.department_type === userDepartmentType && d.page_key === pageKey
     );
 
-    if (!permission) {
-      // No explicit permission = deny
-      return { canView: false, canAccessRoute: false, canMutate: false };
+    // Apply override logic: override takes precedence if not null
+    const canView = override?.can_view ?? deptDefault?.can_view ?? false;
+    const canAccessRoute = override?.can_access_route ?? deptDefault?.can_access_route ?? false;
+    const canMutate = override?.can_mutate ?? deptDefault?.can_mutate ?? false;
+
+    // Determine source
+    let source: PermissionResult['source'] = 'deny';
+    if (override?.can_view !== null || override?.can_access_route !== null || override?.can_mutate !== null) {
+      source = 'override';
+    } else if (deptDefault) {
+      source = 'department';
     }
 
-    return {
-      canView: permission.can_view,
-      canAccessRoute: permission.can_access_route,
-      canMutate: permission.can_mutate,
-    };
-  }, [isBypassUser, userDepartmentType, departmentDefaults]);
+    return { canView, canAccessRoute, canMutate, source };
+  }, [isBypassUser, userOverrides, userDepartmentType, departmentDefaults]);
 
   // Get permission for a route path
   const getRoutePermission = useCallback((routePath: string): PermissionResult => {
@@ -180,12 +270,11 @@ export const useDepartmentPermissions = () => {
     const pageKey = basePath ? routeToPageKey[basePath] : null;
     
     if (!pageKey) {
-      // Unknown route - allow for Admin/Finance, deny for others
+      // Unknown route - allow for Admin/Finance, allow view for others (public pages)
       if (isBypassUser) {
-        return { canView: true, canAccessRoute: true, canMutate: true };
+        return { canView: true, canAccessRoute: true, canMutate: true, source: 'bypass' };
       }
-      // For unknown routes, default to allow view (public pages like home)
-      return { canView: true, canAccessRoute: true, canMutate: false };
+      return { canView: true, canAccessRoute: true, canMutate: false, source: 'deny' };
     }
 
     return getPagePermission(pageKey);
@@ -212,33 +301,34 @@ export const useDepartmentPermissions = () => {
       return Object.values(routeToPageKey);
     }
 
-    if (!userDepartmentType) {
-      return [];
-    }
+    return Object.keys(PAGE_KEYS).filter(pageKey => {
+      const perm = getPagePermission(pageKey);
+      return perm.canView;
+    });
+  }, [isBypassUser, getPagePermission]);
 
-    return departmentDefaults
-      .filter(d => d.department_type === userDepartmentType && d.can_view)
-      .map(d => d.page_key);
-  }, [isBypassUser, userDepartmentType, departmentDefaults]);
-
-  // Get route path from page key
-  const getRouteFromPageKey = useCallback((pageKey: string): string | null => {
-    const entry = Object.entries(routeToPageKey).find(([_, key]) => key === pageKey);
-    return entry ? entry[0] : null;
-  }, []);
+  // Invalidate permissions cache (force reload)
+  const invalidatePermissions = useCallback(() => {
+    loadPermissions();
+    setPermissionVersion(v => v + 1);
+  }, [loadPermissions]);
 
   return {
     loading,
     isBypassUser,
     userDepartmentType,
     userRoles,
+    userId,
+    userOverrides,
+    permissionVersion,
     getPagePermission,
     getRoutePermission,
     canAccessRoute,
     canViewPage,
     canMutatePage,
     getAccessiblePageKeys,
-    getRouteFromPageKey,
+    invalidatePermissions,
     routeToPageKey,
+    PAGE_KEYS,
   };
 };
