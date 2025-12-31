@@ -13,13 +13,13 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, AlertTriangle, Activity, Pause, Wrench, Clock, Info } from "lucide-react";
+import { Settings, AlertTriangle, Activity, Pause, Wrench, Clock, Info, Cpu } from "lucide-react";
 import { format, differenceInMinutes } from "date-fns";
 import { useSiteContext } from "@/hooks/useSiteContext";
 import { cn } from "@/lib/utils";
@@ -194,13 +194,14 @@ const MachineStatus = () => {
       : machines.filter((m) => m.operationalState === filterStatus);
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader
+    <PageContainer maxWidth="full">
+      <PageHeader
         title="Machine Status"
-        subtitle="Real-time operational state of all CNC machines"
+        description="Real-time operational state of all CNC machines"
+        icon={<Cpu className="h-5 w-5" />}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Real-time notice */}
         <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
           <Info className="h-4 w-4 shrink-0" />
@@ -452,7 +453,7 @@ const MachineStatus = () => {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 };
 

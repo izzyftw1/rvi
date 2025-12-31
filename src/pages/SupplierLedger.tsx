@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Home } from "lucide-react";
+import { ArrowLeft, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 
 interface Supplier {
   id: string;
@@ -160,47 +159,30 @@ export default function SupplierLedger() {
 
   if (!supplier && !loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <NavigationHeader title="Supplier Not Found" />
-        <div className="p-6">
+      <PageContainer maxWidth="2xl">
+        <PageHeader 
+          title="Supplier Not Found" 
+          icon={<Building2 className="h-5 w-5" />}
+        />
+        <div className="mt-6">
           <Button variant="ghost" onClick={() => navigate("/purchase/raw-po")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Purchase Orders
           </Button>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader 
+    <PageContainer maxWidth="2xl">
+      <PageHeader 
         title={supplier?.name || "Supplier Ledger"} 
-        subtitle="Transaction history and balance"
+        description="Transaction history and balance"
+        icon={<Building2 className="h-5 w-5" />}
       />
       
-      <div className="p-6 pb-0">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/" className="flex items-center gap-1">
-                <Home className="h-4 w-4" />
-                Home
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/purchase/raw-po">Raw Purchase Orders</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>{supplier?.name || "Supplier Ledger"}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
-
-      <div className="p-6">
+      <div className="mt-6">
         <Button variant="ghost" onClick={() => navigate("/purchase/raw-po")} className="mb-4">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Purchase Orders
@@ -286,6 +268,6 @@ export default function SupplierLedger() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }
