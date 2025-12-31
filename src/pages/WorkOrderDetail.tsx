@@ -24,6 +24,7 @@ import { WOTimelineVisualization } from "@/components/WOTimelineVisualization";
 import { WOAuditTrailModal } from "@/components/WOAuditTrailModal";
 import { SendToExternalDialog } from "@/components/SendToExternalDialog";
 import { ExternalChallanTable } from "@/components/ExternalChallanTable";
+import { WOGateRegisterEntries } from "@/components/WOGateRegisterEntries";
 
 import { WOProgressCard } from "@/components/WOProgressCard";
 import { WOQuantityBreakdown } from "@/components/WOQuantityBreakdown";
@@ -1073,6 +1074,7 @@ const WorkOrderDetail = () => {
           <TabsContent value="external" className="space-y-4">
             {activeTab === 'external' && (
               <>
+                <WOGateRegisterEntries workOrderId={id || ""} />
                 <MaterialMovementTimeline workOrderId={id || ""} />
                 <EnhancedExternalTab workOrderId={id || ""} />
               </>
