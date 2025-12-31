@@ -23,13 +23,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { GateTagPrintDialog } from "@/components/logistics/GateTagPrintDialog";
 import { PROCESS_TYPES } from "@/config/materialMasters";
-
-interface PackagingType {
-  id: string;
-  name: string;
-  type: string;
-  tare_weight_kg: number;
-}
+import { PackagingCalculator, PackagingRow, PACKAGING_OPTIONS } from "@/components/logistics/PackagingCalculator";
 
 interface Supplier {
   id: string;
@@ -172,8 +166,7 @@ export default function GateRegister() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // Master data
-  const [packagingTypes, setPackagingTypes] = useState<PackagingType[]>([]);
+  // Master data - removed packagingTypes state (now using standardized PACKAGING_OPTIONS)
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [materialGrades, setMaterialGrades] = useState<MaterialGrade[]>([]);
@@ -204,8 +197,6 @@ export default function GateRegister() {
     heat_no: '',
     tc_number: '',
     gross_weight_kg: '',
-    packaging_type_id: '',
-    packaging_count: '1',
     supplier_id: '',
     supplier_name: '',
     party_code: '',
@@ -220,6 +211,14 @@ export default function GateRegister() {
     qc_required: true,
     remarks: '',
   });
+
+  // NEW: Packaging state managed by PackagingCalculator
+  const [packagingRows, setPackagingRows] = useState<PackagingRow[]>([
+    { id: crypto.randomUUID(), type: 'NONE', count: 1 }
+  ]);
+  const [tareWeight, setTareWeight] = useState(0);
+  const [netWeight, setNetWeight] = useState(0);
+  const [manualTareOverride, setManualTareOverride] = useState<number | null>(null);
 
   // Filtered nominal sizes based on selected shape
   const filteredNominalSizes = useMemo(() => {
@@ -238,18 +237,27 @@ export default function GateRegister() {
   const [printEntry, setPrintEntry] = useState<GateEntry | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
 
-  // Calculated values
-  const selectedPackaging = packagingTypes.find(p => p.id === formData.packaging_type_id);
-  const tareWeight = (selectedPackaging?.tare_weight_kg || 0) * (parseInt(formData.packaging_count) || 1);
+  // Gross weight for calculations
   const grossWeight = parseFloat(formData.gross_weight_kg) || 0;
-  const netWeight = Math.max(0, grossWeight - tareWeight);
+
+  // Handle packaging changes from PackagingCalculator
+  const handlePackagingChange = (
+    newNetWeight: number, 
+    newTareWeight: number, 
+    newPackagingRows: PackagingRow[],
+    newManualTare: number | null
+  ) => {
+    setNetWeight(newNetWeight);
+    setTareWeight(newTareWeight);
+    setPackagingRows(newPackagingRows);
+    setManualTareOverride(newManualTare);
+  };
 
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       await Promise.all([
-        loadPackagingTypes(),
         loadSuppliers(),
         loadPartners(),
         loadMaterialGrades(),
@@ -275,14 +283,8 @@ export default function GateRegister() {
     };
   }, []);
 
-  const loadPackagingTypes = async () => {
-    const { data } = await supabase
-      .from("packaging_types")
-      .select("*")
-      .eq("is_active", true)
-      .order("name");
-    setPackagingTypes(data || []);
-  };
+  // NOTE: loadPackagingTypes is no longer needed - using standardized PACKAGING_OPTIONS
+  // Kept for backwards compatibility but does nothing now
 
   const loadSuppliers = async () => {
     const { data } = await supabase
@@ -422,8 +424,6 @@ export default function GateRegister() {
       heat_no: '',
       tc_number: '',
       gross_weight_kg: '',
-      packaging_type_id: '',
-      packaging_count: '1',
       supplier_id: '',
       supplier_name: '',
       party_code: '',
@@ -438,6 +438,11 @@ export default function GateRegister() {
       qc_required: direction === 'IN',
       remarks: '',
     });
+    // Reset packaging to None/N/A (default for raw material)
+    setPackagingRows([{ id: crypto.randomUUID(), type: 'NONE', count: 1 }]);
+    setTareWeight(0);
+    setNetWeight(0);
+    setManualTareOverride(null);
     setFormOpen(true);
   };
 
@@ -547,8 +552,8 @@ export default function GateRegister() {
         alloy: formData.alloy || null,
         heat_no: formData.heat_no || null,
         tc_number: formData.tc_number || null,
-        packaging_type_id: formData.packaging_type_id || null,
-        packaging_count: parseInt(formData.packaging_count) || 1,
+        packaging_type_id: null, // No longer used - using packagingRows now
+        packaging_count: packagingRows.filter(r => r.type !== 'NONE').reduce((sum, r) => sum + r.count, 0) || null,
         supplier_id: formData.supplier_id || null,
         supplier_name: formData.supplier_name || null,
         party_code: formData.party_code || null,
@@ -1185,66 +1190,27 @@ export default function GateRegister() {
                 </div>
               )}
 
-              {/* Weight Section */}
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <h4 className="font-medium mb-3 flex items-center gap-2">
-                  <Scale className="h-4 w-4" />
-                  Weight Details
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <Label>Gross Weight (kg) *</Label>
-                    <Input
-                      type="number"
-                      step="0.001"
-                      value={formData.gross_weight_kg}
-                      onChange={(e) => setFormData(prev => ({ ...prev, gross_weight_kg: e.target.value }))}
-                      placeholder="0.000"
-                      className="text-lg font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <Label>Packaging Type</Label>
-                    <Select
-                      value={formData.packaging_type_id}
-                      onValueChange={(v) => setFormData(prev => ({ ...prev, packaging_type_id: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-background z-50 max-h-48">
-                        {packagingTypes.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} ({p.tare_weight_kg} kg)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>No. of Bags/Crates</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formData.packaging_count}
-                      onChange={(e) => setFormData(prev => ({ ...prev, packaging_count: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label>Tare Weight</Label>
-                    <Input
-                      value={tareWeight.toFixed(3)}
-                      disabled
-                      className="bg-muted"
-                    />
-                  </div>
+              {/* Weight Section - Using new PackagingCalculator */}
+              <div className="space-y-4">
+                <div>
+                  <Label>Gross Weight (kg) *</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={formData.gross_weight_kg}
+                    onChange={(e) => setFormData(prev => ({ ...prev, gross_weight_kg: e.target.value }))}
+                    placeholder="0.000"
+                    className="text-lg font-semibold"
+                  />
                 </div>
-                <div className="mt-3 p-3 bg-primary/10 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Net Weight:</span>
-                    <span className="text-2xl font-bold text-primary">{netWeight.toFixed(3)} kg</span>
-                  </div>
-                </div>
+                
+                <PackagingCalculator
+                  grossWeight={grossWeight}
+                  onNetWeightChange={handlePackagingChange}
+                  defaultToNone={formData.material_type === 'raw_material'}
+                  initialPackaging={packagingRows}
+                  initialManualTare={manualTareOverride}
+                />
               </div>
 
               {/* Document Section */}
