@@ -1,93 +1,62 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useDepartmentPermissions } from './useDepartmentPermissions';
 
-export type UserRole = 
-  | 'super_admin'
-  | 'finance_admin'
-  | 'finance_user'
-  | 'ops_manager'
-  | 'production'
-  | 'quality'
-  | 'stores'
-  | 'packing'
-  | 'sales'
-  | 'admin'
-  | 'accounts'
-  | 'purchase'
-  | 'logistics';
+/**
+ * @deprecated Use useDepartmentPermissions instead.
+ * This hook is kept for backward compatibility but now wraps useDepartmentPermissions.
+ * Permissions are now based on department type, not roles.
+ */
+export type UserRole = string;
 
 export const useUserRole = () => {
-  const [roles, setRoles] = useState<UserRole[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [impersonatedRole, setImpersonatedRole] = useState<UserRole | null>(null);
+  const { 
+    userDepartmentType, 
+    isBypassUser, 
+    loading 
+  } = useDepartmentPermissions();
 
-  useEffect(() => {
-    loadUserRoles();
-  }, []);
-
-  const loadUserRoles = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setRoles([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data: userRoles } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
-
-      setRoles(userRoles?.map(r => r.role as UserRole) || []);
-    } catch (error) {
-      console.error('Error loading user roles:', error);
-      setRoles([]);
-    } finally {
-      setLoading(false);
-    }
+  // Map department types to legacy role checks
+  const hasRole = (role: string): boolean => {
+    if (isBypassUser) return true;
+    
+    // Map legacy role names to department types
+    const roleToDepth: Record<string, string> = {
+      'admin': 'admin',
+      'super_admin': 'admin',
+      'finance_admin': 'finance',
+      'finance_user': 'finance',
+      'accounts': 'finance',
+      'production': 'production',
+      'quality': 'quality',
+      'packing': 'packing',
+      'stores': 'packing',
+      'sales': 'sales',
+      'design': 'design',
+      'hr': 'hr',
+    };
+    
+    return roleToDepth[role] === userDepartmentType;
   };
 
-  const hasRole = (role: UserRole): boolean => {
-    // If impersonating, check impersonated role
-    if (impersonatedRole) {
-      return impersonatedRole === role;
-    }
-    return roles.includes(role);
-  };
-
-  const hasAnyRole = (checkRoles: UserRole[]): boolean => {
-    // If impersonating, check if impersonated role is in the list
-    if (impersonatedRole) {
-      return checkRoles.includes(impersonatedRole);
-    }
-    return roles.some(role => checkRoles.includes(role));
+  const hasAnyRole = (roles: string[]): boolean => {
+    return roles.some(role => hasRole(role));
   };
 
   const isFinanceRole = (): boolean => {
-    const financeRoles: UserRole[] = ['super_admin', 'finance_admin', 'finance_user', 'admin', 'accounts'];
-    return hasAnyRole(financeRoles);
+    return userDepartmentType === 'finance' || userDepartmentType === 'admin';
   };
 
   const isSuperAdmin = (): boolean => {
-    return hasAnyRole(['super_admin', 'admin']);
-  };
-
-  const impersonate = (role: UserRole | null) => {
-    // Only super admins can impersonate
-    if (isSuperAdmin()) {
-      setImpersonatedRole(role);
-    }
+    return userDepartmentType === 'admin';
   };
 
   return {
-    roles,
+    roles: userDepartmentType ? [userDepartmentType] : [],
     loading,
     hasRole,
     hasAnyRole,
     isFinanceRole,
     isSuperAdmin,
-    impersonatedRole,
-    impersonate,
+    impersonatedRole: null,
+    impersonate: () => {}, // No-op, impersonation not supported in department model
   };
 };

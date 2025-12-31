@@ -97,15 +97,22 @@ export default function Purchase() {
       toast({ description: "Purchase order approved" });
       loadData();
       
-      // Notify Goods In team
-      const storesUsers = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "stores");
+      // Notify Packing/Stores team (users in packing department handle goods receiving)
+      const { data: packingDept } = await supabase
+        .from("departments")
+        .select("id")
+        .eq("type", "packing")
+        .single();
       
-      if (storesUsers.data) {
+      const storesUsers = packingDept ? await supabase
+        .from("profiles")
+        .select("id")
+        .eq("department_id", packingDept.id)
+        .eq("is_active", true) : { data: null };
+      
+      if (storesUsers.data && storesUsers.data.length > 0) {
         await supabase.rpc("notify_users", {
-          _user_ids: storesUsers.data.map(u => u.user_id),
+          _user_ids: storesUsers.data.map(u => u.id),
           _type: "purchase_approved",
           _title: "Purchase Order Approved",
           _message: `Expecting material delivery`,

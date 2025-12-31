@@ -7,6 +7,7 @@ import rvLogo from "@/assets/rv-logo.jpg";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSiteContext } from "@/hooks/useSiteContext";
 import { GlobalSearch } from "./GlobalSearch";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 interface NavigationHeaderProps {
   title?: string;
@@ -16,8 +17,11 @@ interface NavigationHeaderProps {
 export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const { currentSite, setCurrentSite, availableSites, loading: sitesLoading } = useSiteContext();
+  const { userDepartmentType } = useDepartmentPermissions();
+  
+  // Admin access is based on department type
+  const isAdmin = userDepartmentType === 'admin';
 
   useEffect(() => {
     loadProfile();
@@ -35,14 +39,6 @@ export const NavigationHeader = ({ title, subtitle }: NavigationHeaderProps) => 
       if (data) {
         setProfile(data);
       }
-
-      // Check if user has admin role
-      const { data: roles } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
-      
-      setIsAdmin(roles?.some(r => r.role === 'admin') || false);
     }
   };
 

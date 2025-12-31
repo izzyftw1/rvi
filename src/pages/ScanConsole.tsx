@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Camera, Package, FileText, Box, Truck } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 
 export default function ScanConsole() {
@@ -15,7 +16,7 @@ export default function ScanConsole() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [userRoles, setUserRoles] = useState<string[]>([]);
+  const { userDepartmentType } = useDepartmentPermissions();
   const [scanInput, setScanInput] = useState("");
   const [scannedEntity, setScannedEntity] = useState<any>(null);
   const [entityType, setEntityType] = useState("");
@@ -25,13 +26,6 @@ export default function ScanConsole() {
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user);
-      if (user) {
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id);
-        if (roles) setUserRoles(roles.map(r => r.role));
-      }
     });
   }, []);
 
@@ -112,35 +106,44 @@ export default function ScanConsole() {
   const getAvailableActions = () => {
     const actions: string[] = [];
     
-    if (entityType === "material_lot" && userRoles.includes("stores")) {
+    // Use department type instead of roles
+    const isStores = userDepartmentType === 'packing'; // Stores maps to packing department
+    const isQuality = userDepartmentType === 'quality';
+    const isProduction = userDepartmentType === 'production';
+    const isPacking = userDepartmentType === 'packing';
+    const isFinance = userDepartmentType === 'finance';
+    const isAdmin = userDepartmentType === 'admin';
+    const hasAccess = isAdmin || isFinance; // Bypass users
+    
+    if (entityType === "material_lot" && (isStores || hasAccess)) {
       actions.push("issue_to_wo"); // Goods In can issue material to WO
     }
     
-    if (entityType === "material_lot" && userRoles.includes("quality")) {
+    if (entityType === "material_lot" && (isQuality || hasAccess)) {
       if (scannedEntity?.qc_status === "pending") {
         actions.push("incoming_qc");
       }
     }
     
-    if (entityType === "work_order" && userRoles.includes("production")) {
+    if (entityType === "work_order" && (isProduction || hasAccess)) {
       if (scannedEntity?.production_allowed) {
         actions.push("start_step", "complete_step");
       }
     }
     
-    if (entityType === "work_order" && userRoles.includes("quality")) {
+    if (entityType === "work_order" && (isQuality || hasAccess)) {
       actions.push("batch_qc");
     }
     
-    if (entityType === "work_order" && userRoles.includes("packing")) {
+    if (entityType === "work_order" && (isPacking || hasAccess)) {
       actions.push("build_carton");
     }
     
-    if (entityType === "carton" && userRoles.includes("packing")) {
+    if (entityType === "carton" && (isPacking || hasAccess)) {
       actions.push("build_pallet", "laser_mark");
     }
     
-    if (entityType === "pallet" && userRoles.includes("accounts")) {
+    if (entityType === "pallet" && (isFinance || hasAccess)) {
       if (scannedEntity?.dispatch_allowed !== false) {
         actions.push("ready_to_ship");
       }

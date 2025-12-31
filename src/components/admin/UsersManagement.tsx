@@ -13,13 +13,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter, AlertTriangle, X } from "lucide-react";
+import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { UserPermissionOverrides } from "./UserPermissionOverrides";
 
-
-interface UserWithRole {
+interface UserWithDepartment {
   id: string;
   full_name: string;
   department_id: string | null;
@@ -27,37 +26,33 @@ interface UserWithRole {
   last_login: string | null;
   created_at: string;
   departments?: { name: string; type?: string };
-  primaryRole?: string;
 }
 
 interface UsersManagementProps {
-  roles: any[];
+  roles: any[]; // Kept for backward compatibility but not used
   departments: any[];
 }
 
-// Admin/Finance roles that bypass permission checks
-const BYPASS_ROLES = ['admin', 'super_admin', 'finance_admin', 'accounts'];
+// Admin/Finance department types that bypass permission checks
+const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance'];
 
-export function UsersManagement({ roles, departments }: UsersManagementProps) {
-  const [users, setUsers] = useState<UserWithRole[]>([]);
-  const [userRoles, setUserRoles] = useState<Record<string, string>>({});
+export function UsersManagement({ departments }: UsersManagementProps) {
+  const [users, setUsers] = useState<UserWithDepartment[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
+  const [editingUser, setEditingUser] = useState<UserWithDepartment | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [newUser, setNewUser] = useState({
     email: "",
     full_name: "",
     password: "",
     department_id: "",
-    role: "",
     is_active: true,
   });
   const { toast } = useToast();
@@ -65,7 +60,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
   useEffect(() => {
     loadUsers();
     
-    // Set up real-time subscriptions
+    // Set up real-time subscription for profile changes
     const profilesChannel = supabase
       .channel('admin-profiles-changes')
       .on('postgres_changes', { 
@@ -77,20 +72,8 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
       })
       .subscribe();
 
-    const rolesChannel = supabase
-      .channel('admin-roles-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'user_roles' 
-      }, () => {
-        loadUserRoles();
-      })
-      .subscribe();
-
     return () => {
       supabase.removeChannel(profilesChannel);
-      supabase.removeChannel(rolesChannel);
     };
   }, []);
 
@@ -105,10 +88,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
         .order("full_name");
 
       if (profilesError) throw profilesError;
-      setUsers((profilesData || []) as UserWithRole[]);
-
-      // Load user roles
-      await loadUserRoles();
+      setUsers((profilesData || []) as UserWithDepartment[]);
 
     } catch (error: any) {
       console.error("Error loading data:", error);
@@ -122,27 +102,13 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
     }
   };
 
-  const loadUserRoles = async () => {
-    const { data: rolesData } = await supabase
-      .from("user_roles")
-      .select("user_id, role");
-    
-    const rolesByUser: Record<string, string> = {};
-    rolesData?.forEach((role) => {
-      if (!rolesByUser[role.user_id]) {
-        rolesByUser[role.user_id] = role.role;
-      }
-    });
-    setUserRoles(rolesByUser);
-  };
-
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!newUser.email || !newUser.full_name || !newUser.role) {
+    if (!newUser.email || !newUser.full_name || !newUser.department_id) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields (Name, Email, Role)",
+        description: "Please fill in all required fields (Name, Email, Department)",
         variant: "destructive",
       });
       return;
@@ -179,7 +145,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
             email: newUser.email,
             full_name: newUser.full_name,
             password: newUser.password || undefined,
-            role: newUser.role,
             department_id: newUser.department_id && newUser.department_id !== 'none' 
               ? newUser.department_id 
               : null,
@@ -206,7 +171,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
         full_name: "",
         password: "",
         department_id: "",
-        role: "",
         is_active: true,
       });
       setCreateDialogOpen(false);
@@ -224,32 +188,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    try {
-      const { error: deleteError } = await supabase
-        .from("user_roles")
-        .delete()
-        .eq("user_id", userId);
-
-      if (deleteError) throw deleteError;
-      
-      const { error: insertError } = await supabase
-        .from("user_roles")
-        .insert([{ user_id: userId, role: newRole as any }]);
-
-      if (insertError) throw insertError;
-
-      toast({ title: "Success", description: "User role updated successfully" });
-      loadUserRoles();
-    } catch (error: any) {
-      toast({ 
-        title: "Error", 
-        description: error.message || "Failed to update role", 
-        variant: "destructive" 
-      });
-    }
-  };
-
   const handleDepartmentChange = async (userId: string, departmentId: string) => {
     try {
       const { error } = await supabase
@@ -260,6 +198,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
       if (error) throw error;
 
       toast({ title: "Success", description: "Department updated successfully" });
+      loadUsers();
     } catch (error: any) {
       toast({ 
         title: "Error", 
@@ -296,8 +235,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
     if (!userToDelete) return;
 
     try {
-      await supabase.from("user_roles").delete().eq("user_id", userToDelete);
-      
       toast({
         title: "Info",
         description: "User deletion requires Supabase Admin API. Please contact system administrator.",
@@ -323,7 +260,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
         !searchQuery ||
         user.full_name?.toLowerCase().includes(searchLower) ||
         user.id?.toLowerCase().includes(searchLower) ||
-        userRoles[user.id]?.toLowerCase().includes(searchLower);
+        user.departments?.name?.toLowerCase().includes(searchLower);
 
       // Status filter
       const matchesStatus =
@@ -331,19 +268,14 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
         (statusFilter === "active" && user.is_active) ||
         (statusFilter === "inactive" && !user.is_active);
 
-      // Role filter
-      const matchesRole =
-        roleFilter === "all" ||
-        userRoles[user.id] === roleFilter;
-
       // Department filter
       const matchesDepartment =
         departmentFilter === "all" ||
         user.department_id === departmentFilter;
 
-      return matchesSearch && matchesStatus && matchesRole && matchesDepartment;
+      return matchesSearch && matchesStatus && matchesDepartment;
     });
-  }, [users, userRoles, searchQuery, statusFilter, roleFilter, departmentFilter]);
+  }, [users, searchQuery, statusFilter, departmentFilter]);
 
   const LoadingSkeleton = () => (
     <div className="space-y-3">
@@ -354,6 +286,11 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
       ))}
     </div>
   );
+
+  // Check if user is in bypass department
+  const isUserBypass = (user: UserWithDepartment) => {
+    return user.departments?.type && BYPASS_DEPARTMENT_TYPES.includes(user.departments.type);
+  };
 
   return (
     <ErrorBoundary>
@@ -367,11 +304,11 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Search and Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, or role..."
+                placeholder="Search by name or department..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -387,20 +324,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                {roles.map((role) => (
-                  <SelectItem key={role.id} value={role.role_name}>
-                    {role.role_name}
-                  </SelectItem>
-                ))}
               </SelectContent>
             </Select>
 
@@ -428,7 +351,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>User ID</TableHead>
-                    <TableHead>Role</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Last Active</TableHead>
@@ -438,16 +360,14 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                 <TableBody>
                   {filteredUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        {searchQuery || statusFilter !== "all" || roleFilter !== "all" || departmentFilter !== "all" 
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        {searchQuery || statusFilter !== "all" || departmentFilter !== "all" 
                           ? "No users match your filters"
                           : "No users found"}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredUsers.map((user) => {
-                      const currentRole = userRoles[user.id] || "unassigned";
-                      const hasValidRole = currentRole && currentRole !== "unassigned";
                       const hasValidDept = user.department_id && user.department_id !== "none";
 
                       return (
@@ -456,128 +376,96 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                             {user.full_name || "—"}
                           </TableCell>
                         
-                        <TableCell className="text-sm text-muted-foreground">
-                          {user.id?.substring(0, 8) || "—"}...
-                        </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {user.id?.substring(0, 8) || "—"}...
+                          </TableCell>
                         
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {!hasValidRole && (
-                              <AlertTriangle className="h-4 w-4 text-amber-500" />
-                            )}
-                            <Select
-                              value={currentRole}
-                              onValueChange={(value) => handleRoleChange(user.id, value)}
-                            >
-                              <SelectTrigger className="w-[200px]">
-                                <SelectValue placeholder="Select role" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-background">
-                                <SelectItem value="unassigned">
-                                  <span className="flex items-center gap-2">
-                                    <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                    Unassigned
-                                  </span>
-                                </SelectItem>
-                                {roles.map((role) => (
-                                  <SelectItem 
-                                    key={role.id} 
-                                    value={role.role_name}
-                                  >
-                                    {role.role_name}
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {!hasValidDept && (
+                                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                              )}
+                              <Select
+                                value={user.department_id || "none"}
+                                onValueChange={(value) => handleDepartmentChange(user.id, value)}
+                              >
+                                <SelectTrigger className="w-[180px]">
+                                  <SelectValue placeholder="Select department" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-background">
+                                  <SelectItem value="none">
+                                    <span className="flex items-center gap-2">
+                                      <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                      No Department
+                                    </span>
                                   </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </TableCell>
-                      
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {!hasValidDept && (
-                              <AlertTriangle className="h-4 w-4 text-amber-500" />
-                            )}
-                            <Select
-                              value={user.department_id || "none"}
-                              onValueChange={(value) => handleDepartmentChange(user.id, value)}
-                            >
-                              <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Select department" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-background">
-                                <SelectItem value="none">
-                                  <span className="flex items-center gap-2">
-                                    <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                    No Department
-                                  </span>
-                                </SelectItem>
-                                {departments.map((dept) => (
-                                  <SelectItem 
-                                    key={dept.id} 
-                                    value={dept.id}
-                                  >
-                                    {dept.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </TableCell>
-                      
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={user.is_active ?? true}
-                              onCheckedChange={() => handleToggleStatus(user.id, user.is_active ?? true)}
-                            />
-                            {user.is_active ? (
-                              <Badge variant="default" className="gap-1">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Active
-                              </Badge>
-                            ) : (
-                              <Badge variant="destructive" className="gap-1">
-                                <XCircle className="h-3 w-3" />
-                                Inactive
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
+                                  {departments.map((dept) => (
+                                    <SelectItem 
+                                      key={dept.id} 
+                                      value={dept.id}
+                                    >
+                                      {dept.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </TableCell>
                         
-                        <TableCell className="text-sm text-muted-foreground">
-                          {user.last_login 
-                            ? format(new Date(user.last_login), "PP") 
-                            : "Never"}
-                        </TableCell>
-                        
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setEditingUser(user);
-                                setEditSheetOpen(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setUserToDelete(user.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  }))
-                  }
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={user.is_active ?? true}
+                                onCheckedChange={() => handleToggleStatus(user.id, user.is_active ?? true)}
+                              />
+                              {user.is_active ? (
+                                <Badge variant="default" className="gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Active
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive" className="gap-1">
+                                  <XCircle className="h-3 w-3" />
+                                  Inactive
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          
+                          <TableCell className="text-sm text-muted-foreground">
+                            {user.last_login 
+                              ? format(new Date(user.last_login), "PP") 
+                              : "Never"}
+                          </TableCell>
+                          
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setEditSheetOpen(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setUserToDelete(user.id);
+                                  setDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -591,7 +479,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
           <DialogHeader>
             <DialogTitle>Create New User</DialogTitle>
             <DialogDescription>
-              Add a new user to the system with role and department assignment
+              Add a new user to the system. Permissions are set by department.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateUser} className="space-y-4">
@@ -630,33 +518,11 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Initial Role *</Label>
-              <Select
-                value={newUser.role || (roles.length > 0 ? roles[0].role_name : "unassigned")}
-                onValueChange={(value) => setNewUser({ ...newUser, role: value })}
-                required
-                disabled={creatingUser}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent className="bg-background">
-                  {roles.map((role) => (
-                    <SelectItem 
-                      key={role.id} 
-                      value={role.role_name}
-                    >
-                      {role.role_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="department_id">Department</Label>
+              <Label htmlFor="department_id">Department *</Label>
               <Select
                 value={newUser.department_id || "none"}
                 onValueChange={(value) => setNewUser({ ...newUser, department_id: value })}
+                required
                 disabled={creatingUser}
               >
                 <SelectTrigger>
@@ -674,6 +540,9 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Permissions are based on department. Admin and Finance have full access.
+              </p>
             </div>
             <div className="flex items-center justify-between">
               <Label htmlFor="is_active">Active Status</Label>
@@ -713,9 +582,6 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
             </DialogTitle>
             <DialogDescription className="space-y-2">
               <p>Are you sure you want to delete this user?</p>
-              <p className="text-sm">
-                User deletion requires Supabase Admin API access. This will remove the user's role assignments.
-              </p>
               <p className="font-medium text-foreground">This action cannot be undone.</p>
             </DialogDescription>
           </DialogHeader>
@@ -736,7 +602,7 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
           <SheetHeader>
             <SheetTitle>Edit User</SheetTitle>
             <SheetDescription>
-              {editingUser?.full_name || 'User'} - Manage role, department, and permission overrides
+              {editingUser?.full_name || 'User'} - Manage department and permission overrides
             </SheetDescription>
           </SheetHeader>
           
@@ -754,22 +620,22 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Department</Label>
-                  <p>{editingUser.departments?.name || 'No department assigned'}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Role</Label>
-                  <p>{userRoles[editingUser.id] || 'Unassigned'}</p>
+                  <p className="flex items-center gap-2">
+                    {editingUser.departments?.name || 'No department assigned'}
+                    {isUserBypass(editingUser) && (
+                      <Badge variant="secondary" className="text-xs">Full Access</Badge>
+                    )}
+                  </p>
                 </div>
               </div>
 
               <Separator />
 
-
               {/* Permission Overrides Section */}
               <UserPermissionOverrides
                 userId={editingUser.id}
                 userDepartmentType={editingUser.departments?.type || null}
-                isAdminOrFinance={BYPASS_ROLES.includes(userRoles[editingUser.id] || '')}
+                isAdminOrFinance={isUserBypass(editingUser)}
                 onSaved={() => {
                   toast({ title: 'Permissions Updated', description: 'User permissions have been updated and will take effect immediately.' });
                 }}

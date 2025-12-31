@@ -355,15 +355,22 @@ export default function MaterialInwards() {
             notes: reconNotes
           } as any);
 
-        // 4a. Notify Purchase Managers if variance exceeds tolerance
+        // 4a. Notify Sales department if variance exceeds tolerance
         if (showVarianceWarning) {
-          const { data: purchaseManagers } = await supabase
-            .from("user_roles")
-            .select("user_id")
-            .eq("role", "purchase");
+          const { data: salesDept } = await supabase
+            .from("departments")
+            .select("id")
+            .eq("type", "sales")
+            .single();
+          
+          const { data: purchaseManagers } = salesDept ? await supabase
+            .from("profiles")
+            .select("id")
+            .eq("department_id", salesDept.id)
+            .eq("is_active", true) : { data: null };
 
           if (purchaseManagers && purchaseManagers.length > 0) {
-            const managerIds = purchaseManagers.map(m => m.user_id);
+            const managerIds = purchaseManagers.map(m => m.id);
             await supabase.rpc("notify_users", {
               _user_ids: managerIds,
               _type: "rate_variance_alert",

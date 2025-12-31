@@ -349,14 +349,23 @@ export default function Dispatch() {
 
   const notifyLogisticsTeam = async (shipId: string, batchCount: number, totalQty: number, source: DispatchSource) => {
     try {
-      const { data: users } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .in("role", ["admin", "logistics"]);
+      // Find users in admin or packing departments (packing handles logistics)
+      const { data: depts } = await supabase
+        .from("departments")
+        .select("id")
+        .in("type", ["admin", "packing"]);
+      
+      const deptIds = depts?.map(d => d.id) || [];
+      
+      const { data: users } = deptIds.length > 0 ? await supabase
+        .from("profiles")
+        .select("id")
+        .in("department_id", deptIds)
+        .eq("is_active", true) : { data: null };
 
       if (users && users.length > 0) {
         const notifications = users.map(u => ({
-          user_id: u.user_id,
+          user_id: u.id,
           type: "dispatch_created",
           title: "New Dispatch Created",
           message: `Shipment ${shipId} created from ${source === "inventory" ? "Stock" : "Production"} with ${batchCount} item(s), ${totalQty} pcs total.`,
