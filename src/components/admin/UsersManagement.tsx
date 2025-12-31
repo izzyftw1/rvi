@@ -575,7 +575,8 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
                         </TableCell>
                       </TableRow>
                     );
-                  })}
+                  }))
+                  }
                 </TableBody>
               </Table>
             </div>
