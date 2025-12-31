@@ -80,11 +80,27 @@ interface MaterialGrade {
   category: string | null;
 }
 
+interface MaterialForm {
+  id: string;
+  name: string;
+}
+
+interface CrossSectionShape {
+  id: string;
+  name: string;
+  has_inner_diameter: boolean;
+}
+
 interface NominalSize {
   id: string;
   size_value: number;
   unit: string | null;
   display_label: string | null;
+  shape_id?: string | null;
+}
+
+interface ProcessTypeMaster {
+  name: string;
 }
 
 type GateEntryRow = {
@@ -128,10 +144,7 @@ const MATERIAL_TYPES = [
   { value: 'other', label: 'Other', icon: Package },
 ];
 
-const PROCESS_TYPES = [
-  'Forging', 'Plating', 'Buffing', 'Blasting', 'Heat Treatment',
-  'Anodizing', 'Zinc Coating', 'Painting', 'Machining', 'Other'
-];
+// PROCESS_TYPES will be loaded from external_partners distinct process_types
 
 export default function GateRegister() {
   const { toast } = useToast();
@@ -144,7 +157,10 @@ export default function GateRegister() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [materialGrades, setMaterialGrades] = useState<MaterialGrade[]>([]);
+  const [materialForms, setMaterialForms] = useState<MaterialForm[]>([]);
+  const [crossSectionShapes, setCrossSectionShapes] = useState<CrossSectionShape[]>([]);
   const [nominalSizes, setNominalSizes] = useState<NominalSize[]>([]);
+  const [processTypes, setProcessTypes] = useState<string[]>([]);
 
   // Gate entries ledger
   const [entries, setEntries] = useState<GateEntry[]>([]);
@@ -157,6 +173,8 @@ export default function GateRegister() {
   const [formDirection, setFormDirection] = useState<'IN' | 'OUT'>('IN');
   const [formData, setFormData] = useState({
     material_type: 'raw_material',
+    material_form: '',
+    cross_section_shape: '',
     item_name: '',
     rod_section_size: '',
     material_grade: '',
@@ -179,6 +197,19 @@ export default function GateRegister() {
     remarks: '',
   });
 
+  // Filtered nominal sizes based on selected shape
+  const filteredNominalSizes = useMemo(() => {
+    if (!formData.cross_section_shape) return nominalSizes;
+    const selectedShape = crossSectionShapes.find(s => s.name === formData.cross_section_shape);
+    if (!selectedShape) return nominalSizes;
+    // Filter sizes by shape_id if available, otherwise return all
+    return nominalSizes.filter(s => !s.shape_id || s.shape_id === selectedShape.id);
+  }, [formData.cross_section_shape, nominalSizes, crossSectionShapes]);
+
+  // Check if selected shape needs inner diameter
+  const selectedShape = crossSectionShapes.find(s => s.name === formData.cross_section_shape);
+  const showInnerDiameter = selectedShape?.has_inner_diameter || false;
+
   // Print dialog
   const [printEntry, setPrintEntry] = useState<GateEntry | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -198,7 +229,10 @@ export default function GateRegister() {
         loadSuppliers(),
         loadPartners(),
         loadMaterialGrades(),
+        loadMaterialForms(),
+        loadCrossSectionShapes(),
         loadNominalSizes(),
+        loadProcessTypes(),
         loadEntries()
       ]);
     };
@@ -251,6 +285,22 @@ export default function GateRegister() {
     setMaterialGrades(data || []);
   };
 
+  const loadMaterialForms = async () => {
+    const { data } = await supabase
+      .from("material_forms")
+      .select("id, name")
+      .order("name");
+    setMaterialForms(data || []);
+  };
+
+  const loadCrossSectionShapes = async () => {
+    const { data } = await supabase
+      .from("cross_section_shapes")
+      .select("id, name, has_inner_diameter")
+      .order("name");
+    setCrossSectionShapes(data || []);
+  };
+
   const loadNominalSizes = async () => {
     const { data } = await supabase
       .from("nominal_sizes")
@@ -263,6 +313,21 @@ export default function GateRegister() {
         unit: d.unit,
         display_label: d.display_label
       })));
+    }
+  };
+
+  const loadProcessTypes = async () => {
+    // Get unique process_types from external_partners
+    const { data } = await supabase
+      .from("external_partners")
+      .select("process_type")
+      .eq("is_active", true);
+    
+    if (data) {
+      const uniqueTypes = [...new Set(data.map(p => p.process_type).filter(Boolean))].sort();
+      setProcessTypes(uniqueTypes.length > 0 ? uniqueTypes : ['Forging', 'Plating', 'Buffing', 'Blasting', 'Heat Treatment', 'Anodizing', 'Zinc Coating', 'Painting', 'Machining', 'Other']);
+    } else {
+      setProcessTypes(['Forging', 'Plating', 'Buffing', 'Blasting', 'Heat Treatment', 'Anodizing', 'Zinc Coating', 'Painting', 'Machining', 'Other']);
     }
   };
 
@@ -303,6 +368,8 @@ export default function GateRegister() {
     setFormDirection(direction);
     setFormData({
       material_type: 'raw_material',
+      material_form: '',
+      cross_section_shape: '',
       item_name: '',
       rod_section_size: '',
       material_grade: '',
@@ -746,9 +813,50 @@ export default function GateRegister() {
               {/* Raw Material Fields */}
               {formData.material_type === 'raw_material' && (
                 <>
+                  {/* Material Form and Shape */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Rod / Section Size</Label>
+                      <Label>Material Form</Label>
+                      <Select
+                        value={formData.material_form}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, material_form: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select form" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          {materialForms.map(f => (
+                            <SelectItem key={f.id} value={f.name}>{f.name.toUpperCase()}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Cross Section Shape</Label>
+                      <Select
+                        value={formData.cross_section_shape}
+                        onValueChange={(v) => setFormData(prev => ({ 
+                          ...prev, 
+                          cross_section_shape: v,
+                          rod_section_size: '' // Reset size when shape changes
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select shape" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-background z-50">
+                          {crossSectionShapes.map(s => (
+                            <SelectItem key={s.id} value={s.name}>{s.name.toUpperCase()}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Nominal Size and Material Grade */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Nominal Size</Label>
                       <Select
                         value={formData.rod_section_size}
                         onValueChange={(v) => setFormData(prev => ({ ...prev, rod_section_size: v }))}
@@ -757,7 +865,7 @@ export default function GateRegister() {
                           <SelectValue placeholder="Select size" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50 max-h-48">
-                          {nominalSizes.map(s => (
+                          {filteredNominalSizes.map(s => (
                             <SelectItem key={s.id} value={s.display_label || `${s.size_value}${s.unit || 'mm'}`}>
                               {s.display_label || `${s.size_value} ${s.unit || 'mm'}`}
                             </SelectItem>
@@ -851,7 +959,7 @@ export default function GateRegister() {
                           <SelectValue placeholder="Select process" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50">
-                          {PROCESS_TYPES.map(p => (
+                          {processTypes.map(p => (
                             <SelectItem key={p} value={p}>{p}</SelectItem>
                           ))}
                         </SelectContent>

@@ -92,11 +92,17 @@ export default function RawPurchaseOrders() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [detailTab, setDetailTab] = useState("overview");
 
+  // Master data for dropdowns
+  const [materialGrades, setMaterialGrades] = useState<{id: string; name: string; category: string | null}[]>([]);
+  const [nominalSizes, setNominalSizes] = useState<{id: string; size_value: number; display_label: string | null}[]>([]);
+  const [crossSectionShapes, setCrossSectionShapes] = useState<{id: string; name: string}[]>([]);
+
   // Edit form state
   const [editForm, setEditForm] = useState({
     supplier_id: "",
     item_code: "",
     material_size_mm: "",
+    cross_section_shape: "",
     alloy: "",
     qty_ordered_kg: "",
     rate_per_kg: "",
@@ -151,8 +157,18 @@ export default function RawPurchaseOrders() {
 
       if (supError) throw supError;
 
+      // Load master data for dropdowns
+      const [gradesRes, sizesRes, shapesRes] = await Promise.all([
+        supabase.from("material_grades").select("id, name, category").order("name"),
+        supabase.from("nominal_sizes").select("id, size_value, display_label").order("size_value"),
+        supabase.from("cross_section_shapes").select("id, name").order("name")
+      ]);
+
       setRpos(rposData || []);
       setSuppliers(suppliersData || []);
+      setMaterialGrades(gradesRes.data || []);
+      setNominalSizes(sizesRes.data || []);
+      setCrossSectionShapes(shapesRes.data || []);
     } catch (error: any) {
       console.error("Error loading data:", error);
       toast({ variant: "destructive", description: error.message });
@@ -200,6 +216,7 @@ export default function RawPurchaseOrders() {
       supplier_id: rpo.supplier_id || "",
       item_code: rpo.item_code || "",
       material_size_mm: rpo.material_size_mm || "",
+      cross_section_shape: "", // RPO doesn't store shape separately, extracted from size string
       alloy: rpo.alloy || "",
       qty_ordered_kg: rpo.qty_ordered_kg?.toString() || "",
       rate_per_kg: rpo.rate_per_kg?.toString() || "",
