@@ -31,7 +31,7 @@ interface DepartmentDefault {
   can_mutate: boolean;
 }
 
-// Group pages by category
+// Group pages by category - must match PAGE_KEYS in useDepartmentPermissions
 const PAGE_GROUPS: Record<string, string[]> = {
   'Sales & Customers': ['sales-orders', 'customers', 'items'],
   'Procurement': ['raw-po', 'material-requirements', 'purchase-dashboard'],

@@ -25,23 +25,44 @@ interface PermissionResult {
 
 // Valid department types: admin, finance, sales, design, hr, production, quality, packing
 
-// Map route paths to page_keys used in department_defaults
+/**
+ * COMPREHENSIVE Route-to-PageKey Mapping
+ * Covers ALL routes in App.tsx - both navigation and non-navigation pages
+ */
 export const routeToPageKey: Record<string, string> = {
+  // === SALES & CUSTOMERS ===
   '/sales': 'sales-orders',
   '/customers': 'customers',
+  '/customers/reports': 'customers',
   '/items': 'items',
+  
+  // === PROCUREMENT ===
+  '/purchase': 'raw-po',
   '/purchase/raw-po': 'raw-po',
-  '/material-requirements': 'material-requirements',
+  '/purchase/settings': 'purchase-dashboard',
   '/purchase/dashboard': 'purchase-dashboard',
+  '/procurement': 'purchase-dashboard',
+  '/material-requirements': 'material-requirements',
+  '/material-requirements-v2': 'material-requirements',
+  '/inventory-procurement': 'material-requirements',
+  '/reports/rpo-inventory': 'material-requirements',
+  
+  // === PRODUCTION ===
   '/work-orders': 'work-orders',
+  '/work-orders/new': 'work-orders',
   '/daily-production-log': 'daily-production-log',
   '/floor-dashboard': 'floor-dashboard',
   '/cnc-dashboard': 'cnc-dashboard',
   '/production-progress': 'production-progress',
   '/machine-utilisation': 'machine-utilisation',
+  '/machine-status': 'machine-utilisation',
   '/operator-efficiency': 'operator-efficiency',
   '/setter-efficiency': 'setter-efficiency',
   '/downtime-analytics': 'downtime-analytics',
+  '/cutting': 'production-progress',
+  '/forging': 'production-progress',
+  
+  // === QUALITY ===
   '/quality': 'quality-dashboard',
   '/qc/incoming': 'qc-incoming',
   '/hourly-qc': 'hourly-qc',
@@ -52,9 +73,15 @@ export const routeToPageKey: Record<string, string> = {
   '/quality/analytics': 'quality-analytics',
   '/tolerance-setup': 'tolerances',
   '/instruments': 'instruments',
+  '/genealogy': 'traceability',
+  '/dispatch-qc-report': 'final-qc',
+  
+  // === FINANCE ===
   '/finance/dashboard': 'finance-dashboard',
   '/finance/invoices': 'invoices',
+  '/finance/invoices/create': 'invoices',
   '/finance/receipts': 'receipts',
+  '/finance/payments': 'receipts',
   '/finance/supplier-payments': 'supplier-payments',
   '/finance/adjustments': 'adjustments',
   '/finance/tds': 'tds-report',
@@ -62,25 +89,55 @@ export const routeToPageKey: Record<string, string> = {
   '/reports/reconciliation': 'reconciliations',
   '/finance/reports': 'finance-reports',
   '/finance/settings': 'finance-settings',
+  
+  // === LOGISTICS ===
   '/gate-register': 'gate-register',
   '/logistics': 'logistics-dashboard',
+  '/logistics-dashboard': 'logistics-dashboard',
   '/finished-goods': 'finished-goods',
   '/packing': 'packing',
   '/dispatch': 'dispatch',
+  '/goods-inwards': 'gate-register',
+  '/materials/inwards': 'gate-register',
+  
+  // === EXTERNAL PROCESSES ===
+  '/partners': 'partner-dashboard',
   '/partner-dashboard': 'partner-dashboard',
+  '/partner-performance': 'partner-dashboard',
   '/external-efficiency': 'external-analytics',
+  '/external-analytics': 'external-analytics',
+  
+  // === ADMIN ===
   '/admin': 'admin-panel',
   '/factory-calendar': 'factory-calendar',
+  
+  // === REPORTS ===
+  '/reports': 'finance-reports',
+  '/reports/machine-runtime': 'machine-utilisation',
+  '/reports/worker-efficiency': 'operator-efficiency',
+  
+  // === SPECIAL PAGES ===
+  '/scan': 'work-orders',
+  '/scan-console': 'work-orders',
+  '/supplier-portal': 'work-orders', // Supplier portal uses own RLS
 };
 
-// All page keys with display names
+/**
+ * All page keys with display names
+ * Used in Admin UI for permission management
+ */
 export const PAGE_KEYS: Record<string, string> = {
+  // Sales & Customers
   'sales-orders': 'Sales Orders',
   'customers': 'Customers',
   'items': 'Items',
+  
+  // Procurement
   'raw-po': 'Raw PO',
   'material-requirements': 'Material Requirements',
   'purchase-dashboard': 'Purchase Dashboard',
+  
+  // Production
   'work-orders': 'Work Orders',
   'daily-production-log': 'Daily Production Log',
   'floor-dashboard': 'Floor Dashboard',
@@ -90,6 +147,8 @@ export const PAGE_KEYS: Record<string, string> = {
   'operator-efficiency': 'Operator Efficiency',
   'setter-efficiency': 'Setter Efficiency',
   'downtime-analytics': 'Downtime Analytics',
+  
+  // Quality
   'quality-dashboard': 'Quality Dashboard',
   'qc-incoming': 'Incoming QC',
   'hourly-qc': 'Hourly QC',
@@ -100,6 +159,8 @@ export const PAGE_KEYS: Record<string, string> = {
   'quality-analytics': 'Quality Analytics',
   'tolerances': 'Tolerances',
   'instruments': 'Instruments',
+  
+  // Finance
   'finance-dashboard': 'Finance Dashboard',
   'invoices': 'Invoices',
   'receipts': 'Customer Receipts',
@@ -110,13 +171,19 @@ export const PAGE_KEYS: Record<string, string> = {
   'reconciliations': 'Reconciliations',
   'finance-reports': 'Finance Reports',
   'finance-settings': 'Finance Settings',
+  
+  // Logistics
   'gate-register': 'Gate Register',
   'logistics-dashboard': 'Logistics Dashboard',
   'finished-goods': 'Finished Goods',
   'packing': 'Packing',
   'dispatch': 'Dispatch',
+  
+  // External
   'partner-dashboard': 'Partner Dashboard',
   'external-analytics': 'External Analytics',
+  
+  // Admin
   'admin-panel': 'Admin Panel',
   'factory-calendar': 'Factory Calendar',
 };
@@ -266,7 +333,7 @@ export const useDepartmentPermissions = () => {
 
   // Get permission for a route path
   const getRoutePermission = useCallback((routePath: string): PermissionResult => {
-    // Handle dynamic routes (e.g., /work-orders/123)
+    // Handle dynamic routes (e.g., /work-orders/123, /customers/:id)
     const basePath = Object.keys(routeToPageKey).find(key => 
       routePath === key || routePath.startsWith(key + '/')
     );
@@ -274,10 +341,11 @@ export const useDepartmentPermissions = () => {
     const pageKey = basePath ? routeToPageKey[basePath] : null;
     
     if (!pageKey) {
-      // Unknown route - allow for Admin/Finance, allow view for others (public pages)
+      // Unknown route - allow for Admin/Finance, allow view for others (public pages like /)
       if (isBypassUser) {
         return { canView: true, canAccessRoute: true, canMutate: true, source: 'bypass' };
       }
+      // Default: allow access to unmapped routes (like home page "/")
       return { canView: true, canAccessRoute: true, canMutate: false, source: 'deny' };
     }
 
