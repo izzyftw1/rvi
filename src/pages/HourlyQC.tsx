@@ -441,13 +441,13 @@ const HourlyQC = () => {
                                 step="0.001" 
                                 value={measurements[tol.id] || ''} 
                                 onChange={(e) => setMeasurements({...measurements, [tol.id]: e.target.value})} 
-                                className={
+                                className={`font-mono text-base h-12 ${
                                   isOutOfTolerance 
-                                    ? 'border-destructive bg-destructive/10' 
+                                    ? 'border-destructive bg-destructive/10 border-2' 
                                     : isPassing 
-                                      ? 'border-emerald-500 bg-emerald-500/10' 
-                                      : ''
-                                } 
+                                      ? 'border-emerald-500 bg-emerald-500/10 border-2' 
+                                      : 'border-input'
+                                }`} 
                               />
                               {isOutOfTolerance && (
                                 <div className="flex items-center gap-1 text-xs text-destructive">
