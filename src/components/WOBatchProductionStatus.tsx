@@ -132,6 +132,10 @@ export function WOBatchProductionStatus({ woId, orderedQty, onUpdate }: WOBatchP
   const totalCompleteQty = completeBatches.reduce((sum, b) => sum + (b.production_complete_qty || b.produced_qty || 0), 0);
   const totalQCApproved = batches.reduce((sum, b) => sum + (b.qc_approved_qty || 0), 0);
   const allComplete = batches.length > 0 && completeBatches.length === batches.length;
+  const remainingQty = Math.max(0, orderedQty - totalProduced);
+  const hasRemainingQty = remainingQty > 0;
+  const allBatchesClosed = batches.every(b => b.production_complete);
+  const needsNewBatch = allBatchesClosed && hasRemainingQty;
 
   const getStageLabel = (batch: Batch) => {
     if (batch.dispatched_qty > 0) return { label: "Dispatched", color: "bg-blue-500/10 text-blue-600" };
@@ -206,6 +210,21 @@ export function WOBatchProductionStatus({ woId, orderedQty, onUpdate }: WOBatchP
             </div>
           ))}
         </div>
+
+        {/* New batch hint - shown when all batches are complete but remaining qty exists */}
+        {needsNewBatch && (
+          <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+            <div className="flex items-center gap-2 text-sm">
+              <Package className="h-4 w-4 text-primary" />
+              <span className="font-medium text-primary">
+                {remainingQty.toLocaleString()} pcs remaining
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              A new batch (#{batches.length + 1}) will be created automatically when production logging continues.
+            </p>
+          </div>
+        )}
 
         {/* Summary footer */}
         {batches.length > 1 && (

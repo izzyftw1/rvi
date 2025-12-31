@@ -10285,6 +10285,16 @@ export type Database = {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
       }
+      check_wo_production_status: {
+        Args: { p_wo_id: string }
+        Returns: {
+          active_batch_id: string
+          all_batches_complete: boolean
+          can_mark_wo_complete: boolean
+          ordered_qty: number
+          total_produced: number
+        }[]
+      }
       department_type_to_app_role: {
         Args: { _dept: Database["public"]["Enums"]["department_type"] }
         Returns: Database["public"]["Enums"]["app_role"]
