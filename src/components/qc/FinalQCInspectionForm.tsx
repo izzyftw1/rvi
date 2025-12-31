@@ -502,18 +502,18 @@ export const FinalQCInspectionForm = ({
                   </Badge>
                 </div>
 
-                {/* Sample Inputs - Grid - Larger boxes for visibility */}
-                <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
+                {/* Sample Inputs - Responsive flex wrap layout */}
+                <div className="flex flex-wrap gap-2">
                   {dim.samples.map((sample, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <Label className="text-xs text-muted-foreground text-center block">#{idx + 1}</Label>
+                    <div key={idx} className="flex flex-col items-center w-[52px]">
+                      <Label className="text-xs text-muted-foreground text-center">#{idx + 1}</Label>
                       <Input
                         type="number"
                         step="0.001"
                         placeholder="-"
                         value={sample.value ?? ''}
                         onChange={(e) => updateMeasurement(tol.id, idx, e.target.value)}
-                        className={`text-center font-mono text-base h-12 w-full min-w-[70px] px-1 ${
+                        className={`text-center font-mono text-sm h-10 w-[52px] px-1 ${
                           sample.isWithinTolerance === true 
                             ? 'border-green-500 bg-green-50 dark:bg-green-900/20 border-2' 
                             : sample.isWithinTolerance === false 
