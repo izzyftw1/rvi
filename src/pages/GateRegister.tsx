@@ -41,6 +41,19 @@ interface Partner {
   process_type: string;
 }
 
+interface Customer {
+  id: string;
+  customer_name: string;
+  party_code: string | null;
+}
+
+interface WorkOrder {
+  id: string;
+  wo_number: string;
+  item_code: string;
+  customer: string | null;
+}
+
 interface GateEntry {
   id: string;
   gate_entry_no: string;
@@ -72,6 +85,8 @@ interface GateEntry {
   tag_printed: boolean;
   challan_printed: boolean;
   remarks: string | null;
+  work_order_id: string | null;
+  customer_id: string | null;
 }
 
 interface MaterialGrade {
@@ -134,6 +149,8 @@ type GateEntryRow = {
   tag_printed: boolean;
   challan_printed: boolean;
   remarks: string | null;
+  work_order_id: string | null;
+  customer_id: string | null;
 };
 
 const MATERIAL_TYPES = [
@@ -161,6 +178,8 @@ export default function GateRegister() {
   const [crossSectionShapes, setCrossSectionShapes] = useState<CrossSectionShape[]>([]);
   const [nominalSizes, setNominalSizes] = useState<NominalSize[]>([]);
   const [processTypes, setProcessTypes] = useState<string[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
 
   // Gate entries ledger
   const [entries, setEntries] = useState<GateEntry[]>([]);
@@ -187,8 +206,10 @@ export default function GateRegister() {
     supplier_id: '',
     supplier_name: '',
     party_code: '',
+    customer_id: '',
     partner_id: '',
     process_type: '',
+    work_order_id: '',
     challan_no: '',
     dc_number: '',
     vehicle_no: '',
@@ -233,6 +254,8 @@ export default function GateRegister() {
         loadCrossSectionShapes(),
         loadNominalSizes(),
         loadProcessTypes(),
+        loadCustomers(),
+        loadWorkOrders(),
         loadEntries()
       ]);
     };
@@ -331,6 +354,24 @@ export default function GateRegister() {
     }
   };
 
+  const loadCustomers = async () => {
+    const { data } = await supabase
+      .from("customer_master")
+      .select("id, customer_name, party_code")
+      .order("customer_name");
+    setCustomers(data || []);
+  };
+
+  const loadWorkOrders = async () => {
+    const { data } = await supabase
+      .from("work_orders")
+      .select("id, wo_number, item_code, customer")
+      .in("status", ["in_progress", "pending", "qc", "packing"])
+      .order("created_at", { ascending: false })
+      .limit(200);
+    setWorkOrders(data || []);
+  };
+
   const loadEntries = async () => {
     const { data, error } = await supabase
       .from("gate_register")
@@ -382,8 +423,10 @@ export default function GateRegister() {
       supplier_id: '',
       supplier_name: '',
       party_code: '',
+      customer_id: '',
       partner_id: '',
       process_type: '',
+      work_order_id: '',
       challan_no: '',
       dc_number: '',
       vehicle_no: '',
@@ -450,8 +493,10 @@ export default function GateRegister() {
         supplier_id?: string | null;
         supplier_name?: string | null;
         party_code?: string | null;
+        customer_id?: string | null;
         partner_id?: string | null;
         process_type?: string | null;
+        work_order_id?: string | null;
         challan_no?: string | null;
         dc_number?: string | null;
         vehicle_no?: string | null;
@@ -480,12 +525,14 @@ export default function GateRegister() {
         party_code: formData.party_code || null,
         partner_id: formData.partner_id || null,
         process_type: formData.process_type || null,
+        work_order_id: formData.work_order_id || null,
+        customer_id: formData.customer_id || null,
         challan_no: formData.challan_no || null,
         dc_number: formData.dc_number || null,
         vehicle_no: formData.vehicle_no || null,
         transporter: formData.transporter || null,
         qc_required: formData.qc_required,
-        qc_status: formData.qc_required ? 'pending' : 'pending', // Always use 'pending' as initial status
+        qc_status: formData.qc_required ? 'pending' : 'pending',
         remarks: formData.remarks || null,
         created_by: user?.id || null,
       };
@@ -981,15 +1028,54 @@ export default function GateRegister() {
                 </div>
               )}
 
-              {/* Common Fields: Party Code */}
+              {/* Customer/Party Selection - from customer_master */}
               <div>
-                <Label>Party Code (Customer)</Label>
-                <Input
-                  value={formData.party_code}
-                  onChange={(e) => setFormData(prev => ({ ...prev, party_code: e.target.value }))}
-                  placeholder="Optional customer/party code"
-                />
+                <Label>Customer / Party</Label>
+                <Select
+                  value={formData.customer_id}
+                  onValueChange={(v) => {
+                    const customer = customers.find(c => c.id === v);
+                    setFormData(prev => ({
+                      ...prev,
+                      customer_id: v,
+                      party_code: customer?.party_code || customer?.customer_name || ''
+                    }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50 max-h-48">
+                    {customers.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.customer_name} {c.party_code ? `(${c.party_code})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              {/* Work Order Selection for External Process */}
+              {formData.material_type === 'external_process' && (
+                <div>
+                  <Label>Linked Work Order</Label>
+                  <Select
+                    value={formData.work_order_id}
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select work order" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background z-50 max-h-48">
+                      {workOrders.map(wo => (
+                        <SelectItem key={wo.id} value={wo.id}>
+                          {wo.wo_number} - {wo.item_code} ({wo.customer || 'N/A'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Weight Section */}
               <div className="border rounded-lg p-4 bg-muted/30">

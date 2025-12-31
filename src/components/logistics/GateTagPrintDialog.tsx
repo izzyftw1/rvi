@@ -45,8 +45,6 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
   const printRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = async () => {
-    if (!printRef.current) return;
-
     // Update print status
     const field = printType === 'tag' ? 'tag_printed' : 'challan_printed';
     const timeField = printType === 'tag' ? 'tag_printed_at' : 'challan_printed_at';
@@ -59,115 +57,445 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
       })
       .eq("id", entry.id);
 
-    // Trigger browser print
-    const printContent = printRef.current.innerHTML;
+    // Generate print content with complete inline styles
     const printWindow = window.open('', '_blank');
     if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>${printType === 'tag' ? 'Material Tag' : 'Delivery Challan'}</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { font-family: Arial, sans-serif; }
-              .tag-container {
-                width: 6in;
-                height: 4in;
-                padding: 0.25in;
-                border: 2px solid #000;
-                display: flex;
-                flex-direction: column;
-              }
-              .tag-header {
-                text-align: center;
-                border-bottom: 2px solid #000;
-                padding-bottom: 8px;
-                margin-bottom: 8px;
-              }
-              .tag-header h1 { font-size: 16px; margin-bottom: 4px; }
-              .tag-header p { font-size: 12px; color: #666; }
-              .tag-body { flex: 1; }
-              .tag-row {
-                display: flex;
-                border-bottom: 1px solid #ccc;
-                padding: 4px 0;
-              }
-              .tag-label {
-                width: 40%;
-                font-weight: bold;
-                font-size: 11px;
-              }
-              .tag-value {
-                width: 60%;
-                font-size: 12px;
-              }
-              .tag-highlight {
-                font-size: 18px;
-                font-weight: bold;
-                background: #f0f0f0;
-                padding: 8px;
-                text-align: center;
-                margin: 8px 0;
-              }
-              .tag-footer {
-                border-top: 2px solid #000;
-                padding-top: 8px;
-                margin-top: 8px;
-                font-size: 10px;
-                text-align: center;
-                color: #666;
-              }
-              .challan-container {
-                width: 8.5in;
-                padding: 0.5in;
-              }
-              .challan-header {
-                text-align: center;
-                margin-bottom: 20px;
-              }
-              .challan-header h1 { font-size: 20px; }
-              .challan-details {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 10px;
-                margin-bottom: 20px;
-              }
-              .challan-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 20px;
-              }
-              .challan-table th, .challan-table td {
-                border: 1px solid #000;
-                padding: 8px;
-                text-align: left;
-              }
-              .challan-signatures {
-                display: flex;
-                justify-content: space-between;
-                margin-top: 60px;
-              }
-              .signature-block {
-                text-align: center;
-                width: 30%;
-              }
-              .signature-line {
-                border-top: 1px solid #000;
-                margin-top: 40px;
-                padding-top: 5px;
-              }
-              @media print {
-                body { -webkit-print-color-adjust: exact; }
-              }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-        </html>
-      `);
+      const isTag = printType === 'tag';
+      const directionLabel = entry.direction === 'IN' ? 'GOODS RECEIVED' : 'GOODS DISPATCHED';
+      const materialLabel = getMaterialTypeLabel(entry.material_type);
+      
+      if (isTag) {
+        // 6x4 inch Material Tag with complete inline styles
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Material Tag - ${entry.gate_entry_no}</title>
+              <style>
+                @page { size: 6in 4in; margin: 0; }
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { 
+                  font-family: Arial, Helvetica, sans-serif; 
+                  width: 6in; 
+                  height: 4in; 
+                  padding: 0.2in;
+                }
+                .tag-container {
+                  width: 100%;
+                  height: 100%;
+                  border: 3px solid #000;
+                  padding: 12px;
+                  display: flex;
+                  flex-direction: column;
+                }
+                .tag-header {
+                  text-align: center;
+                  border-bottom: 3px solid #000;
+                  padding-bottom: 8px;
+                  margin-bottom: 10px;
+                }
+                .tag-header h1 { 
+                  font-size: 18px; 
+                  font-weight: bold;
+                  text-transform: uppercase;
+                  letter-spacing: 1px;
+                }
+                .tag-header p { 
+                  font-size: 12px; 
+                  color: #555; 
+                  margin-top: 2px;
+                }
+                .entry-number {
+                  background: #f0f0f0;
+                  border: 2px solid #000;
+                  padding: 8px;
+                  text-align: center;
+                  font-size: 20px;
+                  font-weight: bold;
+                  margin-bottom: 10px;
+                  letter-spacing: 2px;
+                }
+                .details-grid {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 4px 16px;
+                  flex: 1;
+                }
+                .detail-row {
+                  display: flex;
+                  padding: 3px 0;
+                  border-bottom: 1px solid #ddd;
+                }
+                .detail-row.full { grid-column: span 2; }
+                .detail-label {
+                  font-weight: bold;
+                  font-size: 11px;
+                  min-width: 70px;
+                  color: #333;
+                }
+                .detail-value {
+                  font-size: 12px;
+                  flex: 1;
+                }
+                .detail-value.large {
+                  font-size: 16px;
+                  font-weight: bold;
+                }
+                .weight-box {
+                  background: #000;
+                  color: #fff;
+                  padding: 10px;
+                  text-align: center;
+                  margin-top: 8px;
+                }
+                .weight-label { font-size: 11px; letter-spacing: 2px; }
+                .weight-value { font-size: 28px; font-weight: bold; margin: 4px 0; }
+                .weight-breakdown { font-size: 10px; opacity: 0.9; }
+                .tag-footer {
+                  border-top: 2px solid #000;
+                  padding-top: 6px;
+                  margin-top: 8px;
+                  text-align: center;
+                  font-size: 10px;
+                  color: #555;
+                }
+                @media print {
+                  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="tag-container">
+                <div class="tag-header">
+                  <h1>${directionLabel}</h1>
+                  <p>${materialLabel}</p>
+                </div>
+                
+                <div class="entry-number">${entry.gate_entry_no}</div>
+                
+                <div class="details-grid">
+                  <div class="detail-row">
+                    <span class="detail-label">Date:</span>
+                    <span class="detail-value">${format(new Date(entry.entry_time), 'dd-MMM-yyyy')}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Time:</span>
+                    <span class="detail-value">${format(new Date(entry.entry_time), 'HH:mm')}</span>
+                  </div>
+                  ${entry.heat_no ? `
+                  <div class="detail-row full">
+                    <span class="detail-label">Heat No:</span>
+                    <span class="detail-value large">${entry.heat_no}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.rod_section_size ? `
+                  <div class="detail-row">
+                    <span class="detail-label">Size:</span>
+                    <span class="detail-value">${entry.rod_section_size}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.alloy ? `
+                  <div class="detail-row">
+                    <span class="detail-label">Grade:</span>
+                    <span class="detail-value">${entry.alloy}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.supplier_name ? `
+                  <div class="detail-row full">
+                    <span class="detail-label">Supplier:</span>
+                    <span class="detail-value">${entry.supplier_name}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.party_code ? `
+                  <div class="detail-row">
+                    <span class="detail-label">Party:</span>
+                    <span class="detail-value">${entry.party_code}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.tc_number ? `
+                  <div class="detail-row">
+                    <span class="detail-label">TC No:</span>
+                    <span class="detail-value">${entry.tc_number}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.challan_no ? `
+                  <div class="detail-row">
+                    <span class="detail-label">Challan:</span>
+                    <span class="detail-value">${entry.challan_no}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.process_type ? `
+                  <div class="detail-row">
+                    <span class="detail-label">Process:</span>
+                    <span class="detail-value">${entry.process_type}</span>
+                  </div>
+                  ` : ''}
+                </div>
+                
+                <div class="weight-box">
+                  <div class="weight-label">WEIGHT</div>
+                  <div class="weight-value">${entry.gross_weight_kg.toFixed(2)} kg</div>
+                  ${entry.tare_weight_kg > 0 ? `
+                  <div class="weight-breakdown">Net: ${entry.net_weight_kg.toFixed(2)} kg | Tare: ${entry.tare_weight_kg.toFixed(2)} kg</div>
+                  ` : ''}
+                </div>
+                
+                <div class="tag-footer">RV Industries • Gate Register</div>
+              </div>
+            </body>
+          </html>
+        `);
+      } else {
+        // Delivery Challan with complete inline styles
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Delivery Challan - ${entry.gate_entry_no}</title>
+              <style>
+                @page { size: A4; margin: 0.5in; }
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { 
+                  font-family: Arial, Helvetica, sans-serif; 
+                  padding: 0.5in;
+                  font-size: 12px;
+                }
+                .challan-container { max-width: 8in; margin: 0 auto; }
+                .company-header {
+                  text-align: center;
+                  border-bottom: 3px double #000;
+                  padding-bottom: 15px;
+                  margin-bottom: 20px;
+                }
+                .company-header h1 { 
+                  font-size: 24px; 
+                  font-weight: bold;
+                  letter-spacing: 2px;
+                }
+                .company-header p { 
+                  font-size: 14px; 
+                  color: #333;
+                  margin-top: 5px;
+                }
+                .challan-title {
+                  text-align: center;
+                  background: #f0f0f0;
+                  padding: 8px;
+                  font-size: 16px;
+                  font-weight: bold;
+                  border: 2px solid #000;
+                  margin-bottom: 20px;
+                }
+                .info-section {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 20px;
+                  margin-bottom: 20px;
+                }
+                .info-block {
+                  border: 1px solid #ccc;
+                  padding: 12px;
+                }
+                .info-block h3 {
+                  font-size: 11px;
+                  color: #666;
+                  text-transform: uppercase;
+                  margin-bottom: 8px;
+                  border-bottom: 1px solid #ddd;
+                  padding-bottom: 4px;
+                }
+                .info-row {
+                  display: flex;
+                  margin: 4px 0;
+                }
+                .info-label { 
+                  font-weight: bold; 
+                  min-width: 100px; 
+                }
+                .info-value { flex: 1; }
+                .party-box {
+                  border: 2px solid #000;
+                  padding: 15px;
+                  margin-bottom: 20px;
+                }
+                .party-box h3 {
+                  font-size: 11px;
+                  color: #666;
+                  margin-bottom: 5px;
+                }
+                .party-box p {
+                  font-size: 14px;
+                  font-weight: bold;
+                }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin-bottom: 20px;
+                }
+                th, td {
+                  border: 1px solid #000;
+                  padding: 10px;
+                  text-align: left;
+                }
+                th {
+                  background: #f0f0f0;
+                  font-weight: bold;
+                  font-size: 11px;
+                  text-transform: uppercase;
+                }
+                td { font-size: 12px; }
+                td.right { text-align: right; }
+                td.bold { font-weight: bold; }
+                .vehicle-info {
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 20px;
+                  margin-bottom: 30px;
+                  padding: 10px;
+                  background: #f9f9f9;
+                  border: 1px solid #ddd;
+                }
+                .signatures {
+                  display: flex;
+                  justify-content: space-between;
+                  margin-top: 60px;
+                  padding-top: 10px;
+                }
+                .sig-block {
+                  text-align: center;
+                  width: 28%;
+                }
+                .sig-line {
+                  border-top: 1px solid #000;
+                  padding-top: 8px;
+                  margin-top: 50px;
+                  font-size: 11px;
+                  color: #333;
+                }
+                @media print {
+                  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="challan-container">
+                <div class="company-header">
+                  <h1>RV INDUSTRIES</h1>
+                  <p>Delivery Challan / Gate Pass</p>
+                </div>
+                
+                <div class="challan-title">${entry.direction === 'IN' ? 'INWARD CHALLAN' : 'OUTWARD CHALLAN'}</div>
+                
+                <div class="info-section">
+                  <div class="info-block">
+                    <h3>Document Details</h3>
+                    <div class="info-row">
+                      <span class="info-label">Challan No:</span>
+                      <span class="info-value">${entry.gate_entry_no}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">Date:</span>
+                      <span class="info-value">${format(new Date(entry.entry_time), 'dd-MMM-yyyy')}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">Time:</span>
+                      <span class="info-value">${format(new Date(entry.entry_time), 'HH:mm')}</span>
+                    </div>
+                    ${entry.challan_no ? `
+                    <div class="info-row">
+                      <span class="info-label">Ref Challan:</span>
+                      <span class="info-value">${entry.challan_no}</span>
+                    </div>
+                    ` : ''}
+                  </div>
+                  <div class="info-block">
+                    <h3>Movement Info</h3>
+                    <div class="info-row">
+                      <span class="info-label">Direction:</span>
+                      <span class="info-value">${entry.direction === 'IN' ? 'INWARD' : 'OUTWARD'}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">Type:</span>
+                      <span class="info-value">${materialLabel}</span>
+                    </div>
+                    ${entry.process_type ? `
+                    <div class="info-row">
+                      <span class="info-label">Process:</span>
+                      <span class="info-value">${entry.process_type}</span>
+                    </div>
+                    ` : ''}
+                  </div>
+                </div>
+                
+                ${entry.supplier_name ? `
+                <div class="party-box">
+                  <h3>${entry.direction === 'IN' ? 'Received From:' : 'Dispatched To:'}</h3>
+                  <p>${entry.supplier_name}</p>
+                  ${entry.party_code ? `<p style="font-size:12px; font-weight:normal; margin-top:4px;">Party Code: ${entry.party_code}</p>` : ''}
+                </div>
+                ` : ''}
+                
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:50%">Description</th>
+                      <th style="width:15%" class="right">Qty</th>
+                      <th style="width:17.5%" class="right">Gross Wt (kg)</th>
+                      <th style="width:17.5%" class="right">Net Wt (kg)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <strong>${entry.item_name || entry.rod_section_size || materialLabel}</strong>
+                        ${entry.alloy ? `<br/><span style="color:#555">Grade: ${entry.alloy}</span>` : ''}
+                        ${entry.heat_no ? `<br/><span style="color:#555">Heat No: ${entry.heat_no}</span>` : ''}
+                        ${entry.tc_number ? `<br/><span style="color:#555">TC: ${entry.tc_number}</span>` : ''}
+                      </td>
+                      <td class="right">${entry.packaging_count || 1}</td>
+                      <td class="right bold">${entry.gross_weight_kg.toFixed(2)}</td>
+                      <td class="right">${entry.net_weight_kg.toFixed(2)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                ${(entry.vehicle_no || entry.transporter) ? `
+                <div class="vehicle-info">
+                  ${entry.vehicle_no ? `
+                  <div class="info-row">
+                    <span class="info-label">Vehicle No:</span>
+                    <span class="info-value">${entry.vehicle_no}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.transporter ? `
+                  <div class="info-row">
+                    <span class="info-label">Transporter:</span>
+                    <span class="info-value">${entry.transporter}</span>
+                  </div>
+                  ` : ''}
+                </div>
+                ` : ''}
+                
+                <div class="signatures">
+                  <div class="sig-block">
+                    <div class="sig-line">Prepared By</div>
+                  </div>
+                  <div class="sig-block">
+                    <div class="sig-line">Checked By</div>
+                  </div>
+                  <div class="sig-block">
+                    <div class="sig-line">${entry.direction === 'IN' ? 'Received By' : 'Dispatched By'}</div>
+                  </div>
+                </div>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+      
       printWindow.document.close();
-      printWindow.print();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 250);
     }
 
     toast({ description: `${printType === 'tag' ? 'Tag' : 'Challan'} sent to printer` });
