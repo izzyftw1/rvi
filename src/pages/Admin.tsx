@@ -6,14 +6,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Users, Building2, ExternalLink, HardHat, Warehouse } from "lucide-react";
 import { UsersManagement } from "@/components/admin/UsersManagement";
-import { RolesManagement } from "@/components/admin/RolesManagement";
 import { DepartmentsManagement } from "@/components/admin/DepartmentsManagement";
 import { ExternalPartnersManagement } from "@/components/admin/ExternalPartnersManagement";
 import { PeopleManagement } from "@/components/admin/PeopleManagement";
 import { SupplierAccountsManagement } from "@/components/admin/SupplierAccountsManagement";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { InfoIcon } from "lucide-react";
 
 export default function Admin() {
-  const [roles, setRoles] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -25,13 +25,6 @@ export default function Admin() {
   const loadData = async () => {
     try {
       setLoading(true);
-      
-      // Load roles from roles table
-      const { data: rolesData } = await supabase
-        .from("roles")
-        .select("*")
-        .order("role_name");
-      setRoles(rolesData || []);
 
       // Load departments
       const { data: deptData } = await supabase
@@ -58,19 +51,24 @@ export default function Admin() {
         <div className="space-y-6">
           <PageHeader
             title="Admin Panel"
-            description="Manage users, roles, and departments"
+            description="Manage users, departments, and permissions"
             icon={<Shield className="h-6 w-6" />}
           />
+
+          <Alert>
+            <InfoIcon className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Permission System:</strong> Access is controlled by department assignment. 
+              Admin and Finance departments have full access. Other departments have limited access based on their function.
+              Individual user permissions can be overridden in the user edit panel.
+            </AlertDescription>
+          </Alert>
 
           <Tabs defaultValue="users" className="space-y-6">
             <TabsList>
               <TabsTrigger value="users" className="gap-2">
                 <Users className="h-4 w-4" />
                 Users
-              </TabsTrigger>
-              <TabsTrigger value="roles" className="gap-2">
-                <Shield className="h-4 w-4" />
-                Roles
               </TabsTrigger>
               <TabsTrigger value="departments" className="gap-2">
                 <Building2 className="h-4 w-4" />
@@ -91,11 +89,7 @@ export default function Admin() {
             </TabsList>
 
             <TabsContent value="users" className="space-y-4">
-              <UsersManagement roles={roles} departments={departments} />
-            </TabsContent>
-
-            <TabsContent value="roles" className="space-y-4">
-              <RolesManagement />
+              <UsersManagement roles={[]} departments={departments} />
             </TabsContent>
 
             <TabsContent value="departments" className="space-y-4">
