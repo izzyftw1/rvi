@@ -56,6 +56,9 @@ interface BatchRecord {
   wo_quantity?: number;
   wo_due_date?: string | null;
   expected_return_date?: string | null;
+  // MEDIUM PRIORITY 3 FIX: Add stage_type for consistency with useBatchDashboard
+  stage_type?: string;
+  external_partner_id?: string | null;
 }
 
 const EMPTY_BREAKDOWN: WOBatchStageBreakdown = {
@@ -87,6 +90,7 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
     try {
       setLoading(true);
       
+      // MEDIUM PRIORITY 3 FIX: Align query with useBatchDashboard fields
       let query = supabase
         .from('production_batches')
         .select(`
@@ -96,6 +100,8 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
           current_process,
           batch_status,
           ended_at,
+          stage_type,
+          external_partner_id,
           work_orders!inner(quantity, due_date)
         `);
       
@@ -107,6 +113,29 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
 
       if (error) throw error;
       
+      // Fetch expected_return_date from wo_external_moves for external batches
+      const externalBatchWoIds = (data || [])
+        .filter((b: any) => b.current_location_type === 'external_partner' || b.stage_type === 'external')
+        .map((b: any) => b.wo_id);
+      
+      let expectedReturnDates: Record<string, string> = {};
+      if (externalBatchWoIds.length > 0) {
+        const { data: movesData } = await supabase
+          .from('wo_external_moves')
+          .select('work_order_id, expected_return_date')
+          .in('work_order_id', externalBatchWoIds)
+          .in('status', ['sent', 'in_transit', 'partial']);
+        
+        (movesData || []).forEach((m: any) => {
+          if (m.expected_return_date) {
+            if (!expectedReturnDates[m.work_order_id] || 
+                m.expected_return_date < expectedReturnDates[m.work_order_id]) {
+              expectedReturnDates[m.work_order_id] = m.expected_return_date;
+            }
+          }
+        });
+      }
+      
       setBatches((data || []).map((b: any) => ({
         wo_id: b.wo_id,
         batch_quantity: b.batch_quantity || 0,
@@ -116,7 +145,9 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
         ended_at: b.ended_at,
         wo_quantity: b.work_orders?.quantity || 0,
         wo_due_date: b.work_orders?.due_date || null,
-        expected_return_date: null, // Could be enhanced to fetch from external_movements
+        expected_return_date: expectedReturnDates[b.wo_id] || null,
+        stage_type: b.stage_type,
+        external_partner_id: b.external_partner_id,
       })));
     } catch (error) {
       console.error('Error loading WO batch stages:', error);
@@ -222,8 +253,17 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
       
       // Calculate batch-level status and roll up
       if (isActive) {
-        // Check if batch is late (WO due date passed)
-        if (batch.wo_due_date && new Date(batch.wo_due_date) < today) {
+        // Check if batch is late - use expected_return_date for external, WO due date otherwise
+        const isExternal = locationType === 'external_partner' || batch.stage_type === 'external';
+        let isLate = false;
+        
+        if (isExternal && batch.expected_return_date) {
+          isLate = new Date(batch.expected_return_date) < today;
+        } else if (batch.wo_due_date) {
+          isLate = new Date(batch.wo_due_date) < today;
+        }
+        
+        if (isLate) {
           breakdown.statusRollup.late++;
         }
         // Check if batch is awaiting QC
@@ -235,8 +275,7 @@ export function useWOBatchStages(woIds?: string[]): WOBatchStagesData {
           breakdown.statusRollup.blocked++;
         }
         // Otherwise on track
-        if (batch.batch_status !== 'blocked' && 
-            !(batch.wo_due_date && new Date(batch.wo_due_date) < today) &&
+        if (batch.batch_status !== 'blocked' && !isLate &&
             process !== 'qc' && process !== 'post_external_qc') {
           breakdown.statusRollup.onTrack++;
         }
