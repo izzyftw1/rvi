@@ -25,6 +25,7 @@ import { GateTagPrintDialog } from "@/components/logistics/GateTagPrintDialog";
 import { PROCESS_TYPES } from "@/config/materialMasters";
 import { PackagingCalculator, PackagingRow, PACKAGING_OPTIONS } from "@/components/logistics/PackagingCalculator";
 import { PCSEstimationSection, PCSEstimation } from "@/components/logistics/PCSEstimationSection";
+import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 
 interface Supplier {
   id: string;
@@ -653,6 +654,27 @@ export default function GateRegister() {
               .from("gate_register")
               .update({ external_movement_id: moveData.id })
               .eq("id", data.id);
+            
+            // Update work_orders.qty_external_wip and location
+            const { data: woData } = await supabase
+              .from("work_orders")
+              .select("qty_external_wip")
+              .eq("id", formData.work_order_id)
+              .single();
+            
+            const partnerName = partners.find(p => p.id === formData.partner_id)?.name || 'External Partner';
+            const currentWip = woData?.qty_external_wip || 0;
+            
+            await supabase
+              .from("work_orders")
+              .update({
+                qty_external_wip: currentWip + qtySent,
+                external_status: 'sent',
+                external_process_type: formData.process_type,
+                material_location: partnerName,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", formData.work_order_id);
           }
           
           // 2. Update production_batches to reflect external location
@@ -679,6 +701,20 @@ export default function GateRegister() {
                 stage_entered_at: new Date().toISOString(),
               })
               .eq("id", batch.id);
+          }
+          
+          // 3. Create execution record for traceability
+          if (moveData) {
+            await createExecutionRecord({
+              workOrderId: formData.work_order_id,
+              operationType: 'EXTERNAL_PROCESS',
+              processName: formData.process_type,
+              quantity: qtySent,
+              unit: 'pcs',
+              direction: 'OUT',
+              relatedPartnerId: formData.partner_id || null,
+              relatedChallanId: moveData.id,
+            });
           }
           
         } else if (formDirection === 'IN') {
@@ -715,7 +751,35 @@ export default function GateRegister() {
               .update({ external_movement_id: move.id })
               .eq("id", data.id);
             
-            // 2. Update production_batches to return to factory
+            // 3. Update work_orders to reduce qty_external_wip and update status
+            const { data: woData } = await supabase
+              .from("work_orders")
+              .select("qty_external_wip, external_process_type")
+              .eq("id", formData.work_order_id)
+              .single();
+            
+            if (woData) {
+              const currentWip = woData.qty_external_wip || 0;
+              const newWip = Math.max(0, currentWip - receivedQty);
+              
+              const woUpdateData: any = {
+                qty_external_wip: newWip,
+                updated_at: new Date().toISOString(),
+              };
+              
+              // If all external WIP returned, update location and status
+              if (newWip === 0) {
+                woUpdateData.external_status = null;
+                woUpdateData.material_location = 'Factory';
+              }
+              
+              await supabase
+                .from("work_orders")
+                .update(woUpdateData)
+                .eq("id", formData.work_order_id);
+            }
+            
+            // 4. Update production_batches to return to factory
             // Find batches at external partner for this WO/process
             const { data: externalBatches } = await supabase
               .from("production_batches")
@@ -744,6 +808,18 @@ export default function GateRegister() {
                 })
                 .eq("id", batch.id);
             }
+            
+            // 5. Create execution record for traceability
+            await createExecutionRecord({
+              workOrderId: formData.work_order_id,
+              operationType: 'EXTERNAL_PROCESS',
+              processName: formData.process_type,
+              quantity: receivedQty,
+              unit: 'pcs',
+              direction: 'IN',
+              relatedPartnerId: formData.partner_id || null,
+              relatedChallanId: move.id,
+            });
           }
         }
       }
