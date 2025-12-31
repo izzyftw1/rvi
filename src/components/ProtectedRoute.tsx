@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { RoutePermissionGuard } from './RoutePermissionGuard';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -40,5 +41,10 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return null;
   }
 
-  return <>{children}</>;
+  // Wrap children with RoutePermissionGuard for department-level access control
+  return (
+    <RoutePermissionGuard>
+      {children}
+    </RoutePermissionGuard>
+  );
 };
