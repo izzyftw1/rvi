@@ -272,11 +272,10 @@ export const FinalQCInspectionForm = ({
       let qcRecord: { id: string };
 
       if (existingRecord) {
-        // Update existing record
+        // Update existing record - do NOT update qc_id as it's immutable
         const { data: updatedRecord, error: updateError } = await supabase
           .from('qc_records')
           .update({
-            qc_id: qcId,
             result: result === 'pass' ? 'pass' : 'fail',
             inspected_quantity: sampleSize,
             approved_by: user?.id,
