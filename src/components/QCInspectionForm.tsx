@@ -345,22 +345,22 @@ export const QCInspectionForm = ({
                 </div>
               </div>
               
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-3">
                 {[0, 1, 2, 3, 4].map(idx => (
                   <div key={idx}>
-                    <Label className="text-xs">Sample {idx + 1}</Label>
+                    <Label className="text-xs text-center block mb-1">Sample {idx + 1}</Label>
                     <Input
                       type="number"
                       step="0.01"
                       value={m.samples[idx] ?? ''}
                       onChange={(e) => updateSample(tol.dimension_name, idx, e.target.value)}
-                      className={
+                      className={`text-center font-mono text-base h-12 min-w-[70px] ${
                         m.samples[idx] !== null 
                           ? checkTolerance(m.samples[idx]!, tol.lower_limit, tol.upper_limit)
-                            ? 'border-success'
-                            : 'border-destructive'
-                          : ''
-                      }
+                            ? 'border-success bg-success/10 border-2'
+                            : 'border-destructive bg-destructive/10 border-2'
+                          : 'border-input'
+                      }`}
                     />
                   </div>
                 ))}

@@ -315,6 +315,7 @@ export const FinalQCInspectionForm = ({
       }
 
       // Insert all measurements
+      // NOTE: is_within_tolerance is a GENERATED ALWAYS column - do NOT include it
       const measurementsToInsert = Object.values(measurements).flatMap(dim =>
         dim.samples
           .filter(s => s.value !== null)
@@ -326,7 +327,6 @@ export const FinalQCInspectionForm = ({
             lower_limit: dim.min,
             upper_limit: dim.max,
             unit: dim.unit,
-            is_within_tolerance: s.isWithinTolerance,
             instrument_id: selectedInstrumentId,
             remarks: dim.remarks || null
           }))
@@ -503,23 +503,23 @@ export const FinalQCInspectionForm = ({
                   </Badge>
                 </div>
 
-                {/* Sample Inputs - Grid */}
-                <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                {/* Sample Inputs - Grid - Larger boxes for visibility */}
+                <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
                   {dim.samples.map((sample, idx) => (
                     <div key={idx} className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">#{idx + 1}</Label>
+                      <Label className="text-xs text-muted-foreground text-center block">#{idx + 1}</Label>
                       <Input
                         type="number"
                         step="0.001"
                         placeholder="-"
                         value={sample.value ?? ''}
                         onChange={(e) => updateMeasurement(tol.id, idx, e.target.value)}
-                        className={`text-center text-sm h-9 ${
+                        className={`text-center font-mono text-base h-12 w-full min-w-[70px] px-1 ${
                           sample.isWithinTolerance === true 
-                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20 border-2' 
                             : sample.isWithinTolerance === false 
-                              ? 'border-destructive bg-red-50 dark:bg-red-900/20' 
-                              : ''
+                              ? 'border-destructive bg-red-50 dark:bg-red-900/20 border-2' 
+                              : 'border-input'
                         }`}
                       />
                     </div>
