@@ -294,29 +294,62 @@ export async function submitBatchQC(
       return { success: false, error: updateError.message };
     }
     
-    // Create QC record for traceability
+    // Check for existing QC record with this batch_id to avoid duplicate key violation
+    const { data: existingRecord } = await supabase
+      .from('qc_records')
+      .select('id')
+      .eq('wo_id', batch.wo_id)
+      .eq('batch_id', batchId)
+      .eq('qc_type', qcRecordType as any)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     const qcId = `QC-${qcType.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
     // Map result to database enum (waived stored as pass with waive_reason)
     const dbResult = result === 'waived' ? 'pass' : result;
-    const { error: recordError } = await supabase
-      .from('qc_records')
-      .insert([{
-        qc_id: qcId,
-        wo_id: batch.wo_id,
-        batch_id: batchId,
-        qc_type: qcRecordType as any, // Cast for new enum values not yet in types.ts
-        result: dbResult as any, // Cast for enum compatibility
-        inspected_quantity: options?.inspectedQuantity || batch.batch_quantity,
-        approved_by: user.id,
-        approved_at: now,
-        remarks: options?.remarks,
-        waive_reason: result === 'waived' ? (options?.waiveReason || options?.remarks) : null,
-        qc_date_time: now,
-      }]);
-      
-    if (recordError) {
-      console.error('Error creating QC record:', recordError);
-      // Don't fail - batch was updated successfully
+
+    if (existingRecord) {
+      // Update existing record
+      const { error: updateError } = await supabase
+        .from('qc_records')
+        .update({
+          qc_id: qcId,
+          result: dbResult as any,
+          inspected_quantity: options?.inspectedQuantity || batch.batch_quantity,
+          approved_by: user.id,
+          approved_at: now,
+          remarks: options?.remarks,
+          waive_reason: result === 'waived' ? (options?.waiveReason || options?.remarks) : null,
+          qc_date_time: now,
+        })
+        .eq('id', existingRecord.id);
+        
+      if (updateError) {
+        console.error('Error updating QC record:', updateError);
+      }
+    } else {
+      // Create new QC record for traceability
+      const { error: recordError } = await supabase
+        .from('qc_records')
+        .insert([{
+          qc_id: qcId,
+          wo_id: batch.wo_id,
+          batch_id: batchId,
+          qc_type: qcRecordType as any,
+          result: dbResult as any,
+          inspected_quantity: options?.inspectedQuantity || batch.batch_quantity,
+          approved_by: user.id,
+          approved_at: now,
+          remarks: options?.remarks,
+          waive_reason: result === 'waived' ? (options?.waiveReason || options?.remarks) : null,
+          qc_date_time: now,
+        }]);
+        
+      if (recordError) {
+        console.error('Error creating QC record:', recordError);
+        // Don't fail - batch was updated successfully
+      }
     }
     
     return { success: true };

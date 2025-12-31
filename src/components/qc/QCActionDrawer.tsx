@@ -94,12 +94,13 @@ export const QCActionDrawer = ({
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Find existing QC record (use maybeSingle to avoid error when none exists)
+      // Find existing QC record - filter by batch_id IS NULL to match constraint
       const { data: existingQC, error: fetchError } = await supabase
         .from('qc_records')
         .select('id, qc_id')
         .eq('wo_id', woId)
         .eq('qc_type', qcType)
+        .is('batch_id', null)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();

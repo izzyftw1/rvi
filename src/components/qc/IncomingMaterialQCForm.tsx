@@ -153,27 +153,59 @@ export function IncomingMaterialQCForm({ workOrderId, workOrder, onComplete }: I
       // Generate QC ID
       const qcId = `IQC-${Date.now().toString(36).toUpperCase()}`;
 
-      // Create QC record with material traceability
-      const { data: qcRecord, error: qcError } = await supabase
+      // Check for existing QC record to avoid duplicate key violation
+      const { data: existingRecord } = await supabase
         .from('qc_records')
-        .insert([{
-          qc_id: qcId,
-          wo_id: workOrderId,
-          qc_type: 'incoming' as const,
-          result: result,
-          material_lot_id: selectedLotId,
-          material_grade: selectedLot.alloy,
-          heat_no: selectedLot.heat_no,
-          supplier_coa_url: supplierCoaUrl,
-          remarks: isHold ? `[HOLD] ${remarks}` : remarks,
-          approved_by: user?.id,
-          approved_at: new Date().toISOString(),
-          qc_date_time: new Date().toISOString(),
-        }])
-        .select()
-        .single();
+        .select('id')
+        .eq('wo_id', workOrderId)
+        .eq('qc_type', 'incoming')
+        .is('batch_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (qcError) throw qcError;
+      let qcRecord: { id: string };
+
+      const qcPayload = {
+        qc_id: qcId,
+        result: result,
+        material_lot_id: selectedLotId,
+        material_grade: selectedLot.alloy,
+        heat_no: selectedLot.heat_no,
+        supplier_coa_url: supplierCoaUrl,
+        remarks: isHold ? `[HOLD] ${remarks}` : remarks,
+        approved_by: user?.id,
+        approved_at: new Date().toISOString(),
+        qc_date_time: new Date().toISOString(),
+      };
+
+      if (existingRecord) {
+        // Update existing record
+        const { data: updatedRecord, error: updateError } = await supabase
+          .from('qc_records')
+          .update(qcPayload)
+          .eq('id', existingRecord.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        qcRecord = updatedRecord;
+      } else {
+        // Create new QC record with material traceability
+        const { data: newRecord, error: insertError } = await supabase
+          .from('qc_records')
+          .insert([{
+            ...qcPayload,
+            wo_id: workOrderId,
+            qc_type: 'incoming' as const,
+          }])
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        qcRecord = newRecord;
+      }
+      
       setCreatedQCRecordId(qcRecord.id);
 
       // Update material lot QC status (store 'hold' as text for display)
