@@ -577,7 +577,7 @@ const WorkOrderRow = memo(({
               <div className="hidden sm:flex flex-col items-end min-w-[70px] cursor-help">
                 <div className="flex items-center gap-1">
                   <span className="font-medium text-foreground text-[11px]">
-                    {(wo.qty_dispatched || 0).toLocaleString()}
+                    {(wo.qty_completed || wo.ok_qty || 0).toLocaleString()}
                   </span>
                   <span className="text-[9px] text-muted-foreground">
                     / {wo.quantity?.toLocaleString()}
