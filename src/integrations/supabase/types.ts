@@ -997,6 +997,39 @@ export type Database = {
           },
         ]
       }
+      department_defaults: {
+        Row: {
+          can_access_route: boolean
+          can_mutate: boolean
+          can_view: boolean
+          created_at: string
+          department_type: string
+          id: string
+          page_key: string
+          updated_at: string
+        }
+        Insert: {
+          can_access_route?: boolean
+          can_mutate?: boolean
+          can_view?: boolean
+          created_at?: string
+          department_type: string
+          id?: string
+          page_key: string
+          updated_at?: string
+        }
+        Update: {
+          can_access_route?: boolean
+          can_mutate?: boolean
+          can_view?: boolean
+          created_at?: string
+          department_type?: string
+          id?: string
+          page_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       departments: {
         Row: {
           created_at: string
@@ -9666,6 +9699,10 @@ export type Database = {
           _quantity: number
         }
         Returns: unknown
+      }
+      can_access_page: {
+        Args: { _page_key: string; _user_id: string }
+        Returns: boolean
       }
       check_machine_availability: {
         Args: { _end_time: string; _machine_id: string; _start_time: string }

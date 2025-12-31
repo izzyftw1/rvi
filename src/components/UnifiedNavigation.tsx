@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Menu,
@@ -27,10 +27,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { GlobalSearch } from "./GlobalSearch";
 import { supabase } from "@/integrations/supabase/client";
 import { useSiteContext } from "@/hooks/useSiteContext";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 import { cn } from "@/lib/utils";
 import rvLogo from "@/assets/rv-logo.jpg";
-// Import centralized navigation config - SINGLE SOURCE OF TRUTH
-// Uses getActiveNavigationGroups to filter out deprecated pages
 import { getActiveNavigationGroups, type NavGroup } from "@/config/navigationConfig";
 
 interface UnifiedNavigationProps {
@@ -44,10 +43,10 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
   const { currentSite, setCurrentSite, availableSites, loading: sitesLoading } = useSiteContext();
+  const { isBypassUser, canViewPage, loading: permissionsLoading } = useDepartmentPermissions();
   
-  // Responsive navigation - track visible items
   const navContainerRef = useRef<HTMLDivElement>(null);
-  const [visibleCount, setVisibleCount] = useState<number>(10); // Start showing all
+  const [visibleCount, setVisibleCount] = useState<number>(10);
 
   const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
 
@@ -78,23 +77,21 @@ export const UnifiedNavigation = ({ userRoles }: UnifiedNavigationProps) => {
   // Use centralized navigation config - filters out deprecated pages automatically
   const navGroups = getActiveNavigationGroups();
 
-  const getVisibleGroups = () => {
-    if (isAdmin) return navGroups;
+  // Filter navigation based on department permissions
+  const visibleGroups = useMemo(() => {
+    if (permissionsLoading) return [];
     
-    const visibleGroups = navGroups.filter(group =>
-      group.allowedRoles.some(role => userRoles.includes(role))
-    );
-
-    if (visibleGroups.length === 0) {
-      return navGroups.filter(g =>
-        g.title === "Sales & Customers" || g.title === "Production"
-      );
-    }
-
-    return visibleGroups;
-  };
-
-  const visibleGroups = getVisibleGroups();
+    // Admin/Finance bypass - show all groups
+    if (isBypassUser) return navGroups;
+    
+    // Filter groups to only show items user has permission to view
+    return navGroups
+      .map(group => ({
+        ...group,
+        items: group.items.filter(item => canViewPage(item.pageKey))
+      }))
+      .filter(group => group.items.length > 0);
+  }, [navGroups, isBypassUser, canViewPage, permissionsLoading]);
   
   // Calculate how many items can fit in the nav container
   const calculateVisibleItems = useCallback(() => {
