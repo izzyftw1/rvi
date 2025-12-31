@@ -9946,21 +9946,14 @@ export type Database = {
       batch_status: "in_queue" | "in_progress" | "completed"
       batch_unit: "pcs" | "kg"
       department_type:
-        | "hr"
-        | "stores"
-        | "she"
-        | "transport"
+        | "admin"
+        | "finance"
         | "sales"
-        | "purchase"
-        | "production"
-        | "accounts"
-        | "inventory"
-        | "quality"
-        | "quality_systems"
-        | "maintenance"
         | "design"
+        | "hr"
+        | "production"
+        | "quality"
         | "packing"
-        | "supplier"
       employment_type: "internal" | "agency"
       execution_direction: "IN" | "OUT" | "COMPLETE"
       external_movement_status:
@@ -10271,21 +10264,14 @@ export const Constants = {
       batch_status: ["in_queue", "in_progress", "completed"],
       batch_unit: ["pcs", "kg"],
       department_type: [
-        "hr",
-        "stores",
-        "she",
-        "transport",
+        "admin",
+        "finance",
         "sales",
-        "purchase",
-        "production",
-        "accounts",
-        "inventory",
-        "quality",
-        "quality_systems",
-        "maintenance",
         "design",
+        "hr",
+        "production",
+        "quality",
         "packing",
-        "supplier",
       ],
       employment_type: ["internal", "agency"],
       execution_direction: ["IN", "OUT", "COMPLETE"],
