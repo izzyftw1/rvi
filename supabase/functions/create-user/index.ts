@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Admin/Finance department types that have full access
+const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance'];
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -31,7 +34,7 @@ serve(async (req) => {
       }
     );
 
-    // Verify the user making the request is an admin
+    // Verify the user making the request is authenticated
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -47,27 +50,51 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Check if user has admin role
-    const { data: userRoles, error: rolesError } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id);
+    // Check if user is in Admin or Finance department (department-based permissions)
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('department_id')
+      .eq('id', user.id)
+      .single();
 
-    if (rolesError || !userRoles) {
-      throw new Error('Failed to verify permissions');
+    if (profileError || !profile?.department_id) {
+      throw new Error('Failed to verify permissions - no department assigned');
     }
 
-    const isAdmin = userRoles.some(r => r.role === 'admin' || r.role === 'super_admin');
+    const { data: department, error: deptError } = await supabaseAdmin
+      .from('departments')
+      .select('type')
+      .eq('id', profile.department_id)
+      .single();
+
+    if (deptError || !department) {
+      throw new Error('Failed to verify permissions - department not found');
+    }
+
+    const isAdmin = BYPASS_DEPARTMENT_TYPES.includes(department.type);
     if (!isAdmin) {
-      throw new Error('Insufficient permissions - Admin access required');
+      throw new Error('Insufficient permissions - Admin or Finance department access required');
     }
 
     // Parse request body
-    const { email, full_name, password, role, department_id, is_active } = await req.json();
+    const { email, full_name, password, department_id, is_active } = await req.json();
 
-    // Validate required fields
-    if (!email || !full_name || !role) {
-      throw new Error('Missing required fields: email, full_name, and role are required');
+    // Validate required fields (role is no longer required - permissions are based on department)
+    if (!email || !full_name) {
+      throw new Error('Missing required fields: email and full_name are required');
+    }
+
+    // Validate department_id if provided
+    if (department_id && department_id !== 'none') {
+      const { data: targetDept, error: targetDeptError } = await supabaseAdmin
+        .from('departments')
+        .select('id, name')
+        .eq('id', department_id)
+        .single();
+
+      if (targetDeptError || !targetDept) {
+        throw new Error('Invalid department_id - department does not exist');
+      }
     }
 
     // Generate password if not provided
@@ -91,8 +118,8 @@ serve(async (req) => {
       throw new Error('User creation returned no user object');
     }
 
-    // Create profile record
-    const { error: profileError } = await supabaseAdmin
+    // Create profile record with department (permissions are derived from department)
+    const { error: insertProfileError } = await supabaseAdmin
       .from('profiles')
       .insert({
         id: newUser.user.id,
@@ -101,43 +128,31 @@ serve(async (req) => {
         is_active: is_active ?? true
       });
 
-    if (profileError) {
+    if (insertProfileError) {
       // Rollback: delete the auth user if profile creation fails
       await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-      throw new Error(`Failed to create profile: ${profileError.message}`);
+      throw new Error(`Failed to create profile: ${insertProfileError.message}`);
     }
 
-    // Create user role
-    const { error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .insert({
-        user_id: newUser.user.id,
-        role: role
-      });
-
-    if (roleError) {
-      // Rollback: delete auth user and profile if role creation fails
-      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-      await supabaseAdmin.from('profiles').delete().eq('id', newUser.user.id);
-      throw new Error(`Failed to create user role: ${roleError.message}`);
+    // Log admin action (optional - table may not exist)
+    try {
+      await supabaseAdmin
+        .from('user_audit_log')
+        .insert({
+          user_id: user.id,
+          action_type: 'user_created',
+          module: 'admin',
+          entity_type: 'user',
+          entity_id: newUser.user.id,
+          action_details: {
+            created_user_email: email,
+            created_user_name: full_name,
+            assigned_department: department_id
+          }
+        });
+    } catch {
+      // Audit log is optional, don't fail if it doesn't exist
     }
-
-    // Log admin action
-    await supabaseAdmin
-      .from('user_audit_log')
-      .insert({
-        user_id: user.id,
-        action_type: 'user_created',
-        module: 'admin',
-        entity_type: 'user',
-        entity_id: newUser.user.id,
-        action_details: {
-          created_user_email: email,
-          created_user_name: full_name,
-          assigned_role: role,
-          assigned_department: department_id
-        }
-      });
 
     return new Response(
       JSON.stringify({
@@ -146,7 +161,6 @@ serve(async (req) => {
           id: newUser.user.id,
           email: email,
           full_name: full_name,
-          role: role,
           department_id: department_id,
           is_active: is_active ?? true
         },
