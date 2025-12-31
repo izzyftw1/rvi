@@ -2042,6 +2042,228 @@ export type Database = {
           },
         ]
       }
+      gate_register: {
+        Row: {
+          alloy: string | null
+          challan_no: string | null
+          challan_printed: boolean | null
+          challan_printed_at: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          dc_number: string | null
+          direction: string
+          entry_date: string
+          entry_time: string
+          estimated_pcs: number | null
+          external_movement_id: string | null
+          gate_entry_no: string
+          gross_weight_kg: number
+          heat_no: string | null
+          id: string
+          invoice_no: string | null
+          item_name: string | null
+          lr_no: string | null
+          material_grade: string | null
+          material_type: string
+          net_weight_kg: number | null
+          packaging_count: number | null
+          packaging_type_id: string | null
+          partner_id: string | null
+          party_code: string | null
+          process_type: string | null
+          qc_required: boolean | null
+          qc_status: string | null
+          remarks: string | null
+          rod_section_size: string | null
+          rpo_id: string | null
+          status: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          tag_printed: boolean | null
+          tag_printed_at: string | null
+          tare_weight_kg: number | null
+          tc_number: string | null
+          transporter: string | null
+          unit: string | null
+          updated_at: string
+          vehicle_no: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          alloy?: string | null
+          challan_no?: string | null
+          challan_printed?: boolean | null
+          challan_printed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          dc_number?: string | null
+          direction: string
+          entry_date?: string
+          entry_time?: string
+          estimated_pcs?: number | null
+          external_movement_id?: string | null
+          gate_entry_no: string
+          gross_weight_kg: number
+          heat_no?: string | null
+          id?: string
+          invoice_no?: string | null
+          item_name?: string | null
+          lr_no?: string | null
+          material_grade?: string | null
+          material_type: string
+          net_weight_kg?: number | null
+          packaging_count?: number | null
+          packaging_type_id?: string | null
+          partner_id?: string | null
+          party_code?: string | null
+          process_type?: string | null
+          qc_required?: boolean | null
+          qc_status?: string | null
+          remarks?: string | null
+          rod_section_size?: string | null
+          rpo_id?: string | null
+          status?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          tag_printed?: boolean | null
+          tag_printed_at?: string | null
+          tare_weight_kg?: number | null
+          tc_number?: string | null
+          transporter?: string | null
+          unit?: string | null
+          updated_at?: string
+          vehicle_no?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          alloy?: string | null
+          challan_no?: string | null
+          challan_printed?: boolean | null
+          challan_printed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          dc_number?: string | null
+          direction?: string
+          entry_date?: string
+          entry_time?: string
+          estimated_pcs?: number | null
+          external_movement_id?: string | null
+          gate_entry_no?: string
+          gross_weight_kg?: number
+          heat_no?: string | null
+          id?: string
+          invoice_no?: string | null
+          item_name?: string | null
+          lr_no?: string | null
+          material_grade?: string | null
+          material_type?: string
+          net_weight_kg?: number | null
+          packaging_count?: number | null
+          packaging_type_id?: string | null
+          partner_id?: string | null
+          party_code?: string | null
+          process_type?: string | null
+          qc_required?: boolean | null
+          qc_status?: string | null
+          remarks?: string | null
+          rod_section_size?: string | null
+          rpo_id?: string | null
+          status?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          tag_printed?: boolean | null
+          tag_printed_at?: string | null
+          tare_weight_kg?: number | null
+          tc_number?: string | null
+          transporter?: string | null
+          unit?: string | null
+          updated_at?: string
+          vehicle_no?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gate_register_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "gate_register_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_external_movement_id_fkey"
+            columns: ["external_movement_id"]
+            isOneToOne: false
+            referencedRelation: "external_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_packaging_type_id_fkey"
+            columns: ["packaging_type_id"]
+            isOneToOne: false
+            referencedRelation: "packaging_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "wo_external_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_rpo_id_fkey"
+            columns: ["rpo_id"]
+            isOneToOne: false
+            referencedRelation: "raw_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "gate_register_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_register_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grn_receipts: {
         Row: {
           alloy: string
@@ -5028,6 +5250,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      packaging_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          tare_weight_kg: number
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tare_weight_kg?: number
+          type: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tare_weight_kg?: number
+          type?: string
+        }
+        Relationships: []
       }
       pallet_cartons: {
         Row: {
@@ -9411,6 +9663,7 @@ export type Database = {
         Returns: boolean
       }
       generate_dispatch_qc_batch_id: { Args: never; Returns: string }
+      generate_gate_entry_no: { Args: { direction: string }; Returns: string }
       generate_grn_number: { Args: never; Returns: string }
       generate_ncr_number: { Args: never; Returns: string }
       generate_proforma_number: { Args: never; Returns: string }
