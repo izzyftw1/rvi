@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ import { Link } from "react-router-dom";
 import { GateTagPrintDialog } from "@/components/logistics/GateTagPrintDialog";
 import { PROCESS_TYPES } from "@/config/materialMasters";
 import { PackagingCalculator, PackagingRow, PACKAGING_OPTIONS } from "@/components/logistics/PackagingCalculator";
+import { PCSEstimationSection, PCSEstimation } from "@/components/logistics/PCSEstimationSection";
 
 interface Supplier {
   id: string;
@@ -219,6 +220,19 @@ export default function GateRegister() {
   const [tareWeight, setTareWeight] = useState(0);
   const [netWeight, setNetWeight] = useState(0);
   const [manualTareOverride, setManualTareOverride] = useState<number | null>(null);
+
+  // NEW: PCS Estimation state (only for external processes)
+  const [pcsEstimation, setPcsEstimation] = useState<PCSEstimation>({
+    sampleCount: null,
+    sampleWeight: null,
+    avgWeightPerPc: null,
+    estimatedPcs: null
+  });
+
+  // Memoized PCS estimation change handler to prevent re-renders
+  const handlePcsEstimationChange = useCallback((estimation: PCSEstimation) => {
+    setPcsEstimation(estimation);
+  }, []);
 
   // Filtered nominal sizes based on selected shape
   const filteredNominalSizes = useMemo(() => {
@@ -443,6 +457,13 @@ export default function GateRegister() {
     setTareWeight(0);
     setNetWeight(0);
     setManualTareOverride(null);
+    // Reset PCS estimation
+    setPcsEstimation({
+      sampleCount: null,
+      sampleWeight: null,
+      avgWeightPerPc: null,
+      estimatedPcs: null
+    });
     setFormOpen(true);
   };
 
@@ -508,6 +529,11 @@ export default function GateRegister() {
 
     setLoading(true);
     try {
+      // Determine estimated_pcs - only for external processes with PCS estimation
+      const estimatedPcs = formData.material_type === 'external_process' && pcsEstimation.estimatedPcs
+        ? pcsEstimation.estimatedPcs
+        : null;
+      
       // Explicitly typed payload to avoid TS2589
       const insertPayload: {
         direction: string;
@@ -516,6 +542,10 @@ export default function GateRegister() {
         gross_weight_kg: number;
         tare_weight_kg: number;
         status: string;
+        estimated_pcs?: number | null;
+        avg_weight_per_pc?: number | null;
+        pcs_sample_count?: number | null;
+        pcs_sample_weight?: number | null;
         item_name?: string | null;
         rod_section_size?: string | null;
         material_grade?: string | null;
@@ -546,6 +576,17 @@ export default function GateRegister() {
         gross_weight_kg: grossWeight,
         tare_weight_kg: tareWeight,
         status: 'completed', // Set to completed to trigger inventory creation for raw material
+        // PCS estimation fields (only populated for external processes)
+        estimated_pcs: estimatedPcs,
+        avg_weight_per_pc: formData.material_type === 'external_process' && pcsEstimation.avgWeightPerPc
+          ? pcsEstimation.avgWeightPerPc
+          : null,
+        pcs_sample_count: formData.material_type === 'external_process' && pcsEstimation.sampleCount
+          ? pcsEstimation.sampleCount
+          : null,
+        pcs_sample_weight: formData.material_type === 'external_process' && pcsEstimation.sampleWeight
+          ? pcsEstimation.sampleWeight
+          : null,
         item_name: formData.item_name || null,
         rod_section_size: formData.rod_section_size || null,
         material_grade: formData.material_grade || null,
@@ -869,6 +910,7 @@ export default function GateRegister() {
                     <TableHead>Supplier/Partner</TableHead>
                     <TableHead className="text-right">Gross (kg)</TableHead>
                     <TableHead className="text-right">Net (kg)</TableHead>
+                    <TableHead className="text-right">Est. PCS</TableHead>
                     <TableHead>Challan</TableHead>
                     <TableHead>QC</TableHead>
                     <TableHead></TableHead>
@@ -896,6 +938,11 @@ export default function GateRegister() {
                       <TableCell className="text-sm">{entry.supplier_name || '-'}</TableCell>
                       <TableCell className="text-right font-medium">{entry.gross_weight_kg.toFixed(2)}</TableCell>
                       <TableCell className="text-right text-muted-foreground">{entry.net_weight_kg.toFixed(2)}</TableCell>
+                      <TableCell className="text-right text-sm">
+                        {entry.material_type === 'external_process' && entry.estimated_pcs 
+                          ? entry.estimated_pcs.toLocaleString() 
+                          : '-'}
+                      </TableCell>
                       <TableCell className="text-sm">{entry.challan_no || '-'}</TableCell>
                       <TableCell>
                         {entry.qc_required ? (
@@ -1211,6 +1258,14 @@ export default function GateRegister() {
                   initialPackaging={packagingRows}
                   initialManualTare={manualTareOverride}
                 />
+                
+                {/* PCS Estimation - only for External Process */}
+                {formData.material_type === 'external_process' && (
+                  <PCSEstimationSection
+                    netWeight={netWeight}
+                    onChange={handlePcsEstimationChange}
+                  />
+                )}
               </div>
 
               {/* Document Section */}
