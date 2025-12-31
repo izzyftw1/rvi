@@ -7985,6 +7985,48 @@ export type Database = {
           },
         ]
       }
+      supplier_users: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          id: string
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          id?: string
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          id?: string
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_users_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "supplier_users_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           contact_name: string | null
@@ -9803,6 +9845,10 @@ export type Database = {
         Args: { rejection_type: string; total_production?: number }
         Returns: number
       }
+      get_supplier_customer_ids: {
+        Args: { _user_id: string }
+        Returns: string[]
+      }
       get_tds_quarter: { Args: { dt: string }; Returns: string }
       get_tds_rate: {
         Args: { is_export?: boolean; pan: string }
@@ -9833,6 +9879,7 @@ export type Database = {
         Returns: boolean
       }
       is_finance_role: { Args: { _user_id: string }; Returns: boolean }
+      is_supplier_user: { Args: { _user_id: string }; Returns: boolean }
       manage_user_role: {
         Args: {
           _action: string
@@ -9853,6 +9900,10 @@ export type Database = {
           _user_ids: string[]
         }
         Returns: undefined
+      }
+      supplier_can_access_wo: {
+        Args: { _user_id: string; _wo_id: string }
+        Returns: boolean
       }
       update_wo_stage: {
         Args: {
@@ -9909,6 +9960,7 @@ export type Database = {
         | "maintenance"
         | "design"
         | "packing"
+        | "supplier"
       employment_type: "internal" | "agency"
       execution_direction: "IN" | "OUT" | "COMPLETE"
       external_movement_status:
@@ -10233,6 +10285,7 @@ export const Constants = {
         "maintenance",
         "design",
         "packing",
+        "supplier",
       ],
       employment_type: ["internal", "agency"],
       execution_direction: ["IN", "OUT", "COMPLETE"],

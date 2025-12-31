@@ -23,6 +23,10 @@ interface PermissionResult {
   source: 'bypass' | 'override' | 'department' | 'deny';
 }
 
+interface SupplierMapping {
+  customer_id: string;
+}
+
 // Map route paths to page_keys used in department_defaults
 export const routeToPageKey: Record<string, string> = {
   '/sales': 'sales-orders',
@@ -130,6 +134,10 @@ export const useDepartmentPermissions = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissionVersion, setPermissionVersion] = useState(0);
+  
+  // Supplier-specific state
+  const [isSupplierUser, setIsSupplierUser] = useState(false);
+  const [supplierCustomerIds, setSupplierCustomerIds] = useState<string[]>([]);
 
   const loadPermissions = useCallback(async () => {
     try {
@@ -158,6 +166,8 @@ export const useDepartmentPermissions = () => {
         setDepartmentDefaults([]);
         setUserOverrides([]);
         setUserDepartmentType(null);
+        setIsSupplierUser(false);
+        setSupplierCustomerIds([]);
         setLoading(false);
         return;
       }
@@ -177,6 +187,7 @@ export const useDepartmentPermissions = () => {
         .eq('id', user.id)
         .single();
 
+      let deptType: string | null = null;
       if (profileData?.department_id) {
         const { data: deptData } = await supabase
           .from('departments')
@@ -185,8 +196,25 @@ export const useDepartmentPermissions = () => {
           .single();
         
         if (deptData) {
-          setUserDepartmentType(deptData.type);
+          deptType = deptData.type;
+          setUserDepartmentType(deptType);
         }
+      }
+
+      // Check if user is a supplier and load their customer mappings
+      if (deptType === 'supplier') {
+        setIsSupplierUser(true);
+        
+        const { data: supplierMappings } = await supabase
+          .from('supplier_users')
+          .select('customer_id')
+          .eq('user_id', user.id);
+        
+        const customerIds = supplierMappings?.map(m => m.customer_id) || [];
+        setSupplierCustomerIds(customerIds);
+      } else {
+        setIsSupplierUser(false);
+        setSupplierCustomerIds([]);
       }
 
       // Load all department defaults
@@ -330,5 +358,8 @@ export const useDepartmentPermissions = () => {
     invalidatePermissions,
     routeToPageKey,
     PAGE_KEYS,
+    // Supplier-specific exports
+    isSupplierUser,
+    supplierCustomerIds,
   };
 };
