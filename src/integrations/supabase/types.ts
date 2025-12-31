@@ -2608,13 +2608,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "inventory_movements_inventory_id_fkey"
-            columns: ["inventory_id"]
-            isOneToOne: false
-            referencedRelation: "finished_goods_summary_vw"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "inventory_movements_shipment_id_fkey"
             columns: ["shipment_id"]
             isOneToOne: false
@@ -2690,13 +2683,6 @@ export type Database = {
             columns: ["inventory_id"]
             isOneToOne: false
             referencedRelation: "finished_goods_inventory"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "inventory_reservations_inventory_id_fkey"
-            columns: ["inventory_id"]
-            isOneToOne: false
-            referencedRelation: "finished_goods_summary_vw"
             referencedColumns: ["id"]
           },
           {
@@ -7985,48 +7971,6 @@ export type Database = {
           },
         ]
       }
-      supplier_users: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          customer_id: string
-          id: string
-          notes: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          customer_id: string
-          id?: string
-          notes?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          customer_id?: string
-          id?: string
-          notes?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "supplier_users_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer_last_order"
-            referencedColumns: ["customer_id"]
-          },
-          {
-            foreignKeyName: "supplier_users_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer_master"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       suppliers: {
         Row: {
           contact_name: string | null
@@ -9096,24 +9040,17 @@ export type Database = {
       customer_credit_ledger_vw: {
         Row: {
           adjustment_type: string | null
-          applications: Json | null
           created_at: string | null
           currency: string | null
           customer_id: string | null
           customer_name: string | null
-          expires_at: string | null
           id: string | null
-          ncr_id: string | null
-          ncr_number: string | null
-          notes: string | null
           original_amount: number | null
           reason: string | null
-          rejection_qty: number | null
           remaining_amount: number | null
           source_invoice_id: string | null
           source_invoice_no: string | null
           status: string | null
-          unit_rate: number | null
         }
         Relationships: [
           {
@@ -9131,13 +9068,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "customer_credit_adjustments_ncr_id_fkey"
-            columns: ["ncr_id"]
-            isOneToOne: false
-            referencedRelation: "ncrs"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "customer_credit_adjustments_source_invoice_id_fkey"
             columns: ["source_invoice_id"]
             isOneToOne: false
@@ -9149,22 +9079,18 @@ export type Database = {
       customer_last_order: {
         Row: {
           customer_id: string | null
+          customer_name: string | null
           last_order_date: string | null
+          total_orders: number | null
         }
         Relationships: []
       }
       dashboard_summary_vw: {
         Row: {
-          due_today: number | null
-          external_wip_pcs: number | null
-          late_deliveries: number | null
-          maintenance_overdue: number | null
-          material_waiting_qc: number | null
-          on_time_rate_7d: number | null
-          orders_in_pipeline: number | null
-          orders_in_production: number | null
-          qc_pending_approval: number | null
-          work_orders_delayed: number | null
+          active_batches: number | null
+          active_work_orders: number | null
+          completed_work_orders: number | null
+          open_ncrs: number | null
         }
         Relationships: []
       }
@@ -9180,37 +9106,12 @@ export type Database = {
       }
       finished_goods_summary_vw: {
         Row: {
-          age_category: string | null
-          age_days: number | null
-          created_at: string | null
-          customer_id: string | null
-          customer_name: string | null
-          id: string | null
           item_code: string | null
-          last_movement_at: string | null
-          quantity_available: number | null
-          quantity_original: number | null
-          quantity_reserved: number | null
-          source_type: string | null
-          wo_item_code: string | null
-          wo_number: string | null
+          total_available: number | null
+          total_reserved: number | null
+          work_order_count: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "finished_goods_inventory_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer_last_order"
-            referencedColumns: ["customer_id"]
-          },
-          {
-            foreignKeyName: "finished_goods_inventory_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer_master"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       internal_flow_summary_vw: {
         Row: {
@@ -9624,141 +9525,298 @@ export type Database = {
       }
       wo_external_partners: {
         Row: {
-          address: string | null
           contact_person: string | null
-          created_at: string | null
-          default_lead_time_days: number | null
           email: string | null
           id: string | null
-          is_active: boolean | null
           name: string | null
           phone: string | null
           process_type: string | null
-        }
-        Insert: {
-          address?: string | null
-          contact_person?: string | null
-          created_at?: string | null
-          default_lead_time_days?: number | null
-          email?: string | null
-          id?: string | null
-          is_active?: boolean | null
-          name?: string | null
-          phone?: string | null
-          process_type?: string | null
-        }
-        Update: {
-          address?: string | null
-          contact_person?: string | null
-          created_at?: string | null
-          default_lead_time_days?: number | null
-          email?: string | null
-          id?: string | null
-          is_active?: boolean | null
-          name?: string | null
-          phone?: string | null
-          process_type?: string | null
         }
         Relationships: []
       }
       work_orders_restricted: {
         Row: {
+          actual_cycle_time_hours: number | null
           bom: Json | null
+          completion_pct: number | null
           created_at: string | null
           current_stage: Database["public"]["Enums"]["wo_stage"] | null
           customer: string | null
+          customer_id: string | null
           customer_po: string | null
+          cutting_required: boolean | null
           cycle_time_seconds: number | null
           dispatch_allowed: boolean | null
           display_id: string | null
           due_date: string | null
+          external_process_type: string | null
+          external_status: string | null
+          final_qc_result: string | null
           financial_snapshot: Json | null
+          forging_required: boolean | null
+          forging_vendor: string | null
           gross_weight_per_pc: number | null
           hidden_financial: boolean | null
           id: string | null
           item_code: string | null
+          material_location: string | null
+          material_requirement_id: string | null
           material_size_mm: string | null
           net_weight_per_pc: number | null
+          priority: number | null
           production_allowed: boolean | null
+          production_complete: boolean | null
+          production_complete_qty: number | null
+          production_complete_reason: string | null
+          production_completed_at: string | null
+          production_completed_by: string | null
+          production_end: string | null
+          production_locked: boolean | null
+          production_release_date: string | null
+          production_release_notes: string | null
+          production_release_status:
+            | Database["public"]["Enums"]["production_release_status"]
+            | null
+          production_released_by: string | null
+          production_start: string | null
+          qc_final_approved_at: string | null
+          qc_final_approved_by: string | null
+          qc_final_remarks: string | null
+          qc_final_status: string | null
           qc_first_piece_approved_at: string | null
           qc_first_piece_approved_by: string | null
           qc_first_piece_passed: boolean | null
+          qc_first_piece_remarks: string | null
+          qc_first_piece_status: string | null
           qc_material_approved_at: string | null
           qc_material_approved_by: string | null
           qc_material_passed: boolean | null
+          qc_material_remarks: string | null
+          qc_material_status: string | null
+          qc_raw_material_approved_at: string | null
+          qc_raw_material_approved_by: string | null
+          qc_raw_material_remarks: string | null
+          qc_raw_material_status: string | null
+          qc_status: string | null
+          qty_completed: number | null
+          qty_dispatched: number | null
+          qty_external_wip: number | null
+          qty_rejected: number | null
+          qty_remaining: number | null
+          quality_released: boolean | null
+          quality_released_at: string | null
+          quality_released_by: string | null
           quantity: number | null
+          ready_for_dispatch: boolean | null
           revision: string | null
           sales_order: string | null
+          sampling_plan_reference: string | null
+          site_id: string | null
           so_id: string | null
           status: Database["public"]["Enums"]["wo_status"] | null
+          traceability_frozen: boolean | null
           updated_at: string | null
           wo_id: string | null
+          wo_number: string | null
         }
         Insert: {
+          actual_cycle_time_hours?: number | null
           bom?: Json | null
+          completion_pct?: number | null
           created_at?: string | null
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string | null
+          customer_id?: string | null
           customer_po?: string | null
+          cutting_required?: boolean | null
           cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string | null
-          financial_snapshot?: never
-          gross_weight_per_pc?: never
+          external_process_type?: string | null
+          external_status?: string | null
+          final_qc_result?: string | null
+          financial_snapshot?: Json | null
+          forging_required?: boolean | null
+          forging_vendor?: string | null
+          gross_weight_per_pc?: number | null
           hidden_financial?: boolean | null
           id?: string | null
           item_code?: string | null
+          material_location?: string | null
+          material_requirement_id?: string | null
           material_size_mm?: string | null
-          net_weight_per_pc?: never
+          net_weight_per_pc?: number | null
+          priority?: number | null
           production_allowed?: boolean | null
+          production_complete?: boolean | null
+          production_complete_qty?: number | null
+          production_complete_reason?: string | null
+          production_completed_at?: string | null
+          production_completed_by?: string | null
+          production_end?: string | null
+          production_locked?: boolean | null
+          production_release_date?: string | null
+          production_release_notes?: string | null
+          production_release_status?:
+            | Database["public"]["Enums"]["production_release_status"]
+            | null
+          production_released_by?: string | null
+          production_start?: string | null
+          qc_final_approved_at?: string | null
+          qc_final_approved_by?: string | null
+          qc_final_remarks?: string | null
+          qc_final_status?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean | null
+          qc_first_piece_remarks?: string | null
+          qc_first_piece_status?: string | null
           qc_material_approved_at?: string | null
           qc_material_approved_by?: string | null
           qc_material_passed?: boolean | null
+          qc_material_remarks?: string | null
+          qc_material_status?: string | null
+          qc_raw_material_approved_at?: string | null
+          qc_raw_material_approved_by?: string | null
+          qc_raw_material_remarks?: string | null
+          qc_raw_material_status?: string | null
+          qc_status?: string | null
+          qty_completed?: number | null
+          qty_dispatched?: number | null
+          qty_external_wip?: number | null
+          qty_rejected?: number | null
+          qty_remaining?: number | null
+          quality_released?: boolean | null
+          quality_released_at?: string | null
+          quality_released_by?: string | null
           quantity?: number | null
+          ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
+          sampling_plan_reference?: string | null
+          site_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"] | null
+          traceability_frozen?: boolean | null
           updated_at?: string | null
           wo_id?: string | null
+          wo_number?: string | null
         }
         Update: {
+          actual_cycle_time_hours?: number | null
           bom?: Json | null
+          completion_pct?: number | null
           created_at?: string | null
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
           customer?: string | null
+          customer_id?: string | null
           customer_po?: string | null
+          cutting_required?: boolean | null
           cycle_time_seconds?: number | null
           dispatch_allowed?: boolean | null
           display_id?: string | null
           due_date?: string | null
-          financial_snapshot?: never
-          gross_weight_per_pc?: never
+          external_process_type?: string | null
+          external_status?: string | null
+          final_qc_result?: string | null
+          financial_snapshot?: Json | null
+          forging_required?: boolean | null
+          forging_vendor?: string | null
+          gross_weight_per_pc?: number | null
           hidden_financial?: boolean | null
           id?: string | null
           item_code?: string | null
+          material_location?: string | null
+          material_requirement_id?: string | null
           material_size_mm?: string | null
-          net_weight_per_pc?: never
+          net_weight_per_pc?: number | null
+          priority?: number | null
           production_allowed?: boolean | null
+          production_complete?: boolean | null
+          production_complete_qty?: number | null
+          production_complete_reason?: string | null
+          production_completed_at?: string | null
+          production_completed_by?: string | null
+          production_end?: string | null
+          production_locked?: boolean | null
+          production_release_date?: string | null
+          production_release_notes?: string | null
+          production_release_status?:
+            | Database["public"]["Enums"]["production_release_status"]
+            | null
+          production_released_by?: string | null
+          production_start?: string | null
+          qc_final_approved_at?: string | null
+          qc_final_approved_by?: string | null
+          qc_final_remarks?: string | null
+          qc_final_status?: string | null
           qc_first_piece_approved_at?: string | null
           qc_first_piece_approved_by?: string | null
           qc_first_piece_passed?: boolean | null
+          qc_first_piece_remarks?: string | null
+          qc_first_piece_status?: string | null
           qc_material_approved_at?: string | null
           qc_material_approved_by?: string | null
           qc_material_passed?: boolean | null
+          qc_material_remarks?: string | null
+          qc_material_status?: string | null
+          qc_raw_material_approved_at?: string | null
+          qc_raw_material_approved_by?: string | null
+          qc_raw_material_remarks?: string | null
+          qc_raw_material_status?: string | null
+          qc_status?: string | null
+          qty_completed?: number | null
+          qty_dispatched?: number | null
+          qty_external_wip?: number | null
+          qty_rejected?: number | null
+          qty_remaining?: number | null
+          quality_released?: boolean | null
+          quality_released_at?: string | null
+          quality_released_by?: string | null
           quantity?: number | null
+          ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
+          sampling_plan_reference?: string | null
+          site_id?: string | null
           so_id?: string | null
           status?: Database["public"]["Enums"]["wo_status"] | null
+          traceability_frozen?: boolean | null
           updated_at?: string | null
           wo_id?: string | null
+          wo_number?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "work_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_material_requirement_id_fkey"
+            columns: ["material_requirement_id"]
+            isOneToOne: false
+            referencedRelation: "material_requirements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
