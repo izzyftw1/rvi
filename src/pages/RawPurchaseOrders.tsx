@@ -572,15 +572,37 @@ export default function RawPurchaseOrders() {
                 <div>
                   <Label className="text-xs text-muted-foreground">Size (mm)</Label>
                   {editMode ? (
-                    <Input value={editForm.material_size_mm} onChange={(e) => setEditForm({...editForm, material_size_mm: e.target.value})} />
+                    <Select value={editForm.material_size_mm} onValueChange={(v) => setEditForm({...editForm, material_size_mm: v})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {nominalSizes.map(s => (
+                          <SelectItem key={s.id} value={s.display_label || `${s.size_value}mm`}>
+                            {s.display_label || `${s.size_value} mm`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <p className="font-medium">{selectedRPO.material_size_mm}</p>
                   )}
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Alloy</Label>
+                  <Label className="text-xs text-muted-foreground">Material Grade</Label>
                   {editMode ? (
-                    <Input value={editForm.alloy} onChange={(e) => setEditForm({...editForm, alloy: e.target.value})} />
+                    <Select value={editForm.alloy} onValueChange={(v) => setEditForm({...editForm, alloy: v})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select grade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {materialGrades.map(g => (
+                          <SelectItem key={g.id} value={g.name}>
+                            {g.name} {g.category ? `(${g.category})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <p className="font-medium">{selectedRPO.alloy}</p>
                   )}
