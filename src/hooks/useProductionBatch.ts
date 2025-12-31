@@ -251,8 +251,62 @@ export function getBatchQuantitySummary(batch: ProductionBatch | null): {
 }
 
 /**
- * Checks the overall production status for a work order.
- * Returns whether all batches are complete and if WO can be marked complete.
+ * Checks the overall completion status for a work order.
+ * WO is complete when:
+ * 1. All batches have production_complete = true
+ * 2. Total produced >= ordered quantity
+ * 3. All batches have Final QC passed/waived
+ * 4. At least some qty has been packed
+ */
+export async function checkWOCompletionStatus(woId: string): Promise<{
+  allBatchesProductionComplete: boolean;
+  allBatchesFinalQCComplete: boolean;
+  hasPackedQty: boolean;
+  totalProduced: number;
+  totalFinalQCApproved: number;
+  totalPacked: number;
+  totalDispatched: number;
+  orderedQty: number;
+  canMarkWOComplete: boolean;
+  activeBatchId: string | null;
+  completionBlockers: string[];
+} | null> {
+  if (!woId) return null;
+  
+  try {
+    const { data, error } = await supabase.rpc('check_wo_completion_status', {
+      p_wo_id: woId
+    });
+    
+    if (error) {
+      console.error('Error checking WO completion status:', error);
+      return null;
+    }
+    
+    const result = data?.[0];
+    if (!result) return null;
+    
+    return {
+      allBatchesProductionComplete: result.all_batches_production_complete ?? false,
+      allBatchesFinalQCComplete: result.all_batches_final_qc_complete ?? false,
+      hasPackedQty: result.has_packed_qty ?? false,
+      totalProduced: result.total_produced ?? 0,
+      totalFinalQCApproved: result.total_final_qc_approved ?? 0,
+      totalPacked: result.total_packed ?? 0,
+      totalDispatched: result.total_dispatched ?? 0,
+      orderedQty: result.ordered_qty ?? 0,
+      canMarkWOComplete: result.can_mark_wo_complete ?? false,
+      activeBatchId: result.active_batch_id ?? null,
+      completionBlockers: result.completion_blockers ?? [],
+    };
+  } catch (err) {
+    console.error('Failed to check WO completion status:', err);
+    return null;
+  }
+}
+
+/**
+ * Legacy function - calls the comprehensive check
  */
 export async function checkWOProductionStatus(woId: string): Promise<{
   allBatchesComplete: boolean;
@@ -261,31 +315,36 @@ export async function checkWOProductionStatus(woId: string): Promise<{
   canMarkWOComplete: boolean;
   activeBatchId: string | null;
 } | null> {
-  if (!woId) return null;
+  const result = await checkWOCompletionStatus(woId);
+  if (!result) return null;
+  
+  return {
+    allBatchesComplete: result.allBatchesProductionComplete,
+    totalProduced: result.totalProduced,
+    orderedQty: result.orderedQty,
+    canMarkWOComplete: result.canMarkWOComplete,
+    activeBatchId: result.activeBatchId,
+  };
+}
+
+/**
+ * Marks a work order as complete (validates all criteria first)
+ */
+export async function markWOComplete(woId: string): Promise<{ success: boolean; error?: string }> {
+  if (!woId) return { success: false, error: 'No WO ID provided' };
   
   try {
-    const { data, error } = await supabase.rpc('check_wo_production_status', {
+    const { data, error } = await supabase.rpc('mark_wo_complete', {
       p_wo_id: woId
     });
     
     if (error) {
-      console.error('Error checking WO production status:', error);
-      return null;
+      return { success: false, error: error.message };
     }
     
-    const result = data?.[0];
-    if (!result) return null;
-    
-    return {
-      allBatchesComplete: result.all_batches_complete ?? false,
-      totalProduced: result.total_produced ?? 0,
-      orderedQty: result.ordered_qty ?? 0,
-      canMarkWOComplete: result.can_mark_wo_complete ?? false,
-      activeBatchId: result.active_batch_id ?? null,
-    };
-  } catch (err) {
-    console.error('Failed to check WO production status:', err);
-    return null;
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }
 

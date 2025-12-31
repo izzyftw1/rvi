@@ -48,6 +48,7 @@ import { ProductionCompleteControl } from "@/components/ProductionCompleteContro
 import { ProductionCompleteBadge } from "@/components/ProductionCompleteBadge";
 import { WOBatchProductionStatus } from "@/components/WOBatchProductionStatus";
 import { DispatchEligibilityCard } from "@/components/DispatchEligibilityCard";
+import { WOCompletionStatus } from "@/components/WOCompletionStatus";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -860,6 +861,14 @@ const WorkOrderDetail = () => {
               woId={id!}
               itemCode={wo.item_code}
               customerName={wo.customer}
+            />
+
+            {/* Work Order Completion Status */}
+            <WOCompletionStatus
+              woId={id!}
+              orderedQty={wo.quantity || 0}
+              currentStatus={wo.status}
+              onStatusChange={loadWorkOrderData}
             />
           </section>
         )}
