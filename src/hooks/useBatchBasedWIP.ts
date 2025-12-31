@@ -88,6 +88,8 @@ interface BatchRecord {
     id: string;
     name: string;
   } | null;
+  // MEDIUM PRIORITY 2 FIX: Add expected_return_date from wo_external_moves
+  expected_return_date?: string | null;
 }
 
 const INTERNAL_STAGES = ['cutting', 'production', 'qc', 'packing', 'dispatch'];
@@ -127,6 +129,30 @@ export function useBatchBasedWIP(): BatchBasedWIPData {
 
       if (error) throw error;
       
+      // MEDIUM PRIORITY 2 FIX: Fetch expected_return_date from wo_external_moves for external batches
+      const externalBatchWoIds = (data || [])
+        .filter((b: any) => b.stage_type === 'external')
+        .map((b: any) => b.wo_id);
+      
+      let expectedReturnDates: Record<string, string> = {};
+      if (externalBatchWoIds.length > 0) {
+        const { data: movesData } = await supabase
+          .from('wo_external_moves')
+          .select('work_order_id, expected_return_date')
+          .in('work_order_id', externalBatchWoIds)
+          .in('status', ['sent', 'in_transit', 'partial']);
+        
+        (movesData || []).forEach((m: any) => {
+          if (m.expected_return_date) {
+            // Keep the earliest expected return date per WO
+            if (!expectedReturnDates[m.work_order_id] || 
+                m.expected_return_date < expectedReturnDates[m.work_order_id]) {
+              expectedReturnDates[m.work_order_id] = m.expected_return_date;
+            }
+          }
+        });
+      }
+      
       // Map the data to our interface
       const mappedBatches: BatchRecord[] = (data || []).map((b: any) => ({
         id: b.id,
@@ -141,7 +167,8 @@ export function useBatchBasedWIP(): BatchBasedWIPData {
         ended_at: b.ended_at,
         external_sent_at: b.external_sent_at,
         work_order: b.work_orders,
-        external_partner: b.external_partners
+        external_partner: b.external_partners,
+        expected_return_date: expectedReturnDates[b.wo_id] || null,
       }));
       
       setBatches(mappedBatches);
@@ -240,8 +267,13 @@ export function useBatchBasedWIP(): BatchBasedWIPData {
         }
       });
       
-      // Count overdue
+      // Count overdue - MEDIUM PRIORITY 2 FIX: Use expected_return_date for external batches
       const overdueCount = processBatches.filter(b => {
+        // For external batches, use expected_return_date first
+        if (b.expected_return_date) {
+          return new Date(b.expected_return_date) < today;
+        }
+        // Fall back to work order due date
         if (b.work_order?.due_date) {
           return new Date(b.work_order.due_date) < today;
         }
@@ -270,7 +302,11 @@ export function useBatchBasedWIP(): BatchBasedWIPData {
           }
         });
         
+        // MEDIUM PRIORITY 2 FIX: Use expected_return_date for external batches
         const partnerOverdue = partnerBatches.filter(b => {
+          if (b.expected_return_date) {
+            return new Date(b.expected_return_date) < today;
+          }
           if (b.work_order?.due_date) {
             return new Date(b.work_order.due_date) < today;
           }
@@ -326,7 +362,11 @@ export function useBatchBasedWIP(): BatchBasedWIPData {
         }
       });
       
+      // MEDIUM PRIORITY 2 FIX: Use expected_return_date for external batches
       const overdueCount = partnerBatches.filter(b => {
+        if (b.expected_return_date) {
+          return new Date(b.expected_return_date) < today;
+        }
         if (b.work_order?.due_date) {
           return new Date(b.work_order.due_date) < today;
         }

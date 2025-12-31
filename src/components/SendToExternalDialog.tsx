@@ -290,19 +290,29 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
             created_by: user?.id,
           });
 
-        // Update work order stage
+        // Update work order stage - CRITICAL GAP 5 FIX: Reliable stage update
         const stageMap: Record<string, string> = {
           'Cutting': 'cutting',
+          'Production': 'production',
+          'CNC': 'production',
+          'QC': 'qc',
+          'Packing': 'packing',
         };
 
-        await supabase
+        const newStage = stageMap[process!] || process!.toLowerCase().replace(/\s+/g, '_');
+        
+        const { error: stageUpdateError } = await supabase
           .from("work_orders")
           .update({
-            current_stage: (stageMap[process] || process.toLowerCase()) as any,
+            current_stage: newStage as any,
             material_location: `In-House (${process})`,
             updated_at: new Date().toISOString(),
           })
           .eq("id", workOrder.id);
+        
+        if (stageUpdateError) {
+          console.error("Failed to update work order stage:", stageUpdateError);
+        }
 
         // Create execution record for internal process
         await createExecutionRecord({
@@ -389,7 +399,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         console.error("Failed to log material movement:", movementError);
       }
       
-      // Update work order with external processing status
+      // Update work order with external processing status - CRITICAL GAP 5 FIX
       const currentWip = workOrder.qty_external_wip || 0;
       
       const stageMap: Record<string, string> = {
@@ -399,12 +409,17 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         'Blasting': 'blasting',
         'Job Work': 'job_work',
         'Heat Treatment': 'heat_treatment',
+        'Cutting': 'cutting',
+        'Anodizing': 'anodizing',
+        'Painting': 'painting',
       };
+      
+      const newStage = stageMap[process!] || process!.toLowerCase().replace(/\s+/g, '_');
       
       const { error: updateError } = await supabase
         .from("work_orders")
         .update({
-          current_stage: (stageMap[process] || process.toLowerCase().replace(' ', '_')) as any,
+          current_stage: newStage as any,
           external_status: 'sent',
           external_process_type: process,
           qty_external_wip: currentWip + qty,
@@ -414,7 +429,29 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         .eq("id", workOrder.id);
 
       if (updateError) {
-        console.error("Failed to update work order:", updateError);
+        console.error("Failed to update work order stage:", updateError);
+        // Don't throw - external move was created successfully
+      }
+      
+      // Also create/update production batch for external process tracking
+      const { error: batchError } = await supabase
+        .from("production_batches")
+        .insert({
+          wo_id: workOrder.id,
+          batch_quantity: qty,
+          current_location_type: 'external_partner',
+          current_process: process,
+          stage_type: 'external',
+          external_partner_id: partnerId,
+          external_process_type: process,
+          external_sent_at: new Date().toISOString(),
+          batch_status: 'in_progress',
+          trigger_reason: `external_${process?.toLowerCase().replace(/\s+/g, '_')}`,
+          created_by: user?.id,
+        });
+      
+      if (batchError) {
+        console.error("Failed to create production batch for external:", batchError);
       }
 
       // Reload quantity tracking
