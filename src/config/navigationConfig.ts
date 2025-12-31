@@ -47,6 +47,7 @@ import {
   Cpu,
   Wrench,
   Timer,
+  ArrowDownToLine,
   type LucideIcon,
 } from "lucide-react";
 
@@ -147,6 +148,7 @@ export const navigationGroups: NavGroup[] = [
     icon: PackageCheck,
     allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores', 'packing'],
     items: [
+      { label: "Gate Register", path: "/gate-register", icon: ArrowDownToLine },
       { label: "Goods Inwards", path: "/materials/inwards", icon: Box },
       { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck },
       { label: "Finished Goods", path: "/finished-goods", icon: Package },
