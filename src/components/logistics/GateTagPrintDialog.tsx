@@ -24,6 +24,8 @@ interface GateEntry {
   net_weight_kg: number;
   tare_weight_kg: number;
   packaging_count: number | null;
+  estimated_pcs: number | null;
+  avg_weight_per_pc?: number | null;
   supplier_name: string | null;
   party_code: string | null;
   process_type: string | null;
@@ -236,6 +238,12 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
                   <div class="detail-row full">
                     <span class="detail-label">Work Order:</span>
                     <span class="detail-value large">${entry.wo_number}</span>
+                  </div>
+                  ` : ''}
+                  ${entry.estimated_pcs ? `
+                  <div class="detail-row full">
+                    <span class="detail-label">Est. PCS:</span>
+                    <span class="detail-value large">${entry.estimated_pcs.toLocaleString()}</span>
                   </div>
                   ` : ''}
                 </div>
@@ -452,10 +460,11 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
                 <table>
                   <thead>
                     <tr>
-                      <th style="width:50%">Description</th>
-                      <th style="width:15%" class="right">Qty</th>
-                      <th style="width:17.5%" class="right">Gross Wt (kg)</th>
-                      <th style="width:17.5%" class="right">Net Wt (kg)</th>
+                      <th style="width:45%">Description</th>
+                      <th style="width:13%" class="right">Qty</th>
+                      <th style="width:12%" class="right">Est. PCS</th>
+                      <th style="width:15%" class="right">Gross Wt (kg)</th>
+                      <th style="width:15%" class="right">Net Wt (kg)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -465,8 +474,10 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
                         ${entry.alloy ? `<br/><span style="color:#555">Grade: ${entry.alloy}</span>` : ''}
                         ${entry.heat_no ? `<br/><span style="color:#555">Heat No: ${entry.heat_no}</span>` : ''}
                         ${entry.tc_number ? `<br/><span style="color:#555">TC: ${entry.tc_number}</span>` : ''}
+                        ${entry.avg_weight_per_pc ? `<br/><span style="color:#555">Avg Wt/Pc: ${entry.avg_weight_per_pc.toFixed(4)} kg</span>` : ''}
                       </td>
                       <td class="right">${entry.packaging_count || 1}</td>
+                      <td class="right">${entry.estimated_pcs ? entry.estimated_pcs.toLocaleString() : '-'}</td>
                       <td class="right bold">${entry.gross_weight_kg.toFixed(2)}</td>
                       <td class="right">${entry.net_weight_kg.toFixed(2)}</td>
                     </tr>

@@ -2045,6 +2045,7 @@ export type Database = {
       gate_register: {
         Row: {
           alloy: string | null
+          avg_weight_per_pc: number | null
           challan_no: string | null
           challan_printed: boolean | null
           challan_printed_at: string | null
@@ -2071,6 +2072,8 @@ export type Database = {
           packaging_type_id: string | null
           partner_id: string | null
           party_code: string | null
+          pcs_sample_count: number | null
+          pcs_sample_weight: number | null
           process_type: string | null
           qc_required: boolean | null
           qc_status: string | null
@@ -2092,6 +2095,7 @@ export type Database = {
         }
         Insert: {
           alloy?: string | null
+          avg_weight_per_pc?: number | null
           challan_no?: string | null
           challan_printed?: boolean | null
           challan_printed_at?: string | null
@@ -2118,6 +2122,8 @@ export type Database = {
           packaging_type_id?: string | null
           partner_id?: string | null
           party_code?: string | null
+          pcs_sample_count?: number | null
+          pcs_sample_weight?: number | null
           process_type?: string | null
           qc_required?: boolean | null
           qc_status?: string | null
@@ -2139,6 +2145,7 @@ export type Database = {
         }
         Update: {
           alloy?: string | null
+          avg_weight_per_pc?: number | null
           challan_no?: string | null
           challan_printed?: boolean | null
           challan_printed_at?: string | null
@@ -2165,6 +2172,8 @@ export type Database = {
           packaging_type_id?: string | null
           partner_id?: string | null
           party_code?: string | null
+          pcs_sample_count?: number | null
+          pcs_sample_weight?: number | null
           process_type?: string | null
           qc_required?: boolean | null
           qc_status?: string | null
