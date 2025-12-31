@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, Search, CheckCircle, XCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { PROCESS_TYPES } from "@/config/materialMasters";
 
 interface ExternalPartner {
   id: string;
@@ -24,15 +26,6 @@ interface ExternalPartner {
   email: string | null;
   created_at: string;
 }
-
-const PROCESS_OPTIONS = [
-  "Plating",
-  "Job Work",
-  "Buffing",
-  "Blasting",
-  "Forging",
-  "Heat Treatment",
-] as const;
 
 export const ExternalPartnersManagement = () => {
   const { toast } = useToast();
@@ -281,7 +274,7 @@ export const ExternalPartnersManagement = () => {
             className="border rounded-md px-3 py-2 text-sm"
           >
             <option value="">All Processes</option>
-            {PROCESS_OPTIONS.map((p) => (
+            {PROCESS_TYPES.map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
@@ -410,7 +403,7 @@ export const ExternalPartnersManagement = () => {
                 className="w-full border rounded-md px-3 py-2 text-sm"
               >
                 <option value="">Select process type</option>
-                {PROCESS_OPTIONS.map((process) => (
+                {PROCESS_TYPES.map((process) => (
                   <option key={process} value={process}>
                     {process}
                   </option>

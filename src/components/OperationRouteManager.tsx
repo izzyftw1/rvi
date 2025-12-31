@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Plus, Trash2, GripVertical, Edit2, Loader2 } from "lucide-react";
 import type { OperationType } from "@/hooks/useExecutionRecord";
+import { PROCESS_TYPES } from "@/config/materialMasters";
 
 interface OperationRoute {
   id: string;
@@ -37,9 +38,8 @@ const OPERATION_TYPES: { value: OperationType; label: string }[] = [
   { value: 'DISPATCH', label: 'Dispatch' },
 ];
 
-const EXTERNAL_PROCESSES = [
-  'Plating', 'Buffing', 'Blasting', 'Forging', 'Heat Treatment', 'Job Work'
-];
+// Use shared PROCESS_TYPES from materialMasters instead of local list
+const EXTERNAL_PROCESSES = [...PROCESS_TYPES];
 
 export function OperationRouteManager({ workOrderId, onUpdate }: OperationRouteManagerProps) {
   const { toast } = useToast();

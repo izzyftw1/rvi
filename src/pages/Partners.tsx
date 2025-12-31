@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -29,8 +30,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { Plus, Edit, Building2, Phone, Mail, MapPin, Clock, Package } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableEmptyState } from "@/components/ui/empty-state";
-
-const PROCESS_OPTIONS = ["Plating", "Job Work", "Buffing", "Blasting", "Forging", "Heat Treatment"];
+import { PROCESS_TYPES } from "@/config/materialMasters";
 
 interface Partner {
   id: string;
@@ -381,7 +381,7 @@ const Partners = () => {
               >
                 All
               </Badge>
-              {PROCESS_OPTIONS.map((process) => (
+              {PROCESS_TYPES.map((process) => (
                 <Badge
                   key={process}
                   variant={processFilter === process ? "default" : "outline"}
@@ -537,21 +537,23 @@ const Partners = () => {
             {/* Process Type */}
             <div>
               <Label htmlFor="process_type">Process Type</Label>
-              <select
-                id="process_type"
+              <Select
                 value={formData.process_type}
-                onChange={(e) =>
-                  setFormData({ ...formData, process_type: e.target.value })
+                onValueChange={(value) =>
+                  setFormData({ ...formData, process_type: value })
                 }
-                className="w-full border rounded-md px-3 py-2 text-sm"
               >
-                <option value="">Select process type</option>
-                {PROCESS_OPTIONS.map((process) => (
-                  <option key={process} value={process}>
-                    {process}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select process type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROCESS_TYPES.map((process) => (
+                    <SelectItem key={process} value={process}>
+                      {process}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Contact Details */}

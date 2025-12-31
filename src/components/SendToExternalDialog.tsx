@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 import { FormSection, FormRow, FormField, FormActions, FormHint, RequiredIndicator } from "@/components/ui/form-layout";
+import { PROCESS_OPTIONS, PRE_PRODUCTION_PROCESSES, INTERNAL_PROCESSES } from "@/config/materialMasters";
 
 interface ExternalPartner {
   id: string;
@@ -67,24 +68,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Processes that can be done before production release (pre-production processes)
-  const preProductionProcesses = ["Forging", "Heat Treatment", "Cutting"];
-  
-  // Internal processes don't require external partner selection
-  const internalProcesses = ["Cutting"];
-  
-  const processOptions = [
-    { value: "Cutting", label: "Cutting (Internal)", prefix: "CT", preProduction: true, internal: true },
-    { value: "Forging", label: "Forging", prefix: "FG", preProduction: true, internal: false },
-    { value: "Heat Treatment", label: "Heat Treatment", prefix: "HT", preProduction: true, internal: false },
-    { value: "Plating", label: "Plating", prefix: "PL", preProduction: false, internal: false },
-    { value: "Job Work", label: "Job Work", prefix: "JW", preProduction: false, internal: false },
-    { value: "Buffing", label: "Buffing", prefix: "BF", preProduction: false, internal: false },
-    { value: "Blasting", label: "Blasting", prefix: "BL", preProduction: false, internal: false },
-  ];
-  
   // Check if current process is internal
-  const isInternalProcess = process && internalProcesses.includes(process);
+  const isInternalProcess = process && INTERNAL_PROCESSES.includes(process as any);
 
   useEffect(() => {
     loadPartners();
@@ -173,7 +158,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
   };
 
   const generateChallanNo = (processType: string) => {
-    const processPrefix = processOptions.find(p => p.value === processType)?.prefix || "EXT";
+    const processPrefix = PROCESS_OPTIONS.find(p => p.value === processType)?.prefix || "EXT";
     const dateStr = format(new Date(), "yyyyMMdd");
     const seq = Math.floor(Math.random() * 9999).toString().padStart(4, "0");
     return `${processPrefix}-${dateStr}-${seq}`;
@@ -230,7 +215,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
 
   const handleSubmit = async () => {
     // Check if selected process requires production release
-    const selectedProcess = processOptions.find(p => p.value === process);
+    const selectedProcess = PROCESS_OPTIONS.find(p => p.value === process);
     const isPreProductionProcess = selectedProcess?.preProduction || false;
     
     // Only block if NOT a pre-production process AND production is not released
@@ -547,7 +532,7 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
                     <SelectValue placeholder="Select process" />
                   </SelectTrigger>
                   <SelectContent>
-                    {processOptions.map(opt => (
+                    {PROCESS_OPTIONS.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>
