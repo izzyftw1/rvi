@@ -17,6 +17,7 @@ import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter,
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { UserPermissionOverrides } from "./UserPermissionOverrides";
+import { SupplierUserMapping } from "./SupplierUserMapping";
 
 interface UserWithRole {
   id: string;
@@ -762,6 +763,14 @@ export function UsersManagement({ roles, departments }: UsersManagementProps) {
               </div>
 
               <Separator />
+
+              {/* Supplier User Mapping - only for supplier department users */}
+              {editingUser.departments?.type === 'supplier' && (
+                <SupplierUserMapping 
+                  userId={editingUser.id}
+                  userName={editingUser.full_name}
+                />
+              )}
 
               {/* Permission Overrides Section */}
               <UserPermissionOverrides
