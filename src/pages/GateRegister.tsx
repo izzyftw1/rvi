@@ -22,6 +22,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { GateTagPrintDialog } from "@/components/logistics/GateTagPrintDialog";
+import { PROCESS_TYPES } from "@/config/materialMasters";
 
 interface PackagingType {
   id: string;
@@ -52,6 +53,7 @@ interface WorkOrder {
   wo_number: string;
   item_code: string;
   customer: string | null;
+  quantity: number;
 }
 
 interface GateEntry {
@@ -87,6 +89,7 @@ interface GateEntry {
   remarks: string | null;
   work_order_id: string | null;
   customer_id: string | null;
+  wo_number?: string | null;
 }
 
 interface MaterialGrade {
@@ -340,18 +343,16 @@ export default function GateRegister() {
   };
 
   const loadProcessTypes = async () => {
-    // Get unique process_types from external_partners
+    // Use shared PROCESS_TYPES from materialMasters as the source of truth
+    // Supplement with any additional types from external_partners
     const { data } = await supabase
       .from("external_partners")
       .select("process_type")
       .eq("is_active", true);
     
-    if (data) {
-      const uniqueTypes = [...new Set(data.map(p => p.process_type).filter(Boolean))].sort();
-      setProcessTypes(uniqueTypes.length > 0 ? uniqueTypes : ['Forging', 'Plating', 'Buffing', 'Blasting', 'Heat Treatment', 'Anodizing', 'Zinc Coating', 'Painting', 'Machining', 'Other']);
-    } else {
-      setProcessTypes(['Forging', 'Plating', 'Buffing', 'Blasting', 'Heat Treatment', 'Anodizing', 'Zinc Coating', 'Painting', 'Machining', 'Other']);
-    }
+    const partnerTypes = data?.map(p => p.process_type).filter(Boolean) || [];
+    const allTypes = [...new Set([...PROCESS_TYPES, ...partnerTypes])].sort();
+    setProcessTypes(allTypes);
   };
 
   const loadCustomers = async () => {
@@ -365,11 +366,14 @@ export default function GateRegister() {
   const loadWorkOrders = async () => {
     const { data } = await supabase
       .from("work_orders")
-      .select("id, wo_number, item_code, customer")
+      .select("id, wo_number, item_code, customer, quantity")
       .in("status", ["in_progress", "pending", "qc", "packing"])
       .order("created_at", { ascending: false })
       .limit(200);
-    setWorkOrders(data || []);
+    setWorkOrders(data?.map(wo => ({
+      ...wo,
+      customer: wo.customer || null
+    })) || []);
   };
 
   const loadEntries = async () => {
@@ -454,6 +458,31 @@ export default function GateRegister() {
       supplier_name: partner?.name || '',
       process_type: partner?.process_type || prev.process_type
     }));
+  };
+
+  const handleWorkOrderChange = (workOrderId: string) => {
+    const wo = workOrders.find(w => w.id === workOrderId);
+    if (wo) {
+      setFormData(prev => ({
+        ...prev,
+        work_order_id: workOrderId,
+        item_name: wo.item_code, // Auto-fill item from work order
+        party_code: wo.customer || prev.party_code
+      }));
+      // Also try to find and set customer
+      const customer = customers.find(c => 
+        c.customer_name === wo.customer || c.party_code === wo.customer
+      );
+      if (customer) {
+        setFormData(prev => ({
+          ...prev,
+          customer_id: customer.id,
+          party_code: customer.party_code || customer.customer_name
+        }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, work_order_id: workOrderId }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -553,9 +582,16 @@ export default function GateRegister() {
       setFormOpen(false);
       loadEntries();
 
-      // Offer to print tag
+      // Offer to print tag - include work order number if linked
       if (data) {
-        const entryData = { ...data, direction: data.direction as 'IN' | 'OUT' };
+        const linkedWO = formData.work_order_id 
+          ? workOrders.find(w => w.id === formData.work_order_id)
+          : null;
+        const entryData = { 
+          ...data, 
+          direction: data.direction as 'IN' | 'OUT',
+          wo_number: linkedWO?.wo_number || null
+        };
         setPrintEntry(entryData);
         setPrintDialogOpen(true);
       }
@@ -975,11 +1011,13 @@ export default function GateRegister() {
               {formData.material_type === 'external_process' && (
                 <>
                   <div>
-                    <Label>Item Name</Label>
+                    <Label>Item Code / Name {formData.work_order_id ? '(from Work Order)' : ''}</Label>
                     <Input
                       value={formData.item_name}
                       onChange={(e) => setFormData(prev => ({ ...prev, item_name: e.target.value }))}
-                      placeholder="Item description"
+                      placeholder="Select work order to auto-fill"
+                      className={formData.work_order_id ? "bg-muted" : ""}
+                      readOnly={!!formData.work_order_id}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -1058,10 +1096,10 @@ export default function GateRegister() {
               {/* Work Order Selection for External Process */}
               {formData.material_type === 'external_process' && (
                 <div>
-                  <Label>Linked Work Order</Label>
+                  <Label>Linked Work Order *</Label>
                   <Select
                     value={formData.work_order_id}
-                    onValueChange={(v) => setFormData(prev => ({ ...prev, work_order_id: v }))}
+                    onValueChange={handleWorkOrderChange}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select work order" />
@@ -1074,6 +1112,9 @@ export default function GateRegister() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Selecting a work order auto-fills item code and customer
+                  </p>
                 </div>
               )}
 

@@ -31,6 +31,8 @@ interface GateEntry {
   dc_number: string | null;
   vehicle_no: string | null;
   transporter: string | null;
+  work_order_id?: string | null;
+  wo_number?: string | null;
 }
 
 interface GateTagPrintDialogProps {
@@ -230,6 +232,12 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
                     <span class="detail-value">${entry.process_type}</span>
                   </div>
                   ` : ''}
+                  ${entry.wo_number ? `
+                  <div class="detail-row full">
+                    <span class="detail-label">Work Order:</span>
+                    <span class="detail-value large">${entry.wo_number}</span>
+                  </div>
+                  ` : ''}
                 </div>
                 
                 <div class="weight-box">
@@ -422,6 +430,12 @@ export function GateTagPrintDialog({ open, onOpenChange, entry }: GateTagPrintDi
                     <div class="info-row">
                       <span class="info-label">Process:</span>
                       <span class="info-value">${entry.process_type}</span>
+                    </div>
+                    ` : ''}
+                    ${entry.wo_number ? `
+                    <div class="info-row">
+                      <span class="info-label">Work Order:</span>
+                      <span class="info-value" style="font-weight:bold">${entry.wo_number}</span>
                     </div>
                     ` : ''}
                   </div>
