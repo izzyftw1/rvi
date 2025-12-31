@@ -81,9 +81,9 @@ export const navigationGroups: NavGroup[] = [
     icon: FileText,
     allowedRoles: ['admin', 'sales'],
     items: [
-      { label: "Sales Orders", path: "/sales", icon: FileText, pageKey: "sales-orders" },
-      { label: "Customers", path: "/customers", icon: Users, pageKey: "customers" },
-      { label: "Items", path: "/items", icon: Box, pageKey: "items" },
+      { label: "Sales Orders", path: "/sales", icon: FileText, pageKey: "sales" },
+      { label: "Customers", path: "/customers", icon: Users, pageKey: "customer-master" },
+      { label: "Items", path: "/items", icon: Box, pageKey: "item-master" },
     ]
   },
   {
@@ -91,9 +91,9 @@ export const navigationGroups: NavGroup[] = [
     icon: Truck,
     allowedRoles: ['admin', 'procurement', 'purchase'],
     items: [
-      { label: "Raw PO", path: "/purchase/raw-po", icon: Truck, pageKey: "raw-po" },
+      { label: "Raw PO", path: "/purchase/raw-po", icon: Truck, pageKey: "raw-purchase-orders" },
       { label: "Material Requirements", path: "/material-requirements", icon: Boxes, pageKey: "material-requirements" },
-      { label: "Purchase Dashboard", path: "/purchase/dashboard", icon: BarChart3, pageKey: "purchase-dashboard" },
+      { label: "Purchase Dashboard", path: "/purchase/dashboard", icon: BarChart3, pageKey: "procurement-dashboard" },
     ]
   },
   {
@@ -117,16 +117,16 @@ export const navigationGroups: NavGroup[] = [
     icon: ClipboardCheck,
     allowedRoles: ['admin', 'production', 'quality'],
     items: [
-      { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck, pageKey: "quality-dashboard" },
+      { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck, pageKey: "quality-analytics" },
       { label: "Incoming QC", path: "/qc/incoming", icon: Box, pageKey: "qc-incoming" },
       { label: "Hourly QC", path: "/hourly-qc", icon: Clock, pageKey: "hourly-qc" },
       { label: "Final QC", path: "/final-qc", icon: CheckCircle, pageKey: "final-qc" },
-      { label: "NCR Management", path: "/ncr", icon: XCircle, pageKey: "ncr" },
-      { label: "Traceability", path: "/quality/traceability", icon: GitBranch, pageKey: "traceability" },
-      { label: "Quality Documents", path: "/quality/documents", icon: FileCheck, pageKey: "quality-documents" },
+      { label: "NCR Management", path: "/ncr", icon: XCircle, pageKey: "ncr-management" },
+      { label: "Traceability", path: "/quality/traceability", icon: GitBranch, pageKey: "quality-traceability" },
+      { label: "Quality Documents", path: "/quality/documents", icon: FileCheck, pageKey: "genealogy" },
       { label: "Quality Analytics", path: "/quality/analytics", icon: BarChart3, pageKey: "quality-analytics" },
-      { label: "Tolerances", path: "/tolerance-setup", icon: Gauge, pageKey: "tolerances" },
-      { label: "Instruments", path: "/instruments", icon: Wrench, pageKey: "instruments" },
+      { label: "Tolerances", path: "/tolerance-setup", icon: Gauge, pageKey: "tolerance-setup" },
+      { label: "Instruments", path: "/instruments", icon: Wrench, pageKey: "instrument-management" },
     ]
   },
   {
@@ -136,14 +136,14 @@ export const navigationGroups: NavGroup[] = [
     items: [
       { label: "Finance Dashboard", path: "/finance/dashboard", icon: DollarSign, pageKey: "finance-dashboard" },
       { label: "Invoices", path: "/finance/invoices", icon: Receipt, pageKey: "invoices" },
-      { label: "Customer Receipts", path: "/finance/receipts", icon: Receipt, pageKey: "receipts" },
-      { label: "Supplier Payments", path: "/finance/supplier-payments", icon: CreditCard, pageKey: "supplier-payments" },
-      { label: "Customer Adjustments", path: "/finance/adjustments", icon: AlertCircle, pageKey: "adjustments" },
-      { label: "TDS Report", path: "/finance/tds", icon: FileSpreadsheet, pageKey: "tds-report" },
+      { label: "Customer Receipts", path: "/finance/receipts", icon: Receipt, pageKey: "payments" },
+      { label: "Supplier Payments", path: "/finance/supplier-payments", icon: CreditCard, pageKey: "payments" },
+      { label: "Customer Adjustments", path: "/finance/adjustments", icon: AlertCircle, pageKey: "aging" },
+      { label: "TDS Report", path: "/finance/tds", icon: FileSpreadsheet, pageKey: "aging" },
       { label: "Aging", path: "/finance/aging", icon: Clock, pageKey: "aging" },
-      { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle, pageKey: "reconciliations" },
-      { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet, pageKey: "finance-reports" },
-      { label: "Settings", path: "/finance/settings", icon: Settings, pageKey: "finance-settings" },
+      { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle, pageKey: "reports" },
+      { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet, pageKey: "reports" },
+      { label: "Settings", path: "/finance/settings", icon: Settings, pageKey: "admin" },
     ]
   },
   {
@@ -152,7 +152,7 @@ export const navigationGroups: NavGroup[] = [
     allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores', 'packing'],
     items: [
       { label: "Gate Register", path: "/gate-register", icon: ArrowDownToLine, pageKey: "gate-register" },
-      { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck, pageKey: "logistics-dashboard" },
+      { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck, pageKey: "logistics" },
       { label: "Finished Goods", path: "/finished-goods", icon: Package, pageKey: "finished-goods" },
       { label: "Packing", path: "/packing", icon: Package, pageKey: "packing" },
       { label: "Dispatch", path: "/dispatch", icon: Truck, pageKey: "dispatch" },
@@ -163,7 +163,7 @@ export const navigationGroups: NavGroup[] = [
     icon: Handshake,
     allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
     items: [
-      { label: "Partner Dashboard", path: "/partner-dashboard", icon: Handshake, pageKey: "partner-dashboard" },
+      { label: "Partner Dashboard", path: "/partner-dashboard", icon: Handshake, pageKey: "partners" },
       { label: "External Analytics", path: "/external-efficiency", icon: BarChart3, pageKey: "external-analytics" },
     ]
   }

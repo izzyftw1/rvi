@@ -92,6 +92,7 @@ import PartnerDashboard from "./pages/PartnerDashboard";
 import ExternalAnalytics from "./pages/ExternalAnalytics";
 import FinishedGoodsInventory from "./pages/FinishedGoodsInventory";
 import GateRegister from "./pages/GateRegister";
+import SupplierPortal from "./pages/SupplierPortal";
 
 // Initialize company logo upload once on app load
 ensureCompanyLogoUploaded();
