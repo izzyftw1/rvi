@@ -249,3 +249,51 @@ export function getBatchQuantitySummary(batch: ProductionBatch | null): {
     approvalRate
   };
 }
+
+/**
+ * Checks the overall production status for a work order.
+ * Returns whether all batches are complete and if WO can be marked complete.
+ */
+export async function checkWOProductionStatus(woId: string): Promise<{
+  allBatchesComplete: boolean;
+  totalProduced: number;
+  orderedQty: number;
+  canMarkWOComplete: boolean;
+  activeBatchId: string | null;
+} | null> {
+  if (!woId) return null;
+  
+  try {
+    const { data, error } = await supabase.rpc('check_wo_production_status', {
+      p_wo_id: woId
+    });
+    
+    if (error) {
+      console.error('Error checking WO production status:', error);
+      return null;
+    }
+    
+    const result = data?.[0];
+    if (!result) return null;
+    
+    return {
+      allBatchesComplete: result.all_batches_complete ?? false,
+      totalProduced: result.total_produced ?? 0,
+      orderedQty: result.ordered_qty ?? 0,
+      canMarkWOComplete: result.can_mark_wo_complete ?? false,
+      activeBatchId: result.active_batch_id ?? null,
+    };
+  } catch (err) {
+    console.error('Failed to check WO production status:', err);
+    return null;
+  }
+}
+
+/**
+ * Gets the current active (open) batch for production logging.
+ * This will create a new batch if the previous one is closed/complete and there's remaining qty.
+ */
+export async function getActiveBatchForProduction(woId: string): Promise<string | null> {
+  // This just calls the updated DB function which handles all the logic
+  return getOrCreateBatch(woId);
+}

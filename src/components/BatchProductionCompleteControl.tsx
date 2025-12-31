@@ -55,6 +55,7 @@ export function BatchProductionCompleteControl({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Mark this batch as production complete and close it (ended_at)
       const { error } = await supabase
         .from("production_batches")
         .update({
@@ -63,6 +64,7 @@ export function BatchProductionCompleteControl({
           production_completed_at: new Date().toISOString(),
           production_completed_by: user?.id,
           production_complete_reason: reason === 'manual' && notes ? notes : reason,
+          ended_at: new Date().toISOString(), // Close the batch so new one can be created
         })
         .eq("id", batch.id);
 
@@ -70,7 +72,7 @@ export function BatchProductionCompleteControl({
 
       toast({
         title: `Batch #${batch.batch_number} Production Complete`,
-        description: `${producedQty.toLocaleString()} pcs marked complete. This batch can now proceed to QC → Packing.`,
+        description: `${producedQty.toLocaleString()} pcs marked complete. This batch proceeds to QC → Packing. A new batch will be created automatically when more production is logged.`,
       });
 
       setShowDialog(false);
@@ -90,6 +92,7 @@ export function BatchProductionCompleteControl({
   const handleReopen = async () => {
     setLoading(true);
     try {
+      // Reopen the batch: clear completion status AND ended_at so it becomes active again
       const { error } = await supabase
         .from("production_batches")
         .update({
@@ -98,6 +101,7 @@ export function BatchProductionCompleteControl({
           production_completed_at: null,
           production_completed_by: null,
           production_complete_reason: null,
+          ended_at: null, // Reopen the batch
         })
         .eq("id", batch.id);
 
