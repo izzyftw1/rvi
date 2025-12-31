@@ -116,6 +116,14 @@ const WorkOrderDetail = () => {
         // Reload progress when production logs change
         loadWorkOrderData();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gate_register', filter: `work_order_id=eq.${id}` }, () => {
+        // Reload when gate register entries change for this WO
+        loadWorkOrderData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${id}` }, () => {
+        // Reload when production batches change
+        loadWorkOrderData();
+      })
       .subscribe();
 
     return () => {

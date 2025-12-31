@@ -620,12 +620,15 @@ export default function GateRegister() {
 
       if (error) throw error;
 
-      // If this is an external process with a work order, also create/update wo_external_moves
+      // If this is an external process with a work order, sync with wo_external_moves and production_batches
       if (formData.material_type === 'external_process' && formData.work_order_id && formData.process_type) {
+        const qtySent = data.estimated_pcs || 0;
+        const netWeightKg = data.net_weight_kg || 0;
+        
         if (formDirection === 'OUT') {
-          // Goods OUT = sending to external
-          const qtySent = data.estimated_pcs || 0;
+          // Goods OUT = sending to external partner
           
+          // 1. Create wo_external_moves record
           const { data: moveData, error: moveError } = await supabase
             .from("wo_external_moves")
             .insert([{
@@ -651,9 +654,37 @@ export default function GateRegister() {
               .update({ external_movement_id: moveData.id })
               .eq("id", data.id);
           }
+          
+          // 2. Update production_batches to reflect external location
+          // Find active batches for this WO and update their location
+          const { data: activeBatches } = await supabase
+            .from("production_batches")
+            .select("id, batch_quantity")
+            .eq("wo_id", formData.work_order_id)
+            .is("ended_at", null)
+            .eq("current_location_type", "factory")
+            .order("created_at", { ascending: false })
+            .limit(1);
+          
+          if (activeBatches && activeBatches.length > 0) {
+            const batch = activeBatches[0];
+            await supabase
+              .from("production_batches")
+              .update({
+                current_location_type: 'external_partner',
+                current_process: formData.process_type,
+                external_partner_id: formData.partner_id || null,
+                external_process_type: formData.process_type,
+                external_sent_at: new Date().toISOString(),
+                stage_entered_at: new Date().toISOString(),
+              })
+              .eq("id", batch.id);
+          }
+          
         } else if (formDirection === 'IN') {
-          // Goods IN = receiving from external - try to update existing move
-          // Find the most recent pending external move for this WO and process
+          // Goods IN = receiving from external partner
+          
+          // 1. Find and update the pending external move
           const { data: pendingMoves } = await supabase
             .from("wo_external_moves")
             .select("*")
@@ -683,6 +714,36 @@ export default function GateRegister() {
               .from("gate_register")
               .update({ external_movement_id: move.id })
               .eq("id", data.id);
+            
+            // 2. Update production_batches to return to factory
+            // Find batches at external partner for this WO/process
+            const { data: externalBatches } = await supabase
+              .from("production_batches")
+              .select("id, batch_quantity")
+              .eq("wo_id", formData.work_order_id)
+              .is("ended_at", null)
+              .eq("current_location_type", "external_partner")
+              .eq("current_process", formData.process_type)
+              .order("created_at", { ascending: false })
+              .limit(1);
+            
+            if (externalBatches && externalBatches.length > 0) {
+              const batch = externalBatches[0];
+              // Determine if QC is required after external return
+              const requiresQC = formData.qc_required;
+              
+              await supabase
+                .from("production_batches")
+                .update({
+                  current_location_type: 'factory',
+                  current_process: requiresQC ? 'post_external_qc' : 'production',
+                  external_returned_at: new Date().toISOString(),
+                  stage_entered_at: new Date().toISOString(),
+                  requires_qc_on_return: requiresQC,
+                  post_external_qc_status: requiresQC ? 'pending' : 'passed',
+                })
+                .eq("id", batch.id);
+            }
           }
         }
       }
