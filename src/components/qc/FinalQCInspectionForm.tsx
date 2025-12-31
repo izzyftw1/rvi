@@ -258,25 +258,61 @@ export const FinalQCInspectionForm = ({
       // Generate QC ID
       const qcId = `FQC-${Date.now().toString(36).toUpperCase()}`;
 
-      // Create QC record
-      const { data: qcRecord, error: qcError } = await supabase
+      // Check for existing QC record (to avoid duplicate key violation)
+      const { data: existingRecord } = await supabase
         .from('qc_records')
-        .insert([{
-          wo_id: workOrderId,
-          qc_id: qcId,
-          qc_type: 'final' as const,
-          result: result === 'pass' ? 'pass' : 'fail',
-          inspected_quantity: sampleSize,
-          approved_by: user?.id,
-          approved_at: new Date().toISOString(),
-          remarks: generalRemarks,
-          instrument_id: selectedInstrumentId,
-          qc_date_time: new Date().toISOString()
-        }])
-        .select()
-        .single();
+        .select('id')
+        .eq('wo_id', workOrderId)
+        .eq('qc_type', 'final')
+        .is('batch_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (qcError) throw qcError;
+      let qcRecord: { id: string };
+
+      if (existingRecord) {
+        // Update existing record
+        const { data: updatedRecord, error: updateError } = await supabase
+          .from('qc_records')
+          .update({
+            qc_id: qcId,
+            result: result === 'pass' ? 'pass' : 'fail',
+            inspected_quantity: sampleSize,
+            approved_by: user?.id,
+            approved_at: new Date().toISOString(),
+            remarks: generalRemarks,
+            instrument_id: selectedInstrumentId,
+            qc_date_time: new Date().toISOString()
+          })
+          .eq('id', existingRecord.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        qcRecord = updatedRecord;
+      } else {
+        // Create new QC record
+        const { data: newRecord, error: insertError } = await supabase
+          .from('qc_records')
+          .insert([{
+            wo_id: workOrderId,
+            qc_id: qcId,
+            qc_type: 'final' as const,
+            result: result === 'pass' ? 'pass' : 'fail',
+            inspected_quantity: sampleSize,
+            approved_by: user?.id,
+            approved_at: new Date().toISOString(),
+            remarks: generalRemarks,
+            instrument_id: selectedInstrumentId,
+            qc_date_time: new Date().toISOString()
+          }])
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        qcRecord = newRecord;
+      }
 
       // Insert all measurements
       const measurementsToInsert = Object.values(measurements).flatMap(dim =>
