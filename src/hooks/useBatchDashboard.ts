@@ -174,7 +174,7 @@ export function useBatchDashboard(): BatchDashboardData {
   useEffect(() => {
     loadData();
 
-    // Real-time subscription to production_batches and external_movements
+    // Real-time subscription to production_batches, external_movements, and gate_register
     const channel = supabase
       .channel('batch-dashboard-realtime')
       .on(
@@ -185,6 +185,11 @@ export function useBatchDashboard(): BatchDashboardData {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'external_movements' },
+        () => loadData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gate_register' },
         () => loadData()
       )
       .subscribe();

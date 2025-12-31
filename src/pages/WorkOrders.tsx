@@ -899,6 +899,11 @@ const WorkOrders = () => {
         clearTimeout(timeout);
         timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gate_register' }, () => {
+        // Gate register changes affect WO external status
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setLastUpdate(Date.now()), 500);
+      })
       .subscribe();
 
     return () => {
