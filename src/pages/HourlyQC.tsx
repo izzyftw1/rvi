@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { NavigationHeader } from "@/components/NavigationHeader";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { ArrowLeft, AlertTriangle, ClipboardCheck, Search, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -319,14 +318,11 @@ const HourlyQC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <NavigationHeader />
-        <PageContainer>
-          <div className="flex items-center justify-center h-64">
-            <Clock className="w-6 h-6 animate-spin text-primary" />
-          </div>
-        </PageContainer>
-      </div>
+      <PageContainer>
+        <div className="flex items-center justify-center h-64">
+          <Clock className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </PageContainer>
     );
   }
 
@@ -335,14 +331,11 @@ const HourlyQC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
   if (selectedWorkOrder) {
     return (
-      <div className="min-h-screen bg-background">
-        <NavigationHeader />
-        
-        <PageContainer maxWidth="lg">
-          <div className="space-y-6">
-            <Button variant="outline" onClick={() => setSelectedWorkOrder(null)}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Work Orders
+      <PageContainer maxWidth="lg">
+        <div className="space-y-6">
+          <Button variant="outline" onClick={() => setSelectedWorkOrder(null)}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Work Orders
             </Button>
 
             {/* Work Order Summary */}
@@ -571,7 +564,6 @@ const HourlyQC = () => {
             />
           </div>
         </PageContainer>
-      </div>
     );
   }
 
@@ -579,11 +571,8 @@ const HourlyQC = () => {
   // WORK ORDER LIST VIEW
   // ═══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader />
-      
-      <PageContainer>
-        <div className="space-y-6">
+    <PageContainer>
+      <div className="space-y-6">
           {/* Header */}
           <PageHeader
             title="In-Process QC (Hourly)"
@@ -686,7 +675,6 @@ const HourlyQC = () => {
           )}
         </div>
       </PageContainer>
-    </div>
   );
 };
 

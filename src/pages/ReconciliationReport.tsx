@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Home } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import * as XLSX from "xlsx";
 import { differenceInDays } from "date-fns";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 
 interface ReconciliationRow {
   id: string;
@@ -154,30 +153,14 @@ export default function ReconciliationReport() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader 
+    <PageContainer maxWidth="2xl">
+      <PageHeader 
         title="Reconciliation Report" 
-        subtitle="Track and manage procurement variances" 
+        description="Track and manage procurement variances"
+        icon={<FileText className="h-5 w-5" />}
       />
-      
-      <div className="p-6 pb-0">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/" className="flex items-center gap-1">
-                <Home className="h-4 w-4" />
-                Home
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Reconciliation Report</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
 
-      <div className="p-6">
+      <div className="mt-6">
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -267,6 +250,6 @@ export default function ReconciliationReport() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -1,28 +1,26 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, Package, Shield, DollarSign, FileText, Activity } from "lucide-react";
 import TraceabilityReports from "@/components/reports/TraceabilityReports";
 import QualityReports from "@/components/reports/QualityReports";
 import InventoryReports from "@/components/reports/InventoryReports";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import PackingReports from "@/components/reports/PackingReports";
 import SHEReports from "@/components/reports/SHEReports";
 import FinanceReports from "@/components/reports/FinanceReports";
 
 const Reports = () => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("traceability");
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader title="Reports & Analytics" subtitle="Comprehensive insights across all workflows" />
+    <PageContainer maxWidth="2xl">
+      <PageHeader 
+        title="Reports & Analytics" 
+        description="Comprehensive insights across all workflows"
+        icon={<Activity className="h-5 w-5" />}
+      />
       
-      <div className="max-w-7xl mx-auto p-4 md:p-8">
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 mt-6">
           <TabsList className="grid w-full grid-cols-6 lg:w-auto">
             <TabsTrigger value="traceability" className="gap-2">
               <Activity className="h-4 w-4" />
@@ -74,8 +72,7 @@ const Reports = () => {
             <FinanceReports />
           </TabsContent>
         </Tabs>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

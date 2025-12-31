@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -545,13 +545,14 @@ export default function CreateInvoices() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader 
+    <PageContainer maxWidth="2xl">
+      <PageHeader 
         title="Create Invoices" 
-        subtitle="Generate invoices from dispatched shipments (not sales orders)" 
+        description="Generate invoices from dispatched shipments (not sales orders)"
+        icon={<FileText className="h-5 w-5" />}
       />
       
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 mt-6">
         <Alert>
           <FileText className="h-4 w-4" />
           <AlertTitle>Quantity-Based Invoicing</AlertTitle>
@@ -663,6 +664,6 @@ export default function CreateInvoices() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

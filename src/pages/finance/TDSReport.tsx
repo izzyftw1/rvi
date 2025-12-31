@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -206,13 +206,14 @@ export default function TDSReport() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader 
+    <PageContainer maxWidth="2xl">
+      <PageHeader 
         title="TDS Report" 
-        subtitle="Tax Deducted at Source - Receivables & Payables" 
+        description="Tax Deducted at Source - Receivables & Payables"
+        icon={<Calculator className="h-5 w-5" />}
       />
       
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
@@ -521,6 +522,6 @@ export default function TDSReport() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

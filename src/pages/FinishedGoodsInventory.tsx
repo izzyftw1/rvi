@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { NavigationHeader } from "@/components/NavigationHeader";
+import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -242,23 +242,28 @@ export default function FinishedGoodsInventory() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <NavigationHeader title="Finished Goods Inventory" subtitle="Loading..." />
+      <PageContainer maxWidth="2xl">
+        <PageHeader 
+          title="Finished Goods Inventory" 
+          description="Loading..."
+          icon={<Package className="h-5 w-5" />}
+        />
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavigationHeader 
+    <PageContainer maxWidth="2xl">
+      <PageHeader 
         title="Finished Goods Inventory" 
-        subtitle="Overproduction and stock tracking"
+        description="Overproduction and stock tracking"
+        icon={<Package className="h-5 w-5" />}
       />
 
-      <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -624,6 +629,6 @@ export default function FinishedGoodsInventory() {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+    </PageContainer>
   );
 }
