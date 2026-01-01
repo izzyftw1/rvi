@@ -132,7 +132,7 @@ export const LossImpactIndicator = () => {
       sublabel: '7-day total',
       severity: lossData.scrapPcs > 100 ? 'high' : lossData.scrapPcs > 50 ? 'medium' : 'low',
       owner: 'Quality',
-      onClick: () => navigate('/quality-analytics')
+      onClick: () => navigate('/quality/analytics')
     },
     {
       key: 'rework',
@@ -144,7 +144,7 @@ export const LossImpactIndicator = () => {
       sublabel: `${lossData.reworkPcs} pcs affected`,
       severity: lossData.reworkHours > 20 ? 'high' : lossData.reworkHours > 10 ? 'medium' : 'low',
       owner: 'Production',
-      onClick: () => navigate('/quality-analytics')
+      onClick: () => navigate('/quality/analytics')
     },
     {
       key: 'delayed',

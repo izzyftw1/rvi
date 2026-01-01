@@ -388,7 +388,7 @@ export const ThresholdAlerts = () => {
                 variant="ghost" 
                 size="sm" 
                 className="w-full text-xs text-muted-foreground"
-                onClick={() => navigate('/quality-analytics')}
+                onClick={() => navigate('/quality/analytics')}
               >
                 View all {alerts.length} alerts
               </Button>
