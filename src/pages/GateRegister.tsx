@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -164,9 +165,11 @@ const MATERIAL_TYPES = [
 
 export default function GateRegister() {
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'goods_in' | 'goods_out' | 'ledger'>('goods_in');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [prefilledRPO, setPrefilledRPO] = useState<any>(null);
 
   // Master data - removed packagingTypes state (now using standardized PACKAGING_OPTIONS)
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -284,6 +287,15 @@ export default function GateRegister() {
         loadWorkOrders(),
         loadEntries()
       ]);
+      
+      // Check for RPO pre-fill from URL params (coming from Raw PO "Receive" button)
+      const rpoId = searchParams.get('rpo_id');
+      const materialType = searchParams.get('material_type');
+      const direction = searchParams.get('direction');
+      
+      if (rpoId && materialType === 'raw_material' && direction === 'IN') {
+        await loadRPOForPrefill(rpoId);
+      }
     };
     init();
 
@@ -296,7 +308,51 @@ export default function GateRegister() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [searchParams]);
+  
+  // Load RPO data for pre-filling the gate register form
+  const loadRPOForPrefill = async (rpoId: string) => {
+    try {
+      const { data: rpo, error } = await supabase
+        .from("raw_purchase_orders")
+        .select(`
+          *,
+          suppliers(id, name),
+          work_orders(id, wo_id)
+        `)
+        .eq("id", rpoId)
+        .single();
+      
+      if (error) throw error;
+      if (!rpo) return;
+      
+      setPrefilledRPO(rpo);
+      setActiveTab('goods_in');
+      setFormDirection('IN');
+      setFormOpen(true);
+      
+      // Pre-fill form with RPO data
+      setFormData(prev => ({
+        ...prev,
+        material_type: 'raw_material',
+        rod_section_size: rpo.material_size_mm || '',
+        alloy: rpo.alloy || '',
+        material_grade: rpo.alloy || '',
+        supplier_id: rpo.supplier_id || '',
+        supplier_name: rpo.suppliers?.name || '',
+        work_order_id: rpo.wo_id || '',
+        remarks: `RPO: ${rpo.rpo_no}`,
+      }));
+      
+      toast({ 
+        title: "RPO Loaded", 
+        description: `Pre-filled from ${rpo.rpo_no}. Enter weight and heat number to complete.` 
+      });
+    } catch (error: any) {
+      console.error("Error loading RPO:", error);
+      toast({ variant: "destructive", description: "Failed to load RPO data" });
+    }
+  };
 
   // NOTE: loadPackagingTypes is no longer needed - using standardized PACKAGING_OPTIONS
   // Kept for backwards compatibility but does nothing now
