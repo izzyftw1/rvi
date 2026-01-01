@@ -20,18 +20,37 @@ interface Supplier {
   name: string;
 }
 
+interface MasterShape {
+  id: string;
+  name: string;
+}
+
+interface MasterSize {
+  id: string;
+  size_value: number;
+  display_label: string;
+}
+
+interface MasterGrade {
+  id: string;
+  name: string;
+  category: string | null;
+}
+
 export function OverstockRPOModal({ open, onClose, onSuccess }: OverstockRPOModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
-  // Spec options
-  const [sizeOptions, setSizeOptions] = useState<string[]>([]);
-  const [alloyOptions, setAlloyOptions] = useState<string[]>([]);
+  // Master data
+  const [masterShapes, setMasterShapes] = useState<MasterShape[]>([]);
+  const [masterSizes, setMasterSizes] = useState<MasterSize[]>([]);
+  const [masterGrades, setMasterGrades] = useState<MasterGrade[]>([]);
   
   // Form state
-  const [materialSizeMM, setMaterialSizeMM] = useState("");
-  const [alloy, setAlloy] = useState("");
+  const [shapeId, setShapeId] = useState("");
+  const [sizeId, setSizeId] = useState("");
+  const [gradeId, setGradeId] = useState("");
   const [qtyToOrder, setQtyToOrder] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [ratePerKg, setRatePerKg] = useState("");
@@ -41,59 +60,32 @@ export function OverstockRPOModal({ open, onClose, onSuccess }: OverstockRPOModa
 
   useEffect(() => {
     if (!open) return;
-    loadSuppliers();
-    loadSpecOptions();
+    loadData();
     resetForm();
   }, [open]);
 
-  const loadSuppliers = async () => {
-    const { data, error } = await supabase
-      .from("suppliers")
-      .select("id, name")
-      .order("name");
-
-    if (error) {
-      console.error("Error loading suppliers:", error);
-      return;
-    }
-    setSuppliers(data || []);
-  };
-
-  const loadSpecOptions = async () => {
+  const loadData = async () => {
     try {
-      const [itemsRes, rpoRes] = await Promise.all([
-        supabase.from("item_master").select("material_size_mm, alloy").limit(1000),
-        supabase.from("raw_purchase_orders").select("material_size_mm, alloy").limit(1000),
+      const [suppliersRes, shapesRes, sizesRes, gradesRes] = await Promise.all([
+        supabase.from("suppliers").select("id, name").order("name"),
+        supabase.from("cross_section_shapes").select("id, name").order("name"),
+        supabase.from("nominal_sizes").select("id, size_value, display_label").order("size_value"),
+        supabase.from("material_grades").select("id, name, category").order("name")
       ]);
 
-      const rows = [...(itemsRes.data || []), ...(rpoRes.data || [])] as Array<{
-        material_size_mm: string | null;
-        alloy: string | null;
-      }>;
-
-      const sizeSet = new Set<string>();
-      const alloySet = new Set<string>();
-
-      rows.forEach((r) => {
-        const s = (r.material_size_mm || "").trim();
-        const a = (r.alloy || "").trim();
-        if (s) sizeSet.add(s);
-        if (a) alloySet.add(a);
-      });
-
-      const sortAlphaNum = (a: string, b: string) =>
-        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-
-      setSizeOptions(Array.from(sizeSet).sort(sortAlphaNum));
-      setAlloyOptions(Array.from(alloySet).sort(sortAlphaNum));
-    } catch (e) {
-      console.error("Error loading spec options", e);
+      if (suppliersRes.data) setSuppliers(suppliersRes.data);
+      if (shapesRes.data) setMasterShapes(shapesRes.data);
+      if (sizesRes.data) setMasterSizes(sizesRes.data);
+      if (gradesRes.data) setMasterGrades(gradesRes.data);
+    } catch (error) {
+      console.error("Error loading data:", error);
     }
   };
 
   const resetForm = () => {
-    setMaterialSizeMM("");
-    setAlloy("");
+    setShapeId("");
+    setSizeId("");
+    setGradeId("");
     setQtyToOrder("");
     setSupplierId("");
     setRatePerKg("");
@@ -102,7 +94,35 @@ export function OverstockRPOModal({ open, onClose, onSuccess }: OverstockRPOModa
     setRemarks("");
   };
 
+  // Get selected values for display
+  const selectedShape = masterShapes.find(s => s.id === shapeId);
+  const selectedSize = masterSizes.find(s => s.id === sizeId);
+  const selectedGrade = masterGrades.find(g => g.id === gradeId);
+
+  // Build material_size_mm string (e.g., "16mm ROUND")
+  const materialSizeMM = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedSize) parts.push(`${selectedSize.size_value}mm`);
+    if (selectedShape) parts.push(selectedShape.name.toUpperCase());
+    return parts.join(' ') || '';
+  }, [selectedSize, selectedShape]);
+
+  // Alloy is the grade name
+  const alloy = selectedGrade?.name || '';
+
   const validateForm = () => {
+    if (!shapeId) {
+      toast({ variant: "destructive", description: "Please select a cross section shape" });
+      return false;
+    }
+    if (!sizeId) {
+      toast({ variant: "destructive", description: "Please select a nominal size" });
+      return false;
+    }
+    if (!gradeId) {
+      toast({ variant: "destructive", description: "Please select a material grade" });
+      return false;
+    }
     if (!supplierId) {
       toast({ variant: "destructive", description: "Please select a supplier" });
       return false;
@@ -113,14 +133,6 @@ export function OverstockRPOModal({ open, onClose, onSuccess }: OverstockRPOModa
     }
     if (!qtyToOrder || parseFloat(qtyToOrder) <= 0) {
       toast({ variant: "destructive", description: "Please enter a valid quantity" });
-      return false;
-    }
-    if (!materialSizeMM?.trim()) {
-      toast({ variant: "destructive", description: "Material size is required" });
-      return false;
-    }
-    if (!alloy?.trim()) {
-      toast({ variant: "destructive", description: "Alloy is required" });
       return false;
     }
     if (!overstockReason?.trim()) {
@@ -215,51 +227,76 @@ export function OverstockRPOModal({ open, onClose, onSuccess }: OverstockRPOModa
             </div>
           </div>
 
-          {/* Material Size */}
+          {/* Cross Section Shape */}
           <div>
-            <Label>Material/Rod Size *</Label>
-            <Select value={materialSizeMM} onValueChange={setMaterialSizeMM}>
+            <Label>Cross Section Shape *</Label>
+            <Select value={shapeId} onValueChange={setShapeId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select shape" />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                {masterShapes.length === 0 ? (
+                  <div className="px-4 py-2 text-sm text-muted-foreground">No shapes found</div>
+                ) : (
+                  masterShapes.map((shape) => (
+                    <SelectItem key={shape.id} value={shape.id}>
+                      {shape.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Nominal Size */}
+          <div>
+            <Label>Nominal Size *</Label>
+            <Select value={sizeId} onValueChange={setSizeId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select size" />
               </SelectTrigger>
               <SelectContent className="bg-background z-50">
-                {sizeOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
+                {masterSizes.length === 0 ? (
+                  <div className="px-4 py-2 text-sm text-muted-foreground">No sizes found</div>
+                ) : (
+                  masterSizes.map((size) => (
+                    <SelectItem key={size.id} value={size.id}>
+                      {size.display_label || `${size.size_value}mm`}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
-            <Input
-              className="mt-2"
-              value={materialSizeMM}
-              onChange={(e) => setMaterialSizeMM(e.target.value)}
-              placeholder="Or enter manually (e.g. 16 ROUND)"
-            />
           </div>
 
-          {/* Alloy */}
+          {/* Material Grade */}
           <div>
-            <Label>Alloy *</Label>
-            <Select value={alloy} onValueChange={setAlloy}>
+            <Label>Material Grade / Alloy *</Label>
+            <Select value={gradeId} onValueChange={setGradeId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select alloy" />
+                <SelectValue placeholder="Select grade" />
               </SelectTrigger>
               <SelectContent className="bg-background z-50">
-                {alloyOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
+                {masterGrades.length === 0 ? (
+                  <div className="px-4 py-2 text-sm text-muted-foreground">No grades found</div>
+                ) : (
+                  masterGrades.map((grade) => (
+                    <SelectItem key={grade.id} value={grade.id}>
+                      {grade.name} {grade.category ? `(${grade.category})` : ''}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
-            <Input
-              className="mt-2"
-              value={alloy}
-              onChange={(e) => setAlloy(e.target.value)}
-              placeholder="Or enter manually (e.g. CuZn39Pb3)"
-            />
           </div>
+
+          {/* Material Summary */}
+          {materialSizeMM && alloy && (
+            <div className="p-3 bg-muted rounded-lg">
+              <Label className="text-xs text-muted-foreground">Material Specification</Label>
+              <p className="font-medium">{materialSizeMM} - {alloy}</p>
+            </div>
+          )}
 
           {/* Qty to Order */}
           <div>
