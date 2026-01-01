@@ -1,4 +1,4 @@
-# Raw Purchase Order & Material Workflow - 50 Point Audit
+# Raw Purchase Order & Gate Register Workflow - 50 Point Audit
 
 ## Audit Date: 2026-01-01
 ## Status: ✅ COMPLETE - ALL ISSUES FIXED
@@ -7,7 +7,15 @@
 
 ## EXECUTIVE SUMMARY
 
-A comprehensive audit was performed on the Raw Purchase Order (RPO) system and Material Inwards workflow. **4 critical navigation errors** were identified and fixed. The entire raw material procurement flow has been verified and is now fully operational.
+A comprehensive audit was performed on the Raw Purchase Order (RPO) system and Gate Register workflow. **5 critical navigation errors** were identified and fixed. The entire raw material procurement flow has been verified and is now fully operational.
+
+**IMPORTANT ARCHITECTURE NOTE**: Gate Register is the **single unified page** for ALL material movements in/out of the factory, including:
+- Raw materials from suppliers
+- External processing returns
+- Finished goods dispatch
+- Scrap movements
+
+There is NO separate "Material Inwards" page in navigation - everything goes through Gate Register.
 
 ---
 
@@ -17,18 +25,18 @@ A comprehensive audit was performed on the Raw Purchase Order (RPO) system and M
 
 | # | File | Line | Issue | Fix Applied |
 |---|------|------|-------|-------------|
-| 1 | `RawPurchaseOrders.tsx` | 330 | "Receive" button navigated to `/material-inwards` (404) | Changed to `/materials/inwards` |
-| 2 | `ComprehensiveDepartmentStatus.tsx` | 106 | Goods In card clicked `/material-inwards` (404) | Changed to `/materials/inwards` |
+| 1 | `RawPurchaseOrders.tsx` | 330 | "Receive" button navigated to `/material-inwards` (404) | Changed to `/gate-register?rpo_id=...&material_type=raw_material&direction=IN` |
+| 2 | `ComprehensiveDepartmentStatus.tsx` | 106 | Goods In card clicked `/material-inwards` (404) | Changed to `/gate-register` |
 | 3 | `ProcurementDashboard.tsx` | 490 | Create RPO button navigated to `/raw-purchase-orders` (404) | Changed to `/purchase/raw-po` |
 | 4 | `ProcurementDashboard.tsx` | 750 | Create RPO link navigated to `/raw-purchase-orders` (404) | Changed to `/purchase/raw-po` |
 | 5 | `ProcurementDashboard.tsx` | 805 | View PO link navigated to `/raw-purchase-orders` (404) | Changed to `/purchase/raw-po` |
 
-### 🟡 NAVIGATION CONFIG GAPS (Fixed)
+### 🟢 GATE REGISTER ENHANCEMENT (Added)
 
-| # | Issue | Fix Applied |
-|---|-------|-------------|
-| 1 | Material Inwards page not in navigation menu | Added to Procurement group in `navigationConfig.ts` |
-| 2 | Permission mapping for `/materials/inwards` was under Logistics | Moved to Procurement section in `useDepartmentPermissions.ts` |
+| # | Enhancement | Description |
+|---|------------|-------------|
+| 1 | RPO URL param support | Gate Register now accepts `?rpo_id=...&material_type=raw_material&direction=IN` to pre-fill form from RPO |
+| 2 | Auto-open form | When RPO params detected, automatically opens Goods In form with pre-filled data |
 
 ---
 
@@ -52,16 +60,15 @@ A comprehensive audit was performed on the Raw Purchase Order (RPO) system and M
           │ "Receive" button (when approved)
           ▼
 ┌─────────────────────┐
-│   Material Inwards │ ← Auto-selects RPO, pre-fills data
-│   /materials/      │
-│   inwards          │
+│   Gate Register    │ ← UNIFIED page for ALL material in/out
+│   /gate-register   │   Pre-fills from RPO via URL params
+│   (Goods In tab)   │
 └─────────┬──────────┘
           │ Creates records:
-          │ 1. raw_po_receipts (receipt record)
-          │ 2. inventory_lots (inventory entry)
-          │ 3. raw_po_reconciliations (if variance)
-          │ 4. execution_records (for traceability)
-          │ 5. Updates RPO status
+          │ 1. gate_register (gate entry)
+          │ 2. inventory_lots (inventory entry)  
+          │ 3. execution_records (traceability)
+          │ 4. Updates RPO status via trigger/workflow
           ▼
 ┌─────────────────────┐
 │   Inventory        │ ← Material available for production
@@ -77,8 +84,8 @@ A comprehensive audit was performed on the Raw Purchase Order (RPO) system and M
 
 | # | Button/Action | Location | Target Route | Status |
 |---|--------------|----------|--------------|--------|
-| 1 | "Receive" button (Approved RPO) | `RawPurchaseOrders.tsx` line 537-540 | `/materials/inwards?rpo_id=...` | ✅ FIXED |
-| 2 | "Receive" button (List view) | `RawPurchaseOrders.tsx` line 899-901 | `/materials/inwards?rpo_id=...` | ✅ FIXED |
+| 1 | "Receive" button (Approved RPO) | `RawPurchaseOrders.tsx` line 537-540 | `/gate-register?rpo_id=...` | ✅ FIXED |
+| 2 | "Receive" button (List view) | `RawPurchaseOrders.tsx` line 899-901 | `/gate-register?rpo_id=...` | ✅ FIXED |
 | 3 | "Edit" button | `RawPurchaseOrders.tsx` line 525-528 | In-page form toggle | ✅ OK |
 | 4 | "Approve" button | `RawPurchaseOrders.tsx` line 531-534, 894-896 | In-page action | ✅ OK |
 | 5 | "Back to List" | `RawPurchaseOrders.tsx` line 503-506 | In-page state toggle | ✅ OK |

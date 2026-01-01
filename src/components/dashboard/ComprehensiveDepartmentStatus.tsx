@@ -103,7 +103,7 @@ export const ComprehensiveDepartmentStatus = () => {
     completedQtyKg: 0,
     progressPercentage: 0,
     status: 'done',
-    onClick: () => navigate('/materials/inwards'),
+    onClick: () => navigate('/gate-register'),
     isExternal: false
   };
 

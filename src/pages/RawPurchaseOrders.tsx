@@ -326,8 +326,8 @@ export default function RawPurchaseOrders() {
   };
 
   const handleReceiveMaterial = (rpo: RPO) => {
-    // Navigate to Material Inwards with pre-filled data
-    navigate(`/materials/inwards?rpo_id=${rpo.id}&rpo_no=${rpo.rpo_no}`);
+    // Navigate to Gate Register with pre-filled RPO data for raw material IN
+    navigate(`/gate-register?rpo_id=${rpo.id}&material_type=raw_material&direction=IN`);
   };
 
   const handleMarkResolved = async (reconId: string, resolution: string, resolutionRef: string, notes: string) => {
