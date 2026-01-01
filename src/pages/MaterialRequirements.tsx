@@ -310,7 +310,16 @@ export default function MaterialRequirements() {
     const groups = new Map<string, MaterialGroup>();
 
     workOrders.forEach(wo => {
-      const key = `${wo.shape}-${parseSize(wo.material_size_mm).size}-${wo.alloy}`;
+      // Extract parsed size
+      const parsedSize = parseSize(wo.material_size_mm);
+      
+      // Skip work orders with incomplete material specifications
+      // Must have a valid numeric size
+      if (!parsedSize.size || parsedSize.size === '') {
+        return; // Skip this work order
+      }
+      
+      const key = `${wo.shape}-${parsedSize.size}-${wo.alloy}`;
       
       if (!groups.has(key)) {
         const invKey = normalizeKey(wo.material_size_mm, wo.alloy);
@@ -326,7 +335,7 @@ export default function MaterialRequirements() {
           key,
           material_grade: wo.material_grade,
           shape: wo.shape,
-          size_mm: parseSize(wo.material_size_mm).size,
+          size_mm: parsedSize.size,
           alloy: wo.alloy,
           total_required_kg: 0,
           total_required_pcs: 0,
