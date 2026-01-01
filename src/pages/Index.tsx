@@ -176,8 +176,19 @@ const Index = () => {
           heat_treatment: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
         };
 
+        // Map process names from view to internal keys
+        const processKeyMap: Record<string, string> = {
+          'Job Work': 'job_work',
+          'Plating': 'plating',
+          'Buffing': 'buffing',
+          'Blasting': 'blasting',
+          'Forging': 'forging_ext',
+          'Heat Treatment': 'heat_treatment'
+        };
+
         extSummary.forEach((row: any) => {
-          const processKey = row.process_name as string;
+          const processName = row.process_name as string;
+          const processKey = processKeyMap[processName] || processName.toLowerCase().replace(/\s+/g, '_');
           if (extData[processKey]) {
             const kgTotal = row.kg_total ?? 0;
             extData[processKey] = {
