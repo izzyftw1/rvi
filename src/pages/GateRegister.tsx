@@ -1422,13 +1422,13 @@ export default function GateRegister() {
               {formData.material_type === 'raw_material' && formDirection === 'IN' && (
                 <div>
                   <Label>Raw Material PO (Optional)</Label>
-                  <Select value={formData.rpo_id} onValueChange={handleRPOChange}>
+                  <Select value={formData.rpo_id || "none"} onValueChange={(v) => handleRPOChange(v === "none" ? "" : v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select RPO to receive against" />
                     </SelectTrigger>
                     <SelectContent className="bg-background z-50 max-h-64">
-                      <SelectItem value="">-- No PO (Ad-hoc Receipt) --</SelectItem>
-                      {rpos.map(rpo => (
+                      <SelectItem value="none">-- No PO (Ad-hoc Receipt) --</SelectItem>
+                      {rpos.filter(rpo => rpo.id).map(rpo => (
                         <SelectItem key={rpo.id} value={rpo.id}>
                           <div className="flex flex-col">
                             <span className="font-medium">{rpo.rpo_no}</span>
@@ -1465,14 +1465,15 @@ export default function GateRegister() {
                     <div>
                       <Label>Material Form</Label>
                       <Select
-                        value={formData.material_form}
-                        onValueChange={(v) => setFormData(prev => ({ ...prev, material_form: v }))}
+                        value={formData.material_form || "none"}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, material_form: v === "none" ? "" : v }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select form" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50">
-                          {materialForms.map(f => (
+                          <SelectItem value="none">-- Select --</SelectItem>
+                          {materialForms.filter(f => f.name).map(f => (
                             <SelectItem key={f.id} value={f.name}>{f.name.toUpperCase()}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1481,10 +1482,10 @@ export default function GateRegister() {
                     <div>
                       <Label>Cross Section Shape</Label>
                       <Select
-                        value={formData.cross_section_shape}
+                        value={formData.cross_section_shape || "none"}
                         onValueChange={(v) => setFormData(prev => ({ 
                           ...prev, 
-                          cross_section_shape: v,
+                          cross_section_shape: v === "none" ? "" : v,
                           rod_section_size: '' // Reset size when shape changes
                         }))}
                       >
@@ -1492,7 +1493,8 @@ export default function GateRegister() {
                           <SelectValue placeholder="Select shape" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50">
-                          {crossSectionShapes.map(s => (
+                          <SelectItem value="none">-- Select --</SelectItem>
+                          {crossSectionShapes.filter(s => s.name).map(s => (
                             <SelectItem key={s.id} value={s.name}>{s.name.toUpperCase()}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1505,32 +1507,37 @@ export default function GateRegister() {
                     <div>
                       <Label>Nominal Size</Label>
                       <Select
-                        value={formData.rod_section_size}
-                        onValueChange={(v) => setFormData(prev => ({ ...prev, rod_section_size: v }))}
+                        value={formData.rod_section_size || "none"}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, rod_section_size: v === "none" ? "" : v }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select size" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50 max-h-48">
-                          {filteredNominalSizes.map(s => (
-                            <SelectItem key={s.id} value={s.display_label || `${s.size_value}${s.unit || 'mm'}`}>
-                              {s.display_label || `${s.size_value} ${s.unit || 'mm'}`}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="none">-- Select --</SelectItem>
+                          {filteredNominalSizes.filter(s => s.display_label || s.size_value).map(s => {
+                            const sizeValue = s.display_label || `${s.size_value}${s.unit || 'mm'}`;
+                            return (
+                              <SelectItem key={s.id} value={sizeValue}>
+                                {s.display_label || `${s.size_value} ${s.unit || 'mm'}`}
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
                       <Label>Material Grade (Alloy)</Label>
                       <Select
-                        value={formData.alloy}
-                        onValueChange={(v) => setFormData(prev => ({ ...prev, alloy: v, material_grade: v }))}
+                        value={formData.alloy || "none"}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, alloy: v === "none" ? "" : v, material_grade: v === "none" ? "" : v }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select grade" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50 max-h-48">
-                          {materialGrades.map(g => (
+                          <SelectItem value="none">-- Select --</SelectItem>
+                          {materialGrades.filter(g => g.name).map(g => (
                             <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1557,12 +1564,13 @@ export default function GateRegister() {
                   </div>
                   <div>
                     <Label>Supplier</Label>
-                    <Select value={formData.supplier_id} onValueChange={handleSupplierChange}>
+                    <Select value={formData.supplier_id || "none"} onValueChange={(v) => handleSupplierChange(v === "none" ? "" : v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select supplier" />
                       </SelectTrigger>
                       <SelectContent className="bg-background z-50 max-h-48">
-                        {suppliers.map(s => (
+                        <SelectItem value="none">-- Select --</SelectItem>
+                        {suppliers.filter(s => s.id).map(s => (
                           <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1587,12 +1595,13 @@ export default function GateRegister() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>External Partner</Label>
-                      <Select value={formData.partner_id} onValueChange={handlePartnerChange}>
+                      <Select value={formData.partner_id || "none"} onValueChange={(v) => handlePartnerChange(v === "none" ? "" : v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select partner" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50 max-h-48">
-                          {partners.map(p => (
+                          <SelectItem value="none">-- Select --</SelectItem>
+                          {partners.filter(p => p.id).map(p => (
                             <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1601,14 +1610,15 @@ export default function GateRegister() {
                     <div>
                       <Label>Process Type</Label>
                       <Select
-                        value={formData.process_type}
-                        onValueChange={(v) => setFormData(prev => ({ ...prev, process_type: v }))}
+                        value={formData.process_type || "none"}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, process_type: v === "none" ? "" : v }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select process" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50">
-                          {processTypes.map(p => (
+                          <SelectItem value="none">-- Select --</SelectItem>
+                          {processTypes.filter(p => p).map(p => (
                             <SelectItem key={p} value={p}>{p}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1634,8 +1644,12 @@ export default function GateRegister() {
               <div>
                 <Label>Customer / Party</Label>
                 <Select
-                  value={formData.customer_id}
+                  value={formData.customer_id || "none"}
                   onValueChange={(v) => {
+                    if (v === "none") {
+                      setFormData(prev => ({ ...prev, customer_id: '', party_code: '' }));
+                      return;
+                    }
                     const customer = customers.find(c => c.id === v);
                     setFormData(prev => ({
                       ...prev,
@@ -1648,7 +1662,8 @@ export default function GateRegister() {
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50 max-h-48">
-                    {customers.map(c => (
+                    <SelectItem value="none">-- Select --</SelectItem>
+                    {customers.filter(c => c.id).map(c => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.customer_name} {c.party_code ? `(${c.party_code})` : ''}
                       </SelectItem>
@@ -1662,14 +1677,15 @@ export default function GateRegister() {
                 <div>
                   <Label>Linked Work Order *</Label>
                   <Select
-                    value={formData.work_order_id}
-                    onValueChange={handleWorkOrderChange}
+                    value={formData.work_order_id || "none"}
+                    onValueChange={(v) => handleWorkOrderChange(v === "none" ? "" : v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select work order" />
                     </SelectTrigger>
                     <SelectContent className="bg-background z-50 max-h-48">
-                      {workOrders.map(wo => (
+                      <SelectItem value="none">-- Select --</SelectItem>
+                      {workOrders.filter(wo => wo.id).map(wo => (
                         <SelectItem key={wo.id} value={wo.id}>
                           {wo.wo_number} - {wo.item_code} ({wo.customer || 'N/A'})
                         </SelectItem>
