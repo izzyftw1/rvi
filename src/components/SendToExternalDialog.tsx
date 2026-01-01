@@ -434,24 +434,38 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       }
       
       // Also create/update production batch for external process tracking
-      const { error: batchError } = await supabase
+      // CRITICAL FIX: Explicitly cast stage_type to the enum type and include stage_entered_at
+      const now = new Date().toISOString();
+      const { data: batchData, error: batchError } = await supabase
         .from("production_batches")
         .insert({
           wo_id: workOrder.id,
           batch_quantity: qty,
           current_location_type: 'external_partner',
+          current_location_ref: partnerId,
           current_process: process,
-          stage_type: 'external',
+          stage_type: 'external' as const, // Explicitly cast as enum value
           external_partner_id: partnerId,
           external_process_type: process,
-          external_sent_at: new Date().toISOString(),
+          external_sent_at: now,
+          stage_entered_at: now,
           batch_status: 'in_progress',
           trigger_reason: `external_${process?.toLowerCase().replace(/\s+/g, '_')}`,
           created_by: user?.id,
-        });
+        })
+        .select('id')
+        .single();
       
       if (batchError) {
         console.error("Failed to create production batch for external:", batchError);
+        // Don't fail the whole operation, challan was already created
+        toast({
+          title: "Warning",
+          description: "Challan created but batch tracking failed. Data may not appear in dashboards.",
+          variant: "destructive",
+        });
+      } else {
+        console.log("Created external batch:", batchData?.id);
       }
 
       // Reload quantity tracking
