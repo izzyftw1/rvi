@@ -44,6 +44,7 @@ export const routeToPageKey: Record<string, string> = {
   '/procurement': 'purchase-dashboard',
   '/material-requirements': 'material-requirements',
   '/material-requirements-v2': 'material-requirements',
+  '/materials/inwards': 'material-inwards',
   '/inventory-procurement': 'material-requirements',
   '/reports/rpo-inventory': 'material-requirements',
   
@@ -98,7 +99,6 @@ export const routeToPageKey: Record<string, string> = {
   '/packing': 'packing',
   '/dispatch': 'dispatch',
   '/goods-inwards': 'gate-register',
-  '/materials/inwards': 'gate-register',
   
   // === EXTERNAL PROCESSES ===
   '/partners': 'partner-dashboard',
