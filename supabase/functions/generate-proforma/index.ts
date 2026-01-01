@@ -192,7 +192,7 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   
   // Address - on its own line
   doc.setFontSize(8);
-  doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', textStartX, yPos + 20);
+  doc.text('Plot No 11 & 12, Sadguru Industrial Area, Jamnagar, 361006 (Gujarat) India', textStartX, yPos + 20);
   
   // Certifications on the far right - stacked properly
   const certX = rightMargin - 2;
@@ -719,15 +719,19 @@ const handler = async (req: Request): Promise<Response> => {
     const gstAmount = (subtotal * gstPercent) / 100;
     const totalAmount = subtotal + gstAmount;
     
-    // Calculate advance payment
+    // Calculate advance payment - handle both 'percent' and 'percentage' types
     let advancePercent = 0;
     let advanceAmount = 0;
     if (order.advance_payment) {
-      if (order.advance_payment.type === 'percentage') {
+      const advType = order.advance_payment.type;
+      // Support both 'percent' (from frontend) and 'percentage' (legacy)
+      if (advType === 'percent' || advType === 'percentage') {
         advancePercent = order.advance_payment.value || 0;
         advanceAmount = order.advance_payment.calculated_amount || (totalAmount * advancePercent / 100);
-      } else {
-        advanceAmount = order.advance_payment.value || order.advance_payment.calculated_amount || 0;
+      } else if (advType === 'fixed') {
+        // Fixed amount - store as advance amount, calculate percent for display
+        advanceAmount = order.advance_payment.calculated_amount || order.advance_payment.value || 0;
+        advancePercent = totalAmount > 0 ? (advanceAmount / totalAmount) * 100 : 0;
       }
     }
     

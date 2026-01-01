@@ -96,7 +96,7 @@ const drawHeader = (doc: jsPDF, pageWidth: number): number => {
   
   // Address
   doc.setFontSize(8);
-  doc.text("Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India", 45, yPos + 15);
+  doc.text("Plot No 11 & 12, Sadguru Industrial Area, Jamnagar, 361006 (Gujarat) India", 45, yPos + 15);
   
   // Certifications (right side) - with brand colors
   const certX = pageWidth - 14;

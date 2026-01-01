@@ -97,7 +97,7 @@ const addLetterhead = (doc: jsPDF) => {
   
   // Contact details
   doc.setFontSize(7);
-  doc.text('Plot No 11, 12/1 & 12/2, Near Prime International School, Kansumara Main Road, Sadguru Industrial Area, Jamnagar - 6. (Guj.) India', 105, 30, { align: 'center' });
+  doc.text('Plot No 11 & 12, Sadguru Industrial Area, Jamnagar, 361006 (Gujarat) India', 105, 30, { align: 'center' });
   doc.text('www.brasspartsindia.net | brassinserts@gmail.com | sales@brasspartsindia.net | +91 288 2564431 / 2567731', 105, 34, { align: 'center' });
   
   // Line separator
