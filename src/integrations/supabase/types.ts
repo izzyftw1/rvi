@@ -6986,6 +6986,8 @@ export type Database = {
           item_code: string | null
           material_requirement_id: string | null
           material_size_mm: string | null
+          overstock_reason: string | null
+          procurement_type: string
           qty_ordered_kg: number
           rate_per_kg: number
           remarks: string | null
@@ -7011,6 +7013,8 @@ export type Database = {
           item_code?: string | null
           material_requirement_id?: string | null
           material_size_mm?: string | null
+          overstock_reason?: string | null
+          procurement_type?: string
           qty_ordered_kg: number
           rate_per_kg: number
           remarks?: string | null
@@ -7036,6 +7040,8 @@ export type Database = {
           item_code?: string | null
           material_requirement_id?: string | null
           material_size_mm?: string | null
+          overstock_reason?: string | null
+          procurement_type?: string
           qty_ordered_kg?: number
           rate_per_kg?: number
           remarks?: string | null
@@ -10572,7 +10578,6 @@ export type Database = {
         | "hold_shipments"
         | "legal"
       rpo_status:
-        | "draft"
         | "pending_approval"
         | "approved"
         | "part_received"
@@ -10891,7 +10896,6 @@ export const Constants = {
         "legal",
       ],
       rpo_status: [
-        "draft",
         "pending_approval",
         "approved",
         "part_received",

@@ -14,10 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, Edit, PackagePlus, ArrowLeft, Download, Home } from "lucide-react";
+import { CheckCircle, Edit, PackagePlus, ArrowLeft, Download, Home, Plus, Package } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReconciliationRow } from "@/components/ReconciliationRow";
+import { OverstockRPOModal } from "@/components/procurement/OverstockRPOModal";
 
 interface RPO {
   id: string;
@@ -84,14 +85,14 @@ export default function RawPurchaseOrders() {
   const [loading, setLoading] = useState(true);
   const [rpos, setRpos] = useState<RPO[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [selectedTab, setSelectedTab] = useState("draft");
+  const [selectedTab, setSelectedTab] = useState("pending_approval");
   const [selectedRPO, setSelectedRPO] = useState<RPO | null>(null);
   const [detailView, setDetailView] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [detailTab, setDetailTab] = useState("overview");
-
+  const [overstockModalOpen, setOverstockModalOpen] = useState(false);
   // Master data for dropdowns
   const [materialGrades, setMaterialGrades] = useState<{id: string; name: string; category: string | null}[]>([]);
   const [nominalSizes, setNominalSizes] = useState<{id: string; size_value: number; display_label: string | null}[]>([]);
@@ -452,7 +453,6 @@ export default function RawPurchaseOrders() {
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: any; className?: string }> = {
-      draft: { variant: "outline" },
       pending_approval: { variant: "secondary", className: "bg-amber-100 text-amber-700 dark:bg-amber-950" },
       approved: { variant: "default", className: "bg-green-600" },
       part_received: { variant: "default", className: "bg-blue-600" },
@@ -807,7 +807,7 @@ export default function RawPurchaseOrders() {
     <div className="min-h-screen bg-background">
       <NavigationHeader title="Raw Purchase Orders" subtitle="Manage raw material procurement" />
       
-      <div className="p-6 pb-0">
+      <div className="p-6 pb-0 flex justify-between items-start">
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -822,12 +822,16 @@ export default function RawPurchaseOrders() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+        
+        <Button onClick={() => setOverstockModalOpen(true)} className="gap-2">
+          <Package className="h-4 w-4" />
+          Create Overstock RPO
+        </Button>
       </div>
 
       <div className="p-6">
         <Tabs value={selectedTab} onValueChange={setSelectedTab}>
           <TabsList className="mb-4">
-            <TabsTrigger value="draft">Draft</TabsTrigger>
             <TabsTrigger value="pending_approval">Pending Approval</TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
             <TabsTrigger value="part_received">Part Received</TabsTrigger>
@@ -911,6 +915,12 @@ export default function RawPurchaseOrders() {
           </TabsContent>
         </Tabs>
       </div>
+      
+      <OverstockRPOModal 
+        open={overstockModalOpen} 
+        onClose={() => setOverstockModalOpen(false)} 
+        onSuccess={loadData} 
+      />
     </div>
   );
 }
