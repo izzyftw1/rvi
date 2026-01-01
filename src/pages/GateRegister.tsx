@@ -53,6 +53,23 @@ interface WorkOrder {
   quantity: number;
 }
 
+interface RPO {
+  id: string;
+  rpo_no: string;
+  material_size_mm: string | null;
+  alloy: string | null;
+  qty_ordered_kg: number;
+  rate_per_kg: number | null;
+  expected_delivery_date: string | null;
+  status: string;
+  supplier_id: string | null;
+  wo_id: string | null;
+  item_code: string | null;
+  supplier_name?: string;
+  total_received_kg?: number;
+  remaining_kg?: number;
+}
+
 interface GateEntry {
   id: string;
   gate_entry_no: string;
@@ -181,6 +198,7 @@ export default function GateRegister() {
   const [processTypes, setProcessTypes] = useState<string[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [rpos, setRpos] = useState<RPO[]>([]);
 
   // Gate entries ledger
   const [entries, setEntries] = useState<GateEntry[]>([]);
@@ -215,6 +233,7 @@ export default function GateRegister() {
     transporter: '',
     qc_required: true,
     remarks: '',
+    rpo_id: '',
   });
 
   // NEW: Packaging state managed by PackagingCalculator
@@ -285,7 +304,8 @@ export default function GateRegister() {
         loadProcessTypes(),
         loadCustomers(),
         loadWorkOrders(),
-        loadEntries()
+        loadEntries(),
+        loadRPOs()
       ]);
       
       // Check for RPO pre-fill from URL params (coming from Raw PO "Receive" button)
@@ -303,6 +323,8 @@ export default function GateRegister() {
     const channel = supabase
       .channel('gate-register-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gate_register' }, () => loadEntries())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, () => loadRPOs())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_po_receipts' }, () => loadRPOs())
       .subscribe();
 
     return () => {
@@ -335,6 +357,7 @@ export default function GateRegister() {
       setFormData(prev => ({
         ...prev,
         material_type: 'raw_material',
+        rpo_id: rpo.id,
         rod_section_size: rpo.material_size_mm || '',
         alloy: rpo.alloy || '',
         material_grade: rpo.alloy || '',
@@ -449,6 +472,82 @@ export default function GateRegister() {
     })) || []);
   };
 
+  // Load approved/part_received RPOs for raw material receiving
+  const loadRPOs = async () => {
+    const { data: rpoData, error } = await supabase
+      .from("raw_purchase_orders")
+      .select(`
+        id, rpo_no, material_size_mm, alloy, qty_ordered_kg, rate_per_kg,
+        expected_delivery_date, status, supplier_id, wo_id, item_code,
+        suppliers(name)
+      `)
+      .in("status", ["approved", "part_received"])
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+      console.error("Error loading RPOs:", error);
+      return;
+    }
+    
+    // Calculate received quantities for each RPO
+    const rposWithReceipts = await Promise.all(
+      (rpoData || []).map(async (rpo: any) => {
+        const { data: receipts } = await supabase
+          .from("raw_po_receipts")
+          .select("qty_received_kg")
+          .eq("rpo_id", rpo.id);
+        
+        const totalReceived = receipts?.reduce((sum, r) => sum + (r.qty_received_kg || 0), 0) || 0;
+        const remaining = rpo.qty_ordered_kg - totalReceived;
+        
+        return {
+          id: rpo.id,
+          rpo_no: rpo.rpo_no,
+          material_size_mm: rpo.material_size_mm,
+          alloy: rpo.alloy,
+          qty_ordered_kg: rpo.qty_ordered_kg,
+          rate_per_kg: rpo.rate_per_kg,
+          expected_delivery_date: rpo.expected_delivery_date,
+          status: rpo.status,
+          supplier_id: rpo.supplier_id,
+          wo_id: rpo.wo_id,
+          item_code: rpo.item_code,
+          supplier_name: rpo.suppliers?.name || '',
+          total_received_kg: totalReceived,
+          remaining_kg: remaining,
+        } as RPO;
+      })
+    );
+    
+    setRpos(rposWithReceipts);
+  };
+
+  // Handle RPO selection - prefills form with RPO data
+  const handleRPOChange = (rpoId: string) => {
+    const rpo = rpos.find(r => r.id === rpoId);
+    if (rpo) {
+      setFormData(prev => ({
+        ...prev,
+        rpo_id: rpoId,
+        rod_section_size: rpo.material_size_mm || prev.rod_section_size,
+        alloy: rpo.alloy || prev.alloy,
+        material_grade: rpo.alloy || prev.material_grade,
+        supplier_id: rpo.supplier_id || prev.supplier_id,
+        supplier_name: rpo.supplier_name || prev.supplier_name,
+        work_order_id: rpo.wo_id || prev.work_order_id,
+        item_name: rpo.item_code || prev.item_name,
+        remarks: `RPO: ${rpo.rpo_no}${prev.remarks && !prev.remarks.includes('RPO:') ? ` | ${prev.remarks}` : ''}`,
+      }));
+      
+      toast({ 
+        title: "RPO Selected", 
+        description: `${rpo.rpo_no}: ${rpo.remaining_kg?.toFixed(1)} kg remaining` 
+      });
+    } else {
+      setFormData(prev => ({ ...prev, rpo_id: '' }));
+    }
+  };
+
   const loadEntries = async () => {
     const { data, error } = await supabase
       .from("gate_register")
@@ -508,6 +607,7 @@ export default function GateRegister() {
       transporter: '',
       qc_required: direction === 'IN',
       remarks: '',
+      rpo_id: '',
     });
     // Reset packaging to None/N/A (default for raw material)
     setPackagingRows([{ id: crypto.randomUUID(), type: 'NONE', count: 1 }]);
@@ -618,6 +718,7 @@ export default function GateRegister() {
         partner_id?: string | null;
         process_type?: string | null;
         work_order_id?: string | null;
+        rpo_id?: string | null;
         challan_no?: string | null;
         dc_number?: string | null;
         vehicle_no?: string | null;
@@ -658,6 +759,7 @@ export default function GateRegister() {
         partner_id: formData.partner_id || null,
         process_type: formData.process_type || null,
         work_order_id: formData.work_order_id || null,
+        rpo_id: formData.rpo_id || null,
         customer_id: formData.customer_id || null,
         challan_no: formData.challan_no || null,
         dc_number: formData.dc_number || null,
@@ -676,6 +778,117 @@ export default function GateRegister() {
         .single();
 
       if (error) throw error;
+
+      // RAW MATERIAL RECEIPT WORKFLOW - Update RPO, create receipt record, create inventory lot
+      if (formData.material_type === 'raw_material' && formDirection === 'IN') {
+        const receivedQtyKg = netWeight > 0 ? netWeight : grossWeight;
+        
+        // If linked to an RPO, update RPO-related tables
+        if (formData.rpo_id) {
+          const selectedRPO = rpos.find(r => r.id === formData.rpo_id);
+          
+          // 1. Create raw_po_receipts record
+          const { data: receiptData, error: receiptError } = await supabase
+            .from("raw_po_receipts")
+            .insert({
+              rpo_id: formData.rpo_id,
+              gi_ref: data.id, // Link to gate register entry
+              received_date: new Date().toISOString().split('T')[0],
+              qty_received_kg: receivedQtyKg,
+              supplier_invoice_no: formData.challan_no || null,
+              lr_no: null,
+              transporter: formData.transporter || null,
+              notes: formData.remarks || null,
+            })
+            .select()
+            .single();
+          
+          if (receiptError) {
+            console.warn("Failed to create raw_po_receipts record:", receiptError);
+          }
+          
+          // 2. Create inventory_lots record
+          const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
+          const { error: lotError } = await supabase
+            .from("inventory_lots")
+            .insert({
+              lot_id: lotId,
+              material_size_mm: formData.rod_section_size || null,
+              alloy: formData.alloy || null,
+              qty_kg: receivedQtyKg,
+              supplier_id: formData.supplier_id || null,
+              rpo_id: formData.rpo_id,
+              heat_no: formData.heat_no || null,
+              received_date: new Date().toISOString().split('T')[0],
+              cost_rate: selectedRPO?.rate_per_kg || null,
+            });
+          
+          if (lotError) {
+            console.warn("Failed to create inventory_lots record:", lotError);
+          }
+          
+          // 3. Calculate total received for RPO and update status
+          const { data: allReceipts } = await supabase
+            .from("raw_po_receipts")
+            .select("qty_received_kg")
+            .eq("rpo_id", formData.rpo_id);
+          
+          const totalReceivedKg = allReceipts?.reduce((sum, r) => sum + (r.qty_received_kg || 0), 0) || 0;
+          const orderedQty = selectedRPO?.qty_ordered_kg || 0;
+          
+          // Determine new RPO status
+          let newStatus = 'part_received';
+          if (totalReceivedKg >= orderedQty) {
+            newStatus = 'received';
+          }
+          
+          await supabase
+            .from("raw_purchase_orders")
+            .update({ 
+              status: newStatus as any,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", formData.rpo_id);
+          
+          // 4. Create execution record for traceability (only if linked to WO)
+          if (formData.work_order_id) {
+            await createExecutionRecord({
+              workOrderId: formData.work_order_id,
+              operationType: 'RAW_MATERIAL',
+              processName: 'Raw Material Receipt',
+              quantity: receivedQtyKg,
+              unit: 'kg',
+              direction: 'IN',
+              relatedPartnerId: null,
+              relatedChallanId: null,
+            });
+          }
+          
+        } else {
+          // Ad-hoc receipt without RPO - still create inventory lot
+          const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
+          const { error: lotError } = await supabase
+            .from("inventory_lots")
+            .insert({
+              lot_id: lotId,
+              material_size_mm: formData.rod_section_size || null,
+              alloy: formData.alloy || null,
+              qty_kg: receivedQtyKg,
+              supplier_id: formData.supplier_id || null,
+              rpo_id: null,
+              heat_no: formData.heat_no || null,
+              received_date: new Date().toISOString().split('T')[0],
+              cost_rate: null,
+            });
+          
+          if (lotError) {
+            console.warn("Failed to create inventory_lots record:", lotError);
+          }
+        }
+        
+        // Reload RPOs to reflect updated quantities
+        loadRPOs();
+      }
 
       // If this is an external process with a work order, sync with wo_external_moves and production_batches
       if (formData.material_type === 'external_process' && formData.work_order_id && formData.process_type) {
@@ -1206,9 +1419,48 @@ export default function GateRegister() {
               </div>
 
               {/* Raw Material Fields */}
+              {formData.material_type === 'raw_material' && formDirection === 'IN' && (
+                <div>
+                  <Label>Raw Material PO (Optional)</Label>
+                  <Select value={formData.rpo_id} onValueChange={handleRPOChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select RPO to receive against" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background z-50 max-h-64">
+                      <SelectItem value="">-- No PO (Ad-hoc Receipt) --</SelectItem>
+                      {rpos.map(rpo => (
+                        <SelectItem key={rpo.id} value={rpo.id}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{rpo.rpo_no}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {rpo.supplier_name} | {rpo.alloy} {rpo.material_size_mm} | 
+                              Rem: {(rpo.remaining_kg || 0).toFixed(1)} kg
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formData.rpo_id && (
+                    <div className="mt-2 p-2 bg-muted/50 rounded text-xs">
+                      {(() => {
+                        const selectedRPO = rpos.find(r => r.id === formData.rpo_id);
+                        if (!selectedRPO) return null;
+                        return (
+                          <div className="flex justify-between">
+                            <span>Ordered: {selectedRPO.qty_ordered_kg} kg</span>
+                            <span>Received: {(selectedRPO.total_received_kg || 0).toFixed(1)} kg</span>
+                            <span className="font-medium text-primary">Remaining: {(selectedRPO.remaining_kg || 0).toFixed(1)} kg</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {formData.material_type === 'raw_material' && (
                 <>
-                  {/* Material Form and Shape */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Material Form</Label>
