@@ -487,7 +487,7 @@ export default function ProcurementDashboard() {
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button onClick={() => navigate('/raw-purchase-orders')}>
+            <Button onClick={() => navigate('/purchase/raw-po')}>
               <PackagePlus className="h-4 w-4 mr-2" />
               Create RPO
             </Button>
@@ -747,7 +747,7 @@ export default function ProcurementDashboard() {
                               {summary.deficit_kg > 0 && (
                                 <Button 
                                   size="sm" 
-                                  onClick={() => navigate(`/raw-purchase-orders?alloy=${summary.alloy}&size=${summary.size_mm}`)}
+                                  onClick={() => navigate(`/purchase/raw-po?alloy=${summary.alloy}&size=${summary.size_mm}`)}
                                 >
                                   <PackagePlus className="h-4 w-4 mr-2" />
                                   Create RPO for {summary.deficit_kg.toFixed(1)} kg
@@ -802,7 +802,7 @@ export default function ProcurementDashboard() {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => navigate(`/raw-purchase-orders?rpo_no=${po.rpo_no}`)}
+                            onClick={() => navigate(`/purchase/raw-po?rpo_no=${po.rpo_no}`)}
                           >
                             <ExternalLink className="h-4 w-4" />
                           </Button>

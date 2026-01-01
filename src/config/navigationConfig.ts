@@ -89,6 +89,7 @@ export const navigationGroups: NavGroup[] = [
     allowedRoles: ['admin', 'procurement', 'purchase'],
     items: [
       { label: "Raw PO", path: "/purchase/raw-po", icon: Truck, pageKey: "raw-po" },
+      { label: "Material Inwards", path: "/materials/inwards", icon: ArrowDownToLine, pageKey: "material-inwards" },
       { label: "Material Requirements", path: "/material-requirements", icon: Boxes, pageKey: "material-requirements" },
       { label: "Purchase Dashboard", path: "/purchase/dashboard", icon: BarChart3, pageKey: "purchase-dashboard" },
     ]
