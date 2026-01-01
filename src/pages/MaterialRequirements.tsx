@@ -294,7 +294,7 @@ export default function MaterialRequirements() {
     const { data, error } = await supabase
       .from('raw_purchase_orders')
       .select('*')
-      .in('status', ['draft', 'pending_approval', 'approved', 'part_received']);
+      .in('status', ['pending_approval', 'approved', 'part_received']);
 
     if (error) throw error;
     setRpoData(data || []);

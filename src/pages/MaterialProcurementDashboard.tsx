@@ -178,7 +178,7 @@ export default function MaterialProcurementDashboard() {
           raw_po_receipts(received_date, rate_on_invoice),
           raw_po_reconciliations(reason)
         `)
-        .neq("status", "draft");
+        .neq("status", "cancelled");
 
       if (rpoError) throw rpoError;
 

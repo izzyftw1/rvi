@@ -165,7 +165,7 @@ export default function MaterialRequirementsDashboard() {
       const { count: pendingPOs } = await supabase
         .from('raw_purchase_orders')
         .select('*', { count: 'exact', head: true })
-        .in('status', ['draft', 'pending_approval']);
+        .eq('status', 'pending_approval');
 
       setSummary({
         totalRequired,

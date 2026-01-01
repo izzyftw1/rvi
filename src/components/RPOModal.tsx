@@ -191,11 +191,6 @@ export function RPOModal({
     return true;
   };
 
-  const handleSaveDraft = async () => {
-    if (!validateForm()) return;
-    await saveRPO("draft");
-  };
-
   const handleSubmitForApproval = async () => {
     if (!validateForm()) return;
     await saveRPO("pending_approval");
@@ -247,20 +242,20 @@ export function RPOModal({
     }
   };
 
-  const saveRPO = async (status: "draft" | "pending_approval") => {
+  const saveRPO = async (status: "pending_approval") => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      // Check for existing draft RPO for same WO/Size/Alloy
+      // Check for existing pending RPO for same WO/Size/Alloy
       const { data: existingRPO } = await supabase
         .from("raw_purchase_orders")
         .select("rpo_no, status")
         .eq("wo_id", selectedWO)
         .eq("material_size_mm", materialSizeMM)
         .eq("alloy", alloy)
-        .in("status", ["draft", "pending_approval"])
+        .eq("status", "pending_approval")
         .maybeSingle();
 
       if (existingRPO) {
@@ -281,6 +276,9 @@ export function RPOModal({
       const rate = parseFloat(ratePerKg);
       const amount = qty * rate;
 
+      // Determine procurement type based on linkage
+      const isSalesLinked = selectedWO || linkedSalesOrders[0]?.id;
+
       const { error } = await supabase
         .from("raw_purchase_orders")
         .insert({
@@ -297,14 +295,16 @@ export function RPOModal({
           rate_per_kg: rate,
           amount_ordered: amount,
           expected_delivery_date: expectedDelivery || null,
-          remarks
+          remarks,
+          procurement_type: isSalesLinked ? 'sales_linked' : 'overstock',
+          overstock_reason: isSalesLinked ? null : 'Forward procurement from Material Requirements'
         });
 
       if (error) throw error;
 
       toast({
-        title: status === "draft" ? "Draft RPO Created" : "RPO Submitted for Approval",
-        description: `RPO ${rpoNumber} has been ${status === "draft" ? "saved as draft" : "submitted for approval"}`
+        title: "RPO Submitted for Approval",
+        description: `RPO ${rpoNumber} has been submitted for approval`
       });
 
       onSuccess();
@@ -566,9 +566,6 @@ export function RPOModal({
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Cancel
-          </Button>
-          <Button variant="secondary" onClick={handleSaveDraft} disabled={loading}>
-            Save Draft
           </Button>
           <Button onClick={handleSubmitForApproval} disabled={loading}>
             Submit for Approval
