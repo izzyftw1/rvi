@@ -5,18 +5,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { 
   Package, TrendingUp, AlertTriangle, CheckCircle2, Plus, Home, 
   Truck, Clock, FileText, ExternalLink, ArrowRight, RefreshCw,
-  PackagePlus, Receipt, BarChart3, AlertCircle
+  PackagePlus, Receipt, BarChart3, AlertCircle, Download, Search, Filter
 } from "lucide-react";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { format, differenceInDays, isPast, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 interface DashboardMetrics {
   openRPOValue: number;
@@ -91,6 +94,55 @@ export default function MaterialProcurementDashboard() {
   const [rpos, setRpos] = useState<RPOItem[]>([]);
   const [materialSummaries, setMaterialSummaries] = useState<MaterialSummary[]>([]);
   const [supplierPerf, setSupplierPerf] = useState<SupplierPerformance[]>([]);
+  
+  // Filters
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterSupplier, setFilterSupplier] = useState("all");
+  
+  // Get unique suppliers for filter
+  const uniqueSuppliers = useMemo(() => {
+    return [...new Set(rpos.map(r => r.supplier_name).filter(Boolean))].sort();
+  }, [rpos]);
+  
+  // Filtered RPOs
+  const filteredRpos = useMemo(() => {
+    return rpos.filter(rpo => {
+      const matchesSearch = searchTerm === "" || 
+        rpo.rpo_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rpo.material_size_mm.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rpo.alloy.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rpo.supplier_name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = filterStatus === "all" || rpo.status === filterStatus;
+      const matchesSupplier = filterSupplier === "all" || rpo.supplier_name === filterSupplier;
+      return matchesSearch && matchesStatus && matchesSupplier;
+    });
+  }, [rpos, searchTerm, filterStatus, filterSupplier]);
+  
+  // Export to Excel
+  const exportToExcel = () => {
+    const data = filteredRpos.map(rpo => ({
+      'RPO #': rpo.rpo_no,
+      'Status': rpo.status,
+      'Type': rpo.procurement_type,
+      'Material': rpo.material_size_mm,
+      'Alloy': rpo.alloy,
+      'Supplier': rpo.supplier_name,
+      'Qty Ordered (kg)': rpo.qty_ordered_kg,
+      'Qty Received (kg)': rpo.qty_received_kg,
+      'Rate (₹/kg)': rpo.rate_per_kg,
+      'Amount (₹)': rpo.amount_ordered,
+      'Expected Date': rpo.expected_delivery_date || '',
+      'Created': format(parseISO(rpo.created_at), 'dd-MMM-yyyy'),
+      'Overdue': rpo.is_overdue ? 'Yes' : 'No'
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'RPOs');
+    XLSX.writeFile(wb, `Procurement_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    toast({ description: "Exported to Excel successfully" });
+  };
 
   useEffect(() => {
     loadDashboardData();
@@ -432,27 +484,84 @@ export default function MaterialProcurementDashboard() {
       </div>
 
       <div className="p-6 space-y-6">
-        {/* Quick Actions */}
-        <div className="flex flex-wrap gap-3">
-          <Button onClick={() => navigate('/raw-purchase-orders')} className="gap-2">
-            <FileText className="h-4 w-4" />
-            View All RPOs
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/material-requirements')} className="gap-2">
-            <PackagePlus className="h-4 w-4" />
-            Material Requirements
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/gate-register')} className="gap-2">
-            <Receipt className="h-4 w-4" />
-            Gate Register
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/qc-incoming')} className="gap-2">
-            <CheckCircle2 className="h-4 w-4" />
-            Incoming QC
-          </Button>
-          <Button variant="ghost" size="icon" onClick={loadDashboardData} disabled={loading}>
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </Button>
+        {/* Quick Actions & Filters */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={() => navigate('/purchase/raw-po')} className="gap-2">
+              <FileText className="h-4 w-4" />
+              View All RPOs
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/material-requirements')} className="gap-2">
+              <PackagePlus className="h-4 w-4" />
+              Material Requirements
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/gate-register')} className="gap-2">
+              <Receipt className="h-4 w-4" />
+              Gate Register
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/qc/incoming')} className="gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              Incoming QC
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={exportToExcel} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export Excel
+            </Button>
+            <Button variant="ghost" size="icon" onClick={loadDashboardData} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Filters:</span>
+          </div>
+          <div className="relative w-64">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search RPO, material, supplier..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending_approval">Pending Approval</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="part_received">Part Received</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterSupplier} onValueChange={setFilterSupplier}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Supplier" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Suppliers</SelectItem>
+              {uniqueSuppliers.map(s => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(searchTerm || filterStatus !== "all" || filterSupplier !== "all") && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => { setSearchTerm(""); setFilterStatus("all"); setFilterSupplier("all"); }}
+            >
+              Clear
+            </Button>
+          )}
         </div>
 
         {/* Metrics Cards */}
@@ -579,7 +688,7 @@ export default function MaterialProcurementDashboard() {
                         <p className="font-medium">{metrics.variancesOpen} Open Variances</p>
                         <p className="text-sm text-muted-foreground">Quantity or rate discrepancies pending resolution</p>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => navigate('/reconciliation-report')}>
+                      <Button size="sm" variant="outline" onClick={() => navigate('/reports/reconciliation')}>
                         View <ArrowRight className="ml-1 h-4 w-4" />
                       </Button>
                     </div>
@@ -591,8 +700,16 @@ export default function MaterialProcurementDashboard() {
             {/* Recent RPOs */}
             <Card>
               <CardHeader>
-                <CardTitle>Recent Purchase Orders</CardTitle>
-                <CardDescription>Latest 10 raw material purchase orders</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Recent Purchase Orders</CardTitle>
+                    <CardDescription>
+                      {searchTerm || filterStatus !== "all" || filterSupplier !== "all" 
+                        ? `Showing ${filteredRpos.length} filtered results` 
+                        : `Latest ${Math.min(filteredRpos.length, 20)} raw material purchase orders`}
+                    </CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -608,7 +725,7 @@ export default function MaterialProcurementDashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rpos.slice(0, 10).map((rpo) => (
+                    {filteredRpos.slice(0, 20).map((rpo) => (
                       <TableRow 
                         key={rpo.id} 
                         className={cn("cursor-pointer hover:bg-muted/50", rpo.is_overdue && "bg-destructive/5")}
@@ -705,7 +822,7 @@ export default function MaterialProcurementDashboard() {
                   </Table>
                 )}
                 <div className="mt-4">
-                  <Button onClick={() => navigate('/raw-purchase-orders')}>
+                  <Button onClick={() => navigate('/purchase/raw-po')}>
                     Go to RPO Management <ArrowRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>

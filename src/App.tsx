@@ -118,6 +118,7 @@ const App = () => (
           <Route path="/items" element={<ItemMaster />} />
           <Route path="/purchase" element={<Purchase />} />
           <Route path="/purchase/raw-po" element={<RawPurchaseOrders />} />
+          <Route path="/raw-purchase-orders" element={<RawPurchaseOrders />} />
           <Route path="/purchase/settings" element={<PurchaseSettings />} />
           <Route path="/purchase/dashboard" element={<MaterialProcurementDashboard />} />
           <Route path="/procurement" element={<ProcurementDashboard />} />

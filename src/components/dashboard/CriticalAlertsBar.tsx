@@ -73,7 +73,7 @@ export const CriticalAlertsBar = () => {
           description: `${pendingQCMaterial.length} material lots pending QC testing`,
           severity: 'warning',
           icon: AlertTriangle,
-          onClick: () => navigate('/qc-incoming')
+          onClick: () => navigate('/qc/incoming')
         });
       }
 

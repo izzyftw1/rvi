@@ -350,14 +350,14 @@ export const QualityLossSignals = () => {
             {hasGoodsInQcHold && (
               <Badge 
                 className="bg-amber-500 hover:bg-amber-600 text-white cursor-pointer flex items-center gap-1 text-[10px] animate-pulse"
-                onClick={() => navigate('/qc-incoming?filter=hold')}
+                onClick={() => navigate('/qc/incoming?filter=hold')}
               >
                 <ShieldAlert className="h-3 w-3" />
                 {formatDisplayValue(goodsInQcHold.totalPcs, { suffix: ' kg', showZero: false })} blocked by QC
               </Badge>
             )}
             <button
-              onClick={() => navigate('/quality-analytics')}
+              onClick={() => navigate('/quality/analytics')}
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
             >
               Analytics <ArrowRight className="h-3 w-3" />

@@ -76,7 +76,7 @@ export const QCAlertsWidget = () => {
           description: `${materialTests} incoming material lots awaiting OES testing`,
           urgency: materialTests > 5 ? 'high' : 'medium',
           count: materialTests,
-          onClick: () => navigate('/qc-incoming')
+          onClick: () => navigate('/qc/incoming')
         });
       }
 
