@@ -185,6 +185,8 @@ export const QCActionDrawer = ({
         woUpdateData.qc_final_approved_by = user?.id;
         woUpdateData.qc_final_approved_at = timestamp;
         woUpdateData.qc_final_remarks = remarks || null;
+        // final_qc_result uses CHECK constraint: passed/blocked/pending/waived/failed
+        woUpdateData.final_qc_result = statusValue;
       }
 
       if (Object.keys(woUpdateData).length > 0) {

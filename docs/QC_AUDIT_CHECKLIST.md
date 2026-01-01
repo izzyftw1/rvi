@@ -1,21 +1,52 @@
 # Quality Control System - 50-Point Audit Checklist
 
-## Last Updated: 2025-12-31 (Final)
+## Last Updated: 2026-01-01 (Critical Constraint Fixes)
 
 ---
 
-## 🔴 CRITICAL DATABASE FIXES APPLIED
+## 🔴 CRITICAL DATABASE CONSTRAINT FIXES APPLIED
 
-| # | Issue | Status | Fix Applied |
-|---|-------|--------|-------------|
-| 1 | `is_within_tolerance` is GENERATED ALWAYS | ✅ FIXED | Removed from INSERT in FinalQCInspectionForm |
-| 2 | `completion_pct` is GENERATED ALWAYS | ✅ FIXED | Removed from `sync_wo_from_batches` trigger |
-| 3 | Waiver "tuple already modified" | ✅ FIXED | `sync_batch_produced_qty` now skips lock-only updates |
-| 4 | Hourly QC status constraint | ✅ FIXED | Using `OK`/`Not OK` (capitalized) per DB constraint |
-| 5 | Input boxes too small | ✅ FIXED | All QC forms now use `h-12 min-w-[70px]` inputs |
-| 2 | `completion_pct` is GENERATED ALWAYS | ✅ FIXED | Removed from `sync_wo_from_batches` trigger |
-| 3 | Waiver "tuple already modified" | ✅ FIXED | `sync_batch_produced_qty` now skips lock-only updates |
-| 4 | Hourly QC status constraint | ✅ FIXED | Using `OK`/`Not OK` (capitalized) per DB constraint |
+| # | Issue | Table/Column | Constraint | Fix Applied |
+|---|-------|--------------|------------|-------------|
+| 1 | `final_qc_result` using 'pass'/'fail' | `work_orders.final_qc_result` | `passed/blocked/pending/waived/failed` | Fixed to use 'passed'/'failed' |
+| 2 | `qc_material_status` using 'hold'/'pass' | `work_orders.qc_material_status` | `pending/passed/failed/waived` | Fixed to use 'passed'/'failed'/'pending' |
+| 3 | `FirstPieceQCForm` not updating work_orders | `work_orders.qc_first_piece_status` | `pending/passed/failed/waived` | Added work_orders update |
+| 4 | `QCActionDrawer` missing final_qc_result | `work_orders.final_qc_result` | `passed/blocked/pending/waived/failed` | Added final_qc_result update |
+| 5 | `is_within_tolerance` is GENERATED ALWAYS | `qc_measurements` | N/A | Removed from INSERT |
+| 6 | `completion_pct` is GENERATED ALWAYS | `work_orders` | N/A | Removed from trigger |
+| 7 | Waiver "tuple already modified" | Triggers | N/A | `sync_batch_produced_qty` skips lock-only updates |
+| 8 | Hourly QC status constraint | `hourly_qc_checks` | `OK/Not OK` | Using correct values |
+
+---
+
+## 📋 DATABASE CONSTRAINT REFERENCE
+
+### work_orders Table Constraints
+| Column | Allowed Values | Notes |
+|--------|---------------|-------|
+| `final_qc_result` | `passed`, `blocked`, `pending`, `waived`, `failed` | ⚠️ NOT 'pass'/'fail' |
+| `qc_material_status` | `pending`, `passed`, `failed`, `waived` | ⚠️ NOT 'pass'/'fail'/'hold' |
+| `qc_first_piece_status` | `pending`, `passed`, `failed`, `waived` | ⚠️ NOT 'pass'/'fail' |
+
+### production_batches Table Constraints
+| Column | Allowed Values | Notes |
+|--------|---------------|-------|
+| `qc_material_status` | `pending`, `passed`, `failed`, `waived` | |
+| `qc_first_piece_status` | `pending`, `passed`, `failed`, `waived` | |
+| `qc_final_status` | `pending`, `passed`, `failed`, `waived` | |
+
+### qc_records Table (Uses ENUM)
+| Column | Allowed Values | Notes |
+|--------|---------------|-------|
+| `result` | `pass`, `fail`, `rework`, `pending`, `waived` | ✓ Uses 'pass'/'fail' |
+
+### hourly_qc_checks Table Constraints
+| Column | Allowed Values | Notes |
+|--------|---------------|-------|
+| `thread_status` | `OK`, `Not OK` | Case-sensitive |
+| `visual_status` | `OK`, `Not OK` | Case-sensitive |
+| `plating_status` | `OK`, `Not OK` | Case-sensitive |
+| `plating_thickness_status` | `OK`, `Not OK` | Case-sensitive |
 
 ---
 
@@ -45,7 +76,7 @@
 
 | # | Check | Component | Status | Notes |
 |---|-------|-----------|--------|-------|
-| 16 | Sample input boxes visible/readable | FinalQCInspectionForm | ✅ FIXED | `h-12 min-w-[70px]` |
+| 16 | Sample input boxes visible/readable | FinalQCInspectionForm | ✅ | `h-12 min-w-[70px]` |
 | 17 | Pass/fail indicators clear | All QC forms | ✅ | Green/red borders + icons |
 | 18 | Tolerance range displayed | All QC forms | ✅ | Badge with min-max |
 | 19 | Statistics calculated correctly | FinalQCInspectionForm | ✅ | avg/min/max/count |
@@ -97,33 +128,57 @@
 
 ---
 
-## 🔧 KNOWN ISSUES & MITIGATIONS
+## 🔧 FILES MODIFIED (2026-01-01)
 
-### Issue: Trigger Cascade on Quality Release
-**Root Cause**: `lock_production_logs_on_quality_release` updates `daily_production_logs`, which triggers `sync_batch_produced_qty`, which updates `production_batches`, which triggers `sync_wo_from_batches` trying to update `work_orders` while original UPDATE is still in progress.
-
-**Fix Applied**: Modified `sync_batch_produced_qty` to skip recomputation when only lock fields changed (no quantity change).
-
-### Issue: GENERATED ALWAYS columns
-**Root Cause**: `is_within_tolerance` and `completion_pct` are computed columns that cannot accept INSERT/UPDATE values.
-
-**Fix Applied**: Removed these columns from all INSERT/UPDATE statements in application code.
+| File | Issue Fixed |
+|------|-------------|
+| `src/components/qc/FinalQCInspectionForm.tsx` | `final_qc_result` now uses 'passed'/'failed' |
+| `src/pages/FinalQC.tsx` | `final_qc_result` in handleRelease uses 'passed' |
+| `src/components/qc/QCActionDrawer.tsx` | Added `final_qc_result` to woUpdateData |
+| `src/components/qc/IncomingMaterialQCForm.tsx` | `qc_material_status` now uses 'passed'/'failed'/'pending' |
+| `src/components/qc/FirstPieceQCForm.tsx` | Added work_orders update for `qc_first_piece_status` |
 
 ---
 
 ## ✅ VERIFICATION STEPS
 
-1. Submit Final QC with measurements → Should succeed without `is_within_tolerance` error
-2. Waive Final QC as admin → Should succeed without "tuple already modified"
+1. Submit Final QC with measurements → Should succeed without `work_orders_final_qc_result_check` error
+2. Waive Final QC as admin → Should succeed without constraint violation
 3. Submit Hourly QC with binary checks → Should succeed with `OK`/`Not OK` values
-4. Submit tolerance setup twice → Should upsert without duplicate key error
-5. Submit production log → Should calculate completion_pct automatically
+4. Submit Material QC (Incoming) → Should update work_orders with 'passed'/'failed'
+5. Submit First Piece QC → Should update both qc_records and work_orders
+6. Use QCActionDrawer for final QC → Should set both qc_final_status AND final_qc_result
 
 ---
 
-## 📝 FILES MODIFIED
+## 🔑 KEY MAPPING RULES
 
-- `src/components/qc/FinalQCInspectionForm.tsx` - Removed is_within_tolerance, enlarged input boxes
-- `src/pages/HourlyQC.tsx` - Using correct OK/Not OK values
-- `src/pages/ToleranceSetup.tsx` - Using upsert with onConflict
-- Database functions: `sync_wo_from_batches`, `sync_batch_produced_qty` - Fixed cascade issues
+### When updating `qc_records.result`:
+Use: `'pass'`, `'fail'`, `'pending'`, `'waived'`, `'rework'`
+
+### When updating `work_orders` QC status columns:
+Use: `'passed'`, `'failed'`, `'pending'`, `'waived'`
+
+### Conversion Pattern:
+```typescript
+// qc_records uses 'pass'/'fail', work_orders uses 'passed'/'failed'
+const qcRecordResult = 'pass';  // or 'fail'
+const woStatus = qcRecordResult === 'pass' ? 'passed' : 'failed';
+```
+
+---
+
+## 📝 HISTORICAL FIXES
+
+### 2025-12-31
+- `is_within_tolerance` GENERATED ALWAYS column fix
+- `completion_pct` GENERATED ALWAYS column fix
+- Waiver "tuple already modified" fix
+- Hourly QC status constraint fix (OK/Not OK)
+- Input boxes enlarged to `h-12 min-w-[70px]`
+
+### 2026-01-01
+- `final_qc_result` constraint violation fix
+- `qc_material_status` constraint violation fix
+- `FirstPieceQCForm` missing work_orders update fix
+- `QCActionDrawer` missing `final_qc_result` fix

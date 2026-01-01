@@ -340,6 +340,8 @@ export const FinalQCInspectionForm = ({
       }
 
       // Update work order Final QC status
+      // NOTE: work_orders.final_qc_result uses CHECK constraint with 'passed'/'failed'
+      // while qc_records.result uses 'pass'/'fail' enum
       const { error: woError } = await supabase
         .from('work_orders')
         .update({
@@ -347,7 +349,7 @@ export const FinalQCInspectionForm = ({
           qc_final_approved_at: new Date().toISOString(),
           qc_final_approved_by: user?.id,
           qc_final_remarks: generalRemarks,
-          final_qc_result: result === 'pass' ? 'pass' : 'fail'
+          final_qc_result: result === 'pass' ? 'passed' : 'failed'
         })
         .eq('id', workOrderId);
 

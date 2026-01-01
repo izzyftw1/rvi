@@ -218,11 +218,22 @@ export function IncomingMaterialQCForm({ workOrderId, workOrder, onComplete }: I
       if (lotError) throw lotError;
 
       // Update work order material QC status
+      // NOTE: work_orders.qc_material_status uses CHECK constraint: pending/passed/failed/waived
+      // 'hold' maps to 'pending', 'pass' maps to 'passed', 'fail' maps to 'failed'
+      let woQCStatus: string;
+      if (isHold) {
+        woQCStatus = 'pending';  // Hold is treated as still pending
+      } else if (result === 'pass') {
+        woQCStatus = 'passed';
+      } else {
+        woQCStatus = 'failed';
+      }
+      
       const { error: woError } = await supabase
         .from('work_orders')
         .update({
           qc_material_passed: result === 'pass',
-          qc_material_status: isHold ? 'hold' : result,
+          qc_material_status: woQCStatus,
           qc_material_approved_by: user?.id,
           qc_material_approved_at: new Date().toISOString(),
         })
