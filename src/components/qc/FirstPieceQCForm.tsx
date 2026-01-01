@@ -269,6 +269,25 @@ export const FirstPieceQCForm = ({
 
       if (updateError) throw updateError;
 
+      // CRITICAL: Also update work_orders.qc_first_piece_status
+      // work_orders uses CHECK constraint with 'passed'/'failed' (not 'pass'/'fail')
+      const woStatus = result === 'pass' ? 'passed' : 'failed';
+      const { error: woError } = await supabase
+        .from('work_orders')
+        .update({
+          qc_first_piece_status: woStatus,
+          qc_first_piece_passed: result === 'pass',
+          qc_first_piece_approved_by: user?.id,
+          qc_first_piece_approved_at: new Date().toISOString(),
+          qc_first_piece_remarks: `Operation ${operation}: ${generalRemarks}`
+        })
+        .eq('id', workOrderId);
+
+      if (woError) {
+        console.error('Failed to update work order First Piece status:', woError);
+        // Don't throw - QC record was already updated successfully
+      }
+
       toast.success(
         result === 'pass'
           ? 'First Piece QC PASSED - Production unlocked' 
