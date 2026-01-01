@@ -119,7 +119,7 @@ const addLetterhead = (doc: jsPDF): number => {
   // Contact details
   doc.setFontSize(7);
   doc.setTextColor(...BRAND_COLORS.dark);
-  doc.text('Plot No 11, 12/1 & 12/2, Sadguru Industrial Area, Jamnagar - 361006 (Gujarat) India', 105, 29, { align: 'center' });
+  doc.text('Plot No 11 & 12, Sadguru Industrial Area, Jamnagar, 361006 (Gujarat) India', 105, 29, { align: 'center' });
   doc.text('www.brasspartsindia.net | sales@brasspartsindia.net | +91 288 2564431', 105, 33, { align: 'center' });
   
   // Line separator with dual brand colors
