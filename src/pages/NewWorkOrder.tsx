@@ -11,11 +11,12 @@ import { QRCodeDisplay } from "@/components/QRCodeDisplay";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Search, ChevronDown, Check } from "lucide-react";
+import { Loader2, ChevronDown, Check, AlertCircle } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Customer {
   id: string;
@@ -97,21 +98,15 @@ const NewWorkOrder = () => {
     },
   });
 
-  // Fetch items (filter by customer if selected)
+  // Fetch items
   const { data: items = [], isLoading: itemsLoading } = useQuery({
-    queryKey: ["items-dropdown", formData.customer_id],
+    queryKey: ["items-dropdown"],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from("item_master")
         .select("id, item_code, item_name, alloy, default_material_form, default_cross_section_shape, default_nominal_size_mm, default_material_grade, gross_weight_grams, net_weight_grams, cycle_time_seconds, material_size_mm, customer_id")
         .order("item_code");
       
-      // Optionally filter by customer
-      // if (formData.customer_id) {
-      //   query = query.or(`customer_id.eq.${formData.customer_id},customer_id.is.null`);
-      // }
-      
-      const { data, error } = await query;
       if (error) throw error;
       return data as ItemMaster[];
     },
@@ -156,6 +151,17 @@ const NewWorkOrder = () => {
   // Auto-populate material specs when item is selected
   useEffect(() => {
     if (selectedItem) {
+      // Build material_size_mm from components if not directly available
+      let materialSizeMm = selectedItem.material_size_mm || "";
+      if (!materialSizeMm && selectedItem.default_nominal_size_mm) {
+        const parts = [
+          selectedItem.default_material_form,
+          selectedItem.default_cross_section_shape,
+          selectedItem.default_nominal_size_mm ? `${selectedItem.default_nominal_size_mm}mm` : null,
+        ].filter(Boolean);
+        materialSizeMm = parts.join(" ");
+      }
+
       setFormData(prev => ({
         ...prev,
         item_code: selectedItem.item_code,
@@ -167,7 +173,7 @@ const NewWorkOrder = () => {
         gross_weight_grams: selectedItem.gross_weight_grams?.toString() || "",
         net_weight_grams: selectedItem.net_weight_grams?.toString() || "",
         cycle_time_seconds: selectedItem.cycle_time_seconds?.toString() || "",
-        material_size_mm: selectedItem.material_size_mm || "",
+        material_size_mm: materialSizeMm,
       }));
     }
   }, [selectedItem]);
@@ -190,7 +196,7 @@ const NewWorkOrder = () => {
       toast({ variant: "destructive", title: "Validation Error", description: "Please select a customer" });
       return;
     }
-    if (!formData.item_id) {
+    if (!formData.item_id || !formData.item_code) {
       toast({ variant: "destructive", title: "Validation Error", description: "Please select an item" });
       return;
     }
@@ -202,11 +208,15 @@ const NewWorkOrder = () => {
       toast({ variant: "destructive", title: "Validation Error", description: "Please select a due date" });
       return;
     }
+    if (!formData.customer_po) {
+      toast({ variant: "destructive", title: "Validation Error", description: "Please enter a Customer PO" });
+      return;
+    }
 
     setLoading(true);
 
     try {
-      // Build material_size_mm from form data if not set
+      // Build material_size_mm
       let materialSizeMm = formData.material_size_mm;
       if (!materialSizeMm && formData.nominal_size_mm) {
         const parts = [
@@ -217,7 +227,7 @@ const NewWorkOrder = () => {
         materialSizeMm = parts.join(" ");
       }
 
-      const insertData = {
+      const insertData: any = {
         customer: selectedCustomer?.customer_name || "",
         customer_id: formData.customer_id || null,
         customer_po: formData.customer_po || null,
@@ -228,8 +238,6 @@ const NewWorkOrder = () => {
         priority: parseInt(formData.priority),
         sales_order: selectedSO?.so_id || null,
         so_id: formData.so_id || null,
-        status: "pending" as const,
-        current_stage: "production_planning" as const,
         cutting_required: formData.cutting_required,
         forging_required: formData.forging_required,
         material_size_mm: materialSizeMm || null,
@@ -263,6 +271,7 @@ const NewWorkOrder = () => {
       
       setTimeout(() => navigate("/work-orders"), 3000);
     } catch (error: any) {
+      console.error("Work order creation error:", error);
       toast({
         variant: "destructive",
         title: "Failed to create work order",
@@ -272,6 +281,14 @@ const NewWorkOrder = () => {
       setLoading(false);
     }
   };
+
+  // Check if we have material specs
+  const hasMaterialSpecs = selectedItem && (
+    formData.alloy || formData.material_grade || formData.material_form || 
+    formData.cross_section_shape || formData.nominal_size_mm
+  );
+
+  const missingMaterialSpecs = selectedItem && !hasMaterialSpecs;
 
   return (
     <div className="min-h-screen bg-background">
@@ -308,7 +325,9 @@ const NewWorkOrder = () => {
                               )}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground">Select customer...</span>
+                            <span className="text-muted-foreground">
+                              {customersLoading ? "Loading..." : "Select customer..."}
+                            </span>
                           )}
                           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
@@ -368,7 +387,7 @@ const NewWorkOrder = () => {
 
                 {/* Sales Order Dropdown */}
                 <div className="space-y-2">
-                  <Label>Sales Order (Optional)</Label>
+                  <Label>Sales Order (Optional - links WO to SO for material requirements)</Label>
                   <Popover open={soOpen} onOpenChange={setSOOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -385,7 +404,9 @@ const NewWorkOrder = () => {
                           </span>
                         ) : (
                           <span className="text-muted-foreground">
-                            {formData.customer_id ? "Select sales order (optional)..." : "Select customer first"}
+                            {formData.customer_id 
+                              ? (salesOrdersLoading ? "Loading..." : "Select sales order (optional)...") 
+                              : "Select customer first"}
                           </span>
                         )}
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -471,7 +492,9 @@ const NewWorkOrder = () => {
                               )}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground">Select item...</span>
+                            <span className="text-muted-foreground">
+                              {itemsLoading ? "Loading..." : "Select item..."}
+                            </span>
                           )}
                           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
@@ -528,8 +551,18 @@ const NewWorkOrder = () => {
                 </div>
               </div>
 
+              {/* Material Specs Warning */}
+              {missingMaterialSpecs && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    This item has no material specifications defined. Please update the Item Master with alloy, material form, shape, and size to ensure proper material requirement sync.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Material Specs (Auto-populated, read-only display) */}
-              {selectedItem && (
+              {selectedItem && hasMaterialSpecs && (
                 <div className="space-y-4 pt-4 border-t bg-muted/50 rounded-lg p-4">
                   <h3 className="font-medium text-sm text-muted-foreground">Material Specifications (from Item Master)</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -566,6 +599,12 @@ const NewWorkOrder = () => {
                       <span className="ml-2 font-medium">{formData.cycle_time_seconds ? `${formData.cycle_time_seconds}s` : "-"}</span>
                     </div>
                   </div>
+                  {formData.material_size_mm && (
+                    <div className="pt-2 border-t">
+                      <span className="text-muted-foreground text-sm">Material Size String:</span>
+                      <span className="ml-2 font-mono text-sm font-medium">{formData.material_size_mm}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
