@@ -30,22 +30,29 @@ interface MaterialRequirement {
   due_date: string;
   wo_number?: string;
   inventory_kg: number;
+  on_order_kg: number;
   surplus_deficit_kg: number;
 }
 
 interface GroupedRequirements {
   material_grade: string;
+  alloy: string;
   total_required_kg: number;
   total_inventory_kg: number;
+  total_on_order_kg: number;
   surplus_deficit_kg: number;
   wo_count: number;
   requirements: MaterialRequirement[];
+  rpo_no: string | null;
 }
 
 interface SummaryMetrics {
   totalRequired: number;
   totalDeficit: number;
-  pendingPOs: number;
+  onOrder: number;
+  inInventory: number;
+  issuedToWOs: number;
+  criticalItems: number;
   openWOs: number;
 }
 
@@ -58,7 +65,10 @@ export default function MaterialRequirementsDashboard() {
   const [summary, setSummary] = useState<SummaryMetrics>({
     totalRequired: 0,
     totalDeficit: 0,
-    pendingPOs: 0,
+    onOrder: 0,
+    inInventory: 0,
+    issuedToWOs: 0,
+    criticalItems: 0,
     openWOs: 0
   });
 
@@ -117,30 +127,85 @@ export default function MaterialRequirementsDashboard() {
 
       if (reqError) throw reqError;
 
-      // Fetch inventory for each material grade
+      // Fetch inventory for each material grade - normalize size format
       const { data: invData, error: invError } = await supabase
         .from('material_lots')
-        .select('material_size_mm, gross_weight, status')
+        .select('material_size_mm, alloy, gross_weight, status')
         .in('status', ['received', 'in_use']);
 
       if (invError) throw invError;
 
-      // Calculate inventory per material size
+      // Fetch On Order from approved/part_received RPOs
+      const { data: rpoData, error: rpoError } = await supabase
+        .from('raw_purchase_orders')
+        .select('id, rpo_no, material_size_mm, alloy, qty_ordered_kg, status')
+        .in('status', ['approved', 'part_received']);
+
+      if (rpoError) throw rpoError;
+
+      // Fetch receipt amounts to calculate remaining on order
+      const { data: receiptData, error: receiptError } = await supabase
+        .from('raw_po_receipts')
+        .select('rpo_id, qty_received_kg');
+
+      if (receiptError) throw receiptError;
+
+      // Calculate received amounts per RPO
+      const receivedMap = new Map<string, number>();
+      receiptData?.forEach(r => {
+        receivedMap.set(r.rpo_id, (receivedMap.get(r.rpo_id) || 0) + (r.qty_received_kg || 0));
+      });
+
+      // Calculate on order per alloy (remaining qty = ordered - received)
+      const onOrderMap = new Map<string, { qty: number; rpoNo: string | null }>();
+      rpoData?.forEach(rpo => {
+        const received = receivedMap.get(rpo.id) || 0;
+        const remaining = (rpo.qty_ordered_kg || 0) - received;
+        if (remaining > 0) {
+          const key = rpo.alloy?.toLowerCase() || '';
+          const existing = onOrderMap.get(key) || { qty: 0, rpoNo: null };
+          onOrderMap.set(key, { 
+            qty: existing.qty + remaining,
+            rpoNo: rpo.rpo_no || existing.rpoNo
+          });
+        }
+      });
+
+      // Calculate inventory per alloy (normalize by extracting numeric size)
       const inventoryMap = new Map<string, number>();
       invData?.forEach(lot => {
-        const key = lot.material_size_mm;
+        // Use alloy as key for matching (more reliable than size)
+        const key = lot.alloy?.toLowerCase() || '';
         inventoryMap.set(key, (inventoryMap.get(key) || 0) + (lot.gross_weight || 0));
       });
 
-      // Process requirements with inventory data
+      // Also create size-based inventory map with normalized key
+      const inventorySizeMap = new Map<string, number>();
+      invData?.forEach(lot => {
+        // Extract numeric size from strings like "22 mm", "22", "22 MM HEX"
+        const sizeMatch = lot.material_size_mm?.match(/(\d+(?:\.\d+)?)/);
+        const numericSize = sizeMatch ? sizeMatch[1] : lot.material_size_mm;
+        if (numericSize) {
+          inventorySizeMap.set(numericSize, (inventorySizeMap.get(numericSize) || 0) + (lot.gross_weight || 0));
+        }
+      });
+
+      // Process requirements with inventory and on-order data
       const processedReqs = (reqData || []).map(req => {
-        const inventory_kg = inventoryMap.get(req.material_size_mm.toString()) || 0;
-        const surplus_deficit_kg = inventory_kg - req.total_gross_kg;
+        // Try matching by alloy first, then by size
+        const alloyKey = req.alloy?.toLowerCase() || '';
+        const sizeKey = req.material_size_mm?.toString() || '';
+        
+        const inventory_kg = inventoryMap.get(alloyKey) || inventorySizeMap.get(sizeKey) || 0;
+        const onOrderInfo = onOrderMap.get(alloyKey) || { qty: 0, rpoNo: null };
+        const on_order_kg = onOrderInfo.qty;
+        const surplus_deficit_kg = (inventory_kg + on_order_kg) - req.total_gross_kg;
         
         return {
           ...req,
           wo_number: req.work_orders?.wo_number || req.work_orders?.display_id || 'N/A',
           inventory_kg,
+          on_order_kg,
           surplus_deficit_kg
         } as MaterialRequirement;
       });
@@ -156,26 +221,29 @@ export default function MaterialRequirementsDashboard() {
       setAlloys(uniqueAlloys.sort());
       setCustomers(uniqueCustomers.sort());
 
-      // Calculate summary
+      // Calculate total inventory
+      const totalInventory = invData?.reduce((sum, lot) => sum + (lot.gross_weight || 0), 0) || 0;
+
+      // Calculate summary metrics
       const totalRequired = processedReqs.reduce((sum, r) => sum + r.total_gross_kg, 0);
+      const totalOnOrder = processedReqs.reduce((sum, r) => sum + r.on_order_kg, 0);
       const totalDeficit = processedReqs
         .filter(r => r.surplus_deficit_kg < 0)
         .reduce((sum, r) => sum + Math.abs(r.surplus_deficit_kg), 0);
-      
-      const { count: pendingPOs } = await supabase
-        .from('raw_purchase_orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending_approval');
+      const criticalItems = processedReqs.filter(r => r.surplus_deficit_kg < 0 && r.inventory_kg === 0 && r.on_order_kg === 0).length;
 
       setSummary({
         totalRequired,
         totalDeficit,
-        pendingPOs: pendingPOs || 0,
+        onOrder: totalOnOrder,
+        inInventory: totalInventory,
+        issuedToWOs: 0, // Not tracked currently
+        criticalItems,
         openWOs: processedReqs.length
       });
 
-      // Group requirements by material grade
-      groupRequirements(processedReqs);
+      // Group requirements by material grade + alloy
+      groupRequirements(processedReqs, onOrderMap);
 
     } catch (error: any) {
       toast({
@@ -188,20 +256,25 @@ export default function MaterialRequirementsDashboard() {
     }
   };
 
-  const groupRequirements = (reqs: MaterialRequirement[]) => {
+  const groupRequirements = (reqs: MaterialRequirement[], onOrderMap: Map<string, { qty: number; rpoNo: string | null }>) => {
     const grouped = new Map<string, GroupedRequirements>();
 
     reqs.forEach(req => {
       const key = req.material_grade;
+      const alloyKey = req.alloy?.toLowerCase() || '';
+      const onOrderInfo = onOrderMap.get(alloyKey) || { qty: 0, rpoNo: null };
       
       if (!grouped.has(key)) {
         grouped.set(key, {
           material_grade: key,
+          alloy: req.alloy,
           total_required_kg: 0,
           total_inventory_kg: req.inventory_kg,
+          total_on_order_kg: onOrderInfo.qty,
           surplus_deficit_kg: 0,
           wo_count: 0,
-          requirements: []
+          requirements: [],
+          rpo_no: onOrderInfo.rpoNo
         });
       }
 
@@ -213,7 +286,7 @@ export default function MaterialRequirementsDashboard() {
 
     // Calculate surplus/deficit for each group
     grouped.forEach((group, key) => {
-      group.surplus_deficit_kg = group.total_inventory_kg - group.total_required_kg;
+      group.surplus_deficit_kg = (group.total_inventory_kg + group.total_on_order_kg) - group.total_required_kg;
       grouped.set(key, group);
     });
 
@@ -273,40 +346,58 @@ export default function MaterialRequirementsDashboard() {
     <div className="min-h-screen bg-background">
       <div className="p-6 space-y-6">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Required (kg)</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Required</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{summary.totalRequired.toFixed(2)}</div>
+              <div className="text-2xl font-bold">{summary.totalRequired.toFixed(0)} kg</div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-destructive/10 border-destructive/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-destructive">Total Deficit</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">{summary.totalDeficit.toFixed(0)} kg</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Deficit Materials (kg)</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">On Order</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-destructive">{summary.totalDeficit.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-primary">{summary.onOrder.toFixed(0)} kg</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending POs</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">In Inventory</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{summary.pendingPOs}</div>
+              <div className="text-2xl font-bold text-success">{summary.inInventory.toFixed(0)} kg</div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Open WOs</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Issued to WOs</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{summary.openWOs}</div>
+              <div className="text-2xl font-bold">{summary.issuedToWOs.toFixed(0)} kg</div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-destructive/5 border-destructive/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-destructive">Critical Items</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">{summary.criticalItems}</div>
             </CardContent>
           </Card>
         </div>
