@@ -9,7 +9,7 @@
  */
 
 import { useState, useMemo } from "react";
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { format, subDays } from "date-fns";
 import {
   CalendarIcon, Activity, Clock, AlertTriangle, Trash2, Users, Wrench, TrendingUp,
   TrendingDown, Factory, Zap, Target, XCircle, Download, Info, DollarSign,
@@ -64,8 +64,11 @@ const CHART_COLORS = [
 ];
 
 export default function ProductionPerformanceDashboard() {
-  const [period, setPeriod] = useState<PeriodType>("week");
+  // Default to "custom" which shows last 30 days to ensure data is visible
+  const [period, setPeriod] = useState<PeriodType>("custom");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [customStartDate, setCustomStartDate] = useState<Date>(subDays(new Date(), 30));
+  const [customEndDate, setCustomEndDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<ViewTab>("overview");
   
   // Filters
@@ -75,30 +78,34 @@ export default function ProductionPerformanceDashboard() {
   const [processFilter, setProcessFilter] = useState<string>("all");
   const [itemFilter, setItemFilter] = useState<string>("all");
 
-  // Calculate date range
+  // Calculate date range based on period selection
   const dateRange = useMemo(() => {
+    const now = new Date();
     switch (period) {
       case "today":
-        const today = format(new Date(), "yyyy-MM-dd");
+        const today = format(now, "yyyy-MM-dd");
         return { start: today, end: today };
       case "week":
+        // Last 7 days ending today
         return {
-          start: format(startOfWeek(selectedDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-          end: format(endOfWeek(selectedDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+          start: format(subDays(now, 6), "yyyy-MM-dd"),
+          end: format(now, "yyyy-MM-dd"),
         };
       case "month":
+        // Last 30 days ending today
         return {
-          start: format(startOfMonth(selectedDate), "yyyy-MM-dd"),
-          end: format(endOfMonth(selectedDate), "yyyy-MM-dd"),
+          start: format(subDays(now, 29), "yyyy-MM-dd"),
+          end: format(now, "yyyy-MM-dd"),
         };
       case "custom":
       default:
+        // Custom date range
         return {
-          start: format(subDays(selectedDate, 6), "yyyy-MM-dd"),
-          end: format(selectedDate, "yyyy-MM-dd"),
+          start: format(customStartDate, "yyyy-MM-dd"),
+          end: format(customEndDate, "yyyy-MM-dd"),
         };
     }
-  }, [period, selectedDate]);
+  }, [period, customStartDate, customEndDate]);
 
   // Load metrics
   const { metrics, loading, error, refresh } = useProductionPerformanceMetrics({
@@ -231,25 +238,47 @@ export default function ProductionPerformanceDashboard() {
                 </TabsList>
               </Tabs>
 
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[180px]">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(selectedDate, "PPP")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => date && setSelectedDate(date)}
-                    disabled={(date) => date > new Date()}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              {period === "custom" && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[140px]">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(customStartDate, "MMM d")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={customStartDate}
+                        onSelect={(date) => date && setCustomStartDate(date)}
+                        disabled={(date) => date > customEndDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <span className="text-muted-foreground">to</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-[140px]">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {format(customEndDate, "MMM d")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={customEndDate}
+                        onSelect={(date) => date && setCustomEndDate(date)}
+                        disabled={(date) => date < customStartDate || date > new Date()}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </>
+              )}
 
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs font-mono">
                 {dateRange.start} → {dateRange.end}
               </Badge>
             </div>
