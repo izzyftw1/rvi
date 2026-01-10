@@ -321,6 +321,18 @@ export default function ProductionPerformanceDashboard() {
               </SelectContent>
             </Select>
 
+            <Select value={itemFilter} onValueChange={setItemFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Items" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Items</SelectItem>
+                {metrics.availableItems.slice(0, 50).map(item => (
+                  <SelectItem key={item} value={item}>{item.length > 25 ? item.slice(0, 25) + "..." : item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             {hasActiveFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Clear all

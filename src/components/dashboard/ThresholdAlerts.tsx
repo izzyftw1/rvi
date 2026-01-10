@@ -94,7 +94,7 @@ export const ThresholdAlerts = () => {
             value: efficiency,
             threshold: THRESHOLDS.operatorEfficiencyMin,
             detail: `${efficiency}% efficiency (${THRESHOLDS.lookbackDays}d avg)`,
-            route: '/operator-efficiency',
+            route: '/production-performance',
           });
         }
       }
@@ -114,7 +114,7 @@ export const ThresholdAlerts = () => {
             value: utilisation,
             threshold: THRESHOLDS.machineUtilisationMin,
             detail: `${utilisation}% utilisation (${THRESHOLDS.lookbackDays}d avg)`,
-            route: '/machine-utilisation',
+            route: '/production-performance',
           });
         }
       }
