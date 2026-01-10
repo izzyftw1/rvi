@@ -277,7 +277,11 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
     doc.setFont('helvetica', 'bold');
     doc.text('PO Date:', col2X, yPos);
     doc.setFont('helvetica', 'normal');
-    doc.text(data.poDate, col2X + 22, yPos);
+    // Format PO date to DD/MM/YYYY
+    const poDateFormatted = data.poDate.includes('-') 
+      ? data.poDate.split('-').reverse().join('/') 
+      : data.poDate;
+    doc.text(poDateFormatted, col2X + 22, yPos);
   }
   
   // ============= CUSTOMER DETAILS BOX =============
@@ -352,7 +356,8 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
       ];
   
   const tableBody = data.items.map((item, index) => {
-    const desc = [item.description, item.material_grade].filter(Boolean).join(' - ') || 'As per specification';
+    // Format: Item Name / Material Grade (e.g., "2" Hose Pipe Fitting / CW617N")
+    const desc = [item.description, item.material_grade].filter(Boolean).join(' / ') || 'As per specification';
     
     if (data.isExport) {
       return {
@@ -500,10 +505,18 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   
   let paymentY = yPos + 12;
   if (data.advancePercent && data.advancePercent > 0) {
-    doc.text(`Advance: ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, leftMargin + 3, paymentY);
+    // Bold "Advance:" label
+    doc.setFont('helvetica', 'bold');
+    doc.text('Advance:', leftMargin + 3, paymentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(` ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, leftMargin + 3 + doc.getTextWidth('Advance:'), paymentY);
     paymentY += 5;
     const balance = data.totalAmount - (data.advanceAmount || 0);
-    doc.text(`Balance: ${data.currency} ${balance.toFixed(2)}`, leftMargin + 3, paymentY);
+    // Bold "Balance:" label
+    doc.setFont('helvetica', 'bold');
+    doc.text('Balance:', leftMargin + 3, paymentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(` ${data.currency} ${balance.toFixed(2)}`, leftMargin + 3 + doc.getTextWidth('Balance:'), paymentY);
     paymentY += 5;
   }
   
@@ -555,21 +568,24 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   doc.text('Bank Details for Remittance', leftMargin, yPos);
   
   yPos += 6;
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(33, 33, 33);
   
+  // Bank details with bold labels
   const bankDetails = [
-    'Account Name: R.V. INDUSTRIES',
-    'Bank Name: BANK OF BARODA',
-    'Account No: 25970500001613',
-    'Branch: S.S.I. Jamnagar',
-    'IFSC Code: BARB0SSIJAM (5th character is Zero)',
-    'Swift Code: BARBINBBRAN',
+    { label: 'Account Name:', value: ' R.V. INDUSTRIES' },
+    { label: 'Bank Name:', value: ' BANK OF BARODA' },
+    { label: 'Account No:', value: ' 25970500001613' },
+    { label: 'Branch:', value: ' S.S.I. Jamnagar' },
+    { label: 'IFSC Code:', value: ' BARB0SSIJAM (5th character is Zero)' },
+    { label: 'Swift Code:', value: ' BARBINBBRAN' },
   ];
   
   for (const detail of bankDetails) {
-    doc.text(detail, leftMargin, yPos);
+    doc.setFont('helvetica', 'bold');
+    doc.text(detail.label, leftMargin, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(detail.value, leftMargin + doc.getTextWidth(detail.label), yPos);
     yPos += 4;
   }
   
@@ -586,8 +602,8 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(33, 33, 33);
-  doc.text('Email: sales@brasspartsindia.net | mitul@brasspartsindia.net', pageWidth / 2, footerY + 5, { align: 'center' });
-  doc.text('Web: www.brasspartsindia.net | Ph: +91-288-2541871', pageWidth / 2, footerY + 10, { align: 'center' });
+  doc.text('Email: sales@brasspartsindia.net', pageWidth / 2, footerY + 5, { align: 'center' });
+  doc.text('Web: www.brasspartsindia.net | Ph: +91 94274 20088', pageWidth / 2, footerY + 10, { align: 'center' });
   
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
@@ -702,8 +718,10 @@ const handler = async (req: Request): Promise<Response> => {
       lineItems = (parsedItems || []).map((item: any, index: number) => ({
         sr_no: index + 1,
         item_code: item.item_code || '-',
-        description: item.drawing_number || '',
-        material_grade: [item.alloy, item.material_size_mm].filter(Boolean).join(' '),
+        // Description should be item name/description from item master
+        description: item.description || item.item_name || item.drawing_number || '',
+        // Material grade should be the alloy (e.g., CW617N)
+        material_grade: item.alloy || item.material_grade || '',
         quantity: Number(item.quantity) || 0,
         unit: 'PCS',
         price_per_pc: item.price_per_pc ? Number(item.price_per_pc) : undefined,
