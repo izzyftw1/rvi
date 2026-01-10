@@ -160,7 +160,7 @@ export const OperatorsView = ({ productionLogs, operators }: OperatorsViewProps)
           variant="outline"
           size="sm"
           className="ml-auto gap-1"
-          onClick={() => navigate('/operator-efficiency')}
+          onClick={() => navigate('/production-performance')}
         >
           Full Report
           <ArrowRight className="h-3 w-3" />
@@ -268,7 +268,7 @@ export const OperatorsView = ({ productionLogs, operators }: OperatorsViewProps)
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate('/operator-efficiency')}
+            onClick={() => navigate('/production-performance')}
           >
             View all {operatorData.length} operators
             <ArrowRight className="h-3 w-3 ml-1" />
