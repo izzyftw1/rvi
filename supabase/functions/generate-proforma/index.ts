@@ -505,18 +505,33 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   
   let paymentY = yPos + 12;
   if (data.advancePercent && data.advancePercent > 0) {
-    // Bold "Advance:" label with space
+    // Bold "Advance:" label with clear gap before value
+    const advanceLabel = 'Advance:';
     doc.setFont('helvetica', 'bold');
-    doc.text('Advance: ', leftMargin + 3, paymentY);
+    doc.text(advanceLabel, leftMargin + 3, paymentY);
+    const advanceLabelWidth = doc.getTextWidth(advanceLabel);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, leftMargin + 3 + doc.getTextWidth('Advance: '), paymentY);
+    doc.text(
+      ` ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`,
+      leftMargin + 3 + advanceLabelWidth + 1,
+      paymentY,
+    );
+
     paymentY += 5;
     const balance = data.totalAmount - (data.advanceAmount || 0);
-    // Bold "Balance:" label with space
+
+    // Bold "Balance:" label with clear gap before value
+    const balanceLabel = 'Balance:';
     doc.setFont('helvetica', 'bold');
-    doc.text('Balance: ', leftMargin + 3, paymentY);
+    doc.text(balanceLabel, leftMargin + 3, paymentY);
+    const balanceLabelWidth = doc.getTextWidth(balanceLabel);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${data.currency} ${balance.toFixed(2)}`, leftMargin + 3 + doc.getTextWidth('Balance: '), paymentY);
+    doc.text(
+      ` ${data.currency} ${balance.toFixed(2)}`,
+      leftMargin + 3 + balanceLabelWidth + 1,
+      paymentY,
+    );
+
     paymentY += 5;
   }
   
@@ -583,9 +598,11 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   
   for (const detail of bankDetails) {
     doc.setFont('helvetica', 'bold');
-    doc.text(detail.label, leftMargin, yPos);
+    doc.text(detail.label.trim(), leftMargin, yPos);
+    const labelWidth = doc.getTextWidth(detail.label.trim());
     doc.setFont('helvetica', 'normal');
-    doc.text(detail.value, leftMargin + doc.getTextWidth(detail.label), yPos);
+    // Add a small gap so text never overlaps the bold label
+    doc.text(` ${detail.value}`, leftMargin + labelWidth + 1, yPos);
     yPos += 4;
   }
   
