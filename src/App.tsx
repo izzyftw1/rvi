@@ -87,6 +87,7 @@ import QualityTraceability from "./pages/QualityTraceability";
 import QualityDocuments from "./pages/QualityDocuments";
 import QualityAnalytics from "./pages/QualityAnalytics";
 import DowntimeAnalytics from "./pages/DowntimeAnalytics";
+import ProductionPerformanceDashboard from "./pages/ProductionPerformanceDashboard";
 // Merged External Efficiency + Partner Performance into unified data model
 import PartnerDashboard from "./pages/PartnerDashboard";
 import ExternalAnalytics from "./pages/ExternalAnalytics";
@@ -158,10 +159,11 @@ const App = () => (
           <Route path="/factory-calendar" element={<FactoryCalendar />} />
           <Route path="/production-progress" element={<ProductionProgress />} />
           <Route path="/daily-production-log" element={<DailyProductionLog />} />
+          <Route path="/production-performance" element={<ProductionPerformanceDashboard />} />
+          {/* Legacy routes - redirected to consolidated dashboard */}
           <Route path="/machine-utilisation" element={<MachineUtilisation />} />
           <Route path="/operator-efficiency" element={<OperatorEfficiency />} />
           <Route path="/setter-efficiency" element={<SetterEfficiency />} />
-          {/* CNC Programmer Activity merged into Setter Efficiency */}
           <Route path="/downtime-analytics" element={<DowntimeAnalytics />} />
           
           <Route path="/finance/dashboard" element={<FinanceDashboard />} />
