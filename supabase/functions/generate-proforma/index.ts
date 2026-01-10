@@ -505,18 +505,18 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   
   let paymentY = yPos + 12;
   if (data.advancePercent && data.advancePercent > 0) {
-    // Bold "Advance:" label
+    // Bold "Advance:" label with space
     doc.setFont('helvetica', 'bold');
-    doc.text('Advance:', leftMargin + 3, paymentY);
+    doc.text('Advance: ', leftMargin + 3, paymentY);
     doc.setFont('helvetica', 'normal');
-    doc.text(` ${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, leftMargin + 3 + doc.getTextWidth('Advance:'), paymentY);
+    doc.text(`${data.advancePercent}% (${data.currency} ${(data.advanceAmount || 0).toFixed(2)})`, leftMargin + 3 + doc.getTextWidth('Advance: '), paymentY);
     paymentY += 5;
     const balance = data.totalAmount - (data.advanceAmount || 0);
-    // Bold "Balance:" label
+    // Bold "Balance:" label with space
     doc.setFont('helvetica', 'bold');
-    doc.text('Balance:', leftMargin + 3, paymentY);
+    doc.text('Balance: ', leftMargin + 3, paymentY);
     doc.setFont('helvetica', 'normal');
-    doc.text(` ${data.currency} ${balance.toFixed(2)}`, leftMargin + 3 + doc.getTextWidth('Balance:'), paymentY);
+    doc.text(`${data.currency} ${balance.toFixed(2)}`, leftMargin + 3 + doc.getTextWidth('Balance: '), paymentY);
     paymentY += 5;
   }
   
@@ -571,14 +571,14 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   doc.setFontSize(9);
   doc.setTextColor(33, 33, 33);
   
-  // Bank details with bold labels
+  // Bank details with bold labels and proper spacing
   const bankDetails = [
-    { label: 'Account Name:', value: ' R.V. INDUSTRIES' },
-    { label: 'Bank Name:', value: ' BANK OF BARODA' },
-    { label: 'Account No:', value: ' 25970500001613' },
-    { label: 'Branch:', value: ' S.S.I. Jamnagar' },
-    { label: 'IFSC Code:', value: ' BARB0SSIJAM (5th character is Zero)' },
-    { label: 'Swift Code:', value: ' BARBINBBRAN' },
+    { label: 'Account Name: ', value: 'R.V. INDUSTRIES' },
+    { label: 'Bank Name: ', value: 'BANK OF BARODA' },
+    { label: 'Account No: ', value: '25970500001613' },
+    { label: 'Branch: ', value: 'S.S.I. Jamnagar' },
+    { label: 'IFSC Code: ', value: 'BARB0SSIJAM (5th character is Zero)' },
+    { label: 'Swift Code: ', value: 'BARBINBBRAN' },
   ];
   
   for (const detail of bankDetails) {
@@ -708,26 +708,52 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('id', existingProforma.id);
     }
     
-    // Parse items from sales order
+    // Parse items from sales order and fetch item details from item_master
     let lineItems: LineItem[] = [];
     if (order.items) {
       const parsedItems = typeof order.items === 'string' 
         ? JSON.parse(order.items) 
         : order.items;
       
-      lineItems = (parsedItems || []).map((item: any, index: number) => ({
-        sr_no: index + 1,
-        item_code: item.item_code || '-',
-        // Description should be item name/description from item master
-        description: item.description || item.item_name || item.drawing_number || '',
-        // Material grade should be the alloy (e.g., CW617N)
-        material_grade: item.alloy || item.material_grade || '',
-        quantity: Number(item.quantity) || 0,
-        unit: 'PCS',
-        price_per_pc: item.price_per_pc ? Number(item.price_per_pc) : undefined,
-        line_amount: item.line_amount ? Number(item.line_amount) : undefined,
-        hs_code: item.hs_code
-      }));
+      // Collect all item codes to fetch from item_master
+      const itemCodes = (parsedItems || []).map((item: any) => item.item_code).filter(Boolean);
+      
+      // Fetch item details from item_master
+      let itemMasterMap: Record<string, any> = {};
+      if (itemCodes.length > 0) {
+        const { data: itemMasterData } = await supabase
+          .from('item_master')
+          .select('item_code, item_name, alloy, default_material_grade')
+          .in('item_code', itemCodes);
+        
+        if (itemMasterData) {
+          itemMasterMap = itemMasterData.reduce((acc: Record<string, any>, item: any) => {
+            acc[item.item_code] = item;
+            return acc;
+          }, {});
+        }
+        console.log(`[ITEMS] Fetched ${Object.keys(itemMasterMap).length} items from item_master`);
+      }
+      
+      lineItems = (parsedItems || []).map((item: any, index: number) => {
+        const masterItem = itemMasterMap[item.item_code] || {};
+        // Description should be item_name from item_master (e.g., "2" Hose Pipe Fitting")
+        const itemName = masterItem.item_name || item.item_name || item.description || '';
+        // Material grade from item_master (alloy or default_material_grade e.g., "CW617N" or "C37700")
+        const materialGrade = item.alloy || masterItem.alloy || masterItem.default_material_grade || item.material_grade || '';
+        
+        return {
+          sr_no: index + 1,
+          item_code: item.item_code || '-',
+          description: itemName,
+          material_grade: materialGrade,
+          quantity: Number(item.quantity) || 0,
+          unit: 'PCS',
+          price_per_pc: item.price_per_pc ? Number(item.price_per_pc) : undefined,
+          line_amount: item.line_amount ? Number(item.line_amount) : undefined,
+          hs_code: item.hs_code
+        };
+      });
     }
     
     // Calculate totals
