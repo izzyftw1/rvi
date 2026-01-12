@@ -988,7 +988,7 @@ export default function Dispatch() {
             <div className="text-sm">
               <p className="font-medium">Choose your dispatch source below.</p>
               <p className="text-muted-foreground">
-                <strong>Production:</strong> Dispatch from packed cartons (Dispatch QC approved).{" "}
+                <strong>Packing Batches:</strong> Dispatch from packed cartons (ready for shipment).{" "}
                 <strong>Inventory:</strong> Dispatch from stock (overproduction, returns, etc.).
               </p>
             </div>
@@ -1021,8 +1021,8 @@ export default function Dispatch() {
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="production" id="source-production" />
                       <Label htmlFor="source-production" className="flex items-center gap-2 cursor-pointer">
-                        <Factory className="h-4 w-4 text-blue-500" />
-                        Production Batch
+                        <Package className="h-4 w-4 text-blue-500" />
+                        Packing Batches
                         <Badge variant="outline" className="ml-2">{readyBatches.length} ready</Badge>
                       </Label>
                     </div>
