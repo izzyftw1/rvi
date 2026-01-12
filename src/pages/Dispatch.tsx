@@ -127,7 +127,7 @@ export default function Dispatch() {
         id, carton_id, wo_id, production_batch_id, quantity,
         num_cartons, num_pallets, status, built_at,
         work_orders(display_id, item_code, customer),
-        production_batches(batch_number)
+        production_batches:production_batch_id(batch_number)
       `)
       .eq("status", "ready_for_dispatch")
       .order("built_at", { ascending: true });
