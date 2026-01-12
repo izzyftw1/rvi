@@ -59,7 +59,7 @@ const STAGES: StageConfig[] = [
     icon: CheckCircle2, 
     color: 'text-green-600',
     bgColor: 'bg-green-500',
-    description: 'Quantity passed Final QC inspection'
+    description: 'Quantity passed Dispatch QC inspection'
   },
   { 
     key: 'packed', 
