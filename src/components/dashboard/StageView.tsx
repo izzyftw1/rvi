@@ -81,7 +81,7 @@ const STAGE_CARDS: StageCardConfig[] = [
   },
   { 
     key: 'qc', 
-    label: 'Final QC', 
+    label: 'Dispatch QC', 
     icon: CheckCircle, 
     capacity: 5000, 
     route: '/work-orders?stage=qc',
