@@ -17,8 +17,7 @@ export interface CartonData {
     display_id: string;
     customer: string;
     item_code: string;
-    unit_rate: number;
-    currency: string;
+    net_weight_per_pc: number | null;
   };
   dispatch_qc_batch?: {
     status: string;
@@ -39,8 +38,8 @@ export interface DispatchRecord {
     item_code: string;
   };
   shipment?: {
-    shipment_number: string;
-    status: string;
+    ship_id: string;
+    status: string | null;
   };
 }
 
@@ -113,7 +112,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       // Load work orders
       const { data: woData } = await supabase
         .from("work_orders")
-        .select("id, display_id, customer, item_code, unit_rate, currency")
+        .select("id, display_id, customer, item_code, net_weight_per_pc")
         .in("id", woIds.length > 0 ? woIds : ['00000000-0000-0000-0000-000000000000']);
 
       const woMap = Object.fromEntries((woData || []).map(wo => [wo.id, wo]));
@@ -164,7 +163,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       const shipmentIds = [...new Set((dispatchData || []).filter(d => d.shipment_id).map(d => d.shipment_id))];
       const { data: shipmentData } = await supabase
         .from("shipments")
-        .select("id, shipment_number, status")
+        .select("id, ship_id, status")
         .in("id", shipmentIds.length > 0 ? shipmentIds : ['00000000-0000-0000-0000-000000000000']);
 
       const shipmentMap = Object.fromEntries((shipmentData || []).map(s => [s.id, s]));
@@ -197,7 +196,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       const { data: woFilterData } = await supabase
         .from("work_orders")
         .select("id, display_id")
-        .in("status", ["in_progress", "released", "production_complete"])
+        .in("status", ["pending", "in_progress", "packing", "qc"])
         .order("created_at", { ascending: false })
         .limit(100);
       setWorkOrders(woFilterData || []);
@@ -254,10 +253,11 @@ export function useLogisticsData(filters: LogisticsFilters) {
     
     const packedCartons = cartons.filter(c => c.status === "packed" || (c.status !== "dispatched" && c.dispatched_qty < c.quantity));
     const packedQty = packedCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
+    // Use net_weight as proxy for value since unit_rate doesn't exist
     const packedValue = packedCartons.reduce((sum, c) => {
       const remainingQty = c.quantity - (c.dispatched_qty || 0);
-      const unitRate = c.work_order?.unit_rate || 0;
-      return sum + (remainingQty * unitRate);
+      const weightPerPc = c.work_order?.net_weight_per_pc || 0;
+      return sum + (remainingQty * weightPerPc);
     }, 0);
 
     const todayDispatches = dispatches.filter(d => 
@@ -269,8 +269,8 @@ export function useLogisticsData(filters: LogisticsFilters) {
     const ageingCartons = packedCartons.filter(c => differenceInDays(today, new Date(c.built_at)) > 15);
     const ageingValue = ageingCartons.reduce((sum, c) => {
       const remainingQty = c.quantity - (c.dispatched_qty || 0);
-      const unitRate = c.work_order?.unit_rate || 0;
-      return sum + (remainingQty * unitRate);
+      const weightPerPc = c.work_order?.net_weight_per_pc || 0;
+      return sum + (remainingQty * weightPerPc);
     }, 0);
     const ageingQty = ageingCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
 
@@ -331,8 +331,8 @@ export function useLogisticsData(filters: LogisticsFilters) {
     packedCartons.forEach(c => {
       const age = differenceInDays(today, new Date(c.built_at));
       const remainingQty = c.quantity - (c.dispatched_qty || 0);
-      const unitRate = c.work_order?.unit_rate || 0;
-      const value = remainingQty * unitRate;
+      const weightPerPc = c.work_order?.net_weight_per_pc || 0;
+      const value = remainingQty * weightPerPc;
 
       const bucket = buckets.find(b => age >= b.minDays && age <= b.maxDays);
       if (bucket) {
