@@ -81,8 +81,8 @@ import DailyProductionLog from "./pages/DailyProductionLog";
 import MachineUtilisation from "./pages/MachineUtilisation";
 import OperatorEfficiency from "./pages/OperatorEfficiency";
 import SetterEfficiency from "./pages/SetterEfficiency";
-import FinalQCList from "./pages/FinalQCList";
-import FinalQC from "./pages/FinalQC";
+import DispatchQCList from "./pages/DispatchQCList";
+import DispatchQC from "./pages/DispatchQC";
 import QualityTraceability from "./pages/QualityTraceability";
 import QualityDocuments from "./pages/QualityDocuments";
 import QualityAnalytics from "./pages/QualityAnalytics";
@@ -145,8 +145,8 @@ const App = () => (
           <Route path="/reports" element={<Reports />} />
           <Route path="/tolerance-setup" element={<ToleranceSetup />} />
           <Route path="/hourly-qc" element={<HourlyQC />} />
-          <Route path="/final-qc" element={<FinalQCList />} />
-          <Route path="/final-qc/:woId" element={<FinalQC />} />
+          <Route path="/dispatch-qc" element={<DispatchQCList />} />
+          <Route path="/dispatch-qc/:woId" element={<DispatchQC />} />
           <Route path="/quality/traceability" element={<QualityTraceability />} />
           <Route path="/quality/documents" element={<QualityDocuments />} />
           <Route path="/quality/analytics" element={<QualityAnalytics />} />

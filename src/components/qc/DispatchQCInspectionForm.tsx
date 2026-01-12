@@ -50,7 +50,7 @@ interface DimensionMeasurements {
   isPass: boolean | null;
 }
 
-interface FinalQCInspectionFormProps {
+interface DispatchQCInspectionFormProps {
   workOrderId: string;
   workOrderNumber: string;
   itemCode: string;
@@ -62,7 +62,7 @@ interface FinalQCInspectionFormProps {
 
 const DEFAULT_SAMPLE_SIZE = 10;
 
-export const FinalQCInspectionForm = ({
+export const DispatchQCInspectionForm = ({
   workOrderId,
   workOrderNumber,
   itemCode,
@@ -70,7 +70,7 @@ export const FinalQCInspectionForm = ({
   totalOKQty,
   onComplete,
   onCancel
-}: FinalQCInspectionFormProps) => {
+}: DispatchQCInspectionFormProps) => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [tolerances, setTolerances] = useState<DimensionTolerance[]>([]);
@@ -339,7 +339,7 @@ export const FinalQCInspectionForm = ({
         if (measError) throw measError;
       }
 
-      // Update work order Final QC status
+      // Update work order Dispatch QC status
       // NOTE: work_orders.final_qc_result uses CHECK constraint with 'passed'/'failed'
       // while qc_records.result uses 'pass'/'fail' enum
       const { error: woError } = await supabase
@@ -357,14 +357,14 @@ export const FinalQCInspectionForm = ({
 
       toast.success(
         result === 'pass' 
-          ? `✅ Final QC Passed - ${sampleSize} samples inspected`
-          : `⚠️ Final QC Failed - Deviations recorded`
+          ? `✅ Dispatch QC Passed - ${sampleSize} samples inspected`
+          : `⚠️ Dispatch QC Failed - Deviations recorded`
       );
       
       onComplete();
     } catch (error: any) {
-      console.error('Error submitting Final QC:', error);
-      toast.error('Failed to submit Final QC: ' + error.message);
+      console.error('Error submitting Dispatch QC:', error);
+      toast.error('Failed to submit Dispatch QC: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -410,7 +410,7 @@ export const FinalQCInspectionForm = ({
           <div>
             <CardTitle className="flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5 text-primary" />
-              Final QC Dimensional Inspection
+              Dispatch QC Dimensional Inspection
             </CardTitle>
             <CardDescription>
               {workOrderNumber} • {customer} • {itemCode}

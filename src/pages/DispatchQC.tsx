@@ -34,8 +34,8 @@ import { format } from "date-fns";
 import { ProductionContextDisplay } from "@/components/qc/ProductionContextDisplay";
 import { MaterialTraceabilityBadge } from "@/components/qc/MaterialTraceabilityBadge";
 import { FinalDispatchReportGenerator } from "@/components/qc/FinalDispatchReportGenerator";
-import { FinalQCInspectionForm } from "@/components/qc/FinalQCInspectionForm";
-import { FinalQCReportGenerator } from "@/components/qc/FinalQCReportGenerator";
+import { DispatchQCInspectionForm } from "@/components/qc/DispatchQCInspectionForm";
+import { DispatchQCReportGenerator } from "@/components/qc/DispatchQCReportGenerator";
 import { QCQuantityInput } from "@/components/qc/QCQuantityInput";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -79,7 +79,7 @@ interface QCRecordSummary {
   heat_no?: string;
 }
 
-const FinalQC = () => {
+const DispatchQC = () => {
   const { woId } = useParams<{ woId: string }>();
   const navigate = useNavigate();
   const { hasRole, isSuperAdmin, loading: roleLoading } = useUserRole();
@@ -87,7 +87,7 @@ const FinalQC = () => {
   // Permission checks
   const isQCRole = hasRole('quality');
   const isAdmin = isSuperAdmin();
-  const canPerformFinalQC = isQCRole || isAdmin;
+  const canPerformDispatchQC = isQCRole || isAdmin;
   const canWaive = isAdmin; // Only admin can waive
   
   const [loading, setLoading] = useState(true);
@@ -266,8 +266,8 @@ const FinalQC = () => {
       setHasGeneratedReport((reportCount || 0) > 0);
 
     } catch (error: any) {
-      console.error("Error loading FQC data:", error);
-      toast.error("Failed to load Final QC data");
+      console.error("Error loading Dispatch QC data:", error);
+      toast.error("Failed to load Dispatch QC data");
     } finally {
       setLoading(false);
     }
@@ -281,8 +281,8 @@ const FinalQC = () => {
     if (!woId || !workOrder) return;
     
     // Permission check
-    if (!canPerformFinalQC) {
-      toast.error("Permission denied. Only QC role can perform Final QC.");
+    if (!canPerformDispatchQC) {
+      toast.error("Permission denied. Only QC role can perform Dispatch QC.");
       return;
     }
     
@@ -334,8 +334,8 @@ const FinalQC = () => {
     if (!woId || !workOrder) return;
     
     // Permission check
-    if (!canPerformFinalQC) {
-      toast.error("Permission denied. Only QC role can block at Final QC.");
+    if (!canPerformDispatchQC) {
+      toast.error("Permission denied. Only QC role can block at Dispatch QC.");
       return;
     }
     
@@ -436,25 +436,25 @@ const FinalQC = () => {
         waived_at: new Date().toISOString()
       });
 
-      toast.warning("Final QC waived by Admin. Audit log created.");
+      toast.warning("Dispatch QC waived by Admin. Audit log created.");
       setShowWaiverDialog(false);
       setWaiverReason("");
       loadData();
     } catch (error: any) {
-      console.error("Error waiving FQC:", error);
-      toast.error("Failed to waive Final QC: " + error.message);
+      console.error("Error waiving Dispatch QC:", error);
+      toast.error("Failed to waive Dispatch QC: " + error.message);
     } finally {
       setSubmitting(false);
     }
   };
-  // Old handleQCSubmit removed - replaced by FinalQCInspectionForm
+  // Old handleQCSubmit removed - replaced by DispatchQCInspectionForm
 
   const getQCTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       'incoming': 'Incoming Material QC (IQC)',
       'first_piece': 'First Piece QC',
       'in_process': 'In-Process QC',
-      'final': 'Final QC'
+      'final': 'Dispatch QC'
     };
     return labels[type] || type;
   };
@@ -491,9 +491,9 @@ const FinalQC = () => {
         <div className="text-center py-12">
           <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold">Work Order Not Found</h2>
-          <Button variant="outline" className="mt-4" onClick={() => navigate("/final-qc")}>
+          <Button variant="outline" className="mt-4" onClick={() => navigate("/dispatch-qc")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Final QC List
+            Back to Dispatch QC List
           </Button>
         </div>
       </PageContainer>
@@ -511,23 +511,23 @@ const FinalQC = () => {
   return (
     <PageContainer>
       <PageHeader
-        title={`Final QC: ${workOrder.wo_number}`}
+        title={`Dispatch QC: ${workOrder.wo_number}`}
         description={`${workOrder.customer} - ${workOrder.item_code}`}
         icon={<ClipboardCheck className="h-6 w-6" />}
       >
-        <Button variant="outline" onClick={() => navigate("/final-qc")}>
+        <Button variant="outline" onClick={() => navigate("/dispatch-qc")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
       </PageHeader>
 
       {/* Permission Banner */}
-      {!canPerformFinalQC && !roleLoading && (
+      {!canPerformDispatchQC && !roleLoading && (
         <Alert className="mb-6 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
           <Ban className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800 dark:text-amber-300">
             <span className="font-semibold">Read-Only Access</span> - 
-            Only Quality (QC) role can perform Final QC inspections. You have view-only access.
+            Only Quality (QC) role can perform Dispatch QC inspections. You have view-only access.
           </AlertDescription>
         </Alert>
       )}
@@ -554,7 +554,7 @@ const FinalQC = () => {
         <Alert className="mb-6 border-amber-500 bg-amber-50 dark:bg-amber-900/20">
           <ShieldAlert className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800 dark:text-amber-300">
-            <span className="font-semibold">Final QC WAIVED by Admin</span>
+            <span className="font-semibold">Dispatch QC WAIVED by Admin</span>
             {workOrder.qc_final_remarks && <span className="block mt-1">{workOrder.qc_final_remarks}</span>}
           </AlertDescription>
         </Alert>
@@ -564,7 +564,7 @@ const FinalQC = () => {
         <Alert className="mb-6 border-red-500 bg-red-50 dark:bg-red-900/20">
           <XCircle className="h-4 w-4 text-red-600" />
           <AlertDescription className="text-red-800 dark:text-red-300">
-            <span className="font-semibold">Work Order BLOCKED at Final QC</span>
+            <span className="font-semibold">Work Order BLOCKED at Dispatch QC</span>
             {workOrder.qc_final_remarks && <span className="block mt-1">Reason: {workOrder.qc_final_remarks}</span>}
           </AlertDescription>
         </Alert>
@@ -748,7 +748,7 @@ const FinalQC = () => {
         <div className="space-y-6">
           {/* Dimensional Inspection Form */}
           {showInspectionForm ? (
-            <FinalQCInspectionForm
+            <DispatchQCInspectionForm
               workOrderId={woId!}
               workOrderNumber={workOrder.wo_number || workOrder.display_id || ''}
               itemCode={workOrder.item_code}
@@ -772,7 +772,7 @@ const FinalQC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!canPerformFinalQC && (
+                {!canPerformDispatchQC && (
                   <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-900/20">
                     <Ban className="h-4 w-4 text-amber-600" />
                     <AlertDescription className="text-amber-700 dark:text-amber-300 text-sm">
@@ -781,7 +781,7 @@ const FinalQC = () => {
                   </Alert>
                 )}
                 
-                {!isReleased && workOrder.final_qc_result !== 'blocked' && canPerformFinalQC && (
+                {!isReleased && workOrder.final_qc_result !== 'blocked' && canPerformDispatchQC && (
                   <Button
                     className="w-full"
                     onClick={() => setShowInspectionForm(true)}
@@ -832,7 +832,7 @@ const FinalQC = () => {
                 />
               </div>
 
-              {!isReleased && workOrder.final_qc_result !== 'blocked' && canPerformFinalQC && (
+              {!isReleased && workOrder.final_qc_result !== 'blocked' && canPerformDispatchQC && (
                 <div className="space-y-2 pt-4">
                   <Button
                     className="w-full"
@@ -881,7 +881,7 @@ const FinalQC = () => {
               )}
 
               {/* Read-only notice for non-QC roles */}
-              {!isReleased && workOrder.final_qc_result !== 'blocked' && !canPerformFinalQC && (
+              {!isReleased && workOrder.final_qc_result !== 'blocked' && !canPerformDispatchQC && (
                 <div className="pt-4">
                   <Alert className="border-muted">
                     <Ban className="h-4 w-4" />
@@ -905,7 +905,7 @@ const FinalQC = () => {
           </Card>
 
           {/* Final QC Report Generator - Always visible - MANDATORY before release */}
-          <FinalQCReportGenerator
+          <DispatchQCReportGenerator
             woId={woId!}
             woNumber={workOrder.wo_number || workOrder.display_id || ''}
             customer={workOrder.customer}
@@ -1111,9 +1111,9 @@ const FinalQC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Old QC Quantity Dialog removed - replaced by FinalQCInspectionForm */}
+      {/* Old QC Quantity Dialog removed - replaced by DispatchQCInspectionForm */}
     </PageContainer>
   );
 };
 
-export default FinalQC;
+export default DispatchQC;
