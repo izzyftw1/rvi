@@ -1358,6 +1358,7 @@ export type Database = {
           rejected_quantity: number
           remarks: string | null
           status: string
+          system_backfill: boolean | null
           updated_at: string
           work_order_id: string
         }
@@ -1373,6 +1374,7 @@ export type Database = {
           rejected_quantity?: number
           remarks?: string | null
           status?: string
+          system_backfill?: boolean | null
           updated_at?: string
           work_order_id: string
         }
@@ -1388,6 +1390,7 @@ export type Database = {
           rejected_quantity?: number
           remarks?: string | null
           status?: string
+          system_backfill?: boolean | null
           updated_at?: string
           work_order_id?: string
         }
