@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, Layers, ClipboardList, XCircle, Clock } from "lucide-react";
+import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, Layers, ClipboardList, XCircle, Clock, ArrowRight } from "lucide-react";
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -73,10 +74,16 @@ interface PackingRecord {
 
 const Packing = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [dispatchQCBatches, setDispatchQCBatches] = useState<DispatchQCBatchItem[]>([]);
   const [packingWorkOrders, setPackingWorkOrders] = useState<PackingWorkOrder[]>([]);
   const [packingHistory, setPackingHistory] = useState<PackingRecord[]>([]);
+  const [activeTab, setActiveTab] = useState("overview");
+  
+  // Counter stats for WOs awaiting production or Dispatch QC
+  const [awaitingProductionCount, setAwaitingProductionCount] = useState(0);
+  const [awaitingDispatchQCCount, setAwaitingDispatchQCCount] = useState(0);
   
   // Form state
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
@@ -98,6 +105,7 @@ const Packing = () => {
     loadDispatchQCBatches();
     loadPackingWorkOrders();
     loadPackingHistory();
+    loadAwaitingCounts();
 
     // Real-time subscriptions for live data updates
     const channel = supabase
@@ -105,6 +113,7 @@ const Packing = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_qc_batches' }, () => {
         loadDispatchQCBatches();
         loadPackingWorkOrders();
+        loadAwaitingCounts();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cartons' }, () => {
         loadDispatchQCBatches();
@@ -114,6 +123,10 @@ const Packing = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
         loadDispatchQCBatches();
         loadPackingWorkOrders();
+        loadAwaitingCounts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => {
+        loadAwaitingCounts();
       })
       .subscribe();
 
@@ -301,6 +314,73 @@ const Packing = () => {
     setPackingWorkOrders(workOrders);
   };
 
+  const loadAwaitingCounts = async () => {
+    // Awaiting Production: WOs with status in_progress but not enough produced quantity for Dispatch QC
+    // These are WOs that exist but have no dispatch_qc_batches yet
+    const { data: activeWOs } = await supabase
+      .from("work_orders")
+      .select("id, quantity")
+      .in("status", ["in_progress", "pending"]);
+
+    const activeWOIds = (activeWOs || []).map(w => w.id);
+    
+    if (activeWOIds.length === 0) {
+      setAwaitingProductionCount(0);
+      setAwaitingDispatchQCCount(0);
+      return;
+    }
+
+    // Get WOs that have dispatch QC batches
+    const { data: qcBatches } = await supabase
+      .from("dispatch_qc_batches")
+      .select("work_order_id, qc_approved_quantity")
+      .in("work_order_id", activeWOIds);
+
+    const qcByWO: Record<string, number> = {};
+    (qcBatches || []).forEach(b => {
+      qcByWO[b.work_order_id] = (qcByWO[b.work_order_id] || 0) + b.qc_approved_quantity;
+    });
+
+    // Get production completed qty from production_batches
+    const { data: prodBatches } = await supabase
+      .from("production_batches")
+      .select("wo_id, produced_qty, production_complete")
+      .in("wo_id", activeWOIds);
+
+    const prodByWO: Record<string, { produced: number; complete: boolean }> = {};
+    (prodBatches || []).forEach(b => {
+      const existing = prodByWO[b.wo_id] || { produced: 0, complete: false };
+      prodByWO[b.wo_id] = {
+        produced: existing.produced + (b.produced_qty || 0),
+        complete: existing.complete || b.production_complete || false,
+      };
+    });
+
+    let awaitingProd = 0;
+    let awaitingQC = 0;
+
+    (activeWOs || []).forEach(wo => {
+      const qcApproved = qcByWO[wo.id] || 0;
+      const prod = prodByWO[wo.id] || { produced: 0, complete: false };
+      
+      // If no production yet or not complete, awaiting production
+      if (prod.produced === 0 && qcApproved === 0) {
+        awaitingProd++;
+      }
+      // If has production but no dispatch QC yet, awaiting QC
+      else if (prod.produced > 0 && qcApproved === 0) {
+        awaitingQC++;
+      }
+      // If production > QC approved and production is complete, needs more QC
+      else if (prod.complete && prod.produced > qcApproved) {
+        awaitingQC++;
+      }
+    });
+
+    setAwaitingProductionCount(awaitingProd);
+    setAwaitingDispatchQCCount(awaitingQC);
+  };
+
   const loadPackingHistory = async () => {
     const { data } = await supabase
       .from("cartons")
@@ -321,6 +401,16 @@ const Packing = () => {
       .limit(50);
 
     setPackingHistory((data as unknown as PackingRecord[]) || []);
+  };
+
+  // Navigate to create tab with WO filter
+  const handleRowClick = (woId: string) => {
+    // Find dispatch QC batches for this WO
+    const batchesForWO = dispatchQCBatches.filter(b => b.work_order_id === woId);
+    if (batchesForWO.length > 0) {
+      setSelectedBatchId(batchesForWO[0].id);
+    }
+    setActiveTab("create");
   };
 
   const handleCreatePackingBatch = async (e: React.FormEvent) => {
@@ -469,7 +559,7 @@ const Packing = () => {
             icon={<Box className="h-6 w-6" />}
           />
 
-          <Tabs defaultValue="overview" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="overview">
                 <ClipboardList className="h-4 w-4 mr-2" />
@@ -514,11 +604,16 @@ const Packing = () => {
                             <TableHead className="text-right">Packed</TableHead>
                             <TableHead className="text-right">Available</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead className="w-10"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {packingWorkOrders.map((wo) => (
-                            <TableRow key={wo.id} className={wo.status === 'blocked' ? 'opacity-60' : ''}>
+                            <TableRow 
+                              key={wo.id} 
+                              className={`${wo.status === 'blocked' ? 'opacity-60' : 'cursor-pointer hover:bg-muted/50'}`}
+                              onClick={() => wo.status === 'ready' && handleRowClick(wo.id)}
+                            >
                               <TableCell className="font-mono font-medium">
                                 {wo.wo_number}
                               </TableCell>
@@ -553,16 +648,15 @@ const Packing = () => {
                                     Ready
                                   </Badge>
                                 ) : (
-                                  <div className="flex flex-col gap-1">
-                                    <Badge variant="outline" className="text-amber-600 border-amber-500/30 gap-1">
-                                      {wo.blocking_reason === 'Production not complete' && <Clock className="h-3 w-3" />}
-                                      {wo.blocking_reason === 'Dispatch QC pending' && <AlertTriangle className="h-3 w-3" />}
-                                      {wo.blocking_reason === 'Fully packed' && <CheckCircle2 className="h-3 w-3" />}
-                                      {wo.blocking_reason === 'No QC-approved quantity' && <XCircle className="h-3 w-3" />}
-                                      Blocked
-                                    </Badge>
-                                    <span className="text-xs text-muted-foreground">{wo.blocking_reason}</span>
-                                  </div>
+                                  <Badge variant="outline" className="text-muted-foreground">
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    {wo.blocking_reason || 'Fully packed'}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {wo.status === 'ready' && (
+                                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
                                 )}
                               </TableCell>
                             </TableRow>
@@ -599,7 +693,7 @@ const Packing = () => {
                       </div>
                       <div>
                         <div className="text-2xl font-bold">
-                          {packingWorkOrders.filter(wo => wo.blocking_reason === 'Production not complete').length}
+                          {awaitingProductionCount}
                         </div>
                         <div className="text-sm text-muted-foreground">Awaiting Production</div>
                       </div>
@@ -614,7 +708,7 @@ const Packing = () => {
                       </div>
                       <div>
                         <div className="text-2xl font-bold">
-                          {packingWorkOrders.filter(wo => wo.blocking_reason === 'Dispatch QC pending').length}
+                          {awaitingDispatchQCCount}
                         </div>
                         <div className="text-sm text-muted-foreground">Awaiting Dispatch QC</div>
                       </div>
