@@ -165,6 +165,7 @@ export type Database = {
           net_weight: number
           num_cartons: number | null
           num_pallets: number | null
+          pieces_per_carton: number | null
           production_batch_id: string | null
           quantity: number
           status: string
@@ -184,6 +185,7 @@ export type Database = {
           net_weight: number
           num_cartons?: number | null
           num_pallets?: number | null
+          pieces_per_carton?: number | null
           production_batch_id?: string | null
           quantity: number
           status?: string
@@ -203,6 +205,7 @@ export type Database = {
           net_weight?: number
           num_cartons?: number | null
           num_pallets?: number | null
+          pieces_per_carton?: number | null
           production_batch_id?: string | null
           quantity?: number
           status?: string

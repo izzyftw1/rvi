@@ -265,17 +265,14 @@ export default function Dispatch() {
     return dispatchQuantities[batch.id] || batch.available_qty;
   };
 
+  // Dispatch is QUANTITY-DRIVEN - no longer blocked by QC status
+  // Ready for dispatch when: packed_qty - dispatched_qty > 0
   const canDispatch = (batch: PackingBatch): boolean => {
-    const status = batch.finalQCStatus;
-    if (!status) return false;
-    return status.hasQC && status.passed && status.hasPDF;
+    return batch.available_qty > 0;
   };
 
   const getBlockReason = (batch: PackingBatch): string => {
-    const status = batch.finalQCStatus;
-    if (!status?.hasQC) return "Final QC not completed";
-    if (!status.passed) return "Final QC failed";
-    if (!status.hasPDF) return "Final QC report not generated";
+    if (batch.available_qty <= 0) return "No quantity available for dispatch";
     return "";
   };
 
@@ -397,7 +394,7 @@ export default function Dispatch() {
   const handleProductionDispatch = async () => {
     const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
     
-    // Validate Final QC for all selected batches
+    // Validate quantity availability (no longer blocked by QC status)
     const blockedBatches = selectedBatches.filter(b => !canDispatch(b));
     if (blockedBatches.length > 0) {
       const reasons = blockedBatches.map(b => 
