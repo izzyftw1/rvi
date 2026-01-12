@@ -5,14 +5,17 @@ import { supabase } from "@/integrations/supabase/client";
  * Shared Batch Quantities Hook
  * 
  * SINGLE SOURCE OF TRUTH for all quantity-derived dashboards.
- * All quantities flow from batch records:
+ * All quantities flow from specific canonical sources:
  * 
  * 1. Production: production_batches.produced_qty
- * 2. QC: production_batches.qc_approved_qty, qc_rejected_qty
- * 3. Packing: cartons.quantity (packing batches)
- * 4. Dispatch: cartons with status='dispatched'
+ * 2. QC Approved: dispatch_qc_batches.qc_approved_quantity (CANONICAL)
+ *    - Falls back to production_batches.qc_approved_qty for legacy data
+ * 3. QC Rejected: production_batches.qc_rejected_qty
+ * 4. Packing: cartons.quantity (packing batches)
+ * 5. Dispatch: dispatches.quantity (CANONICAL - only source of shipped qty)
  * 
  * NO dashboard should calculate quantities independently.
+ * Cartons.status is NOT used for dispatch tracking.
  */
 
 export interface BatchQuantities {
@@ -99,38 +102,54 @@ export function useBatchQuantities(woId: string | undefined): UseBatchQuantities
 
       const orderedQty = wo?.quantity || 0;
 
-      // 2. Get PRODUCTION & QC quantities from production_batches
+      // 2. Get PRODUCTION quantities from production_batches
       const { data: batches } = await supabase
         .from('production_batches')
         .select('produced_qty, qc_approved_qty, qc_rejected_qty')
         .eq('wo_id', woId);
 
       const producedQty = batches?.reduce((sum, b) => sum + (b.produced_qty || 0), 0) || 0;
-      const qcApprovedQty = batches?.reduce((sum, b) => sum + (b.qc_approved_qty || 0), 0) || 0;
+      // Keep legacy QC from production_batches for display
+      const legacyQcApproved = batches?.reduce((sum, b) => sum + (b.qc_approved_qty || 0), 0) || 0;
       const qcRejectedQty = batches?.reduce((sum, b) => sum + (b.qc_rejected_qty || 0), 0) || 0;
+
+      // 3. Get QC APPROVED from dispatch_qc_batches (NEW CANONICAL SOURCE)
+      const { data: dispatchQcBatches } = await supabase
+        .from('dispatch_qc_batches')
+        .select('qc_approved_quantity, rejected_quantity')
+        .eq('work_order_id', woId);
+      
+      // Use dispatch_qc_batches as canonical source; fallback to legacy if none
+      const dispatchQcApproved = dispatchQcBatches?.reduce((sum, b) => sum + (b.qc_approved_quantity || 0), 0) || 0;
+      const qcApprovedQty = dispatchQcApproved > 0 ? dispatchQcApproved : legacyQcApproved;
       const qcPendingQty = Math.max(0, producedQty - qcApprovedQty - qcRejectedQty);
 
-      // 3. Get PACKING quantities from cartons (packing batches)
+      // 4. Get PACKING quantities from cartons (packing batches)
       const { data: cartons } = await supabase
         .from('cartons')
-        .select('quantity, status')
+        .select('id, quantity')
         .eq('wo_id', woId);
 
       const allCartons = cartons || [];
       const packedQty = allCartons.reduce((sum, c) => sum + (c.quantity || 0), 0);
       const packingBatchCount = allCartons.length;
 
-      // 4. Get DISPATCH quantities from dispatched cartons
-      const dispatchedCartons = allCartons.filter(c => c.status === 'dispatched');
-      const dispatchedQty = dispatchedCartons.reduce((sum, c) => sum + (c.quantity || 0), 0);
-      const dispatchedBatchCount = dispatchedCartons.length;
+      // 5. Get DISPATCH quantities from dispatches table (CANONICAL SOURCE)
+      const { data: dispatches } = await supabase
+        .from('dispatches')
+        .select('id, quantity')
+        .eq('wo_id', woId);
 
-      // 5. Calculate derived quantities
+      const allDispatches = dispatches || [];
+      const dispatchedQty = allDispatches.reduce((sum, d) => sum + (d.quantity || 0), 0);
+      const dispatchedBatchCount = allDispatches.length;
+
+      // 6. Calculate derived quantities
       const remainingToProduceQty = Math.max(0, orderedQty - producedQty);
       const remainingToPackQty = Math.max(0, qcApprovedQty - packedQty);
       const remainingToDispatchQty = Math.max(0, packedQty - dispatchedQty);
 
-      // 6. Calculate percentages
+      // 7. Calculate percentages
       const productionPct = orderedQty > 0 ? Math.min(100, (producedQty / orderedQty) * 100) : 0;
       const qcPct = producedQty > 0 ? Math.min(100, (qcApprovedQty / producedQty) * 100) : 0;
       const packingPct = qcApprovedQty > 0 ? Math.min(100, (packedQty / qcApprovedQty) * 100) : 0;
@@ -175,6 +194,8 @@ export function useBatchQuantities(woId: string | undefined): UseBatchQuantities
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders', filter: `id=eq.${woId}` }, loadQuantities)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${woId}` }, loadQuantities)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cartons', filter: `wo_id=eq.${woId}` }, loadQuantities)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches', filter: `wo_id=eq.${woId}` }, loadQuantities)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_qc_batches', filter: `work_order_id=eq.${woId}` }, loadQuantities)
       .subscribe();
 
     return () => {
@@ -230,62 +251,91 @@ export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map
     );
     const batches = batchResults.flatMap((r) => r.data || []);
 
-    // 3) Cartons
+    // 3) Dispatch QC batches (CANONICAL SOURCE for QC approved)
+    const dispatchQcResults = await Promise.all(
+      chunks.map((ids) =>
+        supabase
+          .from("dispatch_qc_batches")
+          .select("work_order_id, qc_approved_quantity, rejected_quantity")
+          .in("work_order_id", ids)
+      )
+    );
+    const dispatchQcBatches = dispatchQcResults.flatMap((r) => r.data || []);
+
+    // 4) Cartons
     const cartonResults = await Promise.all(
       chunks.map((ids) =>
         supabase
           .from("cartons")
-          .select("wo_id, quantity, status")
+          .select("wo_id, quantity")
           .in("wo_id", ids)
       )
     );
     const cartons = cartonResults.flatMap((r) => r.data || []);
 
+    // 5) Dispatches (CANONICAL SOURCE for dispatched qty)
+    const dispatchResults = await Promise.all(
+      chunks.map((ids) =>
+        supabase
+          .from("dispatches")
+          .select("wo_id, quantity")
+          .in("wo_id", ids)
+      )
+    );
+    const dispatches = dispatchResults.flatMap((r) => r.data || []);
+
     // Aggregate by work order
     const orderedMap = new Map<string, number>();
     (workOrders || []).forEach((wo) => orderedMap.set(wo.id, wo.quantity || 0));
 
-    const batchAgg = new Map<string, { produced: number; approved: number; rejected: number }>();
+    const batchAgg = new Map<string, { produced: number; legacyApproved: number; rejected: number }>();
     (batches || []).forEach((b) => {
-      const existing = batchAgg.get(b.wo_id) || { produced: 0, approved: 0, rejected: 0 };
+      const existing = batchAgg.get(b.wo_id) || { produced: 0, legacyApproved: 0, rejected: 0 };
       existing.produced += b.produced_qty || 0;
-      existing.approved += b.qc_approved_qty || 0;
+      existing.legacyApproved += b.qc_approved_qty || 0;
       existing.rejected += b.qc_rejected_qty || 0;
       batchAgg.set(b.wo_id, existing);
     });
 
-    const cartonAgg = new Map<
-      string,
-      { packed: number; dispatched: number; packCount: number; dispatchCount: number }
-    >();
+    // Dispatch QC batches aggregation
+    const dispatchQcAgg = new Map<string, number>();
+    (dispatchQcBatches || []).forEach((b) => {
+      const existing = dispatchQcAgg.get(b.work_order_id) || 0;
+      dispatchQcAgg.set(b.work_order_id, existing + (b.qc_approved_quantity || 0));
+    });
+
+    const cartonAgg = new Map<string, { packed: number; packCount: number }>();
     (cartons || []).forEach((c) => {
-      const existing = cartonAgg.get(c.wo_id) || {
-        packed: 0,
-        dispatched: 0,
-        packCount: 0,
-        dispatchCount: 0,
-      };
+      const existing = cartonAgg.get(c.wo_id) || { packed: 0, packCount: 0 };
       existing.packed += c.quantity || 0;
       existing.packCount += 1;
-      if (c.status === "dispatched") {
-        existing.dispatched += c.quantity || 0;
-        existing.dispatchCount += 1;
-      }
       cartonAgg.set(c.wo_id, existing);
+    });
+
+    // Dispatches aggregation (CANONICAL SOURCE)
+    const dispatchAgg = new Map<string, { dispatched: number; dispatchCount: number }>();
+    (dispatches || []).forEach((d) => {
+      const existing = dispatchAgg.get(d.wo_id) || { dispatched: 0, dispatchCount: 0 };
+      existing.dispatched += d.quantity || 0;
+      existing.dispatchCount += 1;
+      dispatchAgg.set(d.wo_id, existing);
     });
 
     // Build quantities for each WO
     woIds.forEach((woId) => {
       const orderedQty = orderedMap.get(woId) || 0;
-      const batch = batchAgg.get(woId) || { produced: 0, approved: 0, rejected: 0 };
-      const carton = cartonAgg.get(woId) || { packed: 0, dispatched: 0, packCount: 0, dispatchCount: 0 };
+      const batch = batchAgg.get(woId) || { produced: 0, legacyApproved: 0, rejected: 0 };
+      const carton = cartonAgg.get(woId) || { packed: 0, packCount: 0 };
+      const dispatch = dispatchAgg.get(woId) || { dispatched: 0, dispatchCount: 0 };
 
       const producedQty = batch.produced;
-      const qcApprovedQty = batch.approved;
+      // Use dispatch_qc_batches as canonical; fallback to legacy
+      const dispatchQcApproved = dispatchQcAgg.get(woId) || 0;
+      const qcApprovedQty = dispatchQcApproved > 0 ? dispatchQcApproved : batch.legacyApproved;
       const qcRejectedQty = batch.rejected;
       const qcPendingQty = Math.max(0, producedQty - qcApprovedQty - qcRejectedQty);
       const packedQty = carton.packed;
-      const dispatchedQty = carton.dispatched;
+      const dispatchedQty = dispatch.dispatched;
 
       result.set(woId, {
         orderedQty,
@@ -296,7 +346,7 @@ export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map
         packedQty,
         packingBatchCount: carton.packCount,
         dispatchedQty,
-        dispatchedBatchCount: carton.dispatchCount,
+        dispatchedBatchCount: dispatch.dispatchCount,
         remainingToProduceQty: Math.max(0, orderedQty - producedQty),
         remainingToPackQty: Math.max(0, qcApprovedQty - packedQty),
         remainingToDispatchQty: Math.max(0, packedQty - dispatchedQty),

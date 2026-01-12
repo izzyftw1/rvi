@@ -38,9 +38,23 @@ export function DispatchEligibilityCard({ woId, itemCode, customerName }: Dispat
         .eq("wo_id", woId)
         .eq("status", "ready_for_dispatch");
 
+      const cartonIds = (cartonData || []).map(c => c.id);
       const packedTotal = (cartonData || []).reduce((sum, c) => sum + (c.quantity || 0), 0);
-      setPackingQty(packedTotal);
       setPackingBatches((cartonData || []).length);
+
+      // Get already dispatched quantity from dispatches table (CANONICAL SOURCE)
+      let dispatchedFromCartons = 0;
+      if (cartonIds.length > 0) {
+        const { data: cartonDispatches } = await supabase
+          .from("dispatches")
+          .select("quantity")
+          .in("carton_id", cartonIds);
+        
+        dispatchedFromCartons = (cartonDispatches || []).reduce((sum, d) => sum + (d.quantity || 0), 0);
+      }
+
+      // Available from packing = packed - already dispatched from those cartons
+      setPackingQty(Math.max(0, packedTotal - dispatchedFromCartons));
 
       // Get finished goods inventory for this item (overproduction/returns)
       const { data: inventoryData } = await supabase
@@ -52,7 +66,7 @@ export function DispatchEligibilityCard({ woId, itemCode, customerName }: Dispat
       const inventoryTotal = (inventoryData || []).reduce((sum, i) => sum + (i.quantity_available || 0), 0);
       setInventoryQty(inventoryTotal);
 
-      // Get already dispatched quantity
+      // Get total dispatched quantity for this WO from dispatches table (CANONICAL SOURCE)
       const { data: dispatchData } = await supabase
         .from("dispatches")
         .select("quantity")

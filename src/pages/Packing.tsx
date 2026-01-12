@@ -191,58 +191,54 @@ const Packing = () => {
   };
 
   const loadPackingWorkOrders = async () => {
-    // Load batches that are ready for packing (QUANTITY-BASED eligibility)
-    // Packing is available when qc_approved_qty - packed_qty > 0
-    // NOT gated by production_complete or qc_final_status
+    // REFACTORED: Packing eligibility ONLY from dispatch_qc_batches
+    // Packable quantity = SUM(dispatch_qc_batches.qc_approved_quantity) - SUM(cartons.quantity)
+    // NOT gated by production_complete, WO status, or old QC fields
     
-    const { data: batchData, error: batchError } = await supabase
-      .from("production_batches")
+    // 1. Get all dispatch QC batches with available quantity
+    const { data: qcBatchData, error: qcError } = await supabase
+      .from("dispatch_qc_batches")
       .select(`
         id,
-        wo_id,
-        batch_number,
-        qc_approved_qty,
-        qc_final_status,
-        production_complete,
-        production_complete_qty,
+        work_order_id,
+        qc_approved_quantity,
+        consumed_quantity,
+        status,
         work_orders!inner(
           id,
           display_id,
           item_code,
           customer,
-          quantity,
-          status
+          quantity
         )
       `)
-      .gt("qc_approved_qty", 0);  // Only filter: has QC-approved quantity
+      .neq("status", "consumed");
 
-    if (batchError) {
-      console.error("Error loading packing-ready batches:", batchError);
+    if (qcError) {
+      console.error("Error loading dispatch QC batches for packing overview:", qcError);
       return;
     }
 
-    // Build unique WO map from batches - now based on BATCH production_complete
+    // 2. Aggregate QC-approved quantity by Work Order
     const woMap = new Map<string, {
       wo: any;
       qcApproved: number;
-      completeBatches: number;
-      totalBatches: number;
+      consumed: number;
     }>();
 
-    (batchData || []).forEach(b => {
+    (qcBatchData || []).forEach(b => {
       const wo = b.work_orders as any;
       if (!wo) return;
       
       const existing = woMap.get(wo.id);
       if (existing) {
-        existing.qcApproved += b.qc_approved_qty || 0;
-        existing.completeBatches += 1;
+        existing.qcApproved += b.qc_approved_quantity || 0;
+        existing.consumed += b.consumed_quantity || 0;
       } else {
         woMap.set(wo.id, {
           wo,
-          qcApproved: b.qc_approved_qty || 0,
-          completeBatches: 1,
-          totalBatches: 1,
+          qcApproved: b.qc_approved_quantity || 0,
+          consumed: b.consumed_quantity || 0,
         });
       }
     });
@@ -253,23 +249,7 @@ const Packing = () => {
       return;
     }
 
-    // Get total batch count per WO (to show "X of Y batches complete")
-    const { data: allBatches } = await supabase
-      .from("production_batches")
-      .select("wo_id")
-      .in("wo_id", woIds);
-    
-    const totalBatchMap: Record<string, number> = {};
-    (allBatches || []).forEach(b => {
-      totalBatchMap[b.wo_id] = (totalBatchMap[b.wo_id] || 0) + 1;
-    });
-
-    // Update total batch counts
-    woMap.forEach((val, woId) => {
-      val.totalBatches = totalBatchMap[woId] || val.completeBatches;
-    });
-
-    // Get packed quantities for these WOs
+    // 3. Get packed quantities for these WOs from cartons
     const { data: cartonData } = await supabase
       .from("cartons")
       .select("wo_id, quantity")
@@ -280,10 +260,13 @@ const Packing = () => {
       packedQtyMap[c.wo_id] = (packedQtyMap[c.wo_id] || 0) + c.quantity;
     });
 
-    // Build WO list with status
-    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved, completeBatches, totalBatches }) => {
+    // 4. Build WO list with status - availability derived ONLY from dispatch_qc_batches
+    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved, consumed }) => {
       const packedQty = packedQtyMap[wo.id] || 0;
-      const availableForPacking = Math.max(0, qcApproved - packedQty);
+      // Available for packing = QC approved - already packed (via consumed_quantity or cartons)
+      // Use the higher of consumed vs packed as the "used" amount for safety
+      const usedQty = Math.max(consumed, packedQty);
+      const availableForPacking = Math.max(0, qcApproved - usedQty);
       const remainingQty = wo.quantity - packedQty;
 
       let status: 'ready' | 'blocked' = 'ready';
@@ -300,9 +283,9 @@ const Packing = () => {
         item_code: wo.item_code || '',
         customer: wo.customer || '',
         wo_quantity: wo.quantity || 0,
-        production_complete: completeBatches === totalBatches,  // Derived from batch counts
+        production_complete: true, // Not relevant for packing anymore
         production_complete_qty: qcApproved,
-        qc_approved_qty: qcApproved,
+        qc_approved_qty: qcApproved, // Now from dispatch_qc_batches
         packed_qty: packedQty,
         available_for_packing: availableForPacking,
         remaining_qty: remainingQty,
