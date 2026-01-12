@@ -10,7 +10,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 
-interface FinalQCReportGeneratorProps {
+interface DispatchQCReportGeneratorProps {
   woId: string;
   woNumber: string;
   customer: string;
@@ -55,7 +55,7 @@ export const DispatchQCReportGenerator = ({
   samplingPlanReference,
   inspectorRemarks,
   onReportGenerated
-}: FinalQCReportGeneratorProps) => {
+}: DispatchQCReportGeneratorProps) => {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -542,13 +542,13 @@ export const DispatchQCReportGenerator = ({
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
         doc.text(`Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
-        doc.text(`Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')} | Document ID: FQC-${woNumber}`, 105, 290, { align: 'center' });
+        doc.text(`Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')} | Document ID: DQC-${woNumber}`, 105, 290, { align: 'center' });
       }
 
       // Generate PDF blob
       const pdfBlob = doc.output('blob');
       const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
-      const fileName = `Final_QC_Report_${woNumber}_v${existingReports.length + 1}_${timestamp}.pdf`;
+      const fileName = `Dispatch_QC_Report_${woNumber}_v${existingReports.length + 1}_${timestamp}.pdf`;
       const filePath = `${woId}/${fileName}`;
 
       // Upload to storage
@@ -604,7 +604,7 @@ export const DispatchQCReportGenerator = ({
       });
       setShowSuccessModal(true);
       await loadExistingReports();
-      toast.success('Final QC Report generated successfully');
+      toast.success('Dispatch QC Report generated successfully');
       
       // Notify parent that report was generated
       onReportGenerated?.();
@@ -633,7 +633,7 @@ export const DispatchQCReportGenerator = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Final QC Report (PDF)
+            Dispatch QC Report (PDF)
           </CardTitle>
           <CardDescription>
             Generate comprehensive inspection report with measurements, averages, and conclusion
@@ -644,7 +644,7 @@ export const DispatchQCReportGenerator = ({
             {reportData && (
               <div className="grid grid-cols-2 gap-3 p-3 bg-muted/50 rounded-lg text-sm">
                 <div>
-                  <span className="text-muted-foreground">Final QC Measurements:</span>
+                  <span className="text-muted-foreground">Dispatch QC Measurements:</span>
                   <span className="ml-2 font-semibold">{reportData.finalQCMeasurements.length}</span>
                 </div>
                 <div>
@@ -728,13 +728,13 @@ export const DispatchQCReportGenerator = ({
               Report Generated Successfully
             </DialogTitle>
             <DialogDescription>
-              Final QC Report has been created and saved.
+              Dispatch QC Report has been created and saved.
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-3 py-4">
             <div className="p-3 bg-muted/50 rounded-lg space-y-1 text-sm">
-              <p><span className="font-semibold">Report:</span> Final_QC_Report_{woNumber}</p>
+              <p><span className="font-semibold">Report:</span> Dispatch_QC_Report_{woNumber}</p>
               <p><span className="font-semibold">Version:</span> {generatedReport?.version}</p>
               <p><span className="font-semibold">Generated:</span> {format(new Date(), 'dd MMM yyyy HH:mm')}</p>
             </div>

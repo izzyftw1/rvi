@@ -14,6 +14,7 @@ export interface DispatchQCBatch {
   production_batch_id: string | null;
   qc_batch_id: string;
   qc_approved_quantity: number;
+  rejected_quantity: number;
   consumed_quantity: number;
   available_quantity: number; // Derived: approved - consumed
   qc_date: string;
@@ -58,6 +59,7 @@ export function useDispatchQCBatches(woId: string | undefined): UseDispatchQCBat
 
       const enriched: DispatchQCBatch[] = (data || []).map(b => ({
         ...b,
+        rejected_quantity: b.rejected_quantity || 0,
         available_quantity: b.qc_approved_quantity - b.consumed_quantity,
       }));
 
@@ -97,6 +99,7 @@ export function useDispatchQCBatches(woId: string | undefined): UseDispatchQCBat
       
       return {
         ...data,
+        rejected_quantity: data.rejected_quantity || 0,
         available_quantity: data.qc_approved_quantity - data.consumed_quantity,
       };
     } catch (error) {
@@ -159,6 +162,7 @@ export async function getAvailableDispatchQCBatches(woId: string): Promise<Dispa
 
   return (data || []).map(b => ({
     ...b,
+    rejected_quantity: b.rejected_quantity || 0,
     available_quantity: b.qc_approved_quantity - b.consumed_quantity,
   }));
 }

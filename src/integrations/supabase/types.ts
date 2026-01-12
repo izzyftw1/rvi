@@ -1355,6 +1355,7 @@ export type Database = {
           qc_approved_quantity: number
           qc_batch_id: string
           qc_date: string
+          rejected_quantity: number
           remarks: string | null
           status: string
           updated_at: string
@@ -1369,6 +1370,7 @@ export type Database = {
           qc_approved_quantity: number
           qc_batch_id: string
           qc_date?: string
+          rejected_quantity?: number
           remarks?: string | null
           status?: string
           updated_at?: string
@@ -1383,6 +1385,7 @@ export type Database = {
           qc_approved_quantity?: number
           qc_batch_id?: string
           qc_date?: string
+          rejected_quantity?: number
           remarks?: string | null
           status?: string
           updated_at?: string
