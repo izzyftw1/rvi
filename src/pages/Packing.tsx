@@ -132,9 +132,13 @@ const Packing = () => {
 
   const loadPackableBatches = async () => {
     // Load production batches where:
-    // 1. BATCH-LEVEL production_complete = true (not WO level)
-    // 2. Final QC has approved quantity (qc_final_status = passed)
-    // 3. Has remaining quantity to pack (available_qty > 0)
+    // ONLY CONDITION: qc_approved_qty > already_packed (quantity-based eligibility)
+    // Packing is NOT gated by:
+    // - production_complete status
+    // - qc_final_status
+    // - batch_status
+    // - stage_type
+    // Partial production + partial QC unlocks packing
     const { data, error } = await supabase
       .from("production_batches")
       .select(`
@@ -155,12 +159,8 @@ const Packing = () => {
         production_completed_at,
         work_orders!inner(display_id, item_code, customer, quantity)
       `)
-      .eq("production_complete", true)  // Filter by BATCH production_complete
-      .eq("qc_final_status", "passed")
-      .gt("qc_approved_qty", 0)
-      .not("batch_status", "eq", "completed")
-      .not("stage_type", "eq", "dispatched")
-      .order("qc_final_approved_at", { ascending: false });
+      .gt("qc_approved_qty", 0)  // Only filter: has QC-approved quantity
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error loading packable batches:", error);
@@ -219,8 +219,9 @@ const Packing = () => {
   };
 
   const loadPackingWorkOrders = async () => {
-    // Load batches that are ready for packing (BATCH-level production_complete)
-    // This shows a WO-level summary but filters by batch-level completion
+    // Load batches that are ready for packing (QUANTITY-BASED eligibility)
+    // Packing is available when qc_approved_qty - packed_qty > 0
+    // NOT gated by production_complete or qc_final_status
     
     const { data: batchData, error: batchError } = await supabase
       .from("production_batches")
@@ -241,9 +242,7 @@ const Packing = () => {
           status
         )
       `)
-      .eq("production_complete", true)  // BATCH-level production complete
-      .eq("qc_final_status", "passed")
-      .gt("qc_approved_qty", 0);
+      .gt("qc_approved_qty", 0);  // Only filter: has QC-approved quantity
 
     if (batchError) {
       console.error("Error loading packing-ready batches:", batchError);

@@ -157,9 +157,10 @@ const LogisticsDashboard = () => {
     };
   }, [loadData]);
 
-  // Batch-based filtering
+  // Batch-based filtering - QUANTITY-BASED eligibility
+  // Ready for dispatch when dispatchable_qty > 0 (no dispatch_allowed gate)
   const getDispatchReadyBatches = () => {
-    return batches.filter(b => b.dispatchable_qty > 0 && b.dispatch_allowed);
+    return batches.filter(b => b.dispatchable_qty > 0);
   };
 
   const getPendingQCBatches = () => {
@@ -273,7 +274,8 @@ const LogisticsDashboard = () => {
     if (batch.qc_final_status === 'failed') {
       return <Badge variant="destructive">QC Failed</Badge>;
     }
-    if (batch.dispatch_allowed && batch.dispatchable_qty > 0) {
+    // Quantity-based eligibility - ready when dispatchable_qty > 0
+    if (batch.dispatchable_qty > 0) {
       return <Badge className="bg-green-500">Ready to Dispatch</Badge>;
     }
     if (batch.dispatched_qty > 0 && batch.dispatchable_qty > 0) {
