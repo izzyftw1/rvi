@@ -7,18 +7,26 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Package, Send, CheckCircle2, History, Box, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle, Warehouse, Factory, FileDown, ExternalLink, ClipboardList } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, AlertTriangle, Info, Layers, ShieldAlert, FileCheck, XCircle, FileDown, ExternalLink, ClipboardList } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "react-router-dom";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
 import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib/packingListGenerator";
 
-// Source type for dispatch
-type DispatchSource = "production" | "inventory";
+/**
+ * CANONICAL DISPATCH WORKFLOW (Non-Negotiable)
+ * 
+ * Dispatch ONLY operates on PACKED goods (cartons/packing batches).
+ * Dispatch MUST NOT source directly from:
+ * - Finished Goods Inventory
+ * - Production batches
+ * 
+ * Dispatch represents "goods leaving the building" - always from cartons.
+ * All quantities derive from: dispatches table (SINGLE SOURCE OF TRUTH)
+ */
 
 // Dispatch QC status for a work order (informational only, not blocking)
 interface DispatchQCStatus {
@@ -29,7 +37,7 @@ interface DispatchQCStatus {
   inspectedAt?: string;
 }
 
-// Packing batch ready for dispatch
+// Packing batch ready for dispatch - ONLY source for dispatch
 interface PackingBatch {
   id: string;
   carton_id: string;
@@ -53,20 +61,6 @@ interface PackingBatch {
   dispatchQCStatus?: DispatchQCStatus;
 }
 
-// Inventory item for stock dispatch
-interface InventoryItem {
-  id: string;
-  item_code: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  work_order_id: string | null;
-  quantity_available: number;
-  source_type: string;
-  created_at: string;
-  heat_nos: string[] | null;
-  work_orders?: { display_id: string; wo_number: string } | null;
-}
-
 interface Shipment {
   id: string;
   ship_id: string;
@@ -88,18 +82,10 @@ export default function Dispatch() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   
-  // Source selection
-  const [dispatchSource, setDispatchSource] = useState<DispatchSource>("production");
-  
-  // Ready for dispatch packing batches (Production source)
+  // Ready for dispatch packing batches - ONLY source
   const [readyBatches, setReadyBatches] = useState<PackingBatch[]>([]);
   const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set());
   const [dispatchQuantities, setDispatchQuantities] = useState<Record<string, number>>({});
-  
-  // Inventory items (Stock source)
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
-  const [selectedInventoryIds, setSelectedInventoryIds] = useState<Set<string>>(new Set());
-  const [inventoryDispatchQtys, setInventoryDispatchQtys] = useState<Record<string, number>>({});
   
   // Shipment form
   const [shipmentId, setShipmentId] = useState("");
@@ -111,7 +97,6 @@ export default function Dispatch() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
     loadReadyBatches();
-    loadInventoryItems();
     loadRecentShipments();
 
     // Real-time subscriptions for live data updates
@@ -127,23 +112,12 @@ export default function Dispatch() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shipments' }, () => {
         loadRecentShipments();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'finished_goods_inventory' }, () => {
-        loadInventoryItems();
-      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
-
-  // Clear selections when source changes
-  useEffect(() => {
-    setSelectedBatchIds(new Set());
-    setDispatchQuantities({});
-    setSelectedInventoryIds(new Set());
-    setInventoryDispatchQtys({});
-  }, [dispatchSource]);
 
   const loadReadyBatches = async () => {
     // Get all cartons ready for dispatch
@@ -177,7 +151,7 @@ export default function Dispatch() {
       });
     }
 
-    // Calculate available quantity per carton
+    // Calculate available quantity per carton: packed_qty - dispatched_qty
     const baseBatches: PackingBatch[] = cartons.map(batch => {
       const alreadyDispatched = dispatchedByCarton[batch.id] || 0;
       return {
@@ -223,20 +197,6 @@ export default function Dispatch() {
     setReadyBatches(enriched);
   };
 
-  const loadInventoryItems = async () => {
-    const { data } = await supabase
-      .from("finished_goods_inventory")
-      .select(`
-        id, item_code, customer_id, customer_name, work_order_id,
-        quantity_available, source_type, created_at, heat_nos,
-        work_orders(display_id, wo_number)
-      `)
-      .gt("quantity_available", 0)
-      .order("created_at", { ascending: false });
-
-    setInventoryItems((data || []) as InventoryItem[]);
-  };
-
   const loadRecentShipments = async () => {
     const { data } = await supabase
       .from("shipments")
@@ -250,7 +210,7 @@ export default function Dispatch() {
     setRecentShipments((data as unknown as Shipment[]) || []);
   };
 
-  // === Production Batch Handlers ===
+  // === Batch Handlers ===
   const handleToggleBatch = (batchId: string) => {
     const newSelected = new Set(selectedBatchIds);
     if (newSelected.has(batchId)) {
@@ -301,75 +261,22 @@ export default function Dispatch() {
     return "";
   };
 
-  // === Inventory Handlers ===
-  const handleToggleInventory = (itemId: string) => {
-    const newSelected = new Set(selectedInventoryIds);
-    if (newSelected.has(itemId)) {
-      newSelected.delete(itemId);
-      const newQtys = { ...inventoryDispatchQtys };
-      delete newQtys[itemId];
-      setInventoryDispatchQtys(newQtys);
-    } else {
-      newSelected.add(itemId);
-      const item = inventoryItems.find(i => i.id === itemId);
-      if (item) {
-        setInventoryDispatchQtys({ ...inventoryDispatchQtys, [itemId]: item.quantity_available });
-      }
-    }
-    setSelectedInventoryIds(newSelected);
-  };
-
-  const handleSelectAllInventory = () => {
-    if (selectedInventoryIds.size === inventoryItems.length) {
-      setSelectedInventoryIds(new Set());
-      setInventoryDispatchQtys({});
-    } else {
-      const allIds = new Set(inventoryItems.map(i => i.id));
-      const allQtys: Record<string, number> = {};
-      inventoryItems.forEach(i => { allQtys[i.id] = i.quantity_available; });
-      setSelectedInventoryIds(allIds);
-      setInventoryDispatchQtys(allQtys);
-    }
-  };
-
-  const handleInventoryQtyChange = (itemId: string, qty: number, maxQty: number) => {
-    const validQty = Math.max(1, Math.min(qty, maxQty));
-    setInventoryDispatchQtys({ ...inventoryDispatchQtys, [itemId]: validQty });
-  };
-
-  const getInventoryDispatchQty = (item: InventoryItem) => {
-    return inventoryDispatchQtys[item.id] || item.quantity_available;
-  };
-
   // === Summary Calculation ===
   const getSelectedSummary = () => {
-    if (dispatchSource === "production") {
-      const selected = readyBatches.filter(b => selectedBatchIds.has(b.id));
-      const blockedBatches = selected.filter(b => !canDispatch(b));
-      return {
-        count: selected.length,
-        totalQty: selected.reduce((sum, b) => sum + getDispatchQty(b), 0),
-        totalCartons: selected.reduce((sum, b) => sum + (b.num_cartons || 0), 0),
-        totalPallets: selected.reduce((sum, b) => sum + (b.num_pallets || 0), 0),
-        hasPartial: selected.some(b => getDispatchQty(b) < b.available_qty),
-        blockedCount: blockedBatches.length,
-        blockedBatches,
-      };
-    } else {
-      const selected = inventoryItems.filter(i => selectedInventoryIds.has(i.id));
-      return {
-        count: selected.length,
-        totalQty: selected.reduce((sum, i) => sum + getInventoryDispatchQty(i), 0),
-        totalCartons: 0,
-        totalPallets: 0,
-        hasPartial: selected.some(i => getInventoryDispatchQty(i) < i.quantity_available),
-        blockedCount: 0,
-        blockedBatches: [],
-      };
-    }
+    const selected = readyBatches.filter(b => selectedBatchIds.has(b.id));
+    const blockedBatches = selected.filter(b => !canDispatch(b));
+    return {
+      count: selected.length,
+      totalQty: selected.reduce((sum, b) => sum + getDispatchQty(b), 0),
+      totalCartons: selected.reduce((sum, b) => sum + (b.num_cartons || 0), 0),
+      totalPallets: selected.reduce((sum, b) => sum + (b.num_pallets || 0), 0),
+      hasPartial: selected.some(b => getDispatchQty(b) < b.available_qty),
+      blockedCount: blockedBatches.length,
+      blockedBatches,
+    };
   };
 
-  const notifyLogisticsTeam = async (shipId: string, batchCount: number, totalQty: number, source: DispatchSource) => {
+  const notifyLogisticsTeam = async (shipId: string, batchCount: number, totalQty: number) => {
     try {
       // Find users in admin or packing departments (packing handles logistics)
       const { data: depts } = await supabase
@@ -390,7 +297,7 @@ export default function Dispatch() {
           user_id: u.id,
           type: "dispatch_created",
           title: "New Dispatch Created",
-          message: `Shipment ${shipId} created from ${source === "inventory" ? "Stock" : "Production"} with ${batchCount} item(s), ${totalQty} pcs total.`,
+          message: `Shipment ${shipId} created with ${batchCount} packing batch(es), ${totalQty} pcs total.`,
           entity_type: "shipment",
         }));
 
@@ -405,21 +312,13 @@ export default function Dispatch() {
     const summary = getSelectedSummary();
     
     if (summary.count === 0) {
-      toast({ variant: "destructive", description: "Please select at least one item" });
+      toast({ variant: "destructive", description: "Please select at least one packing batch" });
       return;
     }
 
-    if (dispatchSource === "production") {
-      await handleProductionDispatch();
-    } else {
-      await handleInventoryDispatch();
-    }
-  };
-
-  const handleProductionDispatch = async () => {
     const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
     
-    // Validate quantity availability (no longer blocked by QC status)
+    // Validate quantity availability
     const blockedBatches = selectedBatches.filter(b => !canDispatch(b));
     if (blockedBatches.length > 0) {
       const reasons = blockedBatches.map(b => 
@@ -480,13 +379,13 @@ export default function Dispatch() {
         });
       }
 
-      // 3. Create dispatch records and dispatch notes
+      // 3. Create dispatch records and dispatch notes - WRITE TO dispatches table (SSOT)
       for (const batch of selectedBatches) {
         const dispatchQty = getDispatchQty(batch);
         const isPartial = dispatchQty < batch.available_qty;
         const batchId = batch.production_batch_id || batchMap.get(batch.wo_id) || batch.wo_id;
         
-        // Create dispatch record
+        // Create dispatch record - CANONICAL WRITE PATH
         const { data: dispatchData, error: dispatchError } = await supabase
           .from("dispatches")
           .insert({
@@ -496,7 +395,9 @@ export default function Dispatch() {
             quantity: dispatchQty,
             shipment_id: shipmentData.id,
             dispatched_by: user?.id,
-            remarks: `[PRODUCTION] ${batch.carton_id}${batch.production_batches ? ` | Batch #${batch.production_batches.batch_number}` : ""}${isPartial ? ` | Partial: ${dispatchQty}/${batch.available_qty}` : ""}${remarks ? ` | ${remarks}` : ""}`,
+            remarks: isPartial 
+              ? `Partial dispatch: ${dispatchQty}/${batch.available_qty}${remarks ? ` | ${remarks}` : ""}`
+              : remarks || null,
           })
           .select()
           .single();
@@ -572,12 +473,11 @@ export default function Dispatch() {
       }
 
       // 4. Notify
-      const summary = getSelectedSummary();
-      await notifyLogisticsTeam(generatedShipId, summary.count, summary.totalQty, "production");
+      await notifyLogisticsTeam(generatedShipId, summary.count, summary.totalQty);
 
       toast({
         title: "Dispatch Created",
-        description: `${generatedShipId} with ${selectedBatchIds.size} packing batch(es), ${summary.totalQty} pcs dispatched from Production.`,
+        description: `${generatedShipId} with ${selectedBatchIds.size} packing batch(es), ${summary.totalQty} pcs dispatched.`,
       });
 
       // Reset form
@@ -586,177 +486,6 @@ export default function Dispatch() {
       setShipmentId("");
       setRemarks("");
       loadReadyBatches();
-      loadRecentShipments();
-    } catch (error: any) {
-      toast({ variant: "destructive", description: error.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInventoryDispatch = async () => {
-    const selectedItems = inventoryItems.filter(i => selectedInventoryIds.has(i.id));
-    
-    // Validate quantities
-    for (const item of selectedItems) {
-      const dispatchQty = getInventoryDispatchQty(item);
-      if (dispatchQty > item.quantity_available) {
-        toast({
-          variant: "destructive",
-          title: "Insufficient Inventory",
-          description: `${item.item_code}: Only ${item.quantity_available} available, cannot dispatch ${dispatchQty}`,
-        });
-        return;
-      }
-    }
-
-    const generatedShipId = shipmentId.trim() || `SHIP-STK-${Date.now().toString().slice(-8)}`;
-    const primaryCustomer = selectedItems[0]?.customer_name || "Stock Dispatch";
-
-    setLoading(true);
-    try {
-      // 1. Create shipment
-      const { data: shipmentData, error: shipmentError } = await supabase
-        .from("shipments")
-        .insert({
-          ship_id: generatedShipId,
-          customer: primaryCustomer,
-          status: "dispatched",
-        })
-        .select()
-        .single();
-
-      if (shipmentError) throw shipmentError;
-
-      // 2. For each inventory item, create dispatch record and update inventory
-      for (const item of selectedItems) {
-        const dispatchQty = getInventoryDispatchQty(item);
-
-        // Get or create a batch_id reference (required by dispatches FK)
-        let batchId = item.work_order_id;
-        if (item.work_order_id) {
-          const { data: prodBatch } = await supabase
-            .from("production_batches")
-            .select("id")
-            .eq("wo_id", item.work_order_id)
-            .limit(1)
-            .single();
-          
-          if (prodBatch) batchId = prodBatch.id;
-        }
-
-        // If no work_order_id, we need to handle this case
-        // Create dispatch record with inventory source noted in remarks
-        let dispatchId: string | null = null;
-        if (item.work_order_id && batchId) {
-          const { data: dispatchData, error: dispatchError } = await supabase
-            .from("dispatches")
-            .insert({
-              wo_id: item.work_order_id,
-              batch_id: batchId,
-              quantity: dispatchQty,
-              shipment_id: shipmentData.id,
-              dispatched_by: user?.id,
-              remarks: `[INVENTORY] ${item.item_code} | From Stock | Source: ${item.source_type}${remarks ? ` | ${remarks}` : ""}`,
-            })
-            .select()
-            .single();
-
-          if (dispatchError) {
-            console.error("Dispatch record error:", dispatchError);
-          } else {
-            dispatchId = dispatchData?.id;
-          }
-        }
-
-        // Create dispatch note for inventory dispatch (source of truth for invoicing)
-        if (item.work_order_id) {
-          // Get WO details
-          const { data: woData } = await supabase
-            .from("work_orders")
-            .select("so_id, quantity, gross_weight_per_pc, net_weight_per_pc, financial_snapshot, customer")
-            .eq("id", item.work_order_id)
-            .single();
-
-          // Get unit rate from financial_snapshot
-          const financialSnapshot = woData?.financial_snapshot as any;
-          const unitRate = financialSnapshot?.line_item?.price_per_pc || 0;
-          const currency = financialSnapshot?.currency || "USD";
-
-          // Generate dispatch note number
-          const { data: existingNotes } = await supabase
-            .from("dispatch_notes")
-            .select("dispatch_note_no")
-            .order("created_at", { ascending: false })
-            .limit(1);
-
-          let noteNo = "DN-0001";
-          if (existingNotes && existingNotes.length > 0) {
-            const lastNo = existingNotes[0].dispatch_note_no;
-            const numMatch = lastNo.match(/DN-(\d+)/);
-            if (numMatch) {
-              const lastNum = parseInt(numMatch[1]);
-              noteNo = `DN-${String(lastNum + 1).padStart(4, "0")}`;
-            }
-          }
-
-          await supabase.from("dispatch_notes").insert({
-            dispatch_note_no: noteNo,
-            work_order_id: item.work_order_id,
-            sales_order_id: woData?.so_id,
-            shipment_id: shipmentData.id,
-            dispatch_id: dispatchId,
-            item_code: item.item_code,
-            item_description: `${item.item_code} - Stock Dispatch (${item.source_type})`,
-            so_ordered_qty: woData?.quantity,
-            packed_qty: dispatchQty,
-            dispatched_qty: dispatchQty,
-            rejected_qty: 0,
-            unit_rate: unitRate,
-            currency: currency,
-            gross_weight_kg: woData?.gross_weight_per_pc ? (dispatchQty * woData.gross_weight_per_pc / 1000) : null,
-            net_weight_kg: woData?.net_weight_per_pc ? (dispatchQty * woData.net_weight_per_pc / 1000) : null,
-            created_by: user?.id,
-            remarks: `From inventory: ${item.source_type}`,
-          });
-        }
-
-        // Create inventory movement record
-        await supabase.from("inventory_movements").insert({
-          inventory_id: item.id,
-          movement_type: "dispatch",
-          quantity: -dispatchQty,
-          shipment_id: shipmentData.id,
-          work_order_id: item.work_order_id,
-          notes: `Dispatched via ${generatedShipId}${remarks ? ` - ${remarks}` : ""}`,
-          created_by: user?.id,
-        });
-
-        // Update inventory quantity
-        await supabase
-          .from("finished_goods_inventory")
-          .update({
-            quantity_available: item.quantity_available - dispatchQty,
-            last_movement_at: new Date().toISOString(),
-          })
-          .eq("id", item.id);
-      }
-
-      // 3. Notify
-      const summary = getSelectedSummary();
-      await notifyLogisticsTeam(generatedShipId, summary.count, summary.totalQty, "inventory");
-
-      toast({
-        title: "Dispatch Created",
-        description: `${generatedShipId} with ${selectedItems.length} inventory item(s), ${summary.totalQty} pcs dispatched from Stock.`,
-      });
-
-      // Reset form
-      setSelectedInventoryIds(new Set());
-      setInventoryDispatchQtys({});
-      setShipmentId("");
-      setRemarks("");
-      loadInventoryItems();
       loadRecentShipments();
     } catch (error: any) {
       toast({ variant: "destructive", description: error.message });
@@ -778,15 +507,6 @@ export default function Dispatch() {
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
-  };
-
-  // Parse source from remarks to display in history
-  const getDispatchSourceBadge = (remarks: string | null) => {
-    if (!remarks) return <Badge variant="outline">Unknown</Badge>;
-    if (remarks.startsWith("[INVENTORY]")) {
-      return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1"><Warehouse className="h-3 w-3" />Stock</Badge>;
-    }
-    return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 gap-1"><Factory className="h-3 w-3" />Production</Badge>;
   };
 
   // Download invoice for a shipment
@@ -978,18 +698,18 @@ export default function Dispatch() {
         <div className="space-y-6">
           <PageHeader
             title="Dispatch"
-            description="Create shipments from packed batches or stock inventory"
+            description="Create shipments from packed batches only"
             icon={<Truck className="h-6 w-6" />}
           />
 
-          {/* Info Banner */}
+          {/* Info Banner - Canonical Workflow */}
           <div className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30">
             <Info className="h-5 w-5 text-blue-500 mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">Choose your dispatch source below.</p>
+              <p className="font-medium">Dispatch operates on PACKED goods only.</p>
               <p className="text-muted-foreground">
-                <strong>Packing Batches:</strong> Dispatch from packed cartons (ready for shipment).{" "}
-                <strong>Inventory:</strong> Dispatch from stock (overproduction, returns, etc.).
+                All items must be packed first (via Packing page) before dispatch. 
+                Finished Goods Inventory must also go through Packing before dispatch.
               </p>
             </div>
           </div>
@@ -1007,307 +727,163 @@ export default function Dispatch() {
             </TabsList>
 
             <TabsContent value="dispatch" className="space-y-4 mt-6">
-              {/* Source Selection */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Select Dispatch Source</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <RadioGroup
-                    value={dispatchSource}
-                    onValueChange={(val) => setDispatchSource(val as DispatchSource)}
-                    className="flex gap-6"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="production" id="source-production" />
-                      <Label htmlFor="source-production" className="flex items-center gap-2 cursor-pointer">
-                        <Package className="h-4 w-4 text-blue-500" />
-                        Packing Batches
-                        <Badge variant="outline" className="ml-2">{readyBatches.length} ready</Badge>
-                      </Label>
+              {/* Packing Batches Ready for Dispatch */}
+              {readyBatches.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No Packed Items Ready for Dispatch</h3>
+                      <p className="text-muted-foreground max-w-md mb-4">
+                        Items must be packed before they can be dispatched. 
+                        Complete the packing process first.
+                      </p>
+                      <Link to="/packing">
+                        <Button variant="outline">
+                          <Package className="h-4 w-4 mr-2" />
+                          Go to Packing
+                        </Button>
+                      </Link>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="inventory" id="source-inventory" />
-                      <Label htmlFor="source-inventory" className="flex items-center gap-2 cursor-pointer">
-                        <Warehouse className="h-4 w-4 text-amber-500" />
-                        Finished Goods Inventory
-                        <Badge variant="outline" className="ml-2">{inventoryItems.length} items</Badge>
-                      </Label>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Layers className="h-5 w-5" />
+                          Packed Items Ready for Dispatch
+                        </CardTitle>
+                        <CardDescription>
+                          Select packed batches to include in a shipment. Partial quantities are supported.
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={handleSelectAllBatches}>
+                        {selectedBatchIds.size === readyBatches.length ? "Deselect All" : "Select All"}
+                      </Button>
                     </div>
-                  </RadioGroup>
-                </CardContent>
-              </Card>
-
-              {/* Production Source */}
-              {dispatchSource === "production" && (
-                <>
-                  {readyBatches.length === 0 ? (
-                    <Card>
-                      <CardContent className="py-12">
-                        <div className="flex flex-col items-center justify-center text-center">
-                          <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
-                          <h3 className="text-lg font-semibold mb-2">No Packing Batches Ready for Dispatch</h3>
-                          <p className="text-muted-foreground max-w-md">
-                            Packing batches will appear here when created. Complete the packing process first.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="flex items-center gap-2">
-                              <Layers className="h-5 w-5" />
-                              Packing Batches Ready for Dispatch
-                            </CardTitle>
-                            <CardDescription>
-                              Select batches to include in a shipment. Partial quantities are supported.
-                            </CardDescription>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={handleSelectAllBatches}>
-                            {selectedBatchIds.size === readyBatches.length ? "Deselect All" : "Select All"}
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-0">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-12"></TableHead>
-                              <TableHead>Packing Batch</TableHead>
-                              <TableHead>Source Batch</TableHead>
-                              <TableHead>Work Order</TableHead>
-                              <TableHead>Dispatch QC</TableHead>
-                              <TableHead className="text-right">Available</TableHead>
-                              <TableHead className="text-right">Dispatch Qty</TableHead>
-                              <TableHead>Packed At</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {readyBatches.map((batch) => {
-                              const isSelected = selectedBatchIds.has(batch.id);
-                              const dispatchQty = getDispatchQty(batch);
-                              const isPartial = isSelected && dispatchQty < batch.available_qty;
-                              const isBlocked = !canDispatch(batch);
-                              const blockReason = getBlockReason(batch);
-                              
-                              return (
-                                <TableRow 
-                                  key={batch.id}
-                                  className={`${isSelected ? "bg-primary/5" : ""} ${isBlocked && isSelected ? "bg-destructive/5" : ""}`}
-                                >
-                                  <TableCell>
-                                    <Checkbox
-                                      checked={isSelected}
-                                      onCheckedChange={() => handleToggleBatch(batch.id)}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <div>
-                                      <p className="font-mono font-medium">{batch.carton_id}</p>
-                                      {isPartial && (
-                                        <Badge variant="outline" className="text-xs mt-1">Partial</Badge>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12"></TableHead>
+                          <TableHead>Packing Batch</TableHead>
+                          <TableHead>Source Batch</TableHead>
+                          <TableHead>Work Order</TableHead>
+                          <TableHead>Dispatch QC</TableHead>
+                          <TableHead className="text-right">Available</TableHead>
+                          <TableHead className="text-right">Dispatch Qty</TableHead>
+                          <TableHead>Packed At</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {readyBatches.map((batch) => {
+                          const isSelected = selectedBatchIds.has(batch.id);
+                          const dispatchQty = getDispatchQty(batch);
+                          const isPartial = isSelected && dispatchQty < batch.available_qty;
+                          const isBlocked = !canDispatch(batch);
+                          const blockReason = getBlockReason(batch);
+                          
+                          return (
+                            <TableRow 
+                              key={batch.id}
+                              className={`${isSelected ? "bg-primary/5" : ""} ${isBlocked && isSelected ? "bg-destructive/5" : ""}`}
+                            >
+                              <TableCell>
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => handleToggleBatch(batch.id)}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="font-mono font-medium">{batch.carton_id}</p>
+                                  {isPartial && (
+                                    <Badge variant="outline" className="text-xs mt-1">Partial</Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {batch.production_batches 
+                                  ? <span className="font-mono">Batch #{batch.production_batches.batch_number}</span>
+                                  : <span className="text-muted-foreground">—</span>
+                                }
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{batch.work_orders?.display_id || "—"}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {batch.work_orders?.item_code} • {batch.work_orders?.customer}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      {batch.dispatchQCStatus?.hasQC && batch.dispatchQCStatus?.passed && batch.dispatchQCStatus?.hasPDF ? (
+                                        <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
+                                          <FileCheck className="h-3 w-3" />
+                                          Approved
+                                        </Badge>
+                                      ) : batch.dispatchQCStatus?.hasQC && batch.dispatchQCStatus?.passed ? (
+                                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1">
+                                          <AlertTriangle className="h-3 w-3" />
+                                          No PDF
+                                        </Badge>
+                                      ) : batch.dispatchQCStatus?.hasQC ? (
+                                        <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
+                                          <XCircle className="h-3 w-3" />
+                                          Failed
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="gap-1 text-muted-foreground">
+                                          <ShieldAlert className="h-3 w-3" />
+                                          Pending
+                                        </Badge>
                                       )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    {batch.production_batches 
-                                      ? <span className="font-mono">Batch #{batch.production_batches.batch_number}</span>
-                                      : <span className="text-muted-foreground">—</span>
-                                    }
-                                  </TableCell>
-                                  <TableCell>
-                                    <div>
-                                      <p className="font-medium">{batch.work_orders?.display_id || "—"}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {batch.work_orders?.item_code} • {batch.work_orders?.customer}
-                                      </p>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          {batch.dispatchQCStatus?.hasQC && batch.dispatchQCStatus?.passed && batch.dispatchQCStatus?.hasPDF ? (
-                                            <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
-                                              <FileCheck className="h-3 w-3" />
-                                              Approved
-                                            </Badge>
-                                          ) : batch.dispatchQCStatus?.hasQC && batch.dispatchQCStatus?.passed ? (
-                                            <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1">
-                                              <AlertTriangle className="h-3 w-3" />
-                                              No PDF
-                                            </Badge>
-                                          ) : batch.dispatchQCStatus?.hasQC ? (
-                                            <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
-                                              <XCircle className="h-3 w-3" />
-                                              Failed
-                                            </Badge>
-                                          ) : (
-                                            <Badge variant="outline" className="gap-1 text-muted-foreground">
-                                              <ShieldAlert className="h-3 w-3" />
-                                              Pending
-                                            </Badge>
-                                          )}
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {isBlocked ? (
-                                            <div className="flex flex-col gap-1">
-                                              <span className="font-medium text-red-500">Dispatch blocked</span>
-                                              <span>{blockReason}</span>
-                                              <Link 
-                                                to={`/dispatch-qc?wo=${batch.wo_id}`}
-                                                className="text-primary underline text-xs"
-                                              >
-                                                Go to Dispatch QC
-                                              </Link>
-                                            </div>
-                                          ) : (
-                                            <span>Dispatch QC approved with PDF report</span>
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </TableCell>
-                                  <TableCell className="text-right font-medium">{batch.available_qty}</TableCell>
-                                  <TableCell className="text-right">
-                                    {isSelected ? (
-                                      <Input
-                                        type="number"
-                                        min="1"
-                                        max={batch.available_qty}
-                                        value={dispatchQty}
-                                        onChange={(e) => handleBatchQtyChange(batch.id, parseInt(e.target.value) || 1, batch.available_qty)}
-                                        className="w-20 text-right ml-auto"
-                                      />
-                                    ) : (
-                                      <span className="text-muted-foreground">—</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-muted-foreground text-sm">
-                                    {new Date(batch.built_at).toLocaleDateString()}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
-              )}
-
-              {/* Inventory Source */}
-              {dispatchSource === "inventory" && (
-                <>
-                  {inventoryItems.length === 0 ? (
-                    <Card>
-                      <CardContent className="py-12">
-                        <div className="flex flex-col items-center justify-center text-center">
-                          <Warehouse className="h-12 w-12 text-amber-500 mb-4" />
-                          <h3 className="text-lg font-semibold mb-2">No Stock Available</h3>
-                          <p className="text-muted-foreground max-w-md">
-                            Finished goods inventory will appear here when stock is added from overproduction or returns.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="flex items-center gap-2">
-                              <Warehouse className="h-5 w-5" />
-                              Finished Goods Inventory
-                            </CardTitle>
-                            <CardDescription>
-                              Dispatch from existing stock (overproduction, returns, etc.)
-                            </CardDescription>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={handleSelectAllInventory}>
-                            {selectedInventoryIds.size === inventoryItems.length ? "Deselect All" : "Select All"}
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-0">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-12"></TableHead>
-                              <TableHead>Item Code</TableHead>
-                              <TableHead>Customer</TableHead>
-                              <TableHead>Source WO</TableHead>
-                              <TableHead>Source Type</TableHead>
-                              <TableHead className="text-right">Available</TableHead>
-                              <TableHead className="text-right">Dispatch Qty</TableHead>
-                              <TableHead>Added</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {inventoryItems.map((item) => {
-                              const isSelected = selectedInventoryIds.has(item.id);
-                              const dispatchQty = getInventoryDispatchQty(item);
-                              const isPartial = isSelected && dispatchQty < item.quantity_available;
-                              
-                              return (
-                                <TableRow 
-                                  key={item.id}
-                                  className={isSelected ? "bg-primary/5" : ""}
-                                >
-                                  <TableCell>
-                                    <Checkbox
-                                      checked={isSelected}
-                                      onCheckedChange={() => handleToggleInventory(item.id)}
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <div>
-                                      <p className="font-medium">{item.item_code}</p>
-                                      {isPartial && (
-                                        <Badge variant="outline" className="text-xs mt-1">Partial</Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {isBlocked ? (
+                                        <div className="flex flex-col gap-1">
+                                          <span className="font-medium text-red-500">Dispatch blocked</span>
+                                          <span>{blockReason}</span>
+                                        </div>
+                                      ) : (
+                                        <span>Dispatch QC status (informational)</span>
                                       )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>{item.customer_name || "—"}</TableCell>
-                                  <TableCell className="font-mono text-sm">
-                                    {item.work_orders?.display_id || "—"}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="capitalize">
-                                      {item.source_type?.replace(/_/g, " ") || "stock"}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="text-right font-medium">{item.quantity_available}</TableCell>
-                                  <TableCell className="text-right">
-                                    {isSelected ? (
-                                      <Input
-                                        type="number"
-                                        min="1"
-                                        max={item.quantity_available}
-                                        value={dispatchQty}
-                                        onChange={(e) => handleInventoryQtyChange(item.id, parseInt(e.target.value) || 1, item.quantity_available)}
-                                        className="w-20 text-right ml-auto"
-                                      />
-                                    ) : (
-                                      <span className="text-muted-foreground">—</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-muted-foreground text-sm">
-                                    {new Date(item.created_at).toLocaleDateString()}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">{batch.available_qty}</TableCell>
+                              <TableCell className="text-right">
+                                {isSelected ? (
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max={batch.available_qty}
+                                    value={dispatchQty}
+                                    onChange={(e) => handleBatchQtyChange(batch.id, parseInt(e.target.value) || 1, batch.available_qty)}
+                                    className="w-20 text-right ml-auto"
+                                  />
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {new Date(batch.built_at).toLocaleDateString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Selected Summary & Shipment Creation */}
@@ -1327,32 +903,20 @@ export default function Dispatch() {
                     <div className="grid grid-cols-4 gap-4">
                       <div className="text-center p-3 rounded-lg bg-background border">
                         <p className="text-2xl font-bold text-primary">{summary.count}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {dispatchSource === "production" ? "Packing Batches" : "Inventory Items"}
-                        </p>
+                        <p className="text-xs text-muted-foreground">Packing Batches</p>
                       </div>
                       <div className="text-center p-3 rounded-lg bg-background border">
                         <p className="text-2xl font-bold">{summary.totalQty}</p>
                         <p className="text-xs text-muted-foreground">Total Pieces</p>
                       </div>
-                      {dispatchSource === "production" && (
-                        <>
-                          <div className="text-center p-3 rounded-lg bg-background border">
-                            <p className="text-2xl font-bold">{summary.totalCartons}</p>
-                            <p className="text-xs text-muted-foreground">Cartons</p>
-                          </div>
-                          <div className="text-center p-3 rounded-lg bg-background border">
-                            <p className="text-2xl font-bold">{summary.totalPallets}</p>
-                            <p className="text-xs text-muted-foreground">Pallets</p>
-                          </div>
-                        </>
-                      )}
-                      {dispatchSource === "inventory" && (
-                        <div className="col-span-2 flex items-center justify-center p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                          <Warehouse className="h-5 w-5 text-amber-600 mr-2" />
-                          <span className="text-sm text-amber-700">Dispatching from Stock</span>
-                        </div>
-                      )}
+                      <div className="text-center p-3 rounded-lg bg-background border">
+                        <p className="text-2xl font-bold">{summary.totalCartons}</p>
+                        <p className="text-xs text-muted-foreground">Cartons</p>
+                      </div>
+                      <div className="text-center p-3 rounded-lg bg-background border">
+                        <p className="text-2xl font-bold">{summary.totalPallets}</p>
+                        <p className="text-xs text-muted-foreground">Pallets</p>
+                      </div>
                     </div>
 
                     {summary.blockedCount > 0 && (
@@ -1367,12 +931,6 @@ export default function Dispatch() {
                               <li key={b.id} className="flex items-center gap-2">
                                 <span>{b.work_orders?.display_id || b.carton_id}:</span>
                                 <span className="text-destructive">{getBlockReason(b)}</span>
-                                <Link 
-                                  to={`/quality/final-qc?wo=${b.wo_id}`}
-                                  className="text-primary underline text-xs"
-                                >
-                                  Complete Final QC
-                                </Link>
                               </li>
                             ))}
                           </ul>
@@ -1401,50 +959,44 @@ export default function Dispatch() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="remarks">Remarks (optional)</Label>
+                        <Label htmlFor="remarks">Remarks</Label>
                         <Input
                           id="remarks"
                           value={remarks}
                           onChange={(e) => setRemarks(e.target.value)}
-                          placeholder="Notes for logistics"
+                          placeholder="Optional notes"
                         />
                       </div>
                     </div>
 
-                    <Button
-                      onClick={handleCreateShipment}
+                    <Button 
+                      onClick={handleCreateShipment} 
+                      className="w-full" 
                       disabled={loading || summary.blockedCount > 0}
-                      className="w-full gap-2"
-                      size="lg"
                     >
-                      {summary.blockedCount > 0 ? (
-                        <>
-                          <ShieldAlert className="h-4 w-4" />
-                          Cannot Dispatch - {summary.blockedCount} Blocked
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4" />
-                          Create Shipment ({summary.count} {dispatchSource === "production" ? "batches" : "items"}, {summary.totalQty} pcs)
-                        </>
-                      )}
+                      {loading ? "Creating..." : `Create Shipment (${summary.totalQty} pcs)`}
                     </Button>
                   </CardContent>
                 </Card>
               )}
             </TabsContent>
 
+            {/* History Tab - Derives from dispatches table */}
             <TabsContent value="history" className="space-y-4 mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Shipments</CardTitle>
-                  <CardDescription>Dispatch history with quantity layers (Packed → Dispatched → Invoiced)</CardDescription>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="h-5 w-5" />
+                    Recent Shipments
+                  </CardTitle>
+                  <CardDescription>
+                    All dispatch history (derived from dispatches table)
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {recentShipments.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                      <p className="text-muted-foreground">No shipments yet</p>
+                    <div className="text-center py-8 text-muted-foreground">
+                      No shipments found
                     </div>
                   ) : (
                     <Table>
@@ -1452,19 +1004,8 @@ export default function Dispatch() {
                         <TableRow>
                           <TableHead>Shipment ID</TableHead>
                           <TableHead>Customer</TableHead>
-                          <TableHead>Source</TableHead>
-                          <TableHead className="text-center">
-                            <div className="flex flex-col items-center">
-                              <Package className="h-4 w-4 mb-1 text-blue-500" />
-                              <span className="text-xs">Packed</span>
-                            </div>
-                          </TableHead>
-                          <TableHead className="text-center">
-                            <div className="flex flex-col items-center">
-                              <Truck className="h-4 w-4 mb-1 text-green-500" />
-                              <span className="text-xs">Dispatched</span>
-                            </div>
-                          </TableHead>
+                          <TableHead>Items</TableHead>
+                          <TableHead className="text-right">Total Qty</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -1472,43 +1013,29 @@ export default function Dispatch() {
                       </TableHeader>
                       <TableBody>
                         {recentShipments.map((shipment) => {
-                          // Determine source from first dispatch remarks
-                          const firstRemarks = shipment.dispatches[0]?.remarks;
-                          const totalDispatched = shipment.dispatches.reduce((sum, d) => sum + d.quantity, 0);
-                          // Packed qty from cartons if available
-                          const totalPacked = shipment.dispatches.reduce((sum, d) => sum + (d.cartons?.quantity || d.quantity), 0);
-                          
+                          const totalQty = shipment.dispatches.reduce((sum, d) => sum + d.quantity, 0);
                           return (
                             <TableRow key={shipment.id}>
-                              <TableCell className="font-mono font-medium">{shipment.ship_id}</TableCell>
+                              <TableCell className="font-mono font-medium">
+                                {shipment.ship_id}
+                              </TableCell>
                               <TableCell>{shipment.customer || "—"}</TableCell>
-                              <TableCell>{getDispatchSourceBadge(firstRemarks)}</TableCell>
-                              <TableCell className="text-center font-medium text-blue-600">
-                                {totalPacked.toLocaleString()}
+                              <TableCell>
+                                <Badge variant="outline">{shipment.dispatches.length} items</Badge>
                               </TableCell>
-                              <TableCell className="text-center font-medium text-green-600">
-                                {totalDispatched.toLocaleString()}
-                                {totalPacked !== totalDispatched && (
-                                  <Badge 
-                                    variant="outline" 
-                                    className={`ml-1 text-xs ${totalDispatched < totalPacked ? 'text-amber-600' : 'text-red-600'}`}
-                                  >
-                                    {totalDispatched > totalPacked ? '+' : ''}{totalDispatched - totalPacked}
-                                  </Badge>
-                                )}
-                              </TableCell>
+                              <TableCell className="text-right font-medium">{totalQty}</TableCell>
                               <TableCell>{getStatusBadge(shipment.status)}</TableCell>
-                              <TableCell className="text-muted-foreground">
+                              <TableCell className="text-muted-foreground text-sm">
                                 {new Date(shipment.created_at).toLocaleDateString()}
                               </TableCell>
                               <TableCell className="text-right">
-                                <div className="flex justify-end gap-1">
+                                <div className="flex items-center justify-end gap-1">
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
+                                        <Button 
+                                          variant="ghost" 
+                                          size="icon"
                                           onClick={() => handleDownloadPackingList(shipment)}
                                         >
                                           <ClipboardList className="h-4 w-4" />
@@ -1520,27 +1047,27 @@ export default function Dispatch() {
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
+                                        <Button 
+                                          variant="ghost" 
+                                          size="icon"
                                           onClick={() => handleDownloadInvoice(shipment)}
                                         >
                                           <FileDown className="h-4 w-4" />
                                         </Button>
                                       </TooltipTrigger>
-                                      <TooltipContent>Download Invoice PDF</TooltipContent>
+                                      <TooltipContent>Download Invoice</TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <Link to={`/finance/invoices`}>
-                                          <Button variant="ghost" size="sm">
+                                        <Link to={`/logistics?shipment=${shipment.id}`}>
+                                          <Button variant="ghost" size="icon">
                                             <ExternalLink className="h-4 w-4" />
                                           </Button>
                                         </Link>
                                       </TooltipTrigger>
-                                      <TooltipContent>View in Finance</TooltipContent>
+                                      <TooltipContent>View Details</TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
                                 </div>
