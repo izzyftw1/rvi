@@ -573,7 +573,7 @@ const Packing = () => {
                                   <div className="flex flex-col gap-1">
                                     <Badge variant="outline" className="text-amber-600 border-amber-500/30 gap-1">
                                       {wo.blocking_reason === 'Production not complete' && <Clock className="h-3 w-3" />}
-                                      {wo.blocking_reason === 'Final QC pending' && <AlertTriangle className="h-3 w-3" />}
+                                      {wo.blocking_reason === 'Dispatch QC pending' && <AlertTriangle className="h-3 w-3" />}
                                       {wo.blocking_reason === 'Fully packed' && <CheckCircle2 className="h-3 w-3" />}
                                       {wo.blocking_reason === 'No QC-approved quantity' && <XCircle className="h-3 w-3" />}
                                       Blocked
@@ -631,9 +631,9 @@ const Packing = () => {
                       </div>
                       <div>
                         <div className="text-2xl font-bold">
-                          {packingWorkOrders.filter(wo => wo.blocking_reason === 'Final QC pending').length}
+                          {packingWorkOrders.filter(wo => wo.blocking_reason === 'Dispatch QC pending').length}
                         </div>
-                        <div className="text-sm text-muted-foreground">Awaiting Final QC</div>
+                        <div className="text-sm text-muted-foreground">Awaiting Dispatch QC</div>
                       </div>
                     </div>
                   </CardContent>

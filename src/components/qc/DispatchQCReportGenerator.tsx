@@ -124,7 +124,7 @@ export const DispatchQCReportGenerator = ({
         `)
         .eq('wo_id', woId);
 
-      // Load Final QC measurements from qc_measurements
+      // Load Dispatch QC measurements from qc_measurements
       const finalQCRecord = qcRecords?.find((r: any) => r.qc_type === 'final');
       let finalQCMeasurements: any[] = [];
       if (finalQCRecord) {
@@ -347,11 +347,11 @@ export const DispatchQCReportGenerator = ({
       
       yPos += 18;
 
-      // ===== SECTION 1: FINAL QC MEASUREMENTS =====
+      // ===== SECTION 1: DISPATCH QC MEASUREMENTS =====
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(28, 63, 148);
-      doc.text('1. FINAL QC DIMENSIONAL MEASUREMENTS', 20, yPos);
+      doc.text('1. DISPATCH QC DIMENSIONAL MEASUREMENTS', 20, yPos);
       yPos += 8;
       doc.setTextColor(0, 0, 0);
 
@@ -383,7 +383,7 @@ export const DispatchQCReportGenerator = ({
       } else {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        doc.text('No Final QC dimensional measurements recorded.', 25, yPos);
+        doc.text('No Dispatch QC dimensional measurements recorded.', 25, yPos);
         yPos += 10;
       }
 

@@ -1,5 +1,3 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import {
   Select,
   SelectContent,
@@ -10,16 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
-
-interface DispatchQCBatch {
-  id: string;
-  qc_batch_id: string;
-  qc_approved_quantity: number;
-  consumed_quantity: number;
-  available_quantity: number;
-  status: string;
-  qc_date: string;
-}
+import { useDispatchQCBatches, DispatchQCBatch } from "@/hooks/useDispatchQCBatches";
 
 interface DispatchQCBatchSelectorProps {
   woId: string;
@@ -28,43 +17,24 @@ interface DispatchQCBatchSelectorProps {
   disabled?: boolean;
 }
 
+/**
+ * Dispatch QC Batch Selector
+ * 
+ * Allows selection of QC-approved batches for packing.
+ * Uses the useDispatchQCBatches hook for consistent data management.
+ * 
+ * QUANTITY-DRIVEN: Selection is based on available quantity, not WO status.
+ */
 export function DispatchQCBatchSelector({
   woId,
   selectedBatchId,
   onBatchSelect,
   disabled = false,
 }: DispatchQCBatchSelectorProps) {
-  const [batches, setBatches] = useState<DispatchQCBatch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { batches, loading, totalAvailable } = useDispatchQCBatches(woId || undefined);
 
-  useEffect(() => {
-    if (!woId) {
-      setBatches([]);
-      setLoading(false);
-      return;
-    }
-
-    const loadBatches = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("dispatch_qc_batches")
-        .select("*")
-        .eq("work_order_id", woId)
-        .neq("status", "consumed")
-        .order("qc_date", { ascending: true });
-
-      if (!error && data) {
-        const enriched = data.map(b => ({
-          ...b,
-          available_quantity: b.qc_approved_quantity - b.consumed_quantity,
-        }));
-        setBatches(enriched);
-      }
-      setLoading(false);
-    };
-
-    loadBatches();
-  }, [woId]);
+  // Filter to only show batches with available quantity
+  const availableBatches = batches.filter(b => b.available_quantity > 0);
 
   const handleChange = (value: string) => {
     if (value === "none") {
@@ -72,14 +42,13 @@ export function DispatchQCBatchSelector({
       return;
     }
     
-    const batch = batches.find(b => b.id === value);
+    const batch = availableBatches.find(b => b.id === value);
     if (batch) {
       onBatchSelect(batch.id, batch.available_quantity);
     }
   };
 
-  const selectedBatch = batches.find(b => b.id === selectedBatchId);
-  const totalAvailable = batches.reduce((sum, b) => sum + b.available_quantity, 0);
+  const selectedBatch = availableBatches.find(b => b.id === selectedBatchId);
 
   if (loading) {
     return (
@@ -90,15 +59,16 @@ export function DispatchQCBatchSelector({
     );
   }
 
-  if (batches.length === 0) {
+  if (availableBatches.length === 0) {
     return (
       <div className="p-4 rounded-lg border border-muted bg-muted/20">
         <div className="flex items-center gap-2 text-muted-foreground">
           <AlertCircle className="h-4 w-4" />
-          <span className="font-medium">No Dispatch QC Batches</span>
+          <span className="font-medium">No Dispatch QC Batches Available</span>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          QC approvals will appear here as quantities are approved. Partial QC approval unlocks packing.
+          QC-approved quantities will appear here after Dispatch QC approval. 
+          Partial QC approval unlocks packing for approved quantities.
         </p>
       </div>
     );
@@ -123,7 +93,7 @@ export function DispatchQCBatchSelector({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="none">-- Select Batch --</SelectItem>
-          {batches.map((batch) => (
+          {availableBatches.map((batch) => (
             <SelectItem 
               key={batch.id} 
               value={batch.id}

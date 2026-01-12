@@ -42,7 +42,7 @@ interface EnhancedQCRecordsProps {
  * 3. In-Process QC: Authoritative source = Latest hourly_qc_checks record
  *    - Count-based, no single status
  * 
- * 4. Final QC: Authoritative source = qc_final_reports records
+ * 4. Dispatch QC: Authoritative source = qc_final_reports records
  *    - Count-based, check if any exist
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -80,7 +80,7 @@ export function EnhancedQCRecords({ qcRecords, workOrder }: EnhancedQCRecordsPro
       'incoming': { name: 'Raw Material QC', icon: FlaskConical },
       'first_piece': { name: 'First Piece QC', icon: Target },
       'in_process': { name: 'In-Process QC', icon: CheckCircle2 },
-      'final': { name: 'Final QC', icon: CheckCircle2 },
+      'final': { name: 'Dispatch QC', icon: CheckCircle2 },
     };
     return labels[type] || { name: type, icon: FlaskConical };
   };
@@ -184,7 +184,7 @@ export function EnhancedQCRecords({ qcRecords, workOrder }: EnhancedQCRecordsPro
           </CardContent>
         </Card>
 
-        {/* Final QC - Source: qc_final_reports */}
+        {/* Dispatch QC - Source: qc_final_reports */}
         <Card className={cn(
           "border-2",
           finalCount > 0 ? getBorderClass(finalStatus) : "border-muted",
@@ -193,7 +193,7 @@ export function EnhancedQCRecords({ qcRecords, workOrder }: EnhancedQCRecordsPro
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <p className="text-sm font-medium">Final QC</p>
+                <p className="text-sm font-medium">Dispatch QC</p>
                 {finalCount > 0 ? (
                   <QCStatusIndicator status={finalStatus} label={`${finalCount} reports`} size="sm" />
                 ) : (

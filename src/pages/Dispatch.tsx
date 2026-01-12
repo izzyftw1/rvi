@@ -20,8 +20,8 @@ import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib
 // Source type for dispatch
 type DispatchSource = "production" | "inventory";
 
-// Final QC status for a work order
-interface FinalQCStatus {
+// Dispatch QC status for a work order (informational only, not blocking)
+interface DispatchQCStatus {
   hasQC: boolean;
   passed: boolean;
   hasPDF: boolean;
@@ -50,7 +50,7 @@ interface PackingBatch {
   production_batches?: {
     batch_number: number;
   } | null;
-  finalQCStatus?: FinalQCStatus;
+  dispatchQCStatus?: DispatchQCStatus;
 }
 
 // Inventory item for stock dispatch
@@ -176,7 +176,7 @@ export default function Dispatch() {
       .select("work_order_id, file_url")
       .in("work_order_id", woIds);
 
-    const qcStatusMap = new Map<string, FinalQCStatus>();
+    const qcStatusMap = new Map<string, DispatchQCStatus>();
     woIds.forEach(woId => {
       const qcRecord = (qcRecords || []).find(r => r.wo_id === woId);
       const qcReport = (qcReports || []).find(r => r.work_order_id === woId);
@@ -192,7 +192,7 @@ export default function Dispatch() {
 
     const enriched: PackingBatch[] = baseBatches.map(batch => ({
       ...batch,
-      finalQCStatus: qcStatusMap.get(batch.wo_id) || { hasQC: false, passed: false, hasPDF: false },
+      dispatchQCStatus: qcStatusMap.get(batch.wo_id) || { hasQC: false, passed: false, hasPDF: false },
     }));
 
     setReadyBatches(enriched);
@@ -963,7 +963,7 @@ export default function Dispatch() {
             <div className="text-sm">
               <p className="font-medium">Choose your dispatch source below.</p>
               <p className="text-muted-foreground">
-                <strong>Production:</strong> Dispatch from packed cartons (requires Final QC).{" "}
+                <strong>Production:</strong> Dispatch from packed cartons (Dispatch QC approved).{" "}
                 <strong>Inventory:</strong> Dispatch from stock (overproduction, returns, etc.).
               </p>
             </div>
@@ -1054,7 +1054,7 @@ export default function Dispatch() {
                               <TableHead>Packing Batch</TableHead>
                               <TableHead>Source Batch</TableHead>
                               <TableHead>Work Order</TableHead>
-                              <TableHead>Final QC</TableHead>
+                              <TableHead>Dispatch QC</TableHead>
                               <TableHead className="text-right">Available</TableHead>
                               <TableHead className="text-right">Dispatch Qty</TableHead>
                               <TableHead>Packed At</TableHead>
@@ -1105,17 +1105,17 @@ export default function Dispatch() {
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          {batch.finalQCStatus?.hasQC && batch.finalQCStatus?.passed && batch.finalQCStatus?.hasPDF ? (
+                                          {batch.dispatchQCStatus?.hasQC && batch.dispatchQCStatus?.passed && batch.dispatchQCStatus?.hasPDF ? (
                                             <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
                                               <FileCheck className="h-3 w-3" />
                                               Approved
                                             </Badge>
-                                          ) : batch.finalQCStatus?.hasQC && batch.finalQCStatus?.passed ? (
+                                          ) : batch.dispatchQCStatus?.hasQC && batch.dispatchQCStatus?.passed ? (
                                             <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1">
                                               <AlertTriangle className="h-3 w-3" />
                                               No PDF
                                             </Badge>
-                                          ) : batch.finalQCStatus?.hasQC ? (
+                                          ) : batch.dispatchQCStatus?.hasQC ? (
                                             <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
                                               <XCircle className="h-3 w-3" />
                                               Failed
@@ -1133,14 +1133,14 @@ export default function Dispatch() {
                                               <span className="font-medium text-red-500">Dispatch blocked</span>
                                               <span>{blockReason}</span>
                                               <Link 
-                                                to={`/quality/final-qc?wo=${batch.wo_id}`}
+                                                to={`/dispatch-qc?wo=${batch.wo_id}`}
                                                 className="text-primary underline text-xs"
                                               >
-                                                Go to Final QC
+                                                Go to Dispatch QC
                                               </Link>
                                             </div>
                                           ) : (
-                                            <span>Final QC approved with PDF report</span>
+                                            <span>Dispatch QC approved with PDF report</span>
                                           )}
                                         </TooltipContent>
                                       </Tooltip>
