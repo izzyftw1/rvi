@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,226 +9,226 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from "recharts";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { format, differenceInDays } from "date-fns";
-import { Package, TrendingUp, Clock, AlertTriangle, Search, Plus, ArrowUpRight, ArrowDownRight, Download } from "lucide-react";
+import { 
+  Package, TrendingUp, Clock, AlertTriangle, Search, Filter,
+  Download, Warehouse, PackageCheck, Truck, ArrowRight
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
-const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444"];
-
-interface InventoryItem {
+interface CartonItem {
   id: string;
-  item_code: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  work_order_id: string | null;
-  production_batch_id: string | null;
-  quantity_available: number;
-  quantity_reserved: number;
-  quantity_original: number;
-  source_type: string;
-  created_at: string;
-  last_movement_at: string | null;
-  heat_nos: string[] | null;
-  notes: string | null;
-  work_orders?: { wo_number: string; item_code: string } | null;
+  carton_id: string;
+  wo_id: string;
+  quantity: number;
+  dispatched_qty: number;
+  status: string;
+  built_at: string;
+  net_weight: number;
+  gross_weight: number;
+  work_order?: {
+    display_id: string;
+    item_code: string;
+    customer: string;
+  };
 }
 
-interface InventoryMovement {
+interface DispatchRecord {
   id: string;
-  inventory_id: string;
-  movement_type: string;
+  batch_id: string;
+  wo_id: string;
   quantity: number;
-  work_order_id: string | null;
-  notes: string | null;
-  created_at: string;
-  work_orders?: { wo_number: string } | null;
+  dispatched_at: string;
+  shipment_id: string | null;
+  work_order?: {
+    display_id: string;
+    item_code: string;
+    customer: string;
+  };
 }
 
 export default function FinishedGoodsInventory() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [searchTerm, setSearchTerm] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
-  const [ageFilter, setAgeFilter] = useState<string>("all");
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  // Fetch inventory items
-  const { data: inventory = [], isLoading } = useQuery({
-    queryKey: ["finished-goods-inventory"],
+  // Fetch cartons as the source of finished goods
+  const { data: cartons = [], isLoading } = useQuery({
+    queryKey: ["finished-goods-cartons"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("finished_goods_inventory")
+        .from("cartons")
         .select(`
-          *,
-          work_orders (wo_number, item_code)
+          id, carton_id, wo_id, quantity, dispatched_qty, status, built_at, net_weight, gross_weight,
+          work_orders (display_id, item_code, customer)
         `)
-        .order("created_at", { ascending: false });
+        .order("built_at", { ascending: false });
 
       if (error) throw error;
-      return data as InventoryItem[];
+      return (data || []).map(c => ({
+        ...c,
+        work_order: c.work_orders as any,
+      })) as CartonItem[];
     },
   });
 
-  // Fetch movements
-  const { data: movements = [] } = useQuery({
-    queryKey: ["inventory-movements"],
+  // Fetch recent dispatches
+  const { data: dispatches = [] } = useQuery({
+    queryKey: ["finished-goods-dispatches"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("inventory_movements")
+        .from("dispatches")
         .select(`
-          *,
-          work_orders (wo_number)
+          id, batch_id, wo_id, quantity, dispatched_at, shipment_id,
+          work_orders (display_id, item_code, customer)
         `)
-        .order("created_at", { ascending: false })
+        .order("dispatched_at", { ascending: false })
         .limit(100);
 
       if (error) throw error;
-      return data as InventoryMovement[];
+      return (data || []).map(d => ({
+        ...d,
+        work_order: d.work_orders as any,
+      })) as DispatchRecord[];
     },
   });
 
-  // Fetch customers for filter
-  const { data: customers = [] } = useQuery({
-    queryKey: ["customers-for-filter"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("customer_master")
-        .select("id, customer_name")
-        .order("customer_name");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Calculate metrics
+  // Calculate metrics from cartons
   const metrics = useMemo(() => {
-    const totalQty = inventory.reduce((sum, i) => sum + i.quantity_available, 0);
-    const reservedQty = inventory.reduce((sum, i) => sum + i.quantity_reserved, 0);
-    const uniqueItems = new Set(inventory.map(i => i.item_code)).size;
-    const customerLinked = inventory.filter(i => i.customer_id).length;
-
-    // Age distribution
-    const ageDist = { fresh: 0, normal: 0, aging: 0, stale: 0 };
-    inventory.forEach(i => {
-      const days = differenceInDays(new Date(), new Date(i.created_at));
-      if (days <= 30) ageDist.fresh += i.quantity_available;
-      else if (days <= 90) ageDist.normal += i.quantity_available;
-      else if (days <= 180) ageDist.aging += i.quantity_available;
-      else ageDist.stale += i.quantity_available;
-    });
-
-    // By source
-    const bySource = inventory.reduce((acc, i) => {
-      const source = i.source_type || "overproduction";
-      acc[source] = (acc[source] || 0) + i.quantity_available;
+    const today = new Date();
+    
+    // Packed stock = cartons with status ready_for_dispatch or packed
+    const packedCartons = cartons.filter(c => 
+      c.status === "ready_for_dispatch" || c.status === "packed"
+    );
+    const packedQty = packedCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
+    const packedWeight = packedCartons.reduce((sum, c) => {
+      const remainingRatio = (c.quantity - (c.dispatched_qty || 0)) / c.quantity;
+      return sum + (c.net_weight || 0) * remainingRatio;
+    }, 0);
+    
+    // Dispatched
+    const dispatchedCartons = cartons.filter(c => c.status === "dispatched");
+    const dispatchedQty = dispatchedCartons.reduce((sum, c) => sum + c.quantity, 0);
+    
+    // Today's activity
+    const todayPacked = cartons
+      .filter(c => differenceInDays(today, new Date(c.built_at)) === 0)
+      .reduce((sum, c) => sum + c.quantity, 0);
+    const todayDispatched = dispatches
+      .filter(d => differenceInDays(today, new Date(d.dispatched_at)) === 0)
+      .reduce((sum, d) => sum + d.quantity, 0);
+    
+    // Ageing (stock > 15 days old)
+    const ageingCartons = packedCartons.filter(c => differenceInDays(today, new Date(c.built_at)) > 15);
+    const ageingQty = ageingCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
+    
+    // By customer
+    const byCustomer = packedCartons.reduce((acc, c) => {
+      const customer = c.work_order?.customer || "Unknown";
+      const qty = c.quantity - (c.dispatched_qty || 0);
+      acc[customer] = (acc[customer] || 0) + qty;
       return acc;
     }, {} as Record<string, number>);
+    
+    // By item
+    const byItem = packedCartons.reduce((acc, c) => {
+      const item = c.work_order?.item_code || "Unknown";
+      const qty = c.quantity - (c.dispatched_qty || 0);
+      acc[item] = (acc[item] || 0) + qty;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    // Age buckets
+    const ageBuckets = { fresh: 0, normal: 0, aging: 0, critical: 0 };
+    packedCartons.forEach(c => {
+      const days = differenceInDays(today, new Date(c.built_at));
+      const qty = c.quantity - (c.dispatched_qty || 0);
+      if (days <= 7) ageBuckets.fresh += qty;
+      else if (days <= 15) ageBuckets.normal += qty;
+      else if (days <= 30) ageBuckets.aging += qty;
+      else ageBuckets.critical += qty;
+    });
 
     return {
-      totalQty,
-      reservedQty,
-      availableQty: totalQty - reservedQty,
-      uniqueItems,
-      customerLinked,
-      ageDist,
-      bySource,
+      packedQty,
+      packedWeight,
+      packedCartonCount: packedCartons.length,
+      dispatchedQty,
+      todayPacked,
+      todayDispatched,
+      ageingQty,
+      byCustomer: Object.entries(byCustomer).sort((a, b) => b[1] - a[1]),
+      byItem: Object.entries(byItem).sort((a, b) => b[1] - a[1]),
+      ageBuckets,
+      uniqueItems: Object.keys(byItem).length,
+      uniqueCustomers: Object.keys(byCustomer).length,
     };
-  }, [inventory]);
+  }, [cartons, dispatches]);
 
-  // Filtered inventory
-  const filteredInventory = useMemo(() => {
-    return inventory.filter(item => {
+  // Filter cartons
+  const filteredCartons = useMemo(() => {
+    return cartons.filter(c => {
+      const remaining = c.quantity - (c.dispatched_qty || 0);
+      if (remaining <= 0 && statusFilter !== "dispatched") return false;
+      
       const matchesSearch = !searchTerm || 
-        item.item_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.work_orders?.wo_number?.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesCustomer = customerFilter === "all" || 
-        (customerFilter === "none" ? !item.customer_id : item.customer_id === customerFilter);
-
-      const days = differenceInDays(new Date(), new Date(item.created_at));
-      const matchesAge = ageFilter === "all" ||
-        (ageFilter === "fresh" && days <= 30) ||
-        (ageFilter === "normal" && days > 30 && days <= 90) ||
-        (ageFilter === "aging" && days > 90 && days <= 180) ||
-        (ageFilter === "stale" && days > 180);
-
-      return matchesSearch && matchesCustomer && matchesAge && item.quantity_available > 0;
+        c.carton_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.work_order?.display_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.work_order?.item_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.work_order?.customer?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesCustomer = customerFilter === "all" || c.work_order?.customer === customerFilter;
+      
+      const matchesStatus = statusFilter === "all" || 
+        (statusFilter === "ready" && (c.status === "ready_for_dispatch" || c.status === "packed")) ||
+        (statusFilter === "dispatched" && c.status === "dispatched") ||
+        (statusFilter === "partial" && c.dispatched_qty > 0 && c.dispatched_qty < c.quantity);
+      
+      return matchesSearch && matchesCustomer && matchesStatus;
     });
-  }, [inventory, searchTerm, customerFilter, ageFilter]);
+  }, [cartons, searchTerm, customerFilter, statusFilter]);
 
-  // Chart data
-  const ageChartData = [
-    { name: "Fresh (≤30d)", value: metrics.ageDist.fresh, fill: COLORS[0] },
-    { name: "Normal (31-90d)", value: metrics.ageDist.normal, fill: COLORS[1] },
-    { name: "Aging (91-180d)", value: metrics.ageDist.aging, fill: COLORS[2] },
-    { name: "Stale (>180d)", value: metrics.ageDist.stale, fill: COLORS[3] },
-  ].filter(d => d.value > 0);
+  const uniqueCustomers = useMemo(() => {
+    return [...new Set(cartons.map(c => c.work_order?.customer).filter(Boolean))].sort() as string[];
+  }, [cartons]);
 
-  const sourceChartData = Object.entries(metrics.bySource).map(([source, qty]) => ({
-    source: source.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
-    quantity: qty,
-  }));
-
-  // By item summary
-  const byItemSummary = useMemo(() => {
-    const grouped = inventory.reduce((acc, i) => {
-      if (!acc[i.item_code]) {
-        acc[i.item_code] = { item_code: i.item_code, qty: 0, reserved: 0, lots: 0 };
-      }
-      acc[i.item_code].qty += i.quantity_available;
-      acc[i.item_code].reserved += i.quantity_reserved;
-      acc[i.item_code].lots += 1;
-      return acc;
-    }, {} as Record<string, { item_code: string; qty: number; reserved: number; lots: number }>);
-    return Object.values(grouped).sort((a, b) => b.qty - a.qty);
-  }, [inventory]);
-
-  // By customer summary
-  const byCustomerSummary = useMemo(() => {
-    const grouped = inventory.reduce((acc, i) => {
-      const key = i.customer_name || "Unallocated";
-      if (!acc[key]) {
-        acc[key] = { customer: key, qty: 0, reserved: 0, items: new Set() };
-      }
-      acc[key].qty += i.quantity_available;
-      acc[key].reserved += i.quantity_reserved;
-      acc[key].items.add(i.item_code);
-      return acc;
-    }, {} as Record<string, { customer: string; qty: number; reserved: number; items: Set<string> }>);
-    return Object.values(grouped)
-      .map(g => ({ ...g, itemCount: g.items.size }))
-      .sort((a, b) => b.qty - a.qty);
-  }, [inventory]);
-
-  const getAgeBadge = (createdAt: string) => {
-    const days = differenceInDays(new Date(), new Date(createdAt));
-    if (days <= 30) return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{days}d</Badge>;
-    if (days <= 90) return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{days}d</Badge>;
-    if (days <= 180) return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">{days}d</Badge>;
+  const getAgeBadge = (builtAt: string) => {
+    const days = differenceInDays(new Date(), new Date(builtAt));
+    if (days <= 7) return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30">{days}d</Badge>;
+    if (days <= 15) return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30">{days}d</Badge>;
+    if (days <= 30) return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30">{days}d</Badge>;
     return <Badge variant="destructive">{days}d</Badge>;
+  };
+
+  const getStatusBadge = (carton: CartonItem) => {
+    if (carton.status === "dispatched") {
+      return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30">Dispatched</Badge>;
+    }
+    if (carton.dispatched_qty > 0 && carton.dispatched_qty < carton.quantity) {
+      return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30">Partial</Badge>;
+    }
+    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30">Ready</Badge>;
   };
 
   const handleExport = () => {
     const csvContent = [
-      ["Item Code", "Customer", "Available Qty", "Reserved", "Source", "Age (days)", "WO Number", "Created At"].join(","),
-      ...filteredInventory.map(i => [
-        i.item_code,
-        i.customer_name || "",
-        i.quantity_available,
-        i.quantity_reserved,
-        i.source_type,
-        differenceInDays(new Date(), new Date(i.created_at)),
-        i.work_orders?.wo_number || "",
-        format(new Date(i.created_at), "yyyy-MM-dd"),
+      ["Carton ID", "Work Order", "Item Code", "Customer", "Quantity", "Dispatched", "Remaining", "Status", "Age (days)", "Built At"].join(","),
+      ...filteredCartons.map(c => [
+        c.carton_id,
+        c.work_order?.display_id || "",
+        c.work_order?.item_code || "",
+        c.work_order?.customer || "",
+        c.quantity,
+        c.dispatched_qty || 0,
+        c.quantity - (c.dispatched_qty || 0),
+        c.status,
+        differenceInDays(new Date(), new Date(c.built_at)),
+        format(new Date(c.built_at), "yyyy-MM-dd HH:mm"),
       ].join(","))
     ].join("\n");
 
@@ -236,18 +236,14 @@ export default function FinishedGoodsInventory() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `finished-goods-inventory-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.download = `finished-goods-${format(new Date(), "yyyy-MM-dd")}.csv`;
     a.click();
   };
 
   if (isLoading) {
     return (
       <PageContainer maxWidth="2xl">
-        <PageHeader 
-          title="Finished Goods Inventory" 
-          description="Loading..."
-          icon={<Package className="h-5 w-5" />}
-        />
+        <PageHeader title="Finished Goods" description="Loading..." icon={<Warehouse className="h-5 w-5" />} />
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
@@ -259,60 +255,85 @@ export default function FinishedGoodsInventory() {
     <PageContainer maxWidth="2xl">
       <PageHeader 
         title="Finished Goods Inventory" 
-        description="Overproduction and stock tracking"
-        icon={<Package className="h-5 w-5" />}
+        description="Packed goods ready for dispatch"
+        icon={<Warehouse className="h-5 w-5" />}
       />
 
       <div className="space-y-6 mt-6">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1">
-                <Package className="h-4 w-4" /> Total Stock
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{metrics.totalQty.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">{metrics.uniqueItems} unique items</p>
+        {/* Executive KPI Strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/30 dark:to-green-900/20 border-green-200 dark:border-green-800">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">Packed Stock</p>
+                  <p className="text-2xl font-bold text-green-700 dark:text-green-300">{metrics.packedQty.toLocaleString()}</p>
+                  <p className="text-xs text-green-600/80">{metrics.packedCartonCount} cartons</p>
+                </div>
+                <PackageCheck className="h-8 w-8 text-green-500/40" />
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" /> Available
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-green-600">{metrics.availableQty.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">For dispatch</p>
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border-blue-200 dark:border-blue-800">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Total Dispatched</p>
+                  <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{metrics.dispatchedQty.toLocaleString()}</p>
+                  <p className="text-xs text-blue-600/80">all time</p>
+                </div>
+                <Truck className="h-8 w-8 text-blue-500/40" />
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1">
-                <Clock className="h-4 w-4" /> Reserved
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-amber-600">{metrics.reservedQty.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Pending orders</p>
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border-purple-200 dark:border-purple-800">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-purple-600 dark:text-purple-400 uppercase tracking-wide">Packed Today</p>
+                  <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{metrics.todayPacked.toLocaleString()}</p>
+                </div>
+                <Package className="h-8 w-8 text-purple-500/40" />
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-1">
-                <AlertTriangle className="h-4 w-4" /> Aging Stock
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-red-600">
-                {(metrics.ageDist.aging + metrics.ageDist.stale).toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">&gt;90 days old</p>
+          <Card className="bg-gradient-to-br from-teal-50 to-teal-100/50 dark:from-teal-950/30 dark:to-teal-900/20 border-teal-200 dark:border-teal-800">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wide">Dispatched Today</p>
+                  <p className="text-2xl font-bold text-teal-700 dark:text-teal-300">{metrics.todayDispatched.toLocaleString()}</p>
+                </div>
+                <TrendingUp className="h-8 w-8 text-teal-500/40" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border-amber-200 dark:border-amber-800">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wide">Ageing (&gt;15d)</p>
+                  <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{metrics.ageingQty.toLocaleString()}</p>
+                </div>
+                <Clock className="h-8 w-8 text-amber-500/40" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-950/30 dark:to-slate-900/20 border-slate-200 dark:border-slate-700">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">Weight (kg)</p>
+                  <p className="text-2xl font-bold text-slate-700 dark:text-slate-300">{metrics.packedWeight.toFixed(0)}</p>
+                  <p className="text-xs text-slate-600/80">net weight</p>
+                </div>
+                <Package className="h-8 w-8 text-slate-500/40" />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -320,103 +341,115 @@ export default function FinishedGoodsInventory() {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-            <TabsList>
+            <TabsList className="h-10">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
-              <TabsTrigger value="by-item">By Item</TabsTrigger>
               <TabsTrigger value="by-customer">By Customer</TabsTrigger>
-              <TabsTrigger value="movements">Movements</TabsTrigger>
+              <TabsTrigger value="by-item">By Item</TabsTrigger>
+              <TabsTrigger value="dispatches">Dispatches</TabsTrigger>
             </TabsList>
 
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+              <Button size="sm" onClick={() => navigate("/dispatch")}>
+                Go to Dispatch
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
 
+          {/* OVERVIEW TAB */}
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Age Distribution */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Stock Age Distribution</CardTitle>
-                  <CardDescription>Quantity by age category</CardDescription>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Stock Age Distribution
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {ageChartData.length === 0 ? (
-                    <div className="h-[250px] flex items-center justify-center text-muted-foreground">
-                      No inventory data
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-8">
-                      <ResponsiveContainer width="50%" height={250}>
-                        <PieChart>
-                          <Pie
-                            data={ageChartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={80}
-                            dataKey="value"
-                            label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-                          >
-                            {ageChartData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.fill} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(v: number) => v.toLocaleString()} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="flex-1 space-y-2">
-                        {ageChartData.map((item) => (
-                          <div key={item.name} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.fill }} />
-                              <span className="text-sm">{item.name}</span>
-                            </div>
-                            <span className="text-sm font-medium">{item.value.toLocaleString()}</span>
+                  <div className="space-y-3">
+                    {[
+                      { label: "Fresh (0-7d)", value: metrics.ageBuckets.fresh, color: "bg-green-500" },
+                      { label: "Normal (8-15d)", value: metrics.ageBuckets.normal, color: "bg-blue-500" },
+                      { label: "Aging (16-30d)", value: metrics.ageBuckets.aging, color: "bg-amber-500" },
+                      { label: "Critical (>30d)", value: metrics.ageBuckets.critical, color: "bg-red-500" },
+                    ].map(bucket => {
+                      const total = Object.values(metrics.ageBuckets).reduce((a, b) => a + b, 0);
+                      const pct = total > 0 ? (bucket.value / total) * 100 : 0;
+                      return (
+                        <div key={bucket.label} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span>{bucket.label}</span>
+                            <span className="font-semibold">{bucket.value.toLocaleString()}</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div className={cn("h-full rounded-full", bucket.color)} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
 
-              {/* By Source */}
+              {/* Top Customers */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Stock by Source</CardTitle>
-                  <CardDescription>How inventory was created</CardDescription>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Stock by Customer
+                  </CardTitle>
+                  <CardDescription>{metrics.uniqueCustomers} customers with packed stock</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {sourceChartData.length === 0 ? (
-                    <div className="h-[250px] flex items-center justify-center text-muted-foreground">
-                      No inventory data
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={sourceChartData}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="source" className="text-xs" />
-                        <YAxis />
-                        <Tooltip formatter={(v: number) => v.toLocaleString()} />
-                        <Bar dataKey="quantity" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
+                  <div className="space-y-2">
+                    {metrics.byCustomer.slice(0, 6).map(([customer, qty]) => (
+                      <div key={customer} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors">
+                        <span className="text-sm font-medium truncate max-w-[200px]">{customer}</span>
+                        <Badge variant="outline" className="font-mono">{qty.toLocaleString()}</Badge>
+                      </div>
+                    ))}
+                    {metrics.byCustomer.length === 0 && (
+                      <p className="text-center text-muted-foreground py-6">No packed stock</p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Top Items */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Stock by Item Code</CardTitle>
+                <CardDescription>{metrics.uniqueItems} unique items in packed inventory</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {metrics.byItem.slice(0, 12).map(([item, qty]) => (
+                    <div key={item} className="p-3 rounded-lg bg-muted/50 text-center">
+                      <p className="font-mono text-sm font-semibold truncate">{item}</p>
+                      <p className="text-lg font-bold text-primary">{qty.toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
+          {/* INVENTORY TAB */}
           <TabsContent value="inventory">
             {/* Filters */}
             <div className="flex flex-wrap gap-3 mb-4">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search item, customer, WO..."
+                  placeholder="Search carton, WO, item, customer..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9"
@@ -424,206 +457,217 @@ export default function FinishedGoodsInventory() {
               </div>
               <Select value={customerFilter} onValueChange={setCustomerFilter}>
                 <SelectTrigger className="w-[180px]">
+                  <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Customer" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Customers</SelectItem>
-                  <SelectItem value="none">Unallocated</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.customer_name}</SelectItem>
+                  {uniqueCustomers.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={ageFilter} onValueChange={setAgeFilter}>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Age" />
+                  <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Ages</SelectItem>
-                  <SelectItem value="fresh">Fresh (≤30d)</SelectItem>
-                  <SelectItem value="normal">Normal (31-90d)</SelectItem>
-                  <SelectItem value="aging">Aging (91-180d)</SelectItem>
-                  <SelectItem value="stale">Stale (&gt;180d)</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="ready">Ready</SelectItem>
+                  <SelectItem value="partial">Partial</SelectItem>
+                  <SelectItem value="dispatched">Dispatched</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Inventory Table */}
             <Card>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item Code</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead className="text-right">Available</TableHead>
-                      <TableHead className="text-right">Reserved</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Age</TableHead>
-                      <TableHead>WO</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredInventory.length === 0 ? (
+                <ScrollArea className="h-[calc(100vh-400px)]">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          No inventory items found
-                        </TableCell>
+                        <TableHead>Carton ID</TableHead>
+                        <TableHead>Work Order</TableHead>
+                        <TableHead>Item Code</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Dispatched</TableHead>
+                        <TableHead className="text-right">Remaining</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ) : (
-                      filteredInventory.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-mono font-medium">{item.item_code}</TableCell>
-                          <TableCell>{item.customer_name || <span className="text-muted-foreground">Unallocated</span>}</TableCell>
-                          <TableCell className="text-right font-medium text-green-600">
-                            {item.quantity_available.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right text-amber-600">
-                            {item.quantity_reserved > 0 ? item.quantity_reserved.toLocaleString() : "-"}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {item.source_type.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{getAgeBadge(item.created_at)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {item.work_orders?.wo_number || "-"}
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCartons.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                            No cartons found
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        filteredCartons.map(carton => (
+                          <TableRow key={carton.id} className="hover:bg-muted/50">
+                            <TableCell className="font-mono text-xs">{carton.carton_id}</TableCell>
+                            <TableCell className="font-mono text-sm">{carton.work_order?.display_id || "—"}</TableCell>
+                            <TableCell className="text-sm">{carton.work_order?.item_code || "—"}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[120px] truncate">
+                              {carton.work_order?.customer || "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">{carton.quantity.toLocaleString()}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              {carton.dispatched_qty > 0 ? carton.dispatched_qty.toLocaleString() : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-primary">
+                              {(carton.quantity - (carton.dispatched_qty || 0)).toLocaleString()}
+                            </TableCell>
+                            <TableCell>{getAgeBadge(carton.built_at)}</TableCell>
+                            <TableCell>{getStatusBadge(carton)}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="by-item">
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventory by Item</CardTitle>
-                <CardDescription>Aggregated stock by item code</CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item Code</TableHead>
-                      <TableHead className="text-right">Total Qty</TableHead>
-                      <TableHead className="text-right">Reserved</TableHead>
-                      <TableHead className="text-right">Lots</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {byItemSummary.map((row) => (
-                      <TableRow key={row.item_code}>
-                        <TableCell className="font-mono font-medium">{row.item_code}</TableCell>
-                        <TableCell className="text-right font-medium">{row.qty.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-amber-600">
-                          {row.reserved > 0 ? row.reserved.toLocaleString() : "-"}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">{row.lots}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
+          {/* BY CUSTOMER TAB */}
           <TabsContent value="by-customer">
             <Card>
-              <CardHeader>
-                <CardTitle>Inventory by Customer</CardTitle>
-                <CardDescription>Customer-linked stock ownership</CardDescription>
-              </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Customer</TableHead>
                       <TableHead className="text-right">Total Qty</TableHead>
-                      <TableHead className="text-right">Reserved</TableHead>
+                      <TableHead className="text-right">Cartons</TableHead>
                       <TableHead className="text-right">Items</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {byCustomerSummary.map((row) => (
-                      <TableRow key={row.customer}>
-                        <TableCell className="font-medium">{row.customer}</TableCell>
-                        <TableCell className="text-right font-medium">{row.qty.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-amber-600">
-                          {row.reserved > 0 ? row.reserved.toLocaleString() : "-"}
+                    {metrics.byCustomer.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                          No packed stock
                         </TableCell>
-                        <TableCell className="text-right text-muted-foreground">{row.itemCount}</TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      metrics.byCustomer.map(([customer, qty]) => {
+                        const customerCartons = cartons.filter(c => 
+                          c.work_order?.customer === customer && 
+                          (c.status === "ready_for_dispatch" || c.status === "packed")
+                        );
+                        const items = new Set(customerCartons.map(c => c.work_order?.item_code)).size;
+                        return (
+                          <TableRow key={customer}>
+                            <TableCell className="font-medium">{customer}</TableCell>
+                            <TableCell className="text-right font-semibold text-primary">{qty.toLocaleString()}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{customerCartons.length}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{items}</TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="movements">
+          {/* BY ITEM TAB */}
+          <TabsContent value="by-item">
             <Card>
-              <CardHeader>
-                <CardTitle>Recent Movements</CardTitle>
-                <CardDescription>Last 100 inventory transactions</CardDescription>
-              </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead>WO</TableHead>
-                      <TableHead>Notes</TableHead>
+                      <TableHead>Item Code</TableHead>
+                      <TableHead className="text-right">Total Qty</TableHead>
+                      <TableHead className="text-right">Cartons</TableHead>
+                      <TableHead className="text-right">Customers</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {movements.length === 0 ? (
+                    {metrics.byItem.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          No movements recorded
+                        <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                          No packed stock
                         </TableCell>
                       </TableRow>
                     ) : (
-                      movements.map((m) => (
-                        <TableRow key={m.id}>
-                          <TableCell className="text-sm">
-                            {format(new Date(m.created_at), "MMM dd, HH:mm")}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              {m.movement_type.startsWith("in") ? (
-                                <ArrowDownRight className="h-4 w-4 text-green-600" />
-                              ) : (
-                                <ArrowUpRight className="h-4 w-4 text-red-600" />
-                              )}
-                              <Badge variant="outline" className="text-xs">
-                                {m.movement_type.replace(/_/g, " ")}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className={cn(
-                            "text-right font-medium",
-                            m.movement_type.startsWith("in") ? "text-green-600" : "text-red-600"
-                          )}>
-                            {m.movement_type.startsWith("in") ? "+" : "-"}{Math.abs(m.quantity).toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {m.work_orders?.wo_number || "-"}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {m.notes || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      metrics.byItem.map(([item, qty]) => {
+                        const itemCartons = cartons.filter(c => 
+                          c.work_order?.item_code === item && 
+                          (c.status === "ready_for_dispatch" || c.status === "packed")
+                        );
+                        const customers = new Set(itemCartons.map(c => c.work_order?.customer)).size;
+                        return (
+                          <TableRow key={item}>
+                            <TableCell className="font-mono font-medium">{item}</TableCell>
+                            <TableCell className="text-right font-semibold text-primary">{qty.toLocaleString()}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{itemCartons.length}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{customers}</TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* DISPATCHES TAB */}
+          <TabsContent value="dispatches">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Recent Dispatches</CardTitle>
+                <CardDescription>Last 100 dispatch records</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[calc(100vh-400px)]">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card z-10">
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Work Order</TableHead>
+                        <TableHead>Item Code</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead>Shipment</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dispatches.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                            No dispatch records
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        dispatches.map(d => (
+                          <TableRow key={d.id}>
+                            <TableCell className="text-sm">
+                              {format(new Date(d.dispatched_at), "MMM dd, HH:mm")}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{d.work_order?.display_id || "—"}</TableCell>
+                            <TableCell className="text-sm">{d.work_order?.item_code || "—"}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{d.work_order?.customer || "—"}</TableCell>
+                            <TableCell className="text-right font-semibold">{d.quantity.toLocaleString()}</TableCell>
+                            <TableCell>
+                              {d.shipment_id ? (
+                                <Badge variant="outline" className="text-xs">Linked</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
               </CardContent>
             </Card>
           </TabsContent>
