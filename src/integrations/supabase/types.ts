@@ -9835,6 +9835,8 @@ export type Database = {
           item_code: string | null
           packed_qty: number | null
           produced_qty: number | null
+          production_complete: boolean | null
+          production_complete_qty: number | null
           qc_approved_qty: number | null
           qc_final_approved_at: string | null
           qc_final_status: string | null

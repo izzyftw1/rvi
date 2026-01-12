@@ -92,13 +92,13 @@ export function DispatchQCBatchSelector({
 
   if (batches.length === 0) {
     return (
-      <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+      <div className="p-4 rounded-lg border border-muted bg-muted/20">
+        <div className="flex items-center gap-2 text-muted-foreground">
           <AlertCircle className="h-4 w-4" />
-          <span className="font-medium">No Dispatch QC Approval</span>
+          <span className="font-medium">No Dispatch QC Batches</span>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          A Dispatch QC batch must be approved before packing. Complete Final QC to create a dispatch-eligible batch.
+          QC approvals will appear here as quantities are approved. Partial QC approval unlocks packing.
         </p>
       </div>
     );
