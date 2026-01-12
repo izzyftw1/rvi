@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,17 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, Layers, ClipboardList, XCircle, Clock, ArrowRight } from "lucide-react";
+import { 
+  Box, Package, History, Eye, Trash2, CheckCircle2, AlertTriangle, 
+  Layers, ClipboardList, Clock, ArrowRight, Search, Filter, 
+  LayoutGrid, ChevronDown, ChevronUp, PackageCheck
+} from "lucide-react";
 import { PageHeader, PageContainer, FormActions } from "@/components/ui/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { HistoricalDataDialog } from "@/components/HistoricalDataDialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { format, differenceInDays } from "date-fns";
 import {
   Select,
   SelectContent,
@@ -19,9 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
-// Dispatch QC Batch - quantity-approved for packing via Dispatch QC process
-// Multiple batches can exist per Work Order (quantity-scoped, not WO-scoped)
 interface DispatchQCBatchItem {
   id: string;
   work_order_id: string;
@@ -29,7 +38,7 @@ interface DispatchQCBatchItem {
   qc_batch_id: string;
   qc_approved_quantity: number;
   consumed_quantity: number;
-  available_for_packing: number; // Derived: qc_approved_quantity - consumed_quantity
+  available_for_packing: number;
   qc_date: string;
   approved_by: string | null;
   status: string;
@@ -41,7 +50,6 @@ interface DispatchQCBatchItem {
   batch_number: number | null;
 }
 
-// Work orders with packing status (for the overview)
 interface PackingWorkOrder {
   id: string;
   wo_number: string;
@@ -68,7 +76,7 @@ interface PackingRecord {
   num_pallets: number | null;
   status: string;
   built_at: string;
-  work_orders?: { display_id: string; item_code: string } | null;
+  work_orders?: { display_id: string; item_code: string; customer: string } | null;
   production_batches?: { batch_number: number } | null;
 }
 
@@ -81,7 +89,12 @@ const Packing = () => {
   const [packingHistory, setPackingHistory] = useState<PackingRecord[]>([]);
   const [activeTab, setActiveTab] = useState("overview");
   
-  // Counter stats for WOs awaiting production or Dispatch QC
+  // Filters
+  const [searchTerm, setSearchTerm] = useState("");
+  const [customerFilter, setCustomerFilter] = useState<string>("all");
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+  
+  // Counter stats
   const [awaitingProductionCount, setAwaitingProductionCount] = useState(0);
   const [awaitingDispatchQCCount, setAwaitingDispatchQCCount] = useState(0);
   
@@ -107,7 +120,6 @@ const Packing = () => {
     loadPackingHistory();
     loadAwaitingCounts();
 
-    // Real-time subscriptions for live data updates
     const channel = supabase
       .channel('packing-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_qc_batches' }, () => {
@@ -123,9 +135,6 @@ const Packing = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => {
         loadDispatchQCBatches();
         loadPackingWorkOrders();
-        loadAwaitingCounts();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => {
         loadAwaitingCounts();
       })
       .subscribe();
@@ -144,28 +153,53 @@ const Packing = () => {
     }
   }, [selectedBatchId, dispatchQCBatches]);
 
+  // Group work orders by customer for better UX
+  const groupedWorkOrders = useMemo(() => {
+    const filtered = packingWorkOrders.filter(wo => {
+      const matchesSearch = !searchTerm || 
+        wo.wo_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        wo.item_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        wo.customer.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCustomer = customerFilter === "all" || wo.customer === customerFilter;
+      return matchesSearch && matchesCustomer;
+    });
+
+    const grouped = filtered.reduce((acc, wo) => {
+      const key = wo.customer || "Unknown";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(wo);
+      return acc;
+    }, {} as Record<string, PackingWorkOrder[]>);
+
+    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
+  }, [packingWorkOrders, searchTerm, customerFilter]);
+
+  const uniqueCustomers = useMemo(() => {
+    return [...new Set(packingWorkOrders.map(wo => wo.customer))].sort();
+  }, [packingWorkOrders]);
+
+  // Metrics
+  const metrics = useMemo(() => {
+    const readyWOs = packingWorkOrders.filter(wo => wo.status === 'ready');
+    const totalAvailable = readyWOs.reduce((sum, wo) => sum + wo.available_for_packing, 0);
+    const totalPacked = packingHistory.reduce((sum, r) => sum + r.quantity, 0);
+    const todayPacked = packingHistory
+      .filter(r => differenceInDays(new Date(), new Date(r.built_at)) === 0)
+      .reduce((sum, r) => sum + r.quantity, 0);
+    
+    return { readyCount: readyWOs.length, totalAvailable, totalPacked, todayPacked };
+  }, [packingWorkOrders, packingHistory]);
+
   const loadDispatchQCBatches = async () => {
-    // Load Dispatch QC batches where available_for_packing > 0
-    // Packing eligibility is PURELY quantity-driven:
-    // qc_approved_quantity - consumed_quantity > 0
-    // NOT gated by WO status, production status, or any other condition
     const { data, error } = await supabase
       .from("dispatch_qc_batches")
       .select(`
-        id,
-        work_order_id,
-        production_batch_id,
-        qc_batch_id,
-        qc_approved_quantity,
-        consumed_quantity,
-        qc_date,
-        approved_by,
-        status,
-        remarks,
+        id, work_order_id, production_batch_id, qc_batch_id,
+        qc_approved_quantity, consumed_quantity, qc_date, approved_by, status, remarks,
         work_orders!inner(display_id, item_code, customer, quantity),
         production_batches(batch_number)
       `)
-      .neq("status", "consumed")  // Not fully consumed
+      .neq("status", "consumed")
       .order("qc_date", { ascending: false });
 
     if (error) {
@@ -173,7 +207,6 @@ const Packing = () => {
       return;
     }
 
-    // Enrich with available for packing calculation
     const enriched: DispatchQCBatchItem[] = (data || [])
       .map(b => {
         const wo = b.work_orders as any;
@@ -204,26 +237,11 @@ const Packing = () => {
   };
 
   const loadPackingWorkOrders = async () => {
-    // REFACTORED: Packing eligibility ONLY from dispatch_qc_batches
-    // Packable quantity = SUM(dispatch_qc_batches.qc_approved_quantity) - SUM(cartons.quantity)
-    // NOT gated by production_complete, WO status, or old QC fields
-    
-    // 1. Get all dispatch QC batches with available quantity
     const { data: qcBatchData, error: qcError } = await supabase
       .from("dispatch_qc_batches")
       .select(`
-        id,
-        work_order_id,
-        qc_approved_quantity,
-        consumed_quantity,
-        status,
-        work_orders!inner(
-          id,
-          display_id,
-          item_code,
-          customer,
-          quantity
-        )
+        id, work_order_id, qc_approved_quantity, consumed_quantity, status,
+        work_orders!inner(id, display_id, item_code, customer, quantity)
       `)
       .neq("status", "consumed");
 
@@ -232,13 +250,7 @@ const Packing = () => {
       return;
     }
 
-    // 2. Aggregate QC-approved quantity by Work Order
-    const woMap = new Map<string, {
-      wo: any;
-      qcApproved: number;
-      consumed: number;
-    }>();
-
+    const woMap = new Map<string, { wo: any; qcApproved: number; consumed: number }>();
     (qcBatchData || []).forEach(b => {
       const wo = b.work_orders as any;
       if (!wo) return;
@@ -262,7 +274,6 @@ const Packing = () => {
       return;
     }
 
-    // 3. Get packed quantities for these WOs from cartons
     const { data: cartonData } = await supabase
       .from("cartons")
       .select("wo_id, quantity")
@@ -273,11 +284,8 @@ const Packing = () => {
       packedQtyMap[c.wo_id] = (packedQtyMap[c.wo_id] || 0) + c.quantity;
     });
 
-    // 4. Build WO list with status - availability derived ONLY from dispatch_qc_batches
     const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved, consumed }) => {
       const packedQty = packedQtyMap[wo.id] || 0;
-      // Available for packing = QC approved - already packed (via consumed_quantity or cartons)
-      // Use the higher of consumed vs packed as the "used" amount for safety
       const usedQty = Math.max(consumed, packedQty);
       const availableForPacking = Math.max(0, qcApproved - usedQty);
       const remainingQty = wo.quantity - packedQty;
@@ -296,9 +304,9 @@ const Packing = () => {
         item_code: wo.item_code || '',
         customer: wo.customer || '',
         wo_quantity: wo.quantity || 0,
-        production_complete: true, // Not relevant for packing anymore
+        production_complete: true,
         production_complete_qty: qcApproved,
-        qc_approved_qty: qcApproved, // Now from dispatch_qc_batches
+        qc_approved_qty: qcApproved,
         packed_qty: packedQty,
         available_for_packing: availableForPacking,
         remaining_qty: remainingQty,
@@ -306,7 +314,6 @@ const Packing = () => {
         blocking_reason: blockingReason,
       };
     }).sort((a, b) => {
-      // Sort ready items first, then by available quantity
       if (a.status !== b.status) return a.status === 'ready' ? -1 : 1;
       return b.available_for_packing - a.available_for_packing;
     });
@@ -315,8 +322,6 @@ const Packing = () => {
   };
 
   const loadAwaitingCounts = async () => {
-    // Awaiting Production: WOs with status in_progress but not enough produced quantity for Dispatch QC
-    // These are WOs that exist but have no dispatch_qc_batches yet
     const { data: activeWOs } = await supabase
       .from("work_orders")
       .select("id, quantity")
@@ -330,7 +335,6 @@ const Packing = () => {
       return;
     }
 
-    // Get WOs that have dispatch QC batches
     const { data: qcBatches } = await supabase
       .from("dispatch_qc_batches")
       .select("work_order_id, qc_approved_quantity")
@@ -341,7 +345,6 @@ const Packing = () => {
       qcByWO[b.work_order_id] = (qcByWO[b.work_order_id] || 0) + b.qc_approved_quantity;
     });
 
-    // Get production completed qty from production_batches
     const { data: prodBatches } = await supabase
       .from("production_batches")
       .select("wo_id, produced_qty, production_complete")
@@ -363,18 +366,9 @@ const Packing = () => {
       const qcApproved = qcByWO[wo.id] || 0;
       const prod = prodByWO[wo.id] || { produced: 0, complete: false };
       
-      // If no production yet or not complete, awaiting production
-      if (prod.produced === 0 && qcApproved === 0) {
-        awaitingProd++;
-      }
-      // If has production but no dispatch QC yet, awaiting QC
-      else if (prod.produced > 0 && qcApproved === 0) {
-        awaitingQC++;
-      }
-      // If production > QC approved and production is complete, needs more QC
-      else if (prod.complete && prod.produced > qcApproved) {
-        awaitingQC++;
-      }
+      if (prod.produced === 0 && qcApproved === 0) awaitingProd++;
+      else if (prod.produced > 0 && qcApproved === 0) awaitingQC++;
+      else if (prod.complete && prod.produced > qcApproved) awaitingQC++;
     });
 
     setAwaitingProductionCount(awaitingProd);
@@ -385,32 +379,32 @@ const Packing = () => {
     const { data } = await supabase
       .from("cartons")
       .select(`
-        id, 
-        carton_id, 
-        wo_id, 
-        production_batch_id,
-        quantity, 
-        num_cartons, 
-        num_pallets, 
-        status, 
-        built_at,
-        work_orders(display_id, item_code),
+        id, carton_id, wo_id, production_batch_id,
+        quantity, num_cartons, num_pallets, status, built_at,
+        work_orders(display_id, item_code, customer),
         production_batches(batch_number)
       `)
       .order("built_at", { ascending: false })
-      .limit(50);
+      .limit(100);
 
     setPackingHistory((data as unknown as PackingRecord[]) || []);
   };
 
-  // Navigate to create tab with WO filter
   const handleRowClick = (woId: string) => {
-    // Find dispatch QC batches for this WO
     const batchesForWO = dispatchQCBatches.filter(b => b.work_order_id === woId);
     if (batchesForWO.length > 0) {
       setSelectedBatchId(batchesForWO[0].id);
     }
     setActiveTab("create");
+  };
+
+  const toggleCustomerExpanded = (customer: string) => {
+    setExpandedCustomers(prev => {
+      const next = new Set(prev);
+      if (next.has(customer)) next.delete(customer);
+      else next.add(customer);
+      return next;
+    });
   };
 
   const handleCreatePackingBatch = async (e: React.FormEvent) => {
@@ -432,7 +426,7 @@ const Packing = () => {
     if (qty > selectedBatch.available_for_packing) {
       toast({ 
         variant: "destructive", 
-        description: `Cannot pack ${qty} pcs. Only ${selectedBatch.available_for_packing} pcs available in this QC batch.` 
+        description: `Cannot pack ${qty} pcs. Only ${selectedBatch.available_for_packing} pcs available.` 
       });
       return;
     }
@@ -441,11 +435,8 @@ const Packing = () => {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // Generate packing batch ID: PKB-{WO}-{QCBatchId}-{timestamp}
       const batchId = `PKB-${selectedBatch.wo_number}-${selectedBatch.qc_batch_id.slice(-6)}-${Date.now().toString().slice(-6)}`;
 
-      // Get heat numbers from material issues
       const { data: issues } = await supabase
         .from("wo_material_issues")
         .select("material_lots(heat_no)")
@@ -455,12 +446,11 @@ const Packing = () => {
         .map((i: any) => i?.material_lots?.heat_no)
         .filter(Boolean);
 
-      // Create packing record linked to dispatch QC batch
       const { error: cartonError } = await supabase.from("cartons").insert({
         carton_id: batchId,
         wo_id: selectedBatch.work_order_id,
-        dispatch_qc_batch_id: selectedBatch.id, // Link to Dispatch QC batch
-        production_batch_id: selectedBatch.production_batch_id, // Optional link to production batch
+        dispatch_qc_batch_id: selectedBatch.id,
+        production_batch_id: selectedBatch.production_batch_id,
         quantity: qty,
         pieces_per_carton: piecesPerCarton,
         num_cartons: numCartons,
@@ -474,39 +464,28 @@ const Packing = () => {
 
       if (cartonError) throw cartonError;
 
-      // Update consumed_quantity on the dispatch_qc_batch
       const newConsumedQty = selectedBatch.consumed_quantity + qty;
       const newStatus = newConsumedQty >= selectedBatch.qc_approved_quantity ? "consumed" : "active";
       
       const { error: updateError } = await supabase
         .from("dispatch_qc_batches")
-        .update({ 
-          consumed_quantity: newConsumedQty,
-          status: newStatus,
-        })
+        .update({ consumed_quantity: newConsumedQty, status: newStatus })
         .eq("id", selectedBatch.id);
 
       if (updateError) throw updateError;
 
-      const isFullyPacked = newConsumedQty >= selectedBatch.qc_approved_quantity;
-
       toast({
         title: "Packing Complete",
-        description: `${batchId} created with ${qty} pcs.${isFullyPacked ? " QC batch fully consumed." : ""}`,
+        description: `${batchId} created with ${qty} pcs.`,
       });
 
-      // Reset form and refresh
       setForm({ quantity: "", piecesPerCarton: "", numCartons: "", numPallets: "", netWeight: "", grossWeight: "" });
       setSelectedBatchId("");
       loadDispatchQCBatches();
       loadPackingWorkOrders();
       loadPackingHistory();
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to create packing batch",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Failed to create packing batch", description: error.message });
     } finally {
       setLoading(false);
     }
@@ -530,241 +509,267 @@ const Packing = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ready_for_dispatch":
-        return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Ready for Dispatch</Badge>;
+        return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30">Ready</Badge>;
       case "dispatched":
-        return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">Dispatched</Badge>;
+        return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30">Dispatched</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
-  const getBatchProgressBadge = (batch: DispatchQCBatchItem) => {
-    const progress = (batch.consumed_quantity / batch.qc_approved_quantity) * 100;
-    if (progress === 0) {
-      return <Badge variant="outline">Not Started</Badge>;
-    } else if (progress >= 100) {
-      return <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Fully Packed</Badge>;
-    } else {
-      return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">{Math.round(progress)}% Packed</Badge>;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
-      <PageContainer maxWidth="xl">
+      <PageContainer maxWidth="2xl">
         <div className="space-y-6">
           <PageHeader
-            title="Packing"
-            description="Pack QC-approved production batches for dispatch"
-            icon={<Box className="h-6 w-6" />}
+            title="Packing Station"
+            description="Pack QC-approved quantities for dispatch"
+            icon={<PackageCheck className="h-6 w-6" />}
           />
 
+          {/* KPI Banner */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/30 dark:to-green-900/20 border-green-200 dark:border-green-800">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">Ready to Pack</p>
+                    <p className="text-2xl font-bold text-green-700 dark:text-green-300">{metrics.readyCount}</p>
+                  </div>
+                  <CheckCircle2 className="h-8 w-8 text-green-500/40" />
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border-blue-200 dark:border-blue-800">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Available Qty</p>
+                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{metrics.totalAvailable.toLocaleString()}</p>
+                  </div>
+                  <Package className="h-8 w-8 text-blue-500/40" />
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border-amber-200 dark:border-amber-800">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wide">Awaiting QC</p>
+                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{awaitingDispatchQCCount}</p>
+                  </div>
+                  <Clock className="h-8 w-8 text-amber-500/40" />
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border-purple-200 dark:border-purple-800">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-purple-600 dark:text-purple-400 uppercase tracking-wide">Packed Today</p>
+                    <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{metrics.todayPacked.toLocaleString()}</p>
+                  </div>
+                  <LayoutGrid className="h-8 w-8 text-purple-500/40" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="overview">
-                <ClipboardList className="h-4 w-4 mr-2" />
+            <TabsList className="grid w-full grid-cols-3 h-12">
+              <TabsTrigger value="overview" className="gap-2">
+                <ClipboardList className="h-4 w-4" />
                 Ready for Packing
               </TabsTrigger>
-              <TabsTrigger value="create">
-                <Package className="h-4 w-4 mr-2" />
-                Create Packing Batch
+              <TabsTrigger value="create" className="gap-2">
+                <Package className="h-4 w-4" />
+                Create Batch
               </TabsTrigger>
-              <TabsTrigger value="history">
-                <History className="h-4 w-4 mr-2" />
+              <TabsTrigger value="history" className="gap-2">
+                <History className="h-4 w-4" />
                 History
               </TabsTrigger>
             </TabsList>
 
-            {/* Ready for Packing Overview Tab */}
-            <TabsContent value="overview" className="space-y-4 mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5" />
-                    Work Orders - Packing Status
-                  </CardTitle>
-                  <CardDescription>
-                    Overview of work orders and their packing eligibility
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {packingWorkOrders.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No active work orders found
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Work Order</TableHead>
-                            <TableHead>Item / Customer</TableHead>
-                            <TableHead className="text-right">Ordered</TableHead>
-                            <TableHead className="text-right">QC Approved</TableHead>
-                            <TableHead className="text-right">Packed</TableHead>
-                            <TableHead className="text-right">Available</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="w-10"></TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {packingWorkOrders.map((wo) => (
-                            <TableRow 
-                              key={wo.id} 
-                              className={`${wo.status === 'blocked' ? 'opacity-60' : 'cursor-pointer hover:bg-muted/50'}`}
-                              onClick={() => wo.status === 'ready' && handleRowClick(wo.id)}
-                            >
-                              <TableCell className="font-mono font-medium">
-                                {wo.wo_number}
-                              </TableCell>
-                              <TableCell>
-                                <div className="text-sm font-medium">{wo.item_code}</div>
-                                <div className="text-xs text-muted-foreground">{wo.customer}</div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {wo.wo_quantity.toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {wo.qc_approved_qty > 0 ? (
-                                  <span className="text-green-600 font-medium">{wo.qc_approved_qty.toLocaleString()}</span>
-                                ) : (
-                                  <span className="text-muted-foreground">0</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {wo.packed_qty > 0 ? wo.packed_qty.toLocaleString() : '—'}
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {wo.available_for_packing > 0 ? (
-                                  <span className="text-primary">{wo.available_for_packing.toLocaleString()}</span>
-                                ) : (
-                                  <span className="text-muted-foreground">0</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {wo.status === 'ready' ? (
-                                  <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Ready
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-muted-foreground">
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    {wo.blocking_reason || 'Fully packed'}
-                                  </Badge>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {wo.status === 'ready' && (
-                                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Summary Cards */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-green-500/10">
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold">
-                          {packingWorkOrders.filter(wo => wo.status === 'ready').length}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Ready for Packing</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-amber-500/10">
-                        <Clock className="h-5 w-5 text-amber-600" />
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold">
-                          {awaitingProductionCount}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Awaiting Production</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-blue-500/10">
-                        <AlertTriangle className="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold">
-                          {awaitingDispatchQCCount}
-                        </div>
-                        <div className="text-sm text-muted-foreground">Awaiting Dispatch QC</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+            {/* OVERVIEW TAB - Ready for Packing */}
+            <TabsContent value="overview" className="space-y-4 mt-4">
+              {/* Filters */}
+              <div className="flex flex-wrap gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search WO, item, customer..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Customers</SelectItem>
+                    {uniqueCustomers.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              {/* Grouped by Customer */}
+              <ScrollArea className="h-[calc(100vh-380px)]">
+                <div className="space-y-3">
+                  {groupedWorkOrders.length === 0 ? (
+                    <Card>
+                      <CardContent className="py-12 text-center">
+                        <Package className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                        <p className="text-muted-foreground">No work orders ready for packing</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Work orders need Dispatch QC approval first
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    groupedWorkOrders.map(([customer, wos]) => {
+                      const isExpanded = expandedCustomers.has(customer);
+                      const readyCount = wos.filter(wo => wo.status === 'ready').length;
+                      const totalAvailable = wos.reduce((sum, wo) => sum + wo.available_for_packing, 0);
+
+                      return (
+                        <Collapsible key={customer} open={isExpanded} onOpenChange={() => toggleCustomerExpanded(customer)}>
+                          <Card>
+                            <CollapsibleTrigger className="w-full">
+                              <CardHeader className="py-3 px-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                    <CardTitle className="text-base font-semibold">{customer}</CardTitle>
+                                    <Badge variant="outline" className="font-mono">
+                                      {wos.length} WO{wos.length > 1 ? 's' : ''}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm">
+                                    {readyCount > 0 && (
+                                      <span className="text-green-600 font-medium">{readyCount} ready</span>
+                                    )}
+                                    <span className="text-muted-foreground">
+                                      {totalAvailable.toLocaleString()} pcs available
+                                    </span>
+                                  </div>
+                                </div>
+                              </CardHeader>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <CardContent className="pt-0 pb-4">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="hover:bg-transparent">
+                                      <TableHead className="w-[140px]">Work Order</TableHead>
+                                      <TableHead>Item Code</TableHead>
+                                      <TableHead className="text-right">Ordered</TableHead>
+                                      <TableHead className="text-right">QC Approved</TableHead>
+                                      <TableHead className="text-right">Packed</TableHead>
+                                      <TableHead className="text-right">Available</TableHead>
+                                      <TableHead className="w-[100px]">Status</TableHead>
+                                      <TableHead className="w-[60px]"></TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {wos.map(wo => (
+                                      <TableRow 
+                                        key={wo.id} 
+                                        className={wo.status === 'ready' ? 'cursor-pointer hover:bg-muted/50' : 'opacity-60'}
+                                        onClick={() => wo.status === 'ready' && handleRowClick(wo.id)}
+                                      >
+                                        <TableCell className="font-mono text-sm font-medium">{wo.wo_number}</TableCell>
+                                        <TableCell className="text-sm">{wo.item_code}</TableCell>
+                                        <TableCell className="text-right text-muted-foreground">{wo.wo_quantity.toLocaleString()}</TableCell>
+                                        <TableCell className="text-right text-green-600 font-medium">
+                                          {wo.qc_approved_qty.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell className="text-right text-muted-foreground">
+                                          {wo.packed_qty > 0 ? wo.packed_qty.toLocaleString() : '—'}
+                                        </TableCell>
+                                        <TableCell className="text-right font-semibold text-primary">
+                                          {wo.available_for_packing > 0 ? wo.available_for_packing.toLocaleString() : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                          {wo.status === 'ready' ? (
+                                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 gap-1">
+                                              <CheckCircle2 className="h-3 w-3" />
+                                              Ready
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="secondary" className="text-xs">
+                                              {wo.blocking_reason}
+                                            </Badge>
+                                          )}
+                                        </TableCell>
+                                        <TableCell>
+                                          {wo.status === 'ready' && (
+                                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                                              <ArrowRight className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </CardContent>
+                            </CollapsibleContent>
+                          </Card>
+                        </Collapsible>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="create" className="space-y-4 mt-6">
+            {/* CREATE TAB */}
+            <TabsContent value="create" className="space-y-4 mt-4">
               {dispatchQCBatches.length === 0 ? (
                 <Card>
-                  <CardContent className="py-12">
-                    <div className="flex flex-col items-center justify-center text-center">
-                      <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No Dispatch QC Batches Ready for Packing</h3>
-                      <p className="text-muted-foreground max-w-md">
-                        Batches are ready for packing when:
-                      </p>
-                      <ul className="text-muted-foreground text-sm mt-2 space-y-1 text-left">
-                        <li>• Dispatch QC has approved a quantity</li>
-                        <li>• Available quantity (approved - consumed) &gt; 0</li>
-                      </ul>
-                    </div>
+                  <CardContent className="py-12 text-center">
+                    <AlertTriangle className="h-12 w-12 mx-auto text-amber-500 mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Batches Ready for Packing</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      Batches need Dispatch QC approval with available quantity before packing.
+                    </p>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="grid gap-6 lg:grid-cols-2">
-                  {/* Batch Selection */}
+                  {/* Batch Selection & Form */}
                   <Card>
-                    <CardHeader>
+                    <CardHeader className="pb-4">
                       <CardTitle className="flex items-center gap-2">
                         <Layers className="h-5 w-5" />
-                        Select Dispatch QC Batch
+                        Select & Pack
                       </CardTitle>
-                      <CardDescription>
-                        Choose a Dispatch QC-approved batch to pack
-                      </CardDescription>
+                      <CardDescription>Choose a Dispatch QC batch and enter packing details</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <Select
-                        value={selectedBatchId}
-                        onValueChange={setSelectedBatchId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select batch..." />
+                      <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="Select a batch to pack..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {dispatchQCBatches.map((batch) => (
+                          {dispatchQCBatches.map(batch => (
                             <SelectItem key={batch.id} value={batch.id}>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono">{batch.wo_number}</span>
-                                <span className="text-muted-foreground">{batch.qc_batch_id}</span>
-                                <span className="text-muted-foreground">
-                                  ({batch.available_for_packing} pcs available)
-                                </span>
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono font-medium">{batch.wo_number}</span>
+                                <span className="text-muted-foreground">|</span>
+                                <span className="text-sm">{batch.item_code}</span>
+                                <Badge variant="outline" className="ml-auto">
+                                  {batch.available_for_packing} pcs
+                                </Badge>
                               </div>
                             </SelectItem>
                           ))}
@@ -773,188 +778,143 @@ const Packing = () => {
 
                       {selectedBatch && (
                         <form onSubmit={handleCreatePackingBatch} className="space-y-4 pt-4 border-t">
+                          <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 text-center">
+                            <div>
+                              <p className="text-xs text-muted-foreground">QC Approved</p>
+                              <p className="text-lg font-bold">{selectedBatch.qc_approved_quantity}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Packed</p>
+                              <p className="text-lg font-bold text-blue-600">{selectedBatch.consumed_quantity}</p>
+                            </div>
+                            <div className="bg-green-100 dark:bg-green-900/30 rounded-md py-1">
+                              <p className="text-xs text-green-600">Available</p>
+                              <p className="text-lg font-bold text-green-600">{selectedBatch.available_for_packing}</p>
+                            </div>
+                          </div>
+
                           <div className="space-y-2">
-                            <Label htmlFor="quantity">
-                              Quantity to Pack
-                              <span className="text-muted-foreground ml-1">
-                                (max: {selectedBatch.available_for_packing})
-                              </span>
-                            </Label>
+                            <Label>Quantity to Pack *</Label>
                             <Input
-                              id="quantity"
                               type="number"
                               min="1"
                               max={selectedBatch.available_for_packing}
                               value={form.quantity}
                               onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                              placeholder="Enter quantity"
+                              placeholder={`Max: ${selectedBatch.available_for_packing}`}
+                              className="h-12 text-lg"
                               required
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-2">
-                              <Label htmlFor="piecesPerCarton">Pieces per Carton</Label>
+                              <Label>Pcs/Carton</Label>
                               <Input
-                                id="piecesPerCarton"
                                 type="number"
                                 min="1"
                                 value={form.piecesPerCarton}
                                 onChange={(e) => setForm({ ...form, piecesPerCarton: e.target.value })}
-                                placeholder="Pcs/carton"
                               />
                             </div>
-
                             <div className="space-y-2">
-                              <Label htmlFor="numCartons">Number of Cartons</Label>
+                              <Label># Cartons</Label>
                               <Input
-                                id="numCartons"
                                 type="number"
                                 min="1"
                                 value={form.numCartons}
                                 onChange={(e) => setForm({ ...form, numCartons: e.target.value })}
-                                placeholder="Cartons"
                               />
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-4">
+                          <div className="grid grid-cols-3 gap-3">
                             <div className="space-y-2">
-                              <Label htmlFor="numPallets">Pallets (optional)</Label>
+                              <Label>Net Wt (kg)</Label>
                               <Input
-                                id="numPallets"
+                                type="number"
+                                step="0.01"
+                                value={form.netWeight}
+                                onChange={(e) => setForm({ ...form, netWeight: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Gross Wt (kg)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={form.grossWeight}
+                                onChange={(e) => setForm({ ...form, grossWeight: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Pallets</Label>
+                              <Input
                                 type="number"
                                 min="0"
                                 value={form.numPallets}
                                 onChange={(e) => setForm({ ...form, numPallets: e.target.value })}
-                                placeholder="Optional"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="netWeight">Net Weight (kg)</Label>
-                              <Input
-                                id="netWeight"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={form.netWeight}
-                                onChange={(e) => setForm({ ...form, netWeight: e.target.value })}
-                                placeholder="Net wt"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="grossWeight">Gross Weight (kg)</Label>
-                              <Input
-                                id="grossWeight"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={form.grossWeight}
-                                onChange={(e) => setForm({ ...form, grossWeight: e.target.value })}
-                                placeholder="Gross wt"
                               />
                             </div>
                           </div>
 
-                          <FormActions>
-                            <Button 
-                              type="submit" 
-                              disabled={loading}
-                              className="gap-2 w-full"
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Complete Packing
-                            </Button>
-                          </FormActions>
+                          <Button type="submit" disabled={loading} className="w-full h-12 text-base gap-2">
+                            <CheckCircle2 className="h-5 w-5" />
+                            Complete Packing
+                          </Button>
                         </form>
                       )}
                     </CardContent>
                   </Card>
 
-                  {/* Batch Context Panel */}
+                  {/* Context Panel */}
                   <Card>
                     <CardHeader>
-                      <CardTitle>Batch Context</CardTitle>
-                      <CardDescription>
-                        {selectedBatch 
-                          ? "Details of the selected production batch" 
-                          : "Select a batch to view details"}
-                      </CardDescription>
+                      <CardTitle>Batch Details</CardTitle>
                     </CardHeader>
                     <CardContent>
                       {selectedBatch ? (
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                           <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Work Order</p>
-                              <p className="font-medium">{selectedBatch.wo_number}</p>
+                            <div className="p-3 rounded-lg bg-muted/50">
+                              <p className="text-xs text-muted-foreground uppercase">Work Order</p>
+                              <p className="font-mono font-semibold">{selectedBatch.wo_number}</p>
                             </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Batch #</p>
-                              <p className="font-medium">{selectedBatch.batch_number}</p>
+                            <div className="p-3 rounded-lg bg-muted/50">
+                              <p className="text-xs text-muted-foreground uppercase">QC Batch</p>
+                              <p className="font-mono text-sm">{selectedBatch.qc_batch_id}</p>
                             </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Item</p>
-                              <p className="font-medium">{selectedBatch.item_code}</p>
+                            <div className="p-3 rounded-lg bg-muted/50">
+                              <p className="text-xs text-muted-foreground uppercase">Item Code</p>
+                              <p className="font-semibold">{selectedBatch.item_code}</p>
                             </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Customer</p>
-                              <p className="font-medium">{selectedBatch.customer}</p>
+                            <div className="p-3 rounded-lg bg-muted/50">
+                              <p className="text-xs text-muted-foreground uppercase">Customer</p>
+                              <p className="font-semibold">{selectedBatch.customer}</p>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">QC Status</p>
-                              <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-                                Dispatch QC Approved
-                              </Badge>
+                          <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                            <div className="flex items-center gap-2 text-green-700 dark:text-green-400 mb-2">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span className="text-sm font-medium">Dispatch QC Approved</span>
                             </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide">Packing Status</p>
-                              {getBatchProgressBadge(selectedBatch)}
-                            </div>
+                            <p className="text-xs text-green-600 dark:text-green-500">
+                              Approved on {format(new Date(selectedBatch.qc_date), "MMM dd, yyyy 'at' HH:mm")}
+                            </p>
                           </div>
 
-                          <div className="border-t pt-4">
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">Batch Quantities</p>
-                            <div className="grid grid-cols-3 gap-4 text-center">
-                              <div className="p-3 rounded-lg bg-muted/50">
-                                <p className="text-2xl font-bold text-primary">
-                                  {selectedBatch.qc_approved_quantity}
-                                </p>
-                                <p className="text-xs text-muted-foreground">QC Approved</p>
-                              </div>
-                              <div className="p-3 rounded-lg bg-muted/50">
-                                <p className="text-2xl font-bold text-blue-600">
-                                  {selectedBatch.consumed_quantity}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Already Packed</p>
-                              </div>
-                              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                                <p className="text-2xl font-bold text-green-600">
-                                  {selectedBatch.available_for_packing}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Available</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {selectedBatch.qc_date && (
-                            <div className="pt-2 text-xs text-muted-foreground">
-                              QC Approved: {new Date(selectedBatch.qc_date).toLocaleString()}
+                          {selectedBatch.remarks && (
+                            <div className="p-3 rounded-lg bg-muted/50">
+                              <p className="text-xs text-muted-foreground uppercase mb-1">QC Remarks</p>
+                              <p className="text-sm">{selectedBatch.remarks}</p>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                           <Package className="h-12 w-12 mb-4 opacity-50" />
-                          <p>Select a Dispatch QC batch to view its details and create packing records.</p>
+                          <p>Select a batch to view details</p>
                         </div>
                       )}
                     </CardContent>
@@ -963,76 +923,80 @@ const Packing = () => {
               )}
             </TabsContent>
 
-            <TabsContent value="history" className="space-y-4 mt-6">
+            {/* HISTORY TAB */}
+            <TabsContent value="history" className="space-y-4 mt-4">
               <Card>
-                <CardHeader>
-                  <CardTitle>Packing History</CardTitle>
-                  <CardDescription>Recent packing batches across all work orders</CardDescription>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Packing History</CardTitle>
+                    <Badge variant="outline">{packingHistory.length} records</Badge>
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  {packingHistory.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                      <p className="text-muted-foreground">No packing history yet</p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Packing ID</TableHead>
-                          <TableHead>Work Order</TableHead>
-                          <TableHead>Source Batch</TableHead>
-                          <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-center">Cartons</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Packed At</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {packingHistory.map((record) => (
-                          <TableRow key={record.id}>
-                            <TableCell className="font-mono text-sm">{record.carton_id}</TableCell>
-                            <TableCell>{record.work_orders?.display_id || "—"}</TableCell>
-                            <TableCell>
-                              {record.production_batches 
-                                ? `Batch #${record.production_batches.batch_number}` 
-                                : <span className="text-muted-foreground">Legacy</span>
-                              }
-                            </TableCell>
-                            <TableCell className="text-right font-medium">{record.quantity}</TableCell>
-                            <TableCell className="text-center">{record.num_cartons || "—"}</TableCell>
-                            <TableCell>{getStatusBadge(record.status)}</TableCell>
-                            <TableCell>{new Date(record.built_at).toLocaleDateString()}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setViewData(record);
-                                    setViewOpen(true);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                {record.status !== "dispatched" && (
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[calc(100vh-340px)]">
+                    {packingHistory.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <History className="h-12 w-12 mb-4 opacity-50" />
+                        <p>No packing history yet</p>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader className="sticky top-0 bg-card z-10">
+                          <TableRow>
+                            <TableHead>Packing ID</TableHead>
+                            <TableHead>Work Order</TableHead>
+                            <TableHead>Item</TableHead>
+                            <TableHead>Customer</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
+                            <TableHead className="text-center">Cartons</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Packed</TableHead>
+                            <TableHead className="w-[80px]"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {packingHistory.map(record => (
+                            <TableRow key={record.id}>
+                              <TableCell className="font-mono text-xs">{record.carton_id}</TableCell>
+                              <TableCell className="font-mono text-sm">{record.work_orders?.display_id || "—"}</TableCell>
+                              <TableCell className="text-sm">{record.work_orders?.item_code || "—"}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {(record.work_orders as any)?.customer || "—"}
+                              </TableCell>
+                              <TableCell className="text-right font-semibold">{record.quantity.toLocaleString()}</TableCell>
+                              <TableCell className="text-center">{record.num_cartons || "—"}</TableCell>
+                              <TableCell>{getStatusBadge(record.status)}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {format(new Date(record.built_at), "MMM dd, HH:mm")}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-end gap-1">
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="text-destructive hover:text-destructive"
-                                    onClick={() => handleDelete(record.id, record.carton_id)}
+                                    className="h-7 w-7"
+                                    onClick={() => { setViewData(record); setViewOpen(true); }}
                                   >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Eye className="h-4 w-4" />
                                   </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
+                                  {record.status !== "dispatched" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive hover:text-destructive"
+                                      onClick={() => handleDelete(record.id, record.carton_id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </ScrollArea>
                 </CardContent>
               </Card>
             </TabsContent>
