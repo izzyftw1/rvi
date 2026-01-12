@@ -15,7 +15,8 @@ import {
   CheckCircle2, 
   XCircle, 
   Loader2,
-  Settings2
+  Settings2,
+  Package
 } from "lucide-react";
 import { InstrumentSelector } from "@/components/qc/InstrumentSelector";
 
@@ -80,15 +81,39 @@ export const DispatchQCInspectionForm = ({
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<string | null>(null);
   const [instrumentValid, setInstrumentValid] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  
+  // QUANTITY-BASED: Approved and rejected quantities (mandatory)
+  const [approvedQuantity, setApprovedQuantity] = useState<number>(0);
+  const [rejectedQuantity, setRejectedQuantity] = useState<number>(0);
+  const [existingApprovedQty, setExistingApprovedQty] = useState<number>(0);
 
   useEffect(() => {
     loadTolerances();
-  }, [itemCode]);
+    loadExistingDispatchQCQuantity();
+  }, [itemCode, workOrderId]);
 
   useEffect(() => {
     // Recalculate stats whenever measurements change
     recalculateAllStats();
   }, [measurements]);
+
+  // Load existing dispatch QC approved quantity to calculate remaining available
+  const loadExistingDispatchQCQuantity = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_qc_batches')
+        .select('qc_approved_quantity, rejected_quantity')
+        .eq('work_order_id', workOrderId);
+
+      if (error) throw error;
+      
+      const totalApproved = (data || []).reduce((sum, b) => sum + (b.qc_approved_quantity || 0), 0);
+      const totalRejected = (data || []).reduce((sum, b) => sum + (b.rejected_quantity || 0), 0);
+      setExistingApprovedQty(totalApproved + totalRejected);
+    } catch (error) {
+      console.error('Error loading existing dispatch QC quantity:', error);
+    }
+  };
 
   const loadTolerances = async () => {
     try {
@@ -251,67 +276,65 @@ export const DispatchQCInspectionForm = ({
       return;
     }
 
+    // QUANTITY VALIDATION: Approved quantity is mandatory and must be > 0
+    if (approvedQuantity <= 0) {
+      toast.error('Approved quantity must be greater than 0');
+      return;
+    }
+
+    // Validate total doesn't exceed available quantity
+    const remainingQty = totalOKQty - existingApprovedQty;
+    if (approvedQuantity + rejectedQuantity > remainingQty) {
+      toast.error(`Total quantity (${approvedQuantity + rejectedQuantity}) exceeds remaining available (${remainingQty})`);
+      return;
+    }
+
     try {
       setSubmitting(true);
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Generate QC ID
-      const qcId = `FQC-${Date.now().toString(36).toUpperCase()}`;
+      // Generate unique batch ID
+      const qcBatchId = `DQC-${Date.now().toString(36).toUpperCase()}`;
 
-      // Check for existing QC record (to avoid duplicate key violation)
-      const { data: existingRecord } = await supabase
+      // CRITICAL: Create dispatch_qc_batches record (NOT updating work_orders.final_qc_result)
+      const { data: dispatchQCBatch, error: dqcError } = await supabase
+        .from('dispatch_qc_batches')
+        .insert([{
+          work_order_id: workOrderId,
+          qc_batch_id: qcBatchId,
+          qc_approved_quantity: approvedQuantity,
+          rejected_quantity: rejectedQuantity,
+          approved_by: user?.id,
+          remarks: generalRemarks || null,
+          status: 'approved'
+        }])
+        .select()
+        .single();
+
+      if (dqcError) throw dqcError;
+
+      // Generate QC ID for qc_records
+      const qcId = `DQC-${Date.now().toString(36).toUpperCase()}`;
+
+      // Create QC record for dimensional inspection audit trail
+      const { data: qcRecord, error: qcError } = await supabase
         .from('qc_records')
-        .select('id')
-        .eq('wo_id', workOrderId)
-        .eq('qc_type', 'final')
-        .is('batch_id', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .insert([{
+          wo_id: workOrderId,
+          qc_id: qcId,
+          qc_type: 'final' as const,
+          result: result === 'pass' ? 'pass' : 'fail',
+          inspected_quantity: sampleSize,
+          approved_by: user?.id,
+          approved_at: new Date().toISOString(),
+          remarks: `Dispatch QC: ${approvedQuantity} approved, ${rejectedQuantity} rejected. ${generalRemarks}`,
+          instrument_id: selectedInstrumentId,
+          qc_date_time: new Date().toISOString()
+        }])
+        .select()
+        .single();
 
-      let qcRecord: { id: string };
-
-      if (existingRecord) {
-        // Update existing record - do NOT update qc_id as it's immutable
-        const { data: updatedRecord, error: updateError } = await supabase
-          .from('qc_records')
-          .update({
-            result: result === 'pass' ? 'pass' : 'fail',
-            inspected_quantity: sampleSize,
-            approved_by: user?.id,
-            approved_at: new Date().toISOString(),
-            remarks: generalRemarks,
-            instrument_id: selectedInstrumentId,
-            qc_date_time: new Date().toISOString()
-          })
-          .eq('id', existingRecord.id)
-          .select()
-          .single();
-
-        if (updateError) throw updateError;
-        qcRecord = updatedRecord;
-      } else {
-        // Create new QC record
-        const { data: newRecord, error: insertError } = await supabase
-          .from('qc_records')
-          .insert([{
-            wo_id: workOrderId,
-            qc_id: qcId,
-            qc_type: 'final' as const,
-            result: result === 'pass' ? 'pass' : 'fail',
-            inspected_quantity: sampleSize,
-            approved_by: user?.id,
-            approved_at: new Date().toISOString(),
-            remarks: generalRemarks,
-            instrument_id: selectedInstrumentId,
-            qc_date_time: new Date().toISOString()
-          }])
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        qcRecord = newRecord;
-      }
+      if (qcError) throw qcError;
 
       // Insert all measurements
       // NOTE: is_within_tolerance is a GENERATED ALWAYS column - do NOT include it
@@ -339,26 +362,11 @@ export const DispatchQCInspectionForm = ({
         if (measError) throw measError;
       }
 
-      // Update work order Dispatch QC status
-      // NOTE: work_orders.final_qc_result uses CHECK constraint with 'passed'/'failed'
-      // while qc_records.result uses 'pass'/'fail' enum
-      const { error: woError } = await supabase
-        .from('work_orders')
-        .update({
-          qc_final_status: result === 'pass' ? 'passed' : 'failed',
-          qc_final_approved_at: new Date().toISOString(),
-          qc_final_approved_by: user?.id,
-          qc_final_remarks: generalRemarks,
-          final_qc_result: result === 'pass' ? 'passed' : 'failed'
-        })
-        .eq('id', workOrderId);
-
-      if (woError) throw woError;
+      // NOTE: We intentionally do NOT update work_orders.final_qc_result anymore
+      // The workflow is now quantity-based via dispatch_qc_batches
 
       toast.success(
-        result === 'pass' 
-          ? `✅ Dispatch QC Passed - ${sampleSize} samples inspected`
-          : `⚠️ Dispatch QC Failed - Deviations recorded`
+        `✅ Dispatch QC Complete - ${approvedQuantity.toLocaleString()} pcs approved, ${rejectedQuantity} rejected`
       );
       
       onComplete();
@@ -369,6 +377,10 @@ export const DispatchQCInspectionForm = ({
       setSubmitting(false);
     }
   };
+
+  // Calculate remaining available quantity
+  const remainingQty = Math.max(0, totalOKQty - existingApprovedQty);
+  const isQuantityValid = approvedQuantity > 0 && (approvedQuantity + rejectedQuantity) <= remainingQty;
 
   const overallResult = getOverallResult();
 
@@ -477,6 +489,74 @@ export const DispatchQCInspectionForm = ({
           required
         />
 
+        {/* QUANTITY-BASED: Approved/Rejected Quantity (MANDATORY) */}
+        <div className="p-4 border-2 border-primary/30 rounded-lg bg-primary/5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            <h4 className="font-semibold text-primary">Dispatch QC Quantities (Required)</h4>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-3 bg-background rounded-lg">
+              <Label className="text-xs text-muted-foreground">Available for QC</Label>
+              <div className="text-2xl font-bold text-foreground">{remainingQty.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">
+                (Total OK: {totalOKQty.toLocaleString()} - Already QC'd: {existingApprovedQty.toLocaleString()})
+              </p>
+            </div>
+            
+            <div>
+              <Label htmlFor="approved-qty" className="text-green-700 dark:text-green-400 font-medium">
+                Approved Quantity *
+              </Label>
+              <Input
+                id="approved-qty"
+                type="number"
+                min={1}
+                max={remainingQty}
+                value={approvedQuantity || ''}
+                onChange={(e) => setApprovedQuantity(parseInt(e.target.value) || 0)}
+                className="border-green-500 focus:ring-green-500"
+                placeholder="Enter approved qty"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Must be &gt; 0</p>
+            </div>
+            
+            <div>
+              <Label htmlFor="rejected-qty" className="text-red-700 dark:text-red-400 font-medium">
+                Rejected Quantity
+              </Label>
+              <Input
+                id="rejected-qty"
+                type="number"
+                min={0}
+                max={remainingQty - approvedQuantity}
+                value={rejectedQuantity || ''}
+                onChange={(e) => setRejectedQuantity(parseInt(e.target.value) || 0)}
+                className="border-red-500 focus:ring-red-500"
+                placeholder="0"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Default: 0</p>
+            </div>
+          </div>
+          
+          {(approvedQuantity + rejectedQuantity) > remainingQty && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Total ({approvedQuantity + rejectedQuantity}) exceeds available quantity ({remainingQty})
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {approvedQuantity > 0 && (approvedQuantity + rejectedQuantity) <= remainingQty && (
+            <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+              This will approve <strong className="text-green-600">{approvedQuantity.toLocaleString()}</strong> pcs 
+              for packing{rejectedQuantity > 0 && <> and record <strong className="text-red-600">{rejectedQuantity.toLocaleString()}</strong> rejected</>}.
+            </div>
+          )}
+        </div>
+
         {/* Dimension Measurements */}
         <div className="space-y-4">
           <h4 className="font-medium flex items-center gap-2">
@@ -581,14 +661,12 @@ export const DispatchQCInspectionForm = ({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={submitting || overallResult === 'pending' || !selectedInstrumentId || !instrumentValid}
+            disabled={submitting || overallResult === 'pending' || !selectedInstrumentId || !instrumentValid || !isQuantityValid}
             className="flex-1"
             variant={overallResult === 'fail' ? 'destructive' : 'default'}
           >
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {overallResult === 'fail' 
-              ? 'Submit Final QC - FAIL' 
-              : 'Submit Final QC - PASS'}
+            Submit Dispatch QC - {approvedQuantity.toLocaleString()} pcs Approved
           </Button>
         </div>
       </CardContent>
