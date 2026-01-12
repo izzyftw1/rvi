@@ -121,7 +121,7 @@ export default function Dispatch() {
 
   const loadReadyBatches = async () => {
     // Get all cartons ready for dispatch
-    const { data: cartonData } = await supabase
+    const { data: cartonData, error: cartonError } = await supabase
       .from("cartons")
       .select(`
         id, carton_id, wo_id, production_batch_id, quantity,
@@ -131,6 +131,8 @@ export default function Dispatch() {
       `)
       .eq("status", "ready_for_dispatch")
       .order("built_at", { ascending: true });
+
+    console.log("DISPATCH RAW RESPONSE", { cartonData, cartonError });
 
     const cartons = (cartonData || []) as any[];
     
@@ -160,6 +162,8 @@ export default function Dispatch() {
         available_qty: Math.max(0, batch.quantity - alreadyDispatched),
       };
     }).filter(b => b.available_qty > 0);
+
+    console.log("DISPATCH FILTERED BATCHES", { cartonsCount: cartons.length, baseBatchesCount: baseBatches.length, dispatchedByCarton });
 
     // Enrich with Dispatch QC status for display (informational only)
     const woIds = [...new Set(baseBatches.map(b => b.wo_id))];
@@ -194,7 +198,9 @@ export default function Dispatch() {
       dispatchQCStatus: qcStatusMap.get(batch.wo_id) || { hasQC: false, passed: false, hasPDF: false },
     }));
 
+    console.log("DISPATCH STATE BEFORE SET", readyBatches.length);
     setReadyBatches(enriched);
+    console.log("DISPATCH ENRICHED RESULT", { enrichedCount: enriched.length, enriched });
   };
 
   const loadRecentShipments = async () => {
