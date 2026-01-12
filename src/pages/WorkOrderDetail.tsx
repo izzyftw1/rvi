@@ -39,7 +39,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { ProductionReleaseSection } from "@/components/ProductionReleaseSection";
 import { OEEWidget } from "@/components/OEEWidget";
 import { QCStageCard } from "@/components/qc/QCStageCard";
-import { FinalQCStatusCard } from "@/components/qc/FinalQCStatusCard";
+import { DispatchQCStatusCard } from "@/components/qc/DispatchQCStatusCard";
 import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
 import { RouteProgressView } from "@/components/routing/RouteProgressView";
@@ -1062,8 +1062,8 @@ const WorkOrderDetail = () => {
                     isLocked={unifiedMaterialStatus !== 'passed' && unifiedMaterialStatus !== 'waived'}
                   />
                   
-                  {/* Final QC - Read-only status card (inspection done in Quality > Final QC) */}
-                  <FinalQCStatusCard
+                  {/* Dispatch QC - Read-only status card (inspection done in Quality > Dispatch QC) */}
+                  <DispatchQCStatusCard
                     woId={id || ''}
                     woNumber={wo.wo_number}
                     customer={wo.customer}

@@ -185,8 +185,8 @@ const FinalQCList = () => {
   return (
     <PageContainer>
       <PageHeader
-        title="Final QC"
-        description="Quality release work orders for dispatch"
+        title="Dispatch QC"
+        description="Quality release work orders for packing and dispatch"
         icon={<ClipboardCheck className="h-6 w-6" />}
       />
 
@@ -215,8 +215,8 @@ const FinalQCList = () => {
           ) : filteredWorkOrders.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No work orders ready for Final QC.</p>
-              <p className="text-sm">Work orders must have production data before final inspection.</p>
+              <p>No work orders ready for Dispatch QC.</p>
+              <p className="text-sm">Work orders must have production data before dispatch inspection.</p>
             </div>
           ) : (
             <Table>

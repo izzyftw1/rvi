@@ -114,7 +114,7 @@ export const navigationGroups: NavGroup[] = [
       { label: "Quality Dashboard", path: "/quality", icon: ClipboardCheck, pageKey: "quality-dashboard" },
       { label: "Incoming QC", path: "/qc/incoming", icon: Box, pageKey: "qc-incoming" },
       { label: "Hourly QC", path: "/hourly-qc", icon: Clock, pageKey: "hourly-qc" },
-      { label: "Final QC", path: "/final-qc", icon: CheckCircle, pageKey: "final-qc" },
+      { label: "Dispatch QC", path: "/dispatch-qc", icon: CheckCircle, pageKey: "dispatch-qc" },
       { label: "NCR Management", path: "/ncr", icon: XCircle, pageKey: "ncr" },
       { label: "Traceability", path: "/quality/traceability", icon: GitBranch, pageKey: "traceability" },
       { label: "Quality Documents", path: "/quality/documents", icon: FileCheck, pageKey: "quality-documents" },

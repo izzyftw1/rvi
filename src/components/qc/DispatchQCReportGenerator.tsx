@@ -47,7 +47,7 @@ interface ReportData {
   finalConclusion: 'PASS' | 'FAIL' | 'PENDING';
 }
 
-export const FinalQCReportGenerator = ({
+export const DispatchQCReportGenerator = ({
   woId,
   woNumber,
   customer,

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-interface FinalQCStatusCardProps {
+interface DispatchQCStatusCardProps {
   woId: string;
   woNumber: string;
   customer: string;
@@ -40,7 +40,7 @@ interface ReportData {
   generated_by_name?: string;
 }
 
-export const FinalQCStatusCard = ({
+export const DispatchQCStatusCard = ({
   woId,
   woNumber,
   customer,
@@ -50,7 +50,7 @@ export const FinalQCStatusCard = ({
   qualityReleasedAt,
   qualityReleasedByName,
   remarks,
-}: FinalQCStatusCardProps) => {
+}: DispatchQCStatusCardProps) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [latestReport, setLatestReport] = useState<ReportData | null>(null);
@@ -169,7 +169,7 @@ export const FinalQCStatusCard = ({
               <Shield className="h-5 w-5" style={{ color: 'hsl(142 70% 45%)' }} />
             </div>
             <div>
-              <CardTitle className="text-base">Final Dispatch QC</CardTitle>
+              <CardTitle className="text-base">Dispatch QC</CardTitle>
               <CardDescription>Read-only status view</CardDescription>
             </div>
           </div>
@@ -191,10 +191,10 @@ export const FinalQCStatusCard = ({
           <InfoIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
           <div className="text-sm">
             <p className="font-medium text-blue-800 dark:text-blue-300">
-              Final QC is performed in Quality → Final QC
+              Dispatch QC is performed in Quality → Dispatch QC
             </p>
             <p className="text-blue-600 dark:text-blue-400 mt-1">
-              This section displays read-only status and summary. All inspection actions must be completed in the dedicated Final QC page.
+              This section displays read-only status and summary. All inspection actions must be completed in the dedicated Dispatch QC page.
             </p>
           </div>
         </div>
@@ -255,7 +255,7 @@ export const FinalQCStatusCard = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Final QC Report</span>
+                <span className="text-sm font-medium">Dispatch QC Report</span>
                 <Badge variant="secondary" className="text-xs">v{latestReport.version_number}</Badge>
               </div>
             </div>
@@ -270,14 +270,14 @@ export const FinalQCStatusCard = ({
               onClick={() => window.open(latestReport.file_url, '_blank')}
             >
               <Download className="h-4 w-4" />
-              Download Final QC PDF
+              Download Dispatch QC PDF
             </Button>
           </div>
         ) : (
           <div className="p-3 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
             <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No Final QC report generated yet</p>
-            <p className="text-xs mt-1">Complete Final QC inspection to generate report</p>
+            <p>No Dispatch QC report generated yet</p>
+            <p className="text-xs mt-1">Complete Dispatch QC inspection to generate report</p>
           </div>
         )}
 
@@ -286,10 +286,10 @@ export const FinalQCStatusCard = ({
           <Button
             variant={qualityReleased ? "outline" : "default"}
             className="w-full gap-2"
-            onClick={() => navigate(`/final-qc/${woId}`)}
+            onClick={() => navigate(`/dispatch-qc/${woId}`)}
           >
             <ExternalLink className="h-4 w-4" />
-            {qualityReleased ? 'View Final QC' : 'Perform Final QC'}
+            {qualityReleased ? 'View Dispatch QC' : 'Perform Dispatch QC'}
           </Button>
         </div>
       </CardContent>
