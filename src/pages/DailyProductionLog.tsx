@@ -7,6 +7,7 @@ import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriang
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
+import { clampPercentage, clampInteger } from "@/lib/numericSafety";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -318,10 +319,11 @@ export default function DailyProductionLog() {
     return Math.max(0, actualQuantity - totalRejectionQuantity);
   }, [actualQuantity, totalRejectionQuantity]);
 
-  // Calculate efficiency: (actual / target) × 100
+  // Calculate efficiency: (actual / target) × 100, clamped to prevent DB overflow
   const efficiencyPercentage = useMemo(() => {
     if (effectiveTarget <= 0) return 0;
-    return Math.round((actualQuantity / effectiveTarget) * 100 * 100) / 100;
+    const raw = (actualQuantity / effectiveTarget) * 100;
+    return clampPercentage(Math.round(raw * 100) / 100);
   }, [actualQuantity, effectiveTarget]);
 
   useEffect(() => {

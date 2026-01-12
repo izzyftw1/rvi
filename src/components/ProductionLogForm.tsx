@@ -5,6 +5,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
+import { clampPercentage, clampInteger } from "@/lib/numericSafety";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -394,10 +395,11 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
     return Math.floor((actualRuntimeMinutes * 60) / effectiveCycleTime);
   }, [actualRuntimeMinutes, effectiveCycleTime]);
 
-  // Efficiency
+  // Efficiency - clamped to prevent DB overflow
   const efficiency = useMemo(() => {
     if (targetQuantity <= 0) return 0;
-    return Math.round((actualQty / targetQuantity) * 100);
+    const raw = (actualQty / targetQuantity) * 100;
+    return clampPercentage(Math.round(raw));
   }, [actualQty, targetQuantity]);
 
   // Uptime percentage
@@ -706,12 +708,12 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
       if (insertedLog?.id && selectedOperators.length > 0) {
         const ledgerEntries = selectedOperators.map(opId => {
           const sharePercent = minutesPerOperator;
-          const runtimeShare = Math.round(actualRuntimeMinutes * (sharePercent / 100));
-          const targetShare = Math.round(targetQuantity * (sharePercent / 100));
-          const actualShare = Math.round(data.actual_production_qty * (sharePercent / 100));
-          const okShare = Math.round(okPcs * (sharePercent / 100));
-          const rejectionShare = Math.round(totalRejectionQty * (sharePercent / 100));
-          const efficiencyShare = targetShare > 0 ? Math.round((actualShare / targetShare) * 100) : 0;
+          const runtimeShare = clampInteger(Math.round(actualRuntimeMinutes * (sharePercent / 100)));
+          const targetShare = clampInteger(Math.round(targetQuantity * (sharePercent / 100)));
+          const actualShare = clampInteger(Math.round(data.actual_production_qty * (sharePercent / 100)));
+          const okShare = clampInteger(Math.round(okPcs * (sharePercent / 100)));
+          const rejectionShare = clampInteger(Math.round(totalRejectionQty * (sharePercent / 100)));
+          const efficiencyShare = targetShare > 0 ? clampPercentage(Math.round((actualShare / targetShare) * 100)) : 0;
           
           return {
             production_log_id: insertedLog.id,
@@ -725,7 +727,7 @@ export function ProductionLogForm({ workOrder: propWorkOrder, disabled = false }
             ok_qty: okShare,
             rejection_qty: rejectionShare,
             efficiency_pct: efficiencyShare,
-            minutes_share: sharePercent,
+            minutes_share: clampPercentage(sharePercent),
           };
         });
         
