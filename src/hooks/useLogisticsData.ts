@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { differenceInDays, startOfMonth, format } from "date-fns";
+import { differenceInDays, startOfMonth, format, startOfDay, endOfDay } from "date-fns";
 
 export interface CartonData {
   id: string;
@@ -45,13 +45,13 @@ export interface DispatchRecord {
 
 export interface FinishedGoodsItem {
   id: string;
+  carton_id: string;
   item_code: string;
-  customer_name: string | null;
-  quantity_available: number;
-  quantity_reserved: number;
-  created_at: string;
-  unit_cost: number | null;
-  currency: string | null;
+  customer: string | null;
+  quantity: number;
+  dispatched_qty: number;
+  built_at: string;
+  net_weight: number;
 }
 
 export interface LogisticsFilters {
@@ -83,13 +83,12 @@ export interface LogisticsMetrics {
   dispatchedToday: { qty: number; cartons: number };
   dispatchedMTD: { qty: number };
   ageingExposure: { value: number; qty: number };
-  inventoryByState: { packed: number; unpacked: number; reserved: number };
+  inventoryByState: { packed: number; dispatched: number; reserved: number };
 }
 
 export function useLogisticsData(filters: LogisticsFilters) {
   const [cartons, setCartons] = useState<CartonData[]>([]);
   const [dispatches, setDispatches] = useState<DispatchRecord[]>([]);
-  const [finishedGoods, setFinishedGoods] = useState<FinishedGoodsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<{ id: string; customer_name: string }[]>([]);
   const [workOrders, setWorkOrders] = useState<{ id: string; display_id: string }[]>([]);
@@ -136,19 +135,10 @@ export function useLogisticsData(filters: LogisticsFilters) {
       setCartons(enrichedCartons);
 
       // Load dispatches
-      let dispatchQuery = supabase
+      const { data: dispatchData } = await supabase
         .from("dispatches")
         .select("id, wo_id, quantity, dispatched_at, shipment_id, carton_id")
         .order("dispatched_at", { ascending: false });
-
-      if (filters.dateRange.from) {
-        dispatchQuery = dispatchQuery.gte("dispatched_at", filters.dateRange.from.toISOString());
-      }
-      if (filters.dateRange.to) {
-        dispatchQuery = dispatchQuery.lte("dispatched_at", filters.dateRange.to.toISOString());
-      }
-
-      const { data: dispatchData } = await dispatchQuery;
 
       // Get WO info for dispatches
       const dispatchWoIds = [...new Set((dispatchData || []).map(d => d.wo_id))];
@@ -176,15 +166,6 @@ export function useLogisticsData(filters: LogisticsFilters) {
 
       setDispatches(enrichedDispatches);
 
-      // Load finished goods inventory
-      const { data: fgData } = await supabase
-        .from("finished_goods_inventory")
-        .select("id, item_code, customer_name, quantity_available, quantity_reserved, created_at, unit_cost, currency")
-        .gt("quantity_available", 0)
-        .order("created_at", { ascending: false });
-
-      setFinishedGoods(fgData || []);
-
       // Load customers for filter
       const { data: customerData } = await supabase
         .from("customer_master")
@@ -206,7 +187,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
     } finally {
       setLoading(false);
     }
-  }, [filters.dateRange.from, filters.dateRange.to]);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -216,7 +197,6 @@ export function useLogisticsData(filters: LogisticsFilters) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cartons' }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_qc_batches' }, loadData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'finished_goods_inventory' }, loadData)
       .subscribe();
 
     return () => {
@@ -224,12 +204,25 @@ export function useLogisticsData(filters: LogisticsFilters) {
     };
   }, [loadData]);
 
-  // Apply filters
+  // Apply filters to cartons - this is the FILTERED dataset used everywhere
   const filteredCartons = useMemo(() => {
     return cartons.filter(c => {
+      // Date filter on built_at
+      if (filters.dateRange.from) {
+        const builtDate = new Date(c.built_at);
+        if (builtDate < startOfDay(filters.dateRange.from)) return false;
+      }
+      if (filters.dateRange.to) {
+        const builtDate = new Date(c.built_at);
+        if (builtDate > endOfDay(filters.dateRange.to)) return false;
+      }
+      // Customer filter
       if (filters.customer && c.work_order?.customer !== filters.customer) return false;
+      // Work order filter
       if (filters.workOrder && c.wo_id !== filters.workOrder) return false;
+      // Item code filter
       if (filters.itemCode && !c.work_order?.item_code?.toLowerCase().includes(filters.itemCode.toLowerCase())) return false;
+      // Dispatch status filter
       if (filters.dispatchStatus === "packed" && c.status !== "packed") return false;
       if (filters.dispatchStatus === "dispatched" && c.status !== "dispatched") return false;
       if (filters.dispatchStatus === "partial" && !(c.dispatched_qty > 0 && c.dispatched_qty < c.quantity)) return false;
@@ -237,35 +230,51 @@ export function useLogisticsData(filters: LogisticsFilters) {
     });
   }, [cartons, filters]);
 
+  // Apply filters to dispatches
   const filteredDispatches = useMemo(() => {
     return dispatches.filter(d => {
+      // Date filter on dispatched_at
+      if (filters.dateRange.from) {
+        const dispatchDate = new Date(d.dispatched_at);
+        if (dispatchDate < startOfDay(filters.dateRange.from)) return false;
+      }
+      if (filters.dateRange.to) {
+        const dispatchDate = new Date(d.dispatched_at);
+        if (dispatchDate > endOfDay(filters.dateRange.to)) return false;
+      }
+      // Customer filter
       if (filters.customer && d.work_order?.customer !== filters.customer) return false;
+      // Work order filter
       if (filters.workOrder && d.wo_id !== filters.workOrder) return false;
+      // Item code filter
       if (filters.itemCode && !d.work_order?.item_code?.toLowerCase().includes(filters.itemCode.toLowerCase())) return false;
       return true;
     });
   }, [dispatches, filters]);
 
-  // Calculate metrics
+  // Calculate metrics FROM FILTERED DATA
   const metrics = useMemo<LogisticsMetrics>(() => {
     const today = new Date();
     const monthStart = startOfMonth(today);
+    const todayStr = format(today, 'yyyy-MM-dd');
     
-    const packedCartons = cartons.filter(c => c.status === "packed" || (c.status !== "dispatched" && c.dispatched_qty < c.quantity));
+    // Packed cartons from filtered data
+    const packedCartons = filteredCartons.filter(c => c.status === "packed" || (c.status !== "dispatched" && c.dispatched_qty < c.quantity));
     const packedQty = packedCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
-    // Use net_weight as proxy for value since unit_rate doesn't exist
     const packedValue = packedCartons.reduce((sum, c) => {
       const remainingQty = c.quantity - (c.dispatched_qty || 0);
       const weightPerPc = c.work_order?.net_weight_per_pc || 0;
       return sum + (remainingQty * weightPerPc);
     }, 0);
 
-    const todayDispatches = dispatches.filter(d => 
-      format(new Date(d.dispatched_at), 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
+    // Dispatched today from filtered data
+    const todayDispatches = filteredDispatches.filter(d => 
+      format(new Date(d.dispatched_at), 'yyyy-MM-dd') === todayStr
     );
-    const mtdDispatches = dispatches.filter(d => new Date(d.dispatched_at) >= monthStart);
+    // MTD from filtered data
+    const mtdDispatches = filteredDispatches.filter(d => new Date(d.dispatched_at) >= monthStart);
 
-    // Ageing exposure (>15 days old packed goods)
+    // Ageing exposure (>15 days old packed goods) from filtered data
     const ageingCartons = packedCartons.filter(c => differenceInDays(today, new Date(c.built_at)) > 15);
     const ageingValue = ageingCartons.reduce((sum, c) => {
       const remainingQty = c.quantity - (c.dispatched_qty || 0);
@@ -274,39 +283,38 @@ export function useLogisticsData(filters: LogisticsFilters) {
     }, 0);
     const ageingQty = ageingCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
 
-    // Inventory by state
-    const packedTotal = cartons.filter(c => c.status === "packed").reduce((sum, c) => sum + c.quantity, 0);
-    const fgUnpacked = finishedGoods.reduce((sum, f) => sum + f.quantity_available, 0);
-    const fgReserved = finishedGoods.reduce((sum, f) => sum + f.quantity_reserved, 0);
+    // Inventory by state from filtered data
+    const packedTotal = filteredCartons.filter(c => c.status === "packed").reduce((sum, c) => sum + c.quantity, 0);
+    const dispatchedTotal = filteredCartons.filter(c => c.status === "dispatched").reduce((sum, c) => sum + c.quantity, 0);
 
     return {
       packedNotDispatched: { qty: packedQty, cartons: packedCartons.length, value: packedValue },
       dispatchedToday: { qty: todayDispatches.reduce((sum, d) => sum + d.quantity, 0), cartons: todayDispatches.length },
       dispatchedMTD: { qty: mtdDispatches.reduce((sum, d) => sum + d.quantity, 0) },
       ageingExposure: { value: ageingValue, qty: ageingQty },
-      inventoryByState: { packed: packedTotal, unpacked: fgUnpacked, reserved: fgReserved },
+      inventoryByState: { packed: packedTotal, dispatched: dispatchedTotal, reserved: 0 },
     };
-  }, [cartons, dispatches, finishedGoods]);
+  }, [filteredCartons, filteredDispatches]);
 
-  // Pipeline counts
+  // Pipeline counts FROM FILTERED DATA
   const pipeline = useMemo<PipelineCount>(() => {
-    const awaitingQC = cartons.filter(c => 
+    const awaitingQC = filteredCartons.filter(c => 
       c.status === "packed" && 
       (!c.dispatch_qc_batch || !["approved", "partially_consumed", "consumed"].includes(c.dispatch_qc_batch.status))
     ).length;
 
-    const ready = cartons.filter(c => 
+    const ready = filteredCartons.filter(c => 
       c.status === "packed" && 
       c.dispatch_qc_batch && 
       ["approved", "partially_consumed", "consumed"].includes(c.dispatch_qc_batch.status) &&
       c.dispatched_qty < c.quantity
     ).length;
 
-    const partial = cartons.filter(c => 
+    const partial = filteredCartons.filter(c => 
       c.dispatched_qty > 0 && c.dispatched_qty < c.quantity
     ).length;
 
-    const full = cartons.filter(c => c.status === "dispatched" || c.dispatched_qty >= c.quantity).length;
+    const full = filteredCartons.filter(c => c.status === "dispatched" || c.dispatched_qty >= c.quantity).length;
 
     return {
       awaitingDispatchQC: awaitingQC,
@@ -314,12 +322,12 @@ export function useLogisticsData(filters: LogisticsFilters) {
       partiallyDispatched: partial,
       fullyDispatched: full,
     };
-  }, [cartons]);
+  }, [filteredCartons]);
 
-  // Ageing buckets
+  // Ageing buckets FROM FILTERED DATA
   const ageingBuckets = useMemo<AgeingBucket[]>(() => {
     const today = new Date();
-    const packedCartons = cartons.filter(c => c.status === "packed" || (c.dispatched_qty < c.quantity));
+    const packedCartons = filteredCartons.filter(c => c.status === "packed" || (c.dispatched_qty < c.quantity));
 
     const buckets: AgeingBucket[] = [
       { range: "0-7 days", minDays: 0, maxDays: 7, quantity: 0, cartonCount: 0, value: 0 },
@@ -343,7 +351,23 @@ export function useLogisticsData(filters: LogisticsFilters) {
     });
 
     return buckets;
-  }, [cartons]);
+  }, [filteredCartons]);
+
+  // Finished goods from filtered cartons
+  const finishedGoods = useMemo<FinishedGoodsItem[]>(() => {
+    return filteredCartons
+      .filter(c => c.status === "packed" || (c.dispatched_qty < c.quantity))
+      .map(c => ({
+        id: c.id,
+        carton_id: c.carton_id,
+        item_code: c.work_order?.item_code || "Unknown",
+        customer: c.work_order?.customer || null,
+        quantity: c.quantity,
+        dispatched_qty: c.dispatched_qty || 0,
+        built_at: c.built_at,
+        net_weight: c.net_weight,
+      }));
+  }, [filteredCartons]);
 
   return {
     cartons: filteredCartons,
@@ -356,5 +380,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
     customers,
     workOrders,
     refresh: loadData,
+    totalCartons: cartons.length,
+    totalDispatches: dispatches.length,
   };
 }
