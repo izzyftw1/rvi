@@ -25,7 +25,7 @@ export const DispatchHistoryTable = memo(({ dispatches }: DispatchHistoryTablePr
       d.work_order?.display_id?.toLowerCase().includes(searchLower) ||
       d.work_order?.customer?.toLowerCase().includes(searchLower) ||
       d.work_order?.item_code?.toLowerCase().includes(searchLower) ||
-      d.shipment?.shipment_number?.toLowerCase().includes(searchLower)
+      d.shipment?.ship_id?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -36,7 +36,7 @@ export const DispatchHistoryTable = memo(({ dispatches }: DispatchHistoryTablePr
       "Customer": d.work_order?.customer || "",
       "Item Code": d.work_order?.item_code || "",
       "Quantity": d.quantity,
-      "Shipment #": d.shipment?.shipment_number || "—",
+      "Shipment #": d.shipment?.ship_id || "—",
       "Status": d.shipment?.status || "standalone",
     }));
     downloadCSV(exportData, `dispatch-history-${format(new Date(), "yyyy-MM-dd")}`);
@@ -108,7 +108,7 @@ export const DispatchHistoryTable = memo(({ dispatches }: DispatchHistoryTablePr
                       {dispatch.quantity.toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      {dispatch.shipment?.shipment_number || (
+                      {dispatch.shipment?.ship_id || (
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
                     </TableCell>
