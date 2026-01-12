@@ -146,10 +146,11 @@ export default function Dispatch() {
   }, [dispatchSource]);
 
   const loadReadyBatches = async () => {
-    const { data } = await supabase
+    // Get all cartons ready for dispatch
+    const { data: cartonData } = await supabase
       .from("cartons")
       .select(`
-        id, carton_id, wo_id, production_batch_id, quantity, dispatched_qty, 
+        id, carton_id, wo_id, production_batch_id, quantity,
         num_cartons, num_pallets, status, built_at,
         work_orders(display_id, item_code, customer),
         production_batches(batch_number)
@@ -157,12 +158,36 @@ export default function Dispatch() {
       .eq("status", "ready_for_dispatch")
       .order("built_at", { ascending: true });
 
-    const baseBatches: PackingBatch[] = ((data || []) as any[]).map(batch => ({
-      ...batch,
-      dispatched_qty: batch.dispatched_qty || 0,
-      available_qty: batch.quantity - (batch.dispatched_qty || 0),
-    })).filter(b => b.available_qty > 0);
+    const cartons = (cartonData || []) as any[];
+    
+    // Get already dispatched quantities from dispatches table (CANONICAL SOURCE)
+    const cartonIds = cartons.map(c => c.id);
+    let dispatchedByCarton: Record<string, number> = {};
+    
+    if (cartonIds.length > 0) {
+      const { data: dispatchData } = await supabase
+        .from("dispatches")
+        .select("carton_id, quantity")
+        .in("carton_id", cartonIds);
+      
+      (dispatchData || []).forEach(d => {
+        if (d.carton_id) {
+          dispatchedByCarton[d.carton_id] = (dispatchedByCarton[d.carton_id] || 0) + d.quantity;
+        }
+      });
+    }
 
+    // Calculate available quantity per carton
+    const baseBatches: PackingBatch[] = cartons.map(batch => {
+      const alreadyDispatched = dispatchedByCarton[batch.id] || 0;
+      return {
+        ...batch,
+        dispatched_qty: alreadyDispatched,
+        available_qty: Math.max(0, batch.quantity - alreadyDispatched),
+      };
+    }).filter(b => b.available_qty > 0);
+
+    // Enrich with Dispatch QC status for display (informational only)
     const woIds = [...new Set(baseBatches.map(b => b.wo_id))];
     
     const { data: qcRecords } = await supabase
