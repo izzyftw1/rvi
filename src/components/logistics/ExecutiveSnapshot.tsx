@@ -64,11 +64,9 @@ const KPICard = memo(({ title, value, subtitle, icon, highlight = "neutral", onC
 KPICard.displayName = "KPICard";
 
 export const ExecutiveSnapshot = memo(({ metrics, onKPIClick }: ExecutiveSnapshotProps) => {
-  const formatCurrency = (value: number) => {
-    if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
-    if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
-    if (value >= 1000) return `₹${(value / 1000).toFixed(1)}K`;
-    return `₹${value.toLocaleString()}`;
+  const formatWeight = (value: number) => {
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}T`;
+    return `${value.toFixed(0)}kg`;
   };
 
   const formatQty = (qty: number) => {
@@ -86,7 +84,7 @@ export const ExecutiveSnapshot = memo(({ metrics, onKPIClick }: ExecutiveSnapsho
         <KPICard
           title="Packed (Not Dispatched)"
           value={formatQty(metrics.packedNotDispatched.qty)}
-          subtitle={`${metrics.packedNotDispatched.cartons} cartons • ${formatCurrency(metrics.packedNotDispatched.value)}`}
+          subtitle={`${metrics.packedNotDispatched.cartons} cartons • ${formatWeight(metrics.packedNotDispatched.value)}`}
           icon={<Package className="h-5 w-5" />}
           highlight={metrics.packedNotDispatched.qty > 0 ? "warning" : "neutral"}
           onClick={() => onKPIClick?.("packed")}
@@ -112,7 +110,7 @@ export const ExecutiveSnapshot = memo(({ metrics, onKPIClick }: ExecutiveSnapsho
 
         <KPICard
           title="Ageing Exposure"
-          value={formatCurrency(metrics.ageingExposure.value)}
+          value={formatWeight(metrics.ageingExposure.value)}
           subtitle={`${formatQty(metrics.ageingExposure.qty)} pcs >15d old`}
           icon={<AlertTriangle className="h-5 w-5" />}
           highlight={metrics.ageingExposure.value > 0 ? "danger" : "neutral"}
@@ -129,12 +127,12 @@ export const ExecutiveSnapshot = memo(({ metrics, onKPIClick }: ExecutiveSnapsho
         />
 
         <KPICard
-          title="FG Inventory"
-          value={formatQty(metrics.inventoryByState.unpacked)}
-          subtitle={`${formatQty(metrics.inventoryByState.reserved)} reserved`}
+          title="Dispatched Stock"
+          value={formatQty(metrics.inventoryByState.dispatched)}
+          subtitle="Total dispatched"
           icon={<Clock className="h-5 w-5" />}
-          highlight={metrics.inventoryByState.unpacked > 0 ? "warning" : "neutral"}
-          onClick={() => onKPIClick?.("fg-inventory")}
+          highlight="neutral"
+          onClick={() => onKPIClick?.("dispatched")}
         />
       </div>
     </div>
