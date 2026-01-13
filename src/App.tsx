@@ -70,6 +70,7 @@ import ReceiptAllocation from "./pages/finance/ReceiptAllocation";
 import TDSReport from "./pages/finance/TDSReport";
 import RejectionAdjustments from "./pages/finance/RejectionAdjustments";
 import SupplierPayments from "./pages/finance/SupplierPayments";
+import ItemCostBreakup from "./pages/finance/ItemCostBreakup";
 import MachineRuntime from "./pages/reports/MachineRuntime";
 import WorkerEfficiency from "./pages/reports/WorkerEfficiency";
 import Cutting from "./pages/Cutting";
@@ -178,6 +179,7 @@ const App = () => (
           <Route path="/finance/tds" element={<TDSReport />} />
           <Route path="/finance/adjustments" element={<RejectionAdjustments />} />
           <Route path="/finance/supplier-payments" element={<SupplierPayments />} />
+          <Route path="/finance/cost-breakup" element={<ItemCostBreakup />} />
           <Route path="/reports/machine-runtime" element={<MachineRuntime />} />
           <Route path="/reports/worker-efficiency" element={<WorkerEfficiency />} />
           <Route path="/finance/settings" element={<FinanceSettings />} />
