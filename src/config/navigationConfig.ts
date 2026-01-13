@@ -101,6 +101,7 @@ export const navigationGroups: NavGroup[] = [
       { label: "Work Orders", path: "/work-orders", icon: Search, pageKey: "work-orders" },
       { label: "Daily Production Log", path: "/daily-production-log", icon: FileSpreadsheet, pageKey: "daily-production-log" },
       { label: "Production Performance", path: "/production-performance", icon: BarChart3, pageKey: "production-performance" },
+      { label: "Setter Efficiency", path: "/setter-efficiency", icon: Timer, pageKey: "setter-efficiency" },
       { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity, pageKey: "floor-dashboard" },
       { label: "CNC Dashboard", path: "/cnc-dashboard", icon: Activity, pageKey: "cnc-dashboard" },
       { label: "Production Progress", path: "/production-progress", icon: Activity, pageKey: "production-progress" },

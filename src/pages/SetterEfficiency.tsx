@@ -14,7 +14,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, parseISO, differenceInMinutes } from "date-fns";
 import { 
   Wrench, Clock, RefreshCw, Download, Info, Timer, Zap, 
@@ -80,9 +80,18 @@ interface ActivityLog {
 }
 
 const SetterEfficiency = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [period, setPeriod] = useState<Period>("daily");
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+  
+  // Check for incoming parameters from CNC Dashboard
+  const initialTab = searchParams.get("tab") as ActiveTab || "overview";
+  const prefillMachineId = searchParams.get("machine_id") || "";
+  const prefillWoId = searchParams.get("wo_id") || "";
+  const prefillItemCode = searchParams.get("item_code") || "";
+  const prefillPartyCode = searchParams.get("party_code") || "";
+  
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   
   // Filters for activity tab
   const [machineFilter, setMachineFilter] = useState<string>("all");
@@ -96,16 +105,17 @@ const SetterEfficiency = () => {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  // Show form automatically if we have prefill params
+  const [showForm, setShowForm] = useState(!!prefillMachineId || !!prefillWoId);
 
-  // Form state
+  // Form state with prefill from query params
   const [formData, setFormData] = useState({
     activity_date: format(new Date(), "yyyy-MM-dd"),
     programmer_id: "",
-    machine_id: "",
-    wo_id: "",
-    party_code: "",
-    item_code: "",
+    machine_id: prefillMachineId,
+    wo_id: prefillWoId,
+    party_code: prefillPartyCode,
+    item_code: prefillItemCode,
     drawing_number: "",
     setup_start_time: "",
     setup_end_time: "",
@@ -114,6 +124,17 @@ const SetterEfficiency = () => {
     machine_counter_reading: "",
     setup_type: "new" as "new" | "repair",
   });
+  
+  // Clear query params after initial load to avoid confusion on refresh
+  useEffect(() => {
+    if (prefillMachineId || prefillWoId) {
+      // Give time for form to initialize, then clear params
+      const timer = setTimeout(() => {
+        setSearchParams({}, { replace: true });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Get date range based on period
   const dateRange = useMemo(() => {
