@@ -252,25 +252,29 @@ export default function InvoiceDetail() {
               variant="default" 
               onClick={() => {
                 if (!invoice || !invoiceItems.length) return;
+                
+                const customer = invoice.customer_master;
                 const pdfData: CommercialInvoiceData = {
                   invoiceNo: invoice.invoice_no,
                   invoiceDate: format(new Date(invoice.invoice_date), 'dd-MMM-yyyy'),
-                  dispatchDate: invoice.dispatch_date ? format(new Date(invoice.dispatch_date), 'dd-MMM-yyyy') : format(new Date(invoice.invoice_date), 'dd-MMM-yyyy'),
-                  dueDate: format(new Date(invoice.due_date), 'dd-MMM-yyyy'),
                   poNumber: invoice.po_number,
                   poDate: invoice.po_date ? format(new Date(invoice.po_date), 'dd-MMM-yyyy') : undefined,
-                  customer: {
-                    name: invoice.customer_master?.customer_name || '',
-                    address: invoice.customer_address || [invoice.customer_master?.address_line_1, invoice.customer_master?.city, invoice.customer_master?.state].filter(Boolean).join(', '),
-                    contact: invoice.customer_contact || invoice.customer_master?.primary_contact_name,
-                    email: invoice.customer_email || invoice.customer_master?.primary_contact_email,
-                    gst: invoice.customer_gst || invoice.customer_master?.gst_number,
+                  consignee: {
+                    name: customer?.customer_name || '',
+                    addressLine1: customer?.address_line_1 || '',
+                    city: customer?.city || '',
+                    state: customer?.state || '',
+                    postalCode: customer?.pincode || '',
+                    country: customer?.country || 'India',
+                    contact: customer?.primary_contact_name || '',
+                    email: customer?.primary_contact_email || '',
+                    gst: customer?.gst_number || '',
                   },
-                  isExport: invoice.is_export || false,
-                  incoterm: invoice.incoterm,
-                  countryOfOrigin: invoice.country_of_origin || 'India',
-                  totalGrossWeight: invoice.total_gross_weight,
-                  totalNetWeight: invoice.total_net_weight,
+                  notifyPartySameAsConsignee: true,
+                  countryOfOrigin: 'INDIA',
+                  finalDestination: customer?.country || 'USA',
+                  grossWeightKg: invoice.total_gross_weight || 0,
+                  netWeightKg: invoice.total_net_weight || 0,
                   lineItems: invoiceItems.map((item, idx) => ({
                     srNo: idx + 1,
                     itemCode: item.item_code,
@@ -282,9 +286,7 @@ export default function InvoiceDetail() {
                     total: item.amount,
                   })),
                   currency: invoice.currency || 'USD',
-                  subtotal: invoice.subtotal,
-                  gstPercent: invoice.gst_percent,
-                  gstAmount: invoice.gst_amount,
+                  totalQuantity: invoiceItems.reduce((sum, item) => sum + item.quantity, 0),
                   totalAmount: invoice.total_amount,
                 };
                 downloadCommercialInvoice(pdfData);
