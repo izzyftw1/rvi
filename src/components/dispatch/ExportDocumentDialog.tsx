@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { FileDown, Ship, Plane, Truck } from "lucide-react";
+import { FileDown, Ship, Package, Info } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export interface ExportDocumentFields {
   portOfLoading: string;
@@ -27,11 +28,19 @@ export interface ExportDocumentFields {
   placeOfReceipt: string;
 }
 
+export interface PackingDataFromERP {
+  totalCartons: number;
+  totalGrossWeight: number;
+  totalNetWeight: number;
+  totalQuantity?: number;
+}
+
 interface ExportDocumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   documentType: 'invoice' | 'packing-list';
   existingData?: Partial<ExportDocumentFields>;
+  packingData?: PackingDataFromERP;
   onConfirm: (fields: ExportDocumentFields) => void;
 }
 
@@ -66,6 +75,7 @@ export function ExportDocumentDialog({
   onOpenChange,
   documentType,
   existingData,
+  packingData,
   onConfirm,
 }: ExportDocumentDialogProps) {
   const [fields, setFields] = useState<ExportDocumentFields>({
@@ -75,11 +85,18 @@ export function ExportDocumentDialog({
     termsOfPayment: existingData?.termsOfPayment || '100% BALANCE AGAINST BL COPY',
     blNumber: existingData?.blNumber || '',
     blDate: existingData?.blDate || '',
-    numberOfPackages: existingData?.numberOfPackages || 0,
+    numberOfPackages: packingData?.totalCartons || existingData?.numberOfPackages || 0,
     kindOfPackages: existingData?.kindOfPackages || 'BOXES',
     preCarriageBy: existingData?.preCarriageBy || 'N.A.',
     placeOfReceipt: existingData?.placeOfReceipt || 'N.A.',
   });
+
+  // Update fields when packingData changes
+  useEffect(() => {
+    if (packingData?.totalCartons) {
+      setFields(prev => ({ ...prev, numberOfPackages: packingData.totalCartons }));
+    }
+  }, [packingData]);
 
   const handleChange = (field: keyof ExportDocumentFields, value: string | number) => {
     setFields(prev => ({ ...prev, [field]: value }));
@@ -91,7 +108,7 @@ export function ExportDocumentDialog({
   };
 
   const title = documentType === 'invoice' ? 'Commercial Invoice Details' : 'Packing List Details';
-  const description = 'Enter shipping and transport details for this export document. Fields marked with * are required.';
+  const description = 'Enter shipping details for this export document. Packing details are auto-populated from the ERP.';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -105,7 +122,25 @@ export function ExportDocumentDialog({
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
-          {/* Transport Mode */}
+          {/* Auto-populated Packing Details from ERP */}
+          {packingData && (packingData.totalCartons > 0 || packingData.totalGrossWeight > 0) && (
+            <Alert className="bg-muted/50">
+              <Package className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Packing Details (from ERP)</span>
+                  <div className="flex gap-4 text-sm">
+                    <span><strong>{packingData.totalCartons}</strong> cartons</span>
+                    <span><strong>{packingData.totalGrossWeight.toFixed(2)}</strong> kg gross</span>
+                    <span><strong>{packingData.totalNetWeight.toFixed(2)}</strong> kg net</span>
+                    {packingData.totalQuantity && <span><strong>{packingData.totalQuantity.toLocaleString()}</strong> pcs</span>}
+                  </div>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Transport Details - User Input Required */}
           <div className="space-y-3">
             <h4 className="font-medium text-sm flex items-center gap-2">
               <Ship className="h-4 w-4" />
@@ -216,15 +251,15 @@ export function ExportDocumentDialog({
 
           <Separator />
 
-          {/* Packing Details */}
+          {/* Package Type Selection */}
           <div className="space-y-3">
             <h4 className="font-medium text-sm flex items-center gap-2">
-              <Truck className="h-4 w-4" />
-              Packing Details
+              <Info className="h-4 w-4" />
+              Package Type
             </h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="kindOfPackages">Kind of Packages *</Label>
+                <Label htmlFor="kindOfPackages">Kind of Packages</Label>
                 <Select 
                   value={fields.kindOfPackages} 
                   onValueChange={(v) => handleChange('kindOfPackages', v)}
@@ -240,14 +275,21 @@ export function ExportDocumentDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="numberOfPackages">Number of Packages *</Label>
+                <Label htmlFor="numberOfPackages">
+                  Number of Packages
+                  {packingData?.totalCartons ? (
+                    <span className="text-xs text-muted-foreground ml-2">(from ERP)</span>
+                  ) : null}
+                </Label>
                 <Input
                   id="numberOfPackages"
                   type="number"
                   min="1"
                   value={fields.numberOfPackages || ''}
                   onChange={(e) => handleChange('numberOfPackages', parseInt(e.target.value) || 0)}
-                  placeholder="Enter total packages"
+                  placeholder="Auto-populated from packing"
+                  className={packingData?.totalCartons ? "bg-muted/50" : ""}
+                  readOnly={!!packingData?.totalCartons}
                 />
               </div>
             </div>

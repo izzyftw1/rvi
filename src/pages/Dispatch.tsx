@@ -111,6 +111,10 @@ export default function Dispatch() {
     dispatchNotes: any[];
     customer: any;
     currency: string;
+    // Auto-populated packing details from cartons
+    totalCartons: number;
+    totalGrossWeight: number;
+    totalNetWeight: number;
   } | null>(null);
 
   useEffect(() => {
@@ -537,6 +541,7 @@ export default function Dispatch() {
   // Download functions - now show dialog to collect missing export fields
   const handleDownloadInvoice = async (shipment: Shipment) => {
     try {
+      // Try to get dispatch notes first
       const { data: dispatchNotes } = await supabase
         .from("dispatch_notes")
         .select(`*, 
@@ -545,8 +550,68 @@ export default function Dispatch() {
         `)
         .eq("shipment_id", shipment.id);
 
+      // If no dispatch notes, build data from dispatches + cartons
       if (!dispatchNotes || dispatchNotes.length === 0) {
-        toast({ variant: "destructive", description: "No dispatch notes found for invoice" });
+        // Fallback: Get data directly from dispatches and cartons
+        const { data: dispatches } = await supabase
+          .from("dispatches")
+          .select(`
+            id, quantity, wo_id, carton_id,
+            cartons(num_cartons, gross_weight, net_weight, quantity),
+            work_orders(display_id, item_code, customer, so_id, financial_snapshot, po_number, po_date)
+          `)
+          .eq("shipment_id", shipment.id);
+
+        if (!dispatches || dispatches.length === 0) {
+          toast({ variant: "destructive", description: "No dispatch data found for this shipment" });
+          return;
+        }
+
+        // Get customer info from SO
+        const firstDispatch = dispatches[0] as any;
+        const soId = firstDispatch.work_orders?.so_id;
+        let customer = null;
+        
+        if (soId) {
+          const { data: soData } = await supabase
+            .from("sales_orders")
+            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number)")
+            .eq("id", soId)
+            .single();
+          customer = (soData as any)?.customer_master;
+        }
+
+        const financialSnapshot = firstDispatch.work_orders?.financial_snapshot;
+        const currency = financialSnapshot?.currency || "USD";
+
+        // Calculate totals from cartons
+        const totalCartons = dispatches.reduce((sum, d: any) => sum + (d.cartons?.num_cartons || 1), 0);
+        const totalGrossWeight = dispatches.reduce((sum, d: any) => sum + (d.cartons?.gross_weight || 0), 0);
+        const totalNetWeight = dispatches.reduce((sum, d: any) => sum + (d.cartons?.net_weight || 0), 0);
+
+        // Build synthetic dispatch notes from dispatches
+        const syntheticNotes = dispatches.map((d: any) => ({
+          item_code: d.work_orders?.item_code || 'N/A',
+          item_description: d.work_orders?.item_code || 'N/A',
+          dispatched_qty: d.quantity,
+          unit_rate: financialSnapshot?.line_item?.price_per_pc || 0,
+          currency: currency,
+          gross_weight_kg: (d.cartons?.gross_weight || 0) * (d.quantity / (d.cartons?.quantity || d.quantity)),
+          net_weight_kg: (d.cartons?.net_weight || 0) * (d.quantity / (d.cartons?.quantity || d.quantity)),
+          work_orders: d.work_orders,
+        }));
+
+        setPendingShipment(shipment);
+        setPendingExportData({ 
+          dispatchNotes: syntheticNotes, 
+          customer: customer || { customer_name: shipment.customer }, 
+          currency,
+          totalCartons,
+          totalGrossWeight,
+          totalNetWeight,
+        });
+        setExportDocType('invoice');
+        setExportDialogOpen(true);
         return;
       }
 
@@ -556,9 +621,40 @@ export default function Dispatch() {
       const currency = firstNote.currency || financialSnapshot?.currency || "USD";
       const customer = (firstNote.sales_orders as any)?.customer_master;
 
+      // Get carton data for auto-populating packing details
+      const cartonIds = dispatchNotes.map(dn => dn.carton_id).filter(Boolean);
+      let totalCartons = dispatchNotes.length;
+      let totalGrossWeight = dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0);
+      let totalNetWeight = dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0);
+
+      if (cartonIds.length > 0) {
+        const { data: cartons } = await supabase
+          .from("cartons")
+          .select("id, num_cartons, gross_weight, net_weight")
+          .in("id", cartonIds);
+        
+        if (cartons && cartons.length > 0) {
+          totalCartons = cartons.reduce((sum, c) => sum + (c.num_cartons || 1), 0);
+          // Only override if dispatch_notes don't have weights
+          if (totalGrossWeight === 0) {
+            totalGrossWeight = cartons.reduce((sum, c) => sum + (c.gross_weight || 0), 0);
+          }
+          if (totalNetWeight === 0) {
+            totalNetWeight = cartons.reduce((sum, c) => sum + (c.net_weight || 0), 0);
+          }
+        }
+      }
+
       // Store pending data and show dialog
       setPendingShipment(shipment);
-      setPendingExportData({ dispatchNotes, customer, currency });
+      setPendingExportData({ 
+        dispatchNotes, 
+        customer, 
+        currency,
+        totalCartons,
+        totalGrossWeight,
+        totalNetWeight,
+      });
       setExportDocType('invoice');
       setExportDialogOpen(true);
     } catch (error: any) {
@@ -568,6 +664,7 @@ export default function Dispatch() {
 
   const handleDownloadPackingList = async (shipment: Shipment) => {
     try {
+      // Try to get dispatch notes first
       const { data: dispatchNotes } = await supabase
         .from("dispatch_notes")
         .select(`*, 
@@ -575,16 +672,97 @@ export default function Dispatch() {
         `)
         .eq("shipment_id", shipment.id);
 
+      // If no dispatch notes, build data from dispatches + cartons
       if (!dispatchNotes || dispatchNotes.length === 0) {
-        toast({ variant: "destructive", description: "No dispatch notes found" });
+        const { data: dispatches } = await supabase
+          .from("dispatches")
+          .select(`
+            id, quantity, wo_id, carton_id,
+            cartons(num_cartons, gross_weight, net_weight, quantity),
+            work_orders(display_id, item_code, customer, so_id)
+          `)
+          .eq("shipment_id", shipment.id);
+
+        if (!dispatches || dispatches.length === 0) {
+          toast({ variant: "destructive", description: "No dispatch data found for this shipment" });
+          return;
+        }
+
+        const firstDispatch = dispatches[0] as any;
+        const soId = firstDispatch.work_orders?.so_id;
+        let customer = null;
+        
+        if (soId) {
+          const { data: soData } = await supabase
+            .from("sales_orders")
+            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number)")
+            .eq("id", soId)
+            .single();
+          customer = (soData as any)?.customer_master;
+        }
+
+        const totalCartons = dispatches.reduce((sum, d: any) => sum + (d.cartons?.num_cartons || 1), 0);
+        const totalGrossWeight = dispatches.reduce((sum, d: any) => sum + (d.cartons?.gross_weight || 0), 0);
+        const totalNetWeight = dispatches.reduce((sum, d: any) => sum + (d.cartons?.net_weight || 0), 0);
+
+        const syntheticNotes = dispatches.map((d: any) => ({
+          item_code: d.work_orders?.item_code || 'N/A',
+          item_description: d.work_orders?.item_code || 'N/A',
+          dispatched_qty: d.quantity,
+          gross_weight_kg: (d.cartons?.gross_weight || 0) * (d.quantity / (d.cartons?.quantity || d.quantity)),
+          net_weight_kg: (d.cartons?.net_weight || 0) * (d.quantity / (d.cartons?.quantity || d.quantity)),
+          num_cartons: d.cartons?.num_cartons || 1,
+        }));
+
+        setPendingShipment(shipment);
+        setPendingExportData({ 
+          dispatchNotes: syntheticNotes, 
+          customer: customer || { customer_name: shipment.customer }, 
+          currency: 'USD',
+          totalCartons,
+          totalGrossWeight,
+          totalNetWeight,
+        });
+        setExportDocType('packing-list');
+        setExportDialogOpen(true);
         return;
       }
 
       const customer = (dispatchNotes[0].sales_orders as any)?.customer_master;
 
+      // Get carton data for auto-populating packing details
+      const cartonIds = dispatchNotes.map(dn => dn.carton_id).filter(Boolean);
+      let totalCartons = dispatchNotes.length;
+      let totalGrossWeight = dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0);
+      let totalNetWeight = dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0);
+
+      if (cartonIds.length > 0) {
+        const { data: cartons } = await supabase
+          .from("cartons")
+          .select("id, num_cartons, gross_weight, net_weight")
+          .in("id", cartonIds);
+        
+        if (cartons && cartons.length > 0) {
+          totalCartons = cartons.reduce((sum, c) => sum + (c.num_cartons || 1), 0);
+          if (totalGrossWeight === 0) {
+            totalGrossWeight = cartons.reduce((sum, c) => sum + (c.gross_weight || 0), 0);
+          }
+          if (totalNetWeight === 0) {
+            totalNetWeight = cartons.reduce((sum, c) => sum + (c.net_weight || 0), 0);
+          }
+        }
+      }
+
       // Store pending data and show dialog
       setPendingShipment(shipment);
-      setPendingExportData({ dispatchNotes, customer, currency: 'USD' });
+      setPendingExportData({ 
+        dispatchNotes, 
+        customer, 
+        currency: 'USD',
+        totalCartons,
+        totalGrossWeight,
+        totalNetWeight,
+      });
       setExportDocType('packing-list');
       setExportDialogOpen(true);
     } catch (error: any) {
@@ -596,7 +774,7 @@ export default function Dispatch() {
   const handleExportDialogConfirm = (fields: ExportDocumentFields) => {
     if (!pendingShipment || !pendingExportData) return;
 
-    const { dispatchNotes, customer, currency } = pendingExportData;
+    const { dispatchNotes, customer, currency, totalCartons, totalGrossWeight, totalNetWeight } = pendingExportData;
 
     if (exportDocType === 'invoice') {
       const financialSnapshot = (dispatchNotes[0].work_orders as any)?.financial_snapshot;
@@ -643,9 +821,9 @@ export default function Dispatch() {
         blNumber: fields.blNumber || undefined,
         blDate: fields.blDate ? new Date(fields.blDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
         kindOfPackages: fields.kindOfPackages,
-        numberOfPackages: fields.numberOfPackages,
-        grossWeightKg: dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0),
-        netWeightKg: dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0),
+        numberOfPackages: totalCartons || fields.numberOfPackages,
+        grossWeightKg: totalGrossWeight || dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0),
+        netWeightKg: totalNetWeight || dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0),
         lineItems,
         currency,
         totalQuantity: lineItems.reduce((sum, item) => sum + item.quantity, 0),
@@ -658,7 +836,7 @@ export default function Dispatch() {
       // Packing List
       const lineItems: PackingListLineItem[] = dispatchNotes.map((dn, idx) => ({
         cartonRange: `${idx + 1}`,
-        totalBoxes: 1,
+        totalBoxes: (dn as any).num_cartons || 1,
         piecesPerCarton: dn.dispatched_qty,
         itemName: dn.item_description || dn.item_code,
         itemCode: dn.item_code || "N/A",
@@ -687,9 +865,9 @@ export default function Dispatch() {
         blDate: fields.blDate ? new Date(fields.blDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
         kindOfPackages: fields.kindOfPackages,
         lineItems,
-        totalBoxes: fields.numberOfPackages || dispatchNotes.length,
+        totalBoxes: totalCartons || fields.numberOfPackages || dispatchNotes.length,
         totalQuantity: lineItems.reduce((sum, item) => sum + item.totalPieces, 0),
-        totalGrossWeight: lineItems.reduce((sum, item) => sum + item.grossWeightKg, 0),
+        totalGrossWeight: totalGrossWeight || lineItems.reduce((sum, item) => sum + item.grossWeightKg, 0),
       };
 
       downloadPackingList(packingListData);
@@ -1076,14 +1254,17 @@ export default function Dispatch() {
         </TabsContent>
       </Tabs>
 
-      {/* Export Document Dialog - collects missing fields before generating */}
+      {/* Export Document Dialog - collects missing shipping fields, packing details are auto-populated */}
       <ExportDocumentDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
         documentType={exportDocType}
-        existingData={{
-          numberOfPackages: pendingExportData?.dispatchNotes?.length || 0,
-        }}
+        packingData={pendingExportData ? {
+          totalCartons: pendingExportData.totalCartons,
+          totalGrossWeight: pendingExportData.totalGrossWeight,
+          totalNetWeight: pendingExportData.totalNetWeight,
+          totalQuantity: pendingExportData.dispatchNotes?.reduce((sum, dn) => sum + (dn.dispatched_qty || 0), 0),
+        } : undefined}
         onConfirm={handleExportDialogConfirm}
       />
     </PageContainer>
