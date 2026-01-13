@@ -308,6 +308,7 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
                     <SelectItem value="INTERNAL">Internal</SelectItem>
                     <SelectItem value="CUSTOMER">Customer</SelectItem>
                     <SelectItem value="SUPPLIER">Supplier</SelectItem>
+                    <SelectItem value="HOURLY_QC">Hourly QC</SelectItem>
                   </SelectContent>
                 </Select>
               </FormField>
@@ -350,9 +351,10 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
                   <SelectTrigger>
                     <SelectValue placeholder="Select source..." />
                   </SelectTrigger>
-                  <SelectContent>
+                <SelectContent>
                     <SelectItem value="incoming_qc">Incoming QC</SelectItem>
                     <SelectItem value="inprocess_qc">In-Process QC</SelectItem>
+                    <SelectItem value="hourly_qc">Hourly QC</SelectItem>
                     <SelectItem value="final_qc">Final QC</SelectItem>
                     <SelectItem value="production">Production</SelectItem>
                   </SelectContent>

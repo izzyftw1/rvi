@@ -2,14 +2,16 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { FileText, Search, ClipboardCheck, CheckCircle, Lock, Shield, AlertTriangle } from "lucide-react";
+import { 
+  FileText, Search, ClipboardCheck, CheckCircle, Lock, Shield, 
+  AlertTriangle, Package, ArrowRight, Clock, Eye
+} from "lucide-react";
 import { format } from "date-fns";
 
 interface WorkOrderWithQC {
@@ -39,7 +41,6 @@ const FinalQCList = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Get work orders that are in production, qc, packing, or dispatch stages
       const { data: woData, error: woError } = await supabase
         .from("work_orders")
         .select(
@@ -53,7 +54,6 @@ const FinalQCList = () => {
 
       const woIds = (woData || []).map((wo) => wo.id);
 
-      // Get QC check counts for each work order
       const { data: qcCounts, error: qcError } = await supabase
         .from("hourly_qc_checks")
         .select("wo_id")
@@ -61,15 +61,11 @@ const FinalQCList = () => {
 
       if (qcError) throw qcError;
 
-      // Count QC checks per WO
       const qcCountMap: Record<string, number> = {};
       (qcCounts || []).forEach((qc: any) => {
         qcCountMap[qc.wo_id] = (qcCountMap[qc.wo_id] || 0) + 1;
       });
 
-      // Compute the *eligible* quantity for Final QC from batch truth.
-      // - For non-released WOs: sum OK qty in production-complete batches that are NOT yet final-QC passed/waived.
-      // - For released WOs: show total QC-approved qty from final-QC passed/waived batches.
       const pendingOkQtyMap: Record<string, number> = {};
       const releasedQtyMap: Record<string, number> = {};
 
@@ -114,7 +110,6 @@ const FinalQCList = () => {
         })
         .filter((wo) => wo.quality_released || (wo.quantity || 0) > 0);
 
-      // Sort by stage priority (qc first, then others)
       const stagePriority: Record<string, number> = {
         qc: 1,
         production: 2,
@@ -148,37 +143,117 @@ const FinalQCList = () => {
     );
   });
 
-  const getStageColor = (stage: string | null) => {
+  // Separate released and pending
+  const releasedOrders = filteredWorkOrders.filter(wo => wo.quality_released);
+  const pendingOrders = filteredWorkOrders.filter(wo => !wo.quality_released);
+
+  const getStageConfig = (stage: string | null) => {
     switch (stage) {
-      case "production": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
-      case "qc": return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
-      case "packing": return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400";
-      case "dispatch": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
+      case "production": return { color: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20", label: "Production" };
+      case "qc": return { color: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20", label: "QC" };
+      case "packing": return { color: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20", label: "Packing" };
+      case "dispatch": return { color: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20", label: "Dispatch" };
+      default: return { color: "bg-muted text-muted-foreground", label: stage || "Unknown" };
     }
   };
 
-  const getFQCStatus = (wo: WorkOrderWithQC) => {
-    if (wo.quality_released) {
-      return (
-        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 gap-1">
-          <Lock className="h-3 w-3" />
-          Released
-        </Badge>
-      );
-    }
-    if (wo.final_qc_result === 'blocked') {
-      return (
-        <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 gap-1">
-          <AlertTriangle className="h-3 w-3" />
-          Blocked
-        </Badge>
-      );
-    }
+  const renderWorkOrderCard = (wo: WorkOrderWithQC, isReleased: boolean) => {
+    const stageConfig = getStageConfig(wo.current_stage);
+    
     return (
-      <Badge variant="outline" className="gap-1">
-        Pending
-      </Badge>
+      <Card 
+        key={wo.id} 
+        className={`group hover:shadow-md transition-all cursor-pointer ${
+          isReleased 
+            ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900" 
+            : "hover:border-primary/40"
+        }`}
+        onClick={() => navigate(`/final-qc/${wo.id}`)}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: WO Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-semibold text-lg">{wo.display_id || wo.wo_number}</span>
+                <Badge className={`${stageConfig.color} border`}>
+                  {stageConfig.label}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{wo.customer || "—"}</span>
+                <span className="text-muted-foreground/60">•</span>
+                <span>{wo.item_code || "—"}</span>
+              </div>
+            </div>
+
+            {/* Middle: Stats */}
+            <div className="flex items-center gap-6">
+              {/* Eligible Qty */}
+              <div className="text-center">
+                <div className="flex items-center gap-1.5">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xl font-bold">{wo.quantity?.toLocaleString() || "0"}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Eligible</span>
+              </div>
+
+              {/* QC Checks */}
+              <div className="text-center">
+                <div className="flex items-center gap-1.5">
+                  <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xl font-bold">{wo.qc_check_count}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">QC Checks</span>
+              </div>
+
+              {/* Status */}
+              <div className="w-28">
+                {isReleased ? (
+                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 w-full justify-center py-1.5 gap-1.5">
+                    <Lock className="h-3.5 w-3.5" />
+                    Released
+                  </Badge>
+                ) : wo.final_qc_result === 'blocked' ? (
+                  <Badge className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 w-full justify-center py-1.5 gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Blocked
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="w-full justify-center py-1.5 gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    Pending
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Action */}
+            <Button 
+              size="sm" 
+              variant={isReleased ? "ghost" : "default"}
+              className="gap-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/final-qc/${wo.id}`);
+              }}
+            >
+              {isReleased ? (
+                <>
+                  <Eye className="h-4 w-4" />
+                  View
+                </>
+              ) : (
+                <>
+                  <Shield className="h-4 w-4" />
+                  Inspect
+                  <ArrowRight className="h-4 w-4 opacity-50" />
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     );
   };
 
@@ -190,8 +265,67 @@ const FinalQCList = () => {
         icon={<ClipboardCheck className="h-6 w-6" />}
       />
 
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-background to-muted/30">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Package className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{filteredWorkOrders.length}</p>
+                <p className="text-xs text-muted-foreground">Total Work Orders</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-background to-amber-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <Clock className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{pendingOrders.length}</p>
+                <p className="text-xs text-muted-foreground">Pending Inspection</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-background to-green-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{releasedOrders.length}</p>
+                <p className="text-xs text-muted-foreground">Released</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-background to-purple-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <ClipboardCheck className="h-5 w-5 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {filteredWorkOrders.reduce((sum, wo) => sum + wo.qc_check_count, 0)}
+                </p>
+                <p className="text-xs text-muted-foreground">Total QC Checks</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
+        <CardContent className="p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -204,87 +338,58 @@ const FinalQCList = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          {loading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
+      {/* Work Orders List */}
+      {loading ? (
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : filteredWorkOrders.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="font-medium">No work orders ready for Dispatch QC</p>
+            <p className="text-sm mt-1">Work orders must have production data before dispatch inspection.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {/* Pending Inspection Section */}
+          {pendingOrders.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold text-lg">Pending Inspection</h2>
+                <Badge variant="secondary">{pendingOrders.length}</Badge>
+              </div>
+              <div className="space-y-3">
+                {pendingOrders.map((wo) => renderWorkOrderCard(wo, false))}
+              </div>
             </div>
-          ) : filteredWorkOrders.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No work orders ready for Dispatch QC.</p>
-              <p className="text-sm">Work orders must have production data before dispatch inspection.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Work Order</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Item Code</TableHead>
-                  <TableHead className="text-right">Eligible Qty</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead className="text-right">QC Checks</TableHead>
-                  <TableHead>FQC Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredWorkOrders.map((wo) => (
-                  <TableRow key={wo.id} className={wo.quality_released ? "bg-green-50/50 dark:bg-green-900/10" : ""}>
-                    <TableCell className="font-medium">
-                      {wo.wo_number}
-                    </TableCell>
-                    <TableCell>{wo.customer || "-"}</TableCell>
-                    <TableCell>{wo.item_code || "-"}</TableCell>
-                    <TableCell className="text-right">{wo.quantity?.toLocaleString() || "-"}</TableCell>
-                    <TableCell>
-                      <Badge className={getStageColor(wo.current_stage)}>
-                        {wo.current_stage || "Unknown"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {wo.qc_check_count > 0 ? (
-                        <Badge variant="secondary" className="gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          {wo.qc_check_count}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">0</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {getFQCStatus(wo)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant={wo.quality_released ? "outline" : "default"}
-                        onClick={() => navigate(`/final-qc/${wo.id}`)}
-                      >
-                        {wo.quality_released ? (
-                          <>
-                            <FileText className="h-4 w-4 mr-2" />
-                            View
-                          </>
-                        ) : (
-                          <>
-                            <Shield className="h-4 w-4 mr-2" />
-                            Inspect
-                          </>
-                        )}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Released Section */}
+          {releasedOrders.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <h2 className="font-semibold text-lg">Released</h2>
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                  {releasedOrders.length}
+                </Badge>
+              </div>
+              <div className="space-y-3">
+                {releasedOrders.map((wo) => renderWorkOrderCard(wo, true))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </PageContainer>
   );
 };

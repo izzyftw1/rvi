@@ -4775,6 +4775,7 @@ export type Database = {
           quantity_affected: number
           raised_from: string | null
           rejection_type: string | null
+          requires_supervisor_review: boolean | null
           responsible_person: string | null
           root_cause: string | null
           source_reference: string | null
@@ -4819,6 +4820,7 @@ export type Database = {
           quantity_affected: number
           raised_from?: string | null
           rejection_type?: string | null
+          requires_supervisor_review?: boolean | null
           responsible_person?: string | null
           root_cause?: string | null
           source_reference?: string | null
@@ -4863,6 +4865,7 @@ export type Database = {
           quantity_affected?: number
           raised_from?: string | null
           rejection_type?: string | null
+          requires_supervisor_review?: boolean | null
           responsible_person?: string | null
           root_cause?: string | null
           source_reference?: string | null
@@ -10535,7 +10538,7 @@ export type Database = {
         | "ACTION_IN_PROGRESS"
         | "EFFECTIVENESS_PENDING"
         | "CLOSED"
-      ncr_type: "INTERNAL" | "CUSTOMER" | "SUPPLIER"
+      ncr_type: "INTERNAL" | "CUSTOMER" | "SUPPLIER" | "HOURLY_QC"
       operation_letter:
         | "A"
         | "B"
@@ -10857,7 +10860,7 @@ export const Constants = {
         "EFFECTIVENESS_PENDING",
         "CLOSED",
       ],
-      ncr_type: ["INTERNAL", "CUSTOMER", "SUPPLIER"],
+      ncr_type: ["INTERNAL", "CUSTOMER", "SUPPLIER", "HOURLY_QC"],
       operation_letter: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       operation_type: [
         "RAW_MATERIAL",
