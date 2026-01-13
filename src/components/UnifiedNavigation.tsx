@@ -44,8 +44,8 @@ export const UnifiedNavigation = () => {
   const navContainerRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState<number>(10);
 
-  // Admin access is based on department type, not roles
-  const isAdmin = userDepartmentType === 'admin';
+  // Admin access is based on department type, not roles (includes super_admin)
+  const isAdmin = userDepartmentType === 'admin' || userDepartmentType === 'super_admin';
 
   useEffect(() => {
     loadProfile();
