@@ -102,11 +102,7 @@ interface EligibleWorkOrder {
   waitingHours: number;
 }
 
-interface SetupFormData {
-  setup_start_time: string;
-  setup_end_time: string;
-  downtime_reason: string;
-}
+// SetupFormData interface removed - we now redirect to SetterEfficiency page
 
 // Helper to derive flow impact text from queued work orders' stages
 const deriveFlowImpact = (stages: string[]): string | null => {
@@ -185,18 +181,11 @@ const CNCDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
-  const [setupDialogOpen, setSetupDialogOpen] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
   const [eligibleWOs, setEligibleWOs] = useState<EligibleWorkOrder[]>([]);
   const [queuedWOs, setQueuedWOs] = useState<any[]>([]);
   const [loadingWOs, setLoadingWOs] = useState(false);
   const [loadingQueue, setLoadingQueue] = useState(false);
-  const [submittingSetup, setSubmittingSetup] = useState(false);
-  const [setupForm, setSetupForm] = useState<SetupFormData>({
-    setup_start_time: '',
-    setup_end_time: '',
-    downtime_reason: ''
-  });
 
   const loadMachines = useCallback(async () => {
     try {
@@ -554,68 +543,23 @@ const CNCDashboard = () => {
     }
   };
 
-  // Handle Complete Setup dialog
-  const handleOpenSetupDialog = (machine: MachineData) => {
-    setSelectedMachine(machine);
-    const now = new Date();
-    setSetupForm({
-      setup_start_time: format(now, "yyyy-MM-dd'T'HH:mm"),
-      setup_end_time: format(now, "yyyy-MM-dd'T'HH:mm"),
-      downtime_reason: ''
-    });
-    setSetupDialogOpen(true);
-  };
-
-  const handleCompleteSetup = async () => {
-    if (!selectedMachine || !selectedMachine.currentWO) {
+  // Handle Complete Setup - redirect to SetterEfficiency with pre-filled context
+  const handleCompleteSetup = (machine: MachineData) => {
+    if (!machine.currentWO) {
       toast.error("No work order assigned to this machine");
       return;
     }
-
-    if (!setupForm.setup_start_time || !setupForm.setup_end_time) {
-      toast.error("Please enter setup start and end times");
-      return;
-    }
-
-    setSubmittingSetup(true);
-
-    try {
-      // Log the setup activity to cnc_programmer_activity for setter efficiency tracking
-      const { error: activityError } = await supabase
-        .from("cnc_programmer_activity")
-        .insert({
-          activity_date: new Date().toISOString().split('T')[0],
-          machine_id: selectedMachine.id,
-          wo_id: selectedMachine.currentWO.id,
-          item_code: selectedMachine.currentWO.item_code,
-          party_code: selectedMachine.currentWO.customer,
-          setup_type: 'new',
-          setup_start_time: setupForm.setup_start_time,
-          setup_end_time: setupForm.setup_end_time,
-        });
-
-      if (activityError) throw activityError;
-
-      // Update machine status to running
-      const { error: machineError } = await supabase
-        .from("machines")
-        .update({ 
-          status: 'running',
-          current_job_start: new Date().toISOString()
-        })
-        .eq("id", selectedMachine.id);
-
-      if (machineError) throw machineError;
-
-      toast.success(`Setup completed for ${selectedMachine.name}`);
-      setSetupDialogOpen(false);
-      loadMachines();
-    } catch (error: any) {
-      console.error("Setup completion error:", error);
-      toast.error(error.message || "Failed to complete setup");
-    } finally {
-      setSubmittingSetup(false);
-    }
+    
+    // Build query params for pre-filling the SetterEfficiency form
+    const params = new URLSearchParams({
+      machine_id: machine.id,
+      wo_id: machine.currentWO.id || '',
+      item_code: machine.currentWO.item_code || '',
+      party_code: machine.currentWO.customer || '',
+      tab: 'activity' // Open on the Activity/Log tab
+    });
+    
+    navigate(`/setter-efficiency?${params.toString()}`);
   };
 
   // Summary metrics (execution-focused only)
@@ -972,7 +916,7 @@ const CNCDashboard = () => {
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleOpenSetupDialog(machine);
+                          handleCompleteSetup(machine);
                         }}
                       >
                         <Settings className="h-4 w-4" />
@@ -1125,79 +1069,7 @@ const CNCDashboard = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Complete Setup Dialog */}
-        <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Complete Setup – {selectedMachine?.name}</DialogTitle>
-              <DialogDescription>
-                Log the setup completion for setter efficiency tracking
-              </DialogDescription>
-            </DialogHeader>
-
-            {selectedMachine?.currentJob && (
-              <div className="bg-muted/50 rounded-lg p-3 space-y-1">
-                <p className="text-sm font-medium">{selectedMachine.currentJob.woDisplayId}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedMachine.currentJob.itemCode} • {selectedMachine.currentJob.customerCode}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="setup_start">Setup Start</Label>
-                  <Input
-                    id="setup_start"
-                    type="datetime-local"
-                    value={setupForm.setup_start_time}
-                    onChange={(e) => setSetupForm(prev => ({ ...prev, setup_start_time: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="setup_end">Setup End</Label>
-                  <Input
-                    id="setup_end"
-                    type="datetime-local"
-                    value={setupForm.setup_end_time}
-                    onChange={(e) => setSetupForm(prev => ({ ...prev, setup_end_time: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="downtime_reason">Downtime Reason (if any)</Label>
-                <Select
-                  value={setupForm.downtime_reason}
-                  onValueChange={(value) => setSetupForm(prev => ({ ...prev, downtime_reason: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select reason (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No downtime</SelectItem>
-                    <SelectItem value="tool_change">Tool Change</SelectItem>
-                    <SelectItem value="program_load">Program Load</SelectItem>
-                    <SelectItem value="material_wait">Material Wait</SelectItem>
-                    <SelectItem value="fixture_setup">Fixture Setup</SelectItem>
-                    <SelectItem value="calibration">Calibration</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setSetupDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCompleteSetup} disabled={submittingSetup}>
-                {submittingSetup ? "Completing..." : "Complete Setup"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Setup now handled via redirect to SetterEfficiency page */}
       </div>
     </div>
   );

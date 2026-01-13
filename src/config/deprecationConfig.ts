@@ -39,7 +39,7 @@ export const productionPagesStatus: PageDeprecation[] = [
   { path: '/production-progress', status: 'active' },
   { path: '/machine-utilisation', status: 'deprecated', deprecatedDate: '2026-01-10', replacedBy: '/production-performance', notes: 'Merged into Production Performance Dashboard' },
   { path: '/operator-efficiency', status: 'deprecated', deprecatedDate: '2026-01-10', replacedBy: '/production-performance', notes: 'Merged into Production Performance Dashboard' },
-  { path: '/setter-efficiency', status: 'deprecated', deprecatedDate: '2026-01-10', replacedBy: '/production-performance', notes: 'Merged into Production Performance Dashboard' },
+  { path: '/setter-efficiency', status: 'active', notes: 'Restored - Essential for CNC programmer activity data entry and setter analytics' },
   { path: '/downtime-analytics', status: 'deprecated', deprecatedDate: '2026-01-10', replacedBy: '/production-performance', notes: 'Merged into Production Performance Dashboard' },
   { path: '/machine-status', status: 'active' },
   { path: '/gantt', status: 'active' },
