@@ -10596,6 +10596,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin_department: { Args: { user_id: string }; Returns: boolean }
       is_finance_role: { Args: { _user_id: string }; Returns: boolean }
       is_supplier_user: { Args: { _user_id: string }; Returns: boolean }
       manage_user_role: {
