@@ -252,16 +252,17 @@ const HourlyQC = () => {
       });
 
       let hasBinaryFailure = false;
+      const failedBinaryChecks: string[] = [];
       if (binaryChecksEnabled) {
-        if (applicableChecks.thread && qcResults.thread !== 'OK') hasBinaryFailure = true;
-        if (applicableChecks.visual && qcResults.visual !== 'OK') hasBinaryFailure = true;
-        if (applicableChecks.plating && qcResults.plating !== 'OK') hasBinaryFailure = true;
-        if (applicableChecks.platingThickness && qcResults.platingThickness !== 'OK') hasBinaryFailure = true;
+        if (applicableChecks.thread && qcResults.thread !== 'OK') { hasBinaryFailure = true; failedBinaryChecks.push('Thread'); }
+        if (applicableChecks.visual && qcResults.visual !== 'OK') { hasBinaryFailure = true; failedBinaryChecks.push('Visual'); }
+        if (applicableChecks.plating && qcResults.plating !== 'OK') { hasBinaryFailure = true; failedBinaryChecks.push('Plating'); }
+        if (applicableChecks.platingThickness && qcResults.platingThickness !== 'OK') { hasBinaryFailure = true; failedBinaryChecks.push('Plating Thickness'); }
       }
 
       const overallStatus = (outOfTolerance.length === 0 && !hasBinaryFailure) ? 'pass' : 'fail';
 
-      const { error } = await supabase.from('hourly_qc_checks').insert({
+      const { data: qcCheckData, error } = await supabase.from('hourly_qc_checks').insert({
         wo_id: selectedWorkOrder.id,
         machine_id: machineId,
         operator_id: (await supabase.auth.getUser()).data.user?.id,
@@ -278,9 +279,53 @@ const HourlyQC = () => {
         plating_thickness_applicable: applicableChecks.platingThickness,
         plating_thickness_status: applicableChecks.platingThickness ? qcResults.platingThickness : null,
         remarks: qcResults.remarks || null
-      });
+      }).select('id').single();
 
       if (error) throw error;
+
+      // AUTO-CREATE NCR IF QC FAILED - Flagged for QC Supervisor Review
+      if (overallStatus === 'fail') {
+        const issueDetails: string[] = [];
+        if (outOfTolerance.length > 0) {
+          issueDetails.push(`Out of tolerance dimensions: ${outOfTolerance.join(', ')}`);
+        }
+        if (failedBinaryChecks.length > 0) {
+          issueDetails.push(`Failed checks: ${failedBinaryChecks.join(', ')}`);
+        }
+        if (qcResults.remarks) {
+          issueDetails.push(`Remarks: ${qcResults.remarks}`);
+        }
+
+        const machineInfo = machines.find(m => m.id === machineId);
+        const issueDescription = `Hourly QC Check Failed - ${issueDetails.join('. ')}`;
+        const sourceReference = `Hourly QC Check - Op ${operation} - ${machineInfo?.name || 'Unknown Machine'}`;
+
+        try {
+          const { data: ncrNumber } = await supabase.rpc('generate_ncr_number');
+          const { data: user } = await supabase.auth.getUser();
+
+          await supabase.from('ncrs').insert({
+            ncr_number: ncrNumber,
+            ncr_type: 'HOURLY_QC',
+            source_reference: sourceReference,
+            work_order_id: selectedWorkOrder.id,
+            machine_id: machineId,
+            quantity_affected: 1, // Default to 1, supervisor can update
+            unit: 'pcs',
+            issue_description: issueDescription,
+            status: 'OPEN',
+            raised_from: 'hourly_qc',
+            created_by: user?.user?.id,
+            requires_supervisor_review: true,
+          });
+
+          toast.info('📋 NCR auto-created for QC Supervisor review', { duration: 5000 });
+        } catch (ncrError) {
+          console.error('Error auto-creating NCR:', ncrError);
+          // Don't fail the whole submission if NCR creation fails
+          toast.warning('QC recorded but NCR auto-creation failed');
+        }
+      }
 
       toast.success(overallStatus === 'pass' ? '✅ QC Check Passed' : '⚠️ QC Check Failed - Deviation recorded');
       resetForm();

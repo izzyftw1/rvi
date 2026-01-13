@@ -18,7 +18,7 @@ import { NCRFormDialog } from '@/components/ncr/NCRFormDialog';
 interface NCR {
   id: string;
   ncr_number: string;
-  ncr_type: 'INTERNAL' | 'CUSTOMER' | 'SUPPLIER';
+  ncr_type: 'INTERNAL' | 'CUSTOMER' | 'SUPPLIER' | 'HOURLY_QC';
   source_reference: string | null;
   work_order_id: string | null;
   production_log_id: string | null;
@@ -32,6 +32,7 @@ interface NCR {
   status: 'OPEN' | 'ACTION_IN_PROGRESS' | 'EFFECTIVENESS_PENDING' | 'CLOSED';
   due_date: string | null;
   created_at: string;
+  requires_supervisor_review?: boolean;
   work_orders?: { wo_number: string; display_id: string; item_code: string } | null;
   machines?: { machine_id: string; name: string } | null;
   daily_production_logs?: { 
@@ -50,10 +51,11 @@ const STATUS_CONFIG = {
   CLOSED: { label: 'Closed', icon: CheckCircle, color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
 };
 
-const TYPE_CONFIG = {
+const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   INTERNAL: { label: 'Internal', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' },
   CUSTOMER: { label: 'Customer', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
   SUPPLIER: { label: 'Supplier', color: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200' },
+  HOURLY_QC: { label: 'Hourly QC', color: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' },
 };
 
 export default function NCRManagement() {
@@ -228,6 +230,7 @@ export default function NCRManagement() {
                   <SelectItem value="INTERNAL">Internal</SelectItem>
                   <SelectItem value="CUSTOMER">Customer</SelectItem>
                   <SelectItem value="SUPPLIER">Supplier</SelectItem>
+                  <SelectItem value="HOURLY_QC">Hourly QC</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -278,20 +281,28 @@ export default function NCRManagement() {
                 ) : (
                   filteredNCRs.map((ncr) => {
                     const statusConfig = STATUS_CONFIG[ncr.status];
-                    const typeConfig = TYPE_CONFIG[ncr.ncr_type];
+                    const typeConfig = TYPE_CONFIG[ncr.ncr_type] || { label: ncr.ncr_type, color: 'bg-gray-100 text-gray-800' };
                     const StatusIcon = statusConfig.icon;
                     const log = ncr.daily_production_logs;
                     const operatorName = log?.people?.full_name;
+                    const needsReview = ncr.requires_supervisor_review && ncr.status === 'OPEN';
                     
                     return (
                       <TableRow 
                         key={ncr.id} 
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${needsReview ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}`}
                         onClick={() => navigate(`/ncr/${ncr.id}`)}
                       >
                         <TableCell className="font-medium">
                           <div className="flex flex-col">
-                            <span>{ncr.ncr_number}</span>
+                            <div className="flex items-center gap-2">
+                              <span>{ncr.ncr_number}</span>
+                              {needsReview && (
+                                <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] px-1.5 py-0">
+                                  Review
+                                </Badge>
+                              )}
+                            </div>
                             {ncr.raised_from && (
                               <span className="text-[10px] text-muted-foreground">
                                 {ncr.raised_from.replace('_', ' ')}

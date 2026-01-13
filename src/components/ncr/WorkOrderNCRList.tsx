@@ -11,7 +11,7 @@ import { NCRFormDialog } from './NCRFormDialog';
 interface NCR {
   id: string;
   ncr_number: string;
-  ncr_type: 'INTERNAL' | 'CUSTOMER' | 'SUPPLIER';
+  ncr_type: 'INTERNAL' | 'CUSTOMER' | 'SUPPLIER' | 'HOURLY_QC';
   issue_description: string;
   quantity_affected: number;
   unit: string;
