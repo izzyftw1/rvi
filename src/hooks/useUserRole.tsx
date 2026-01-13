@@ -42,11 +42,11 @@ export const useUserRole = () => {
   };
 
   const isFinanceRole = (): boolean => {
-    return userDepartmentType === 'finance' || userDepartmentType === 'admin';
+    return userDepartmentType === 'finance' || userDepartmentType === 'admin' || userDepartmentType === 'super_admin';
   };
 
   const isSuperAdmin = (): boolean => {
-    return userDepartmentType === 'admin';
+    return userDepartmentType === 'admin' || userDepartmentType === 'super_admin';
   };
 
   return {

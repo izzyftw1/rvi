@@ -10673,6 +10673,7 @@ export type Database = {
         | "production"
         | "quality"
         | "packing"
+        | "super_admin"
       employment_type: "internal" | "agency"
       execution_direction: "IN" | "OUT" | "COMPLETE"
       external_movement_status:
@@ -10990,6 +10991,7 @@ export const Constants = {
         "production",
         "quality",
         "packing",
+        "super_admin",
       ],
       employment_type: ["internal", "agency"],
       execution_direction: ["IN", "OUT", "COMPLETE"],
