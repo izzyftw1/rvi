@@ -545,20 +545,20 @@ export default function Dispatch() {
       const { data: dispatchNotes } = await supabase
         .from("dispatch_notes")
         .select(`*, 
-          work_orders(so_id, financial_snapshot, customer, po_number, po_date),
-          sales_orders:sales_order_id(customer_id, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
+          work_orders:work_order_id!dispatch_notes_work_order_id_fkey(so_id, financial_snapshot, customer, customer_po),
+          sales_orders:sales_order_id!dispatch_notes_sales_order_id_fkey(customer_id, po_number, po_date, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
         `)
         .eq("shipment_id", shipment.id);
 
       // If no dispatch notes, build data from dispatches + cartons
       if (!dispatchNotes || dispatchNotes.length === 0) {
-        // Fallback: Get data directly from dispatches and cartons
+      // Fallback: Get data directly from dispatches and cartons
         const { data: dispatches } = await supabase
           .from("dispatches")
           .select(`
             id, quantity, wo_id, carton_id,
-            cartons(num_cartons, gross_weight, net_weight, quantity),
-            work_orders(display_id, item_code, customer, so_id, financial_snapshot, po_number, po_date)
+            cartons!dispatches_carton_id_fkey(num_cartons, gross_weight, net_weight, quantity),
+            work_orders!dispatches_wo_id_fkey(display_id, item_code, customer, so_id, financial_snapshot, customer_po)
           `)
           .eq("shipment_id", shipment.id);
 
@@ -668,7 +668,7 @@ export default function Dispatch() {
       const { data: dispatchNotes } = await supabase
         .from("dispatch_notes")
         .select(`*, 
-          sales_orders:sales_order_id(customer_id, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
+          sales_orders:sales_order_id!dispatch_notes_sales_order_id_fkey(customer_id, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
         `)
         .eq("shipment_id", shipment.id);
 
@@ -678,8 +678,8 @@ export default function Dispatch() {
           .from("dispatches")
           .select(`
             id, quantity, wo_id, carton_id,
-            cartons(num_cartons, gross_weight, net_weight, quantity),
-            work_orders(display_id, item_code, customer, so_id)
+            cartons!dispatches_carton_id_fkey(num_cartons, gross_weight, net_weight, quantity),
+            work_orders!dispatches_wo_id_fkey(display_id, item_code, customer, so_id)
           `)
           .eq("shipment_id", shipment.id);
 
@@ -778,8 +778,10 @@ export default function Dispatch() {
 
     if (exportDocType === 'invoice') {
       const financialSnapshot = (dispatchNotes[0].work_orders as any)?.financial_snapshot;
-      const poNumber = (dispatchNotes[0].work_orders as any)?.po_number;
-      const poDate = (dispatchNotes[0].work_orders as any)?.po_date;
+      // PO info comes from sales_orders, fallback to work_orders.customer_po
+      const salesOrder = (dispatchNotes[0] as any).sales_orders;
+      const poNumber = salesOrder?.po_number || (dispatchNotes[0].work_orders as any)?.customer_po;
+      const poDate = salesOrder?.po_date;
       
       const lineItems = dispatchNotes.map((dn, idx) => ({
         srNo: idx + 1,
