@@ -6,8 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Admin/Finance department types that have full access
-const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance'];
+// Admin/Finance/Super Admin department types that have full access
+const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance', 'super_admin'];
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -73,7 +73,7 @@ serve(async (req) => {
 
     const isAdmin = BYPASS_DEPARTMENT_TYPES.includes(department.type);
     if (!isAdmin) {
-      throw new Error('Insufficient permissions - Admin or Finance department access required');
+      throw new Error('Insufficient permissions - Admin, Finance, or Super Admin department access required');
     }
 
     // Parse request body
