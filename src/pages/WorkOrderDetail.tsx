@@ -138,10 +138,10 @@ const WorkOrderDetail = () => {
       const materialStatus = wo.qc_material_status || wo.qc_raw_material_status || 'pending';
       const firstPieceStatus = wo.qc_first_piece_status || 'pending';
       
-      // QC gates block production if they are pending or failed (but NOT if waived or passed)
+      // Only Material QC blocks machine assignment - First Piece QC happens AFTER machine assignment
+      // (you need to assign a machine to create the first piece sample for QC)
       const materialBlocked = materialStatus === 'pending' || materialStatus === 'failed';
-      const firstPieceBlocked = firstPieceStatus === 'pending' || firstPieceStatus === 'failed';
-      setQcGatesBlocked(materialBlocked || firstPieceBlocked);
+      setQcGatesBlocked(materialBlocked);
       
       // Production release gate
       setProductionNotReleased(wo.production_release_status !== 'RELEASED');
