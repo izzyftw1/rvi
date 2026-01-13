@@ -35,7 +35,7 @@ export const productionPagesStatus: PageDeprecation[] = [
   { path: '/cutting', status: 'active' },
   { path: '/forging', status: 'active' },
   { path: '/floor-dashboard', status: 'active' },
-  { path: '/cnc-dashboard', status: 'active' },
+  { path: '/cnc-dashboard', status: 'deprecated', deprecatedDate: '2026-01-13', replacedBy: '/floor-dashboard', notes: 'Merged into Floor Dashboard > Machines tab' },
   { path: '/production-progress', status: 'active' },
   { path: '/machine-utilisation', status: 'deprecated', deprecatedDate: '2026-01-10', replacedBy: '/production-performance', notes: 'Merged into Production Performance Dashboard' },
   { path: '/operator-efficiency', status: 'deprecated', deprecatedDate: '2026-01-10', replacedBy: '/production-performance', notes: 'Merged into Production Performance Dashboard' },
