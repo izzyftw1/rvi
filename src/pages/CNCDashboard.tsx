@@ -2,10 +2,11 @@
  * CNC Dashboard
  * 
  * EXECUTION FOCUS ONLY:
- * - Queues and job assignment
- * - Oldest job age
- * - Next action per machine
- * - Current blockers (from latest production log & QC state)
+ * - Current job context per machine (WO, Item, Customer, Process Type)
+ * - Cycle time with source indication (Log or Item Master)
+ * - Real-time production snapshot (pieces today, expected per hour)
+ * - Complete Setup action tied to setter efficiency workflow
+ * - Visual status indicators (On Cycle / At Risk / Blocked)
  * 
  * NO historical metrics (utilisation %, efficiency %) - those belong in Machine Utilisation
  */
@@ -14,8 +15,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Activity, 
   ArrowRight,
@@ -28,16 +32,42 @@ import {
   Zap,
   Settings,
   Package,
-  Info
+  Info,
+  Timer,
+  Target,
+  TrendingUp,
+  TrendingDown,
+  Minus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { differenceInHours, differenceInMinutes, parseISO, formatDistanceToNow } from "date-fns";
+import { differenceInHours, differenceInMinutes, parseISO, formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 type ReadinessStatus = 'ready' | 'setup_required' | 'maintenance_due' | 'running' | 'down' | 'qc_blocked';
 type PriorityLevel = 'high' | 'medium' | 'low' | null;
+type ProductionStatus = 'on_cycle' | 'at_risk' | 'blocked' | 'idle';
+
+interface CurrentJobInfo {
+  woId: string;
+  woDisplayId: string;
+  itemCode: string;
+  itemName: string | null;
+  customerCode: string;
+  processType: string | null;
+}
+
+interface CycleTimeInfo {
+  seconds: number | null;
+  source: 'log' | 'item_master' | 'work_order' | null;
+}
+
+interface ProductionSnapshot {
+  piecesToday: number;
+  expectedPerHour: number | null;
+  productionStatus: ProductionStatus;
+}
 
 interface MachineData {
   id: string;
@@ -56,6 +86,10 @@ interface MachineData {
   hasOverdueWOs: boolean;
   nextAction: string;
   blockers: string[];
+  // New enhanced fields
+  currentJob: CurrentJobInfo | null;
+  cycleTime: CycleTimeInfo;
+  productionSnapshot: ProductionSnapshot;
 }
 
 interface EligibleWorkOrder {
@@ -66,6 +100,12 @@ interface EligibleWorkOrder {
   quantity: number;
   due_date: string;
   waitingHours: number;
+}
+
+interface SetupFormData {
+  setup_start_time: string;
+  setup_end_time: string;
+  downtime_reason: string;
 }
 
 // Helper to derive flow impact text from queued work orders' stages
@@ -120,17 +160,43 @@ const getNextAction = (readiness: ReadinessStatus, queueCount: number): string =
   }
 };
 
+// Calculate production status based on actual vs expected output
+const calculateProductionStatus = (
+  piecesToday: number,
+  expectedPerHour: number | null,
+  hoursRunning: number,
+  hasBlockers: boolean
+): ProductionStatus => {
+  if (hasBlockers) return 'blocked';
+  if (!expectedPerHour || expectedPerHour <= 0) return 'idle';
+  
+  const expectedTotal = expectedPerHour * hoursRunning;
+  if (expectedTotal <= 0) return 'on_cycle';
+  
+  const ratio = piecesToday / expectedTotal;
+  if (ratio >= 0.85) return 'on_cycle';
+  if (ratio >= 0.6) return 'at_risk';
+  return 'blocked';
+};
+
 const CNCDashboard = () => {
   const navigate = useNavigate();
   const [machines, setMachines] = useState<MachineData[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
+  const [setupDialogOpen, setSetupDialogOpen] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
   const [eligibleWOs, setEligibleWOs] = useState<EligibleWorkOrder[]>([]);
   const [queuedWOs, setQueuedWOs] = useState<any[]>([]);
   const [loadingWOs, setLoadingWOs] = useState(false);
   const [loadingQueue, setLoadingQueue] = useState(false);
+  const [submittingSetup, setSubmittingSetup] = useState(false);
+  const [setupForm, setSetupForm] = useState<SetupFormData>({
+    setup_start_time: '',
+    setup_end_time: '',
+    downtime_reason: ''
+  });
 
   const loadMachines = useCallback(async () => {
     try {
@@ -147,10 +213,10 @@ const CNCDashboard = () => {
 
       const machineIds = (machinesData || []).map(m => m.id);
 
-      // Get latest production log for today to determine blockers
+      // Get today's production logs for each machine (for pieces today and cycle time)
       const { data: productionLogs } = await supabase
         .from("daily_production_logs")
-        .select("machine_id, wo_id, downtime_events")
+        .select("machine_id, wo_id, ok_quantity, actual_quantity, cycle_time_seconds, downtime_events")
         .in("machine_id", machineIds)
         .eq("log_date", today)
         .order("created_at", { ascending: false });
@@ -180,7 +246,7 @@ const CNCDashboard = () => {
       if (allWoIds.length > 0) {
         const { data: woData } = await supabase
           .from("work_orders")
-          .select("id, display_id, customer, item_code, quantity, current_stage, due_date")
+          .select("id, display_id, customer, item_code, quantity, current_stage, due_date, cycle_time_seconds, external_process_type")
           .in("id", allWoIds);
         
         if (woData) {
@@ -188,20 +254,38 @@ const CNCDashboard = () => {
         }
       }
 
+      // Get item master details for cycle time and item name
+      const itemCodes = [...new Set(Object.values(woDetails).map((wo: any) => wo.item_code).filter(Boolean))];
+      let itemMasterDetails: Record<string, any> = {};
+      if (itemCodes.length > 0) {
+        const { data: itemData } = await supabase
+          .from("item_master")
+          .select("item_code, item_name, cycle_time_seconds")
+          .in("item_code", itemCodes);
+        
+        if (itemData) {
+          itemMasterDetails = Object.fromEntries(itemData.map(item => [item.item_code, item]));
+        }
+      }
+
       // Create lookup maps
       const activeMaintenance = new Map((activeMaintenanceLogs || []).map(log => [log.machine_id, log]));
-      const todayLogs = new Map<string, typeof productionLogs[0]>();
+      
+      // Group production logs by machine
+      const productionLogsByMachine = new Map<string, any[]>();
       (productionLogs || []).forEach(log => {
-        if (!todayLogs.has(log.machine_id)) {
-          todayLogs.set(log.machine_id, log);
+        if (!productionLogsByMachine.has(log.machine_id)) {
+          productionLogsByMachine.set(log.machine_id, []);
         }
+        productionLogsByMachine.get(log.machine_id)!.push(log);
       });
 
       // Process machines
       const enrichedMachines: MachineData[] = (machinesData || []).map(machine => {
         const hasActiveMaintenance = activeMaintenance.has(machine.id);
         const maintenanceReason = activeMaintenance.get(machine.id)?.downtime_reason;
-        const todayLog = todayLogs.get(machine.id);
+        const machineLogs = productionLogsByMachine.get(machine.id) || [];
+        const latestLog = machineLogs[0];
 
         // Calculate queue info
         const machineQueue = (queuedAssignments || []).filter(a => a.machine_id === machine.id);
@@ -231,8 +315,8 @@ const CNCDashboard = () => {
         }
 
         // Check active downtime from today's log
-        if (todayLog?.downtime_events && Array.isArray(todayLog.downtime_events)) {
-          const activeDowntime = (todayLog.downtime_events as any[]).find((e: any) => !e.resolved);
+        if (latestLog?.downtime_events && Array.isArray(latestLog.downtime_events)) {
+          const activeDowntime = (latestLog.downtime_events as any[]).find((e: any) => !e.resolved);
           if (activeDowntime) {
             blockers.push(`Active: ${activeDowntime.reason || 'Downtime event'}`);
           }
@@ -261,17 +345,86 @@ const CNCDashboard = () => {
         const priority = calculatePriority(queueCount, oldestQueueAge, hasOverdueWOs);
         const nextAction = getNextAction(readiness, queueCount);
 
+        // Build current job info
+        let currentJob: CurrentJobInfo | null = null;
+        const currentWO = machine.current_wo_id ? woDetails[machine.current_wo_id] : null;
+        
+        if (currentWO) {
+          const itemMaster = itemMasterDetails[currentWO.item_code];
+          currentJob = {
+            woId: currentWO.id,
+            woDisplayId: currentWO.display_id,
+            itemCode: currentWO.item_code,
+            itemName: itemMaster?.item_name || null,
+            customerCode: currentWO.customer,
+            processType: currentWO.external_process_type || 'CNC Machining'
+          };
+        }
+
+        // Determine cycle time with source
+        let cycleTime: CycleTimeInfo = { seconds: null, source: null };
+        
+        // Priority 1: Latest production log cycle time for this WO + machine
+        if (currentWO && machineLogs.length > 0) {
+          const woLog = machineLogs.find(log => log.wo_id === currentWO.id && log.cycle_time_seconds);
+          if (woLog?.cycle_time_seconds) {
+            cycleTime = { seconds: woLog.cycle_time_seconds, source: 'log' };
+          }
+        }
+        
+        // Priority 2: Work order cycle time
+        if (!cycleTime.seconds && currentWO?.cycle_time_seconds) {
+          cycleTime = { seconds: currentWO.cycle_time_seconds, source: 'work_order' };
+        }
+        
+        // Priority 3: Item master cycle time
+        if (!cycleTime.seconds && currentWO) {
+          const itemMaster = itemMasterDetails[currentWO.item_code];
+          if (itemMaster?.cycle_time_seconds) {
+            cycleTime = { seconds: itemMaster.cycle_time_seconds, source: 'item_master' };
+          }
+        }
+
+        // Calculate production snapshot
+        const piecesToday = machineLogs
+          .filter(log => log.wo_id === machine.current_wo_id)
+          .reduce((sum, log) => sum + (log.ok_quantity || log.actual_quantity || 0), 0);
+        
+        const expectedPerHour = cycleTime.seconds && cycleTime.seconds > 0
+          ? Math.floor(3600 / cycleTime.seconds)
+          : null;
+        
+        const hoursRunning = machine.current_job_start 
+          ? differenceInHours(new Date(), parseISO(machine.current_job_start))
+          : 0;
+        
+        const productionStatus = calculateProductionStatus(
+          piecesToday,
+          expectedPerHour,
+          hoursRunning,
+          blockers.length > 0
+        );
+
+        const productionSnapshot: ProductionSnapshot = {
+          piecesToday,
+          expectedPerHour,
+          productionStatus
+        };
+
         return {
           ...machine,
           readiness,
           queueCount,
           oldestQueueAge,
-          currentWO: machine.current_wo_id ? woDetails[machine.current_wo_id] : null,
+          currentWO,
           flowImpact,
           priority,
           hasOverdueWOs,
           nextAction,
           blockers,
+          currentJob,
+          cycleTime,
+          productionSnapshot,
         };
       });
 
@@ -401,6 +554,70 @@ const CNCDashboard = () => {
     }
   };
 
+  // Handle Complete Setup dialog
+  const handleOpenSetupDialog = (machine: MachineData) => {
+    setSelectedMachine(machine);
+    const now = new Date();
+    setSetupForm({
+      setup_start_time: format(now, "yyyy-MM-dd'T'HH:mm"),
+      setup_end_time: format(now, "yyyy-MM-dd'T'HH:mm"),
+      downtime_reason: ''
+    });
+    setSetupDialogOpen(true);
+  };
+
+  const handleCompleteSetup = async () => {
+    if (!selectedMachine || !selectedMachine.currentWO) {
+      toast.error("No work order assigned to this machine");
+      return;
+    }
+
+    if (!setupForm.setup_start_time || !setupForm.setup_end_time) {
+      toast.error("Please enter setup start and end times");
+      return;
+    }
+
+    setSubmittingSetup(true);
+
+    try {
+      // Log the setup activity to cnc_programmer_activity for setter efficiency tracking
+      const { error: activityError } = await supabase
+        .from("cnc_programmer_activity")
+        .insert({
+          activity_date: new Date().toISOString().split('T')[0],
+          machine_id: selectedMachine.id,
+          wo_id: selectedMachine.currentWO.id,
+          item_code: selectedMachine.currentWO.item_code,
+          party_code: selectedMachine.currentWO.customer,
+          setup_type: 'new',
+          setup_start_time: setupForm.setup_start_time,
+          setup_end_time: setupForm.setup_end_time,
+        });
+
+      if (activityError) throw activityError;
+
+      // Update machine status to running
+      const { error: machineError } = await supabase
+        .from("machines")
+        .update({ 
+          status: 'running',
+          current_job_start: new Date().toISOString()
+        })
+        .eq("id", selectedMachine.id);
+
+      if (machineError) throw machineError;
+
+      toast.success(`Setup completed for ${selectedMachine.name}`);
+      setSetupDialogOpen(false);
+      loadMachines();
+    } catch (error: any) {
+      console.error("Setup completion error:", error);
+      toast.error(error.message || "Failed to complete setup");
+    } finally {
+      setSubmittingSetup(false);
+    }
+  };
+
   // Summary metrics (execution-focused only)
   const metrics = useMemo(() => {
     const ready = machines.filter(m => m.readiness === 'ready');
@@ -410,6 +627,10 @@ const CNCDashboard = () => {
     );
     const totalQueued = machines.reduce((sum, m) => sum + m.queueCount, 0);
     const oldestJobAge = Math.max(...machines.map(m => m.oldestQueueAge), 0);
+    
+    // Production status summary
+    const onCycle = machines.filter(m => m.productionSnapshot.productionStatus === 'on_cycle' && m.readiness === 'running').length;
+    const atRisk = machines.filter(m => m.productionSnapshot.productionStatus === 'at_risk').length;
 
     return {
       readyCount: ready.length,
@@ -417,6 +638,8 @@ const CNCDashboard = () => {
       blockedCount: blocked.length,
       totalQueued,
       oldestJobAge,
+      onCycleCount: onCycle,
+      atRiskCount: atRisk,
     };
   }, [machines]);
 
@@ -442,6 +665,13 @@ const CNCDashboard = () => {
     qc_blocked: { label: 'QC Blocked', color: 'text-purple-600 dark:text-purple-400', icon: Pause },
   };
 
+  const productionStatusConfig: Record<ProductionStatus, { label: string; color: string; icon: React.ElementType }> = {
+    on_cycle: { label: 'On Cycle', color: 'text-green-600 bg-green-100 dark:bg-green-900/30', icon: TrendingUp },
+    at_risk: { label: 'At Risk', color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30', icon: TrendingDown },
+    blocked: { label: 'Blocked', color: 'text-red-600 bg-red-100 dark:bg-red-900/30', icon: AlertTriangle },
+    idle: { label: 'Idle', color: 'text-muted-foreground bg-muted', icon: Minus },
+  };
+
   const getCardStyling = (machine: MachineData) => {
     if (machine.readiness === 'down') return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
     if (machine.readiness === 'ready') return 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800';
@@ -460,7 +690,7 @@ const CNCDashboard = () => {
               CNC Dashboard
             </h1>
             <p className="text-sm text-muted-foreground">
-              Execution focus: queues, blockers, next actions
+              Execution focus: jobs, cycle times, production status
             </p>
           </div>
 
@@ -474,6 +704,18 @@ const CNCDashboard = () => {
               <Activity className="h-3 w-3" />
               {metrics.runningCount} Running
             </Badge>
+            {metrics.onCycleCount > 0 && (
+              <Badge className="gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200">
+                <TrendingUp className="h-3 w-3" />
+                {metrics.onCycleCount} On Cycle
+              </Badge>
+            )}
+            {metrics.atRiskCount > 0 && (
+              <Badge className="gap-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200">
+                <TrendingDown className="h-3 w-3" />
+                {metrics.atRiskCount} At Risk
+              </Badge>
+            )}
             <Badge className="gap-1 bg-muted text-muted-foreground">
               <Package className="h-3 w-3" />
               {metrics.totalQueued} Queued
@@ -545,6 +787,9 @@ const CNCDashboard = () => {
               const jobDuration = machine.current_job_start 
                 ? differenceInMinutes(new Date(), parseISO(machine.current_job_start))
                 : 0;
+              
+              const prodConfig = productionStatusConfig[machine.productionSnapshot.productionStatus];
+              const ProdIcon = prodConfig.icon;
 
               return (
                 <Card 
@@ -563,7 +808,16 @@ const CNCDashboard = () => {
                         <h3 className="font-semibold text-lg truncate">{machine.name}</h3>
                         <p className="text-xs text-muted-foreground font-mono">{machine.machine_id}</p>
                       </div>
-                      <Icon className={cn("h-5 w-5 shrink-0", config.color)} />
+                      <div className="flex items-center gap-1">
+                        {/* Production Status Indicator */}
+                        {(machine.readiness === 'running' || machine.readiness === 'setup_required') && (
+                          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0.5", prodConfig.color)}>
+                            <ProdIcon className="h-3 w-3 mr-1" />
+                            {prodConfig.label}
+                          </Badge>
+                        )}
+                        <Icon className={cn("h-5 w-5 shrink-0 ml-1", config.color)} />
+                      </div>
                     </div>
 
                     {/* Status Badge */}
@@ -571,24 +825,72 @@ const CNCDashboard = () => {
                       {config.label}
                     </Badge>
 
-                    {/* Running Job Info */}
-                    {machine.readiness === 'running' && machine.currentWO && (
+                    {/* Current Job Info - For Running or Setup Required */}
+                    {(machine.readiness === 'running' || machine.readiness === 'setup_required') && machine.currentJob && (
                       <div 
-                        className="bg-background/60 rounded p-2 cursor-pointer hover:bg-background/80 transition-colors"
+                        className="bg-background/60 rounded p-2 cursor-pointer hover:bg-background/80 transition-colors space-y-1"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/work-orders/${machine.currentWO.id}`);
+                          navigate(`/work-orders/${machine.currentJob!.woId}`);
                         }}
                       >
-                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                          <span>Running:</span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {jobDuration < 60 ? `${jobDuration}m` : `${Math.floor(jobDuration / 60)}h ${jobDuration % 60}m`}
-                          </span>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="font-medium">Current Job</span>
+                          {machine.readiness === 'running' && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {jobDuration < 60 ? `${jobDuration}m` : `${Math.floor(jobDuration / 60)}h ${jobDuration % 60}m`}
+                            </span>
+                          )}
                         </div>
-                        <p className="font-mono font-medium text-sm">{machine.currentWO.display_id}</p>
-                        <p className="text-xs text-muted-foreground truncate">{machine.currentWO.item_code}</p>
+                        <p className="font-mono font-medium text-sm">{machine.currentJob.woDisplayId}</p>
+                        <p className="text-xs font-medium truncate">{machine.currentJob.itemCode}</p>
+                        {machine.currentJob.itemName && (
+                          <p className="text-xs text-muted-foreground truncate">{machine.currentJob.itemName}</p>
+                        )}
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{machine.currentJob.customerCode}</span>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            {machine.currentJob.processType}
+                          </Badge>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cycle Time & Production Snapshot - For Running machines */}
+                    {machine.readiness === 'running' && (
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {/* Cycle Time */}
+                        <div className="bg-background/40 rounded p-2">
+                          <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                            <Timer className="h-3 w-3" />
+                            <span>Cycle Time</span>
+                          </div>
+                          {machine.cycleTime.seconds ? (
+                            <>
+                              <p className="font-semibold">{machine.cycleTime.seconds}s</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                from {machine.cycleTime.source === 'log' ? 'Log' : machine.cycleTime.source === 'item_master' ? 'Item Master' : 'WO'}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-muted-foreground">N/A</p>
+                          )}
+                        </div>
+
+                        {/* Production Snapshot */}
+                        <div className="bg-background/40 rounded p-2">
+                          <div className="flex items-center gap-1 text-muted-foreground mb-1">
+                            <Target className="h-3 w-3" />
+                            <span>Today</span>
+                          </div>
+                          <p className="font-semibold">{machine.productionSnapshot.piecesToday.toLocaleString()} pcs</p>
+                          {machine.productionSnapshot.expectedPerHour && (
+                            <p className="text-[10px] text-muted-foreground">
+                              ~{machine.productionSnapshot.expectedPerHour}/hr
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -670,7 +972,7 @@ const CNCDashboard = () => {
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          toast.info("Setup completion workflow coming soon");
+                          handleOpenSetupDialog(machine);
                         }}
                       >
                         <Settings className="h-4 w-4" />
@@ -820,6 +1122,80 @@ const CNCDashboard = () => {
                 </div>
               )}
             </ScrollArea>
+          </DialogContent>
+        </Dialog>
+
+        {/* Complete Setup Dialog */}
+        <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Complete Setup – {selectedMachine?.name}</DialogTitle>
+              <DialogDescription>
+                Log the setup completion for setter efficiency tracking
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedMachine?.currentJob && (
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                <p className="text-sm font-medium">{selectedMachine.currentJob.woDisplayId}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedMachine.currentJob.itemCode} • {selectedMachine.currentJob.customerCode}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="setup_start">Setup Start</Label>
+                  <Input
+                    id="setup_start"
+                    type="datetime-local"
+                    value={setupForm.setup_start_time}
+                    onChange={(e) => setSetupForm(prev => ({ ...prev, setup_start_time: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="setup_end">Setup End</Label>
+                  <Input
+                    id="setup_end"
+                    type="datetime-local"
+                    value={setupForm.setup_end_time}
+                    onChange={(e) => setSetupForm(prev => ({ ...prev, setup_end_time: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="downtime_reason">Downtime Reason (if any)</Label>
+                <Select
+                  value={setupForm.downtime_reason}
+                  onValueChange={(value) => setSetupForm(prev => ({ ...prev, downtime_reason: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select reason (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No downtime</SelectItem>
+                    <SelectItem value="tool_change">Tool Change</SelectItem>
+                    <SelectItem value="program_load">Program Load</SelectItem>
+                    <SelectItem value="material_wait">Material Wait</SelectItem>
+                    <SelectItem value="fixture_setup">Fixture Setup</SelectItem>
+                    <SelectItem value="calibration">Calibration</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSetupDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCompleteSetup} disabled={submittingSetup}>
+                {submittingSetup ? "Completing..." : "Complete Setup"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
