@@ -157,8 +157,7 @@ export const navigationGroups: NavGroup[] = [
     icon: Handshake,
     allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
     items: [
-      { label: "Partner Dashboard", path: "/partner-dashboard", icon: Handshake, pageKey: "partner-dashboard" },
-      { label: "External Analytics", path: "/external-efficiency", icon: BarChart3, pageKey: "external-analytics" },
+      { label: "External Processing", path: "/external-processing-performance", icon: Handshake, pageKey: "external-processing" },
     ]
   }
 ];

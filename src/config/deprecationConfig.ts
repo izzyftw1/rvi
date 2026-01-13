@@ -66,11 +66,22 @@ export const qualityPagesStatus: PageDeprecation[] = [
 ];
 
 /**
+ * External Processing Pages Deprecation Status
+ */
+export const externalPagesStatus: PageDeprecation[] = [
+  { path: '/partner-dashboard', status: 'deprecated', deprecatedDate: '2026-01-13', replacedBy: '/external-processing-performance', notes: 'Merged into External Processing Performance' },
+  { path: '/external-analytics', status: 'deprecated', deprecatedDate: '2026-01-13', replacedBy: '/external-processing-performance', notes: 'Merged into External Processing Performance' },
+  { path: '/external-efficiency', status: 'deprecated', deprecatedDate: '2026-01-13', replacedBy: '/external-processing-performance', notes: 'Merged into External Processing Performance' },
+  { path: '/external-processing-performance', status: 'active' },
+];
+
+/**
  * Combined deprecation registry
  */
 export const allPagesStatus: PageDeprecation[] = [
   ...productionPagesStatus,
   ...qualityPagesStatus,
+  ...externalPagesStatus,
 ];
 
 /**

@@ -91,6 +91,7 @@ import ProductionPerformanceDashboard from "./pages/ProductionPerformanceDashboa
 // Merged External Efficiency + Partner Performance into unified data model
 import PartnerDashboard from "./pages/PartnerDashboard";
 import ExternalAnalytics from "./pages/ExternalAnalytics";
+import ExternalProcessingPerformance from "./pages/ExternalProcessingPerformance";
 import FinishedGoodsInventory from "./pages/FinishedGoodsInventory";
 import GateRegister from "./pages/GateRegister";
 import SupplierPortal from "./pages/SupplierPortal";
@@ -184,11 +185,12 @@ const App = () => (
           <Route path="/logistics-dashboard" element={<LogisticsDashboard />} />
           <Route path="/gate-register" element={<GateRegister />} />
           <Route path="/partners" element={<Partners />} />
-          <Route path="/partner-dashboard" element={<PartnerDashboard />} />
-          <Route path="/external-analytics" element={<ExternalAnalytics />} />
-          {/* Legacy routes redirect to new pages */}
-          <Route path="/partner-performance" element={<PartnerDashboard />} />
-          <Route path="/external-efficiency" element={<ExternalAnalytics />} />
+          <Route path="/external-processing-performance" element={<ExternalProcessingPerformance />} />
+          {/* Legacy routes redirect to consolidated page */}
+          <Route path="/partner-dashboard" element={<ExternalProcessingPerformance />} />
+          <Route path="/external-analytics" element={<ExternalProcessingPerformance />} />
+          <Route path="/partner-performance" element={<ExternalProcessingPerformance />} />
+          <Route path="/external-efficiency" element={<ExternalProcessingPerformance />} />
           <Route path="/external-processing/:processName" element={<ExternalProcessingDetail />} />
           <Route path="/ncr" element={<NCRManagement />} />
           <Route path="/ncr/:id" element={<NCRDetail />} />
