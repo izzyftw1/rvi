@@ -422,6 +422,22 @@ const WorkOrderRow = memo(({
                 </Tooltip>
               </TooltipProvider>
             )}
+            {/* Awaiting Material badge */}
+            {wo.awaiting_material && !blockReasonLabel?.includes('material') && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap border-orange-400 bg-orange-50 text-orange-600">
+                      <PackageX className="h-2 w-2 mr-0.5" />
+                      Awaiting Material
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p className="text-xs">Raw material not yet received or pending RPO delivery</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {/* Overdue badge - only show if progressing (amber) */}
             {isOverdue && !isBlocked && (
               <Badge className="text-[8px] px-1 py-0 h-3.5 whitespace-nowrap bg-amber-500/90 hover:bg-amber-500">
@@ -838,6 +854,7 @@ const WorkOrders = () => {
       let movesMap: Record<string, any[]> = {};
       let ncrCounts: Record<string, number> = {};
       let batchQuantities: Map<string, any> = new Map();
+      let pendingRpoWoIds = new Set<string>();
 
       if (woIds.length > 0) {
         // Fetch external moves (chunked to avoid URL length limit)
@@ -880,12 +897,35 @@ const WorkOrders = () => {
           });
         });
 
+        // Fetch RPOs to check for awaiting material status (chunked)
+        const rpoResults = await Promise.all(
+          chunks.map((ids) =>
+            supabase
+              .from("raw_purchase_orders")
+              .select("wo_id, status")
+              .in("wo_id", ids)
+              .in("status", ['pending_approval', 'approved', 'part_received'] as const)
+          )
+        );
+        const pendingRpoWoIds = new Set<string>();
+        rpoResults.forEach((r) => {
+          (r.data || []).forEach((rpo: any) => {
+            if (rpo.wo_id) pendingRpoWoIds.add(rpo.wo_id);
+          });
+        });
+
         // Fetch BATCH QUANTITIES — SINGLE SOURCE OF TRUTH
         batchQuantities = await fetchBatchQuantitiesMultiple(woIds);
       }
 
       const data = (workOrders || []).map((wo: any) => {
         const bq = batchQuantities.get(wo.id);
+        // Awaiting material if: has pending RPO OR material QC not done and no production yet
+        const hasPendingRpo = pendingRpoWoIds.has(wo.id);
+        const materialQcNotDone = !wo.qc_material_status || wo.qc_material_status === 'pending';
+        const noProductionYet = (bq?.producedQty || 0) === 0;
+        const awaitingMaterial = hasPendingRpo || (materialQcNotDone && noProductionYet && wo.current_stage === 'goods_in');
+        
         return {
           ...wo,
           external_moves: movesMap[wo.id] || [],
@@ -897,6 +937,7 @@ const WorkOrders = () => {
           dispatched_qty: bq?.dispatchedQty || 0,
           open_ncr_count: ncrCounts[wo.id] || 0,
           has_open_ncr: (ncrCounts[wo.id] || 0) > 0,
+          awaiting_material: awaitingMaterial,
         };
       });
 
@@ -1086,8 +1127,10 @@ const WorkOrders = () => {
       filtered = filtered.filter(wo => getBlockReason(wo) === blockReasonFilter);
     }
     
-    // Due date filter (from URL params like ?due=3days)
-    if (dueFilter === '3days') {
+    // Due date filter
+    if (dueFilter === 'overdue') {
+      filtered = filtered.filter(wo => wo.due_date && isPast(parseISO(wo.due_date)));
+    } else if (dueFilter === '3days') {
       const in3Days = new Date();
       in3Days.setDate(in3Days.getDate() + 3);
       filtered = filtered.filter(wo => {
@@ -1103,10 +1146,41 @@ const WorkOrders = () => {
         const dueDate = parseISO(wo.due_date);
         return dueDate <= in7Days && !isPast(dueDate);
       });
+    } else if (dueFilter === 'thisWeek' || dueFilter === 'thisMonth') {
+      const now = new Date();
+      const endDate = dueFilter === 'thisWeek' 
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + (7 - now.getDay()))
+        : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      filtered = filtered.filter(wo => {
+        if (!wo.due_date) return false;
+        const dueDate = parseISO(wo.due_date);
+        return dueDate <= endDate && dueDate >= now;
+      });
+    }
+
+    // Created date filter
+    if (createdDateFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter(wo => {
+        if (!wo.created_at) return false;
+        const createdDate = parseISO(wo.created_at);
+        if (createdDateFilter === 'today') {
+          return createdDate.toDateString() === now.toDateString();
+        } else if (createdDateFilter === 'thisWeek') {
+          const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+          return createdDate >= weekStart;
+        } else if (createdDateFilter === 'thisMonth') {
+          return createdDate.getMonth() === now.getMonth() && createdDate.getFullYear() === now.getFullYear();
+        } else if (createdDateFilter === 'last30') {
+          const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          return createdDate >= days30Ago;
+        }
+        return true;
+      });
     }
 
     return filtered;
-  }, [workOrders, searchQuery, locationFilter, stageFilter, issueFilter, blockReasonFilter, dueFilter, getBatchBreakdown]);
+  }, [workOrders, searchQuery, locationFilter, stageFilter, issueFilter, blockReasonFilter, dueFilter, createdDateFilter, getBatchBreakdown]);
 
   // Stage counts for filter bar - based on BATCH presence
   const stageCounts = useMemo(() => {
@@ -1237,9 +1311,10 @@ const WorkOrders = () => {
         )}
 
         {/* Filter Bar - Clear and Always Visible - only show for active */}
-        {statusFilter === 'active' && (<Card className="p-3 bg-muted/20">
-          <div className="flex flex-col gap-3">
-            {/* Row 1: Location Toggle + Search */}
+        {statusFilter === 'active' && (
+          <Card className="p-3 bg-muted/20">
+            <div className="flex flex-col gap-3">
+              {/* Row 1: Location Toggle + Search */}
             <div className="flex items-center gap-3 flex-wrap">
               {/* Location Toggle - WOs can appear in multiple */}
               <div className="inline-flex rounded-lg border border-border p-1 bg-background">
@@ -1482,8 +1557,100 @@ const WorkOrders = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
+              {/* Divider */}
+              <div className="h-6 w-px bg-border mx-1" />
+
+              {/* Due Date Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                    dueFilter !== 'all' 
+                      ? "bg-primary/10 text-primary border-primary/30" 
+                      : "bg-background text-muted-foreground border-border hover:border-foreground/30"
+                  )}>
+                    <CalendarDays className="h-3 w-3" />
+                    {dueFilter === 'all' ? 'Due Date' : 
+                     dueFilter === '3days' ? 'Due in 3 days' :
+                     dueFilter === '7days' ? 'Due in 7 days' :
+                     dueFilter === 'overdue' ? 'Overdue' :
+                     dueFilter === 'thisWeek' ? 'This Week' :
+                     'This Month'}
+                    {dueFilter !== 'all' && <span className="ml-1">×</span>}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[160px]">
+                  {dueFilter !== 'all' && (
+                    <>
+                      <DropdownMenuItem onClick={() => setDueFilter('all')}>
+                        Clear filter
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onClick={() => setDueFilter('overdue')} className={cn(dueFilter === 'overdue' && "bg-accent")}>
+                    <Clock className="h-3 w-3 mr-2 text-destructive" />
+                    Overdue
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDueFilter('3days')} className={cn(dueFilter === '3days' && "bg-accent")}>
+                    Due in 3 days
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDueFilter('7days')} className={cn(dueFilter === '7days' && "bg-accent")}>
+                    Due in 7 days
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDueFilter('thisWeek')} className={cn(dueFilter === 'thisWeek' && "bg-accent")}>
+                    This Week
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDueFilter('thisMonth')} className={cn(dueFilter === 'thisMonth' && "bg-accent")}>
+                    This Month
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Created Date Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                    createdDateFilter !== 'all' 
+                      ? "bg-primary/10 text-primary border-primary/30" 
+                      : "bg-background text-muted-foreground border-border hover:border-foreground/30"
+                  )}>
+                    <CalendarDays className="h-3 w-3" />
+                    {createdDateFilter === 'all' ? 'Created' : 
+                     createdDateFilter === 'today' ? 'Today' :
+                     createdDateFilter === 'thisWeek' ? 'This Week' :
+                     createdDateFilter === 'thisMonth' ? 'This Month' :
+                     'Last 30 days'}
+                    {createdDateFilter !== 'all' && <span className="ml-1">×</span>}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[160px]">
+                  {createdDateFilter !== 'all' && (
+                    <>
+                      <DropdownMenuItem onClick={() => setCreatedDateFilter('all')}>
+                        Clear filter
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onClick={() => setCreatedDateFilter('today')} className={cn(createdDateFilter === 'today' && "bg-accent")}>
+                    Today
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCreatedDateFilter('thisWeek')} className={cn(createdDateFilter === 'thisWeek' && "bg-accent")}>
+                    This Week
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCreatedDateFilter('thisMonth')} className={cn(createdDateFilter === 'thisMonth' && "bg-accent")}>
+                    This Month
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCreatedDateFilter('last30')} className={cn(createdDateFilter === 'last30' && "bg-accent")}>
+                    Last 30 days
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               {/* Active Filter Summary */}
-              {(stageFilter !== 'all' || issueFilter !== 'all' || blockReasonFilter !== 'all' || searchQuery) && (
+              {(stageFilter !== 'all' || issueFilter !== 'all' || blockReasonFilter !== 'all' || dueFilter !== 'all' || createdDateFilter !== 'all' || searchQuery) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1491,6 +1658,8 @@ const WorkOrders = () => {
                     setStageFilter('all');
                     setIssueFilter('all');
                     setBlockReasonFilter('all');
+                    setDueFilter('all');
+                    setCreatedDateFilter('all');
                     setSearchQuery('');
                   }}
                   className="ml-auto text-xs h-7"
@@ -1501,6 +1670,7 @@ const WorkOrders = () => {
             </div>
           </div>
         </Card>
+        )}
 
         {/* Error State */}
         {error && (
