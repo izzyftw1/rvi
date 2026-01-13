@@ -522,14 +522,67 @@ export default function GateRegister() {
     setRpos(rposWithReceipts);
   };
 
-  // Handle RPO selection - prefills form with RPO data
+  // Parse material_size_mm to extract cross section shape and size
+  // Examples: "22 MM HOLLOW", "25 HEX", "HEX 20", "25.5 HEX"
+  const parseMaterialSizeInfo = (materialSizeMm: string | null): { shape: string; size: string; form: string } => {
+    if (!materialSizeMm) return { shape: '', size: '', form: '' };
+    
+    const sizeStr = materialSizeMm.toUpperCase().trim();
+    let shape = '';
+    let size = '';
+    let form = 'ROD'; // Default form
+    
+    // Known shapes to look for
+    const knownShapes = ['HEX', 'HOLLOW', 'ROUND', 'SQUARE', 'FLAT', 'PIPE', 'TUBE', 'RECTANGLE', 'OCTAGON'];
+    
+    // Find shape in string
+    for (const s of knownShapes) {
+      if (sizeStr.includes(s)) {
+        shape = s;
+        break;
+      }
+    }
+    
+    // Extract numeric size - look for numbers (with optional decimal)
+    const sizeMatch = sizeStr.match(/(\d+\.?\d*)/);
+    if (sizeMatch) {
+      size = `${sizeMatch[1]} mm`;
+    }
+    
+    // Determine form based on shape
+    if (['HOLLOW', 'PIPE', 'TUBE'].includes(shape)) {
+      form = 'TUBE';
+    } else if (['FLAT', 'RECTANGLE'].includes(shape)) {
+      form = 'FLAT';
+    }
+    
+    return { shape, size, form };
+  };
+
+  // Handle RPO selection - prefills form with RPO data including parsed material info
   const handleRPOChange = (rpoId: string) => {
     const rpo = rpos.find(r => r.id === rpoId);
     if (rpo) {
+      // Parse material size to extract shape and size
+      const parsedInfo = parseMaterialSizeInfo(rpo.material_size_mm);
+      
+      // Find matching cross section shape from loaded data
+      const matchingShape = crossSectionShapes.find(
+        s => s.name.toUpperCase() === parsedInfo.shape
+      );
+      
+      // Find matching material form
+      const matchingForm = materialForms.find(
+        f => f.name.toUpperCase() === parsedInfo.form
+      );
+      
       setFormData(prev => ({
         ...prev,
         rpo_id: rpoId,
-        rod_section_size: rpo.material_size_mm || prev.rod_section_size,
+        // Auto-fill from parsed material info
+        material_form: matchingForm?.name || parsedInfo.form || prev.material_form,
+        cross_section_shape: matchingShape?.name || parsedInfo.shape || prev.cross_section_shape,
+        rod_section_size: parsedInfo.size || rpo.material_size_mm || prev.rod_section_size,
         alloy: rpo.alloy || prev.alloy,
         material_grade: rpo.alloy || prev.material_grade,
         supplier_id: rpo.supplier_id || prev.supplier_id,
@@ -541,7 +594,7 @@ export default function GateRegister() {
       
       toast({ 
         title: "RPO Selected", 
-        description: `${rpo.rpo_no}: ${rpo.remaining_kg?.toFixed(1)} kg remaining` 
+        description: `${rpo.rpo_no}: ${rpo.remaining_kg?.toFixed(1)} kg remaining. Material details auto-filled from PO.` 
       });
     } else {
       setFormData(prev => ({ ...prev, rpo_id: '' }));
@@ -1461,14 +1514,31 @@ export default function GateRegister() {
               
               {formData.material_type === 'raw_material' && (
                 <>
+                  {/* Show info banner when RPO is selected */}
+                  {formData.rpo_id && formDirection === 'IN' && (
+                    <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                      <p className="text-xs text-primary font-medium mb-1">
+                        ✓ Material details auto-filled from Purchase Order
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Fields are pre-populated but editable if there's a variation
+                      </p>
+                    </div>
+                  )}
+                  
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Material Form</Label>
+                      <Label className="flex items-center gap-2">
+                        Material Form
+                        {formData.rpo_id && formData.material_form && (
+                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 text-primary border-primary/20">From PO</Badge>
+                        )}
+                      </Label>
                       <Select
                         value={formData.material_form || "none"}
                         onValueChange={(v) => setFormData(prev => ({ ...prev, material_form: v === "none" ? "" : v }))}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={formData.rpo_id && formData.material_form ? "border-primary/30" : ""}>
                           <SelectValue placeholder="Select form" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50">
@@ -1480,7 +1550,12 @@ export default function GateRegister() {
                       </Select>
                     </div>
                     <div>
-                      <Label>Cross Section Shape</Label>
+                      <Label className="flex items-center gap-2">
+                        Cross Section Shape
+                        {formData.rpo_id && formData.cross_section_shape && (
+                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 text-primary border-primary/20">From PO</Badge>
+                        )}
+                      </Label>
                       <Select
                         value={formData.cross_section_shape || "none"}
                         onValueChange={(v) => setFormData(prev => ({ 
@@ -1489,7 +1564,7 @@ export default function GateRegister() {
                           rod_section_size: '' // Reset size when shape changes
                         }))}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={formData.rpo_id && formData.cross_section_shape ? "border-primary/30" : ""}>
                           <SelectValue placeholder="Select shape" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50">
@@ -1505,12 +1580,17 @@ export default function GateRegister() {
                   {/* Nominal Size and Material Grade */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Nominal Size</Label>
+                      <Label className="flex items-center gap-2">
+                        Nominal Size
+                        {formData.rpo_id && formData.rod_section_size && (
+                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 text-primary border-primary/20">From PO</Badge>
+                        )}
+                      </Label>
                       <Select
                         value={formData.rod_section_size || "none"}
                         onValueChange={(v) => setFormData(prev => ({ ...prev, rod_section_size: v === "none" ? "" : v }))}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={formData.rpo_id && formData.rod_section_size ? "border-primary/30" : ""}>
                           <SelectValue placeholder="Select size" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50 max-h-48">
@@ -1527,12 +1607,17 @@ export default function GateRegister() {
                       </Select>
                     </div>
                     <div>
-                      <Label>Material Grade (Alloy)</Label>
+                      <Label className="flex items-center gap-2">
+                        Material Grade (Alloy)
+                        {formData.rpo_id && formData.alloy && (
+                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 text-primary border-primary/20">From PO</Badge>
+                        )}
+                      </Label>
                       <Select
                         value={formData.alloy || "none"}
                         onValueChange={(v) => setFormData(prev => ({ ...prev, alloy: v === "none" ? "" : v, material_grade: v === "none" ? "" : v }))}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={formData.rpo_id && formData.alloy ? "border-primary/30" : ""}>
                           <SelectValue placeholder="Select grade" />
                         </SelectTrigger>
                         <SelectContent className="bg-background z-50 max-h-48">

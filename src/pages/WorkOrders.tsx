@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink, TrendingUp, Percent, FileWarning, Activity, GitBranch, ChevronDown, ChevronRight, Archive } from "lucide-react";
+import { Plus, AlertCircle, Trash2, Send, Package, MoreVertical, Search, Factory, CheckCircle2, Truck, AlertTriangle, Clock, ArrowRight, Timer, Scissors, Box, Inbox, Building2, ExternalLink, TrendingUp, Percent, FileWarning, Activity, GitBranch, ChevronDown, ChevronRight, Archive, CalendarDays, PackageX, Filter } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
@@ -48,6 +48,7 @@ const BLOCK_REASONS = {
   ext_overdue: { label: 'Ext overdue', key: 'ext_overdue' },
   not_released: { label: 'Not released', key: 'not_released' },
   material_pending: { label: 'Material pending', key: 'material_pending' },
+  awaiting_material: { label: 'Awaiting material', key: 'awaiting_material' },
 };
 
 // Helper to determine block reason for a work order
@@ -77,6 +78,10 @@ const getBlockReason = (wo: any): string | null => {
   if (wo.has_open_ncr) return 'ncr_open';
   if (wo.planning_status === 'pending' || wo.status === 'draft') return 'not_released';
   if (wo.material_status === 'pending' || wo.material_received === false) return 'material_pending';
+  
+  // Check if awaiting raw material (no material received yet based on RPO data)
+  if (wo.awaiting_material) return 'awaiting_material';
+  
   return null;
 };
 
@@ -728,7 +733,6 @@ const WorkOrders = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [completedWorkOrders, setCompletedWorkOrders] = useState<any[]>([]);
-  const [showCompleted, setShowCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [completedLoading, setCompletedLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -744,6 +748,14 @@ const WorkOrders = () => {
   const { stagesByWO, loading: batchLoading } = useWOBatchStages(woIds.length > 0 ? woIds : undefined);
   
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Status filter: 'active' or 'completed'
+  const [statusFilter, setStatusFilter] = useState<'active' | 'completed'>(() => {
+    const urlStatus = searchParams.get('status');
+    if (urlStatus === 'completed') return 'completed';
+    return 'active';
+  });
+  
   // Level 1: Location-based filter - 'internal', 'external', or 'transit'
   // WOs can appear in multiple filters if their batches span locations
   const [locationFilter, setLocationFilter] = useState<'all' | 'internal' | 'external' | 'transit'>(() => {
@@ -770,10 +782,23 @@ const WorkOrders = () => {
     return 'all';
   });
   // Due date filter - read from URL params (3days, 7days)
-  const [dueFilter, setDueFilter] = useState<'all' | '3days' | '7days'>(() => {
+  const [dueFilter, setDueFilter] = useState<'all' | '3days' | '7days' | 'overdue' | 'thisWeek' | 'thisMonth'>(() => {
     const urlDue = searchParams.get('due');
     if (urlDue === '3days') return '3days';
     if (urlDue === '7days') return '7days';
+    if (urlDue === 'overdue') return 'overdue';
+    if (urlDue === 'thisWeek') return 'thisWeek';
+    if (urlDue === 'thisMonth') return 'thisMonth';
+    return 'all';
+  });
+  
+  // Date range filter for created date
+  const [createdDateFilter, setCreatedDateFilter] = useState<'all' | 'today' | 'thisWeek' | 'thisMonth' | 'last30'>(() => {
+    const urlCreated = searchParams.get('created');
+    if (urlCreated === 'today') return 'today';
+    if (urlCreated === 'thisWeek') return 'thisWeek';
+    if (urlCreated === 'thisMonth') return 'thisMonth';
+    if (urlCreated === 'last30') return 'last30';
     return 'all';
   });
   
@@ -942,12 +967,12 @@ const WorkOrders = () => {
     }
   }, [completedWorkOrders.length]);
 
-  // Load completed WOs when section is expanded
+  // Load completed WOs when status filter changes to completed
   useEffect(() => {
-    if (showCompleted) {
+    if (statusFilter === 'completed') {
       loadCompletedWorkOrders();
     }
-  }, [showCompleted, loadCompletedWorkOrders]);
+  }, [statusFilter, loadCompletedWorkOrders]);
 
   // Compute KPIs - derived from batch data, location-aware
   const kpis = useMemo(() => {
@@ -1146,43 +1171,73 @@ const WorkOrders = () => {
           </Button>
         </div>
 
-        {/* KPI Summary Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <KPICard 
-            label="Total Active" 
-            count={kpis.total} 
-            icon={Factory} 
-            onClick={() => { setLocationFilter('all'); setIssueFilter('all'); setStageFilter('all'); }}
-          />
-          <KPICard 
-            label="In Factory" 
-            count={kpis.internalCount} 
-            icon={Factory} 
-            onClick={() => { setLocationFilter('internal'); setStageFilter('all'); }}
-          />
-          <KPICard 
-            label="At Partners" 
-            count={kpis.externalCount} 
-            icon={ExternalLink} 
-            onClick={() => { setLocationFilter('external'); setStageFilter('all'); }}
-          />
-          <KPICard 
-            label="In Transit" 
-            count={kpis.transitCount} 
-            icon={Truck}
-            onClick={() => { setLocationFilter('transit'); setStageFilter('all'); }}
-          />
-          <KPICard 
-            label="Needs Attention" 
-            count={kpis.blocked + kpis.delayed} 
-            icon={AlertTriangle} 
-            variant={(kpis.blocked + kpis.delayed) > 0 ? 'danger' : 'default'}
-            onClick={() => setIssueFilter('blocked')}
-          />
+        {/* Status Toggle + KPI Summary Bar */}
+        <div className="flex items-center gap-4 mb-2">
+          <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/50">
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                statusFilter === 'active' 
+                  ? "bg-primary text-primary-foreground shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setStatusFilter('completed')}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-1.5",
+                statusFilter === 'completed' 
+                  ? "bg-emerald-600 text-white shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Completed
+            </button>
+          </div>
         </div>
+        
+        {statusFilter === 'active' && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <KPICard 
+              label="Total Active" 
+              count={kpis.total} 
+              icon={Factory} 
+              onClick={() => { setLocationFilter('all'); setIssueFilter('all'); setStageFilter('all'); }}
+            />
+            <KPICard 
+              label="In Factory" 
+              count={kpis.internalCount} 
+              icon={Factory} 
+              onClick={() => { setLocationFilter('internal'); setStageFilter('all'); }}
+            />
+            <KPICard 
+              label="At Partners" 
+              count={kpis.externalCount} 
+              icon={ExternalLink} 
+              onClick={() => { setLocationFilter('external'); setStageFilter('all'); }}
+            />
+            <KPICard 
+              label="In Transit" 
+              count={kpis.transitCount} 
+              icon={Truck}
+              onClick={() => { setLocationFilter('transit'); setStageFilter('all'); }}
+            />
+            <KPICard 
+              label="Needs Attention" 
+              count={kpis.blocked + kpis.delayed} 
+              icon={AlertTriangle} 
+              variant={(kpis.blocked + kpis.delayed) > 0 ? 'danger' : 'default'}
+              onClick={() => setIssueFilter('blocked')}
+            />
+          </div>
+        )}
 
-        {/* Filter Bar - Clear and Always Visible */}
-        <Card className="p-3 bg-muted/20">
+        {/* Filter Bar - Clear and Always Visible - only show for active */}
+        {statusFilter === 'active' && (<Card className="p-3 bg-muted/20">
           <div className="flex flex-col gap-3">
             {/* Row 1: Location Toggle + Search */}
             <div className="flex items-center gap-3 flex-wrap">
@@ -1559,73 +1614,66 @@ const WorkOrders = () => {
           </div>
         )}
 
-        {/* Completed Work Orders Section - Collapsible */}
-        <Collapsible open={showCompleted} onOpenChange={setShowCompleted}>
-          <CollapsibleTrigger asChild>
-            <button className="w-full flex items-center justify-between gap-3 px-4 py-3 mt-4 rounded-lg border border-dashed border-border bg-muted/30 hover:bg-muted/50 transition-colors text-left">
-              <div className="flex items-center gap-3">
-                <Archive className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium text-sm text-muted-foreground">Completed Work Orders</span>
-                {completedWorkOrders.length > 0 && (
-                  <Badge variant="secondary" className="text-xs">{completedWorkOrders.length}</Badge>
-                )}
+        {/* Completed Work Orders - shown when statusFilter is 'completed' */}
+        {statusFilter === 'completed' && (
+          <div className="space-y-1">
+            {completedLoading && (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                ))}
               </div>
-              {showCompleted ? (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              )}
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mt-2 space-y-1">
-              {completedLoading && (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-12 w-full rounded-lg" />
-                  ))}
-                </div>
-              )}
-              {!completedLoading && completedWorkOrders.length === 0 && (
-                <div className="text-center py-6 text-sm text-muted-foreground">
-                  No completed work orders yet
-                </div>
-              )}
-              {!completedLoading && completedWorkOrders.length > 0 && (
-                completedWorkOrders.map((wo) => (
-                  <div 
-                    key={wo.id}
-                    className="group flex items-center gap-3 p-3 rounded-md border border-border bg-card/50 cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => navigate(`/work-orders/${wo.id}`)}
-                  >
-                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex-shrink-0">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm truncate">{wo.wo_number}</span>
-                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-600 border-emerald-200">
-                          Complete
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{wo.party_code || wo.customer_name || 'Unknown'}</span>
-                        <span>•</span>
-                        <span>{wo.item_code}</span>
-                        <span>•</span>
-                        <span>{(wo.qty_dispatched || wo.quantity || 0).toLocaleString()} pcs</span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground hidden sm:block">
-                      {wo.updated_at ? formatDate(parseISO(wo.updated_at), 'MMM d, yyyy') : ''}
-                    </span>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+            {!completedLoading && completedWorkOrders.length === 0 && (
+              <Card className="border-dashed">
+                <CardContent className="py-8">
+                  <EmptyState
+                    icon="workOrders"
+                    title="No completed work orders"
+                    description="Complete some work orders to see them here."
+                    action={{
+                      label: "View Active",
+                      onClick: () => setStatusFilter('active'),
+                      variant: "outline",
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
+            {!completedLoading && completedWorkOrders.length > 0 && (
+              completedWorkOrders.map((wo) => (
+                <div 
+                  key={wo.id}
+                  className="group flex items-center gap-3 p-3 rounded-md border border-border bg-card/50 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/work-orders/${wo.id}`)}
+                >
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex-shrink-0">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                   </div>
-                ))
-              )}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm truncate">{wo.wo_number}</span>
+                      <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-600 border-emerald-200">
+                        Complete
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{wo.party_code || wo.customer_name || wo.customer || 'Unknown'}</span>
+                      <span>•</span>
+                      <span>{wo.item_code}</span>
+                      <span>•</span>
+                      <span>{(wo.qty_dispatched || wo.quantity || 0).toLocaleString()} pcs</span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:block">
+                    {wo.updated_at ? formatDate(parseISO(wo.updated_at), 'MMM d, yyyy') : ''}
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
       <SendToExternalDialog
         open={sendDialogOpen}
