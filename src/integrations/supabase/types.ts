@@ -3296,6 +3296,175 @@ export type Database = {
           },
         ]
       }
+      item_cost_breakups: {
+        Row: {
+          cnc_cycle_time_seconds: number
+          cost_profile: string
+          created_at: string
+          created_by: string | null
+          current_revision_number: number
+          freight_charge_per_piece: number
+          gross_weight_per_piece: number
+          id: string
+          item_id: string
+          machine_rate_per_hour: number
+          net_weight_per_piece: number
+          packing_charge_per_piece: number
+          rejection_allowance_percent: number
+          rod_section_rate_per_kg: number
+          scrap_rate_per_kg: number
+          scrap_recovery_percent: number
+          selling_price_per_piece: number
+          updated_at: string
+        }
+        Insert: {
+          cnc_cycle_time_seconds?: number
+          cost_profile?: string
+          created_at?: string
+          created_by?: string | null
+          current_revision_number?: number
+          freight_charge_per_piece?: number
+          gross_weight_per_piece?: number
+          id?: string
+          item_id: string
+          machine_rate_per_hour?: number
+          net_weight_per_piece?: number
+          packing_charge_per_piece?: number
+          rejection_allowance_percent?: number
+          rod_section_rate_per_kg?: number
+          scrap_rate_per_kg?: number
+          scrap_recovery_percent?: number
+          selling_price_per_piece?: number
+          updated_at?: string
+        }
+        Update: {
+          cnc_cycle_time_seconds?: number
+          cost_profile?: string
+          created_at?: string
+          created_by?: string | null
+          current_revision_number?: number
+          freight_charge_per_piece?: number
+          gross_weight_per_piece?: number
+          id?: string
+          item_id?: string
+          machine_rate_per_hour?: number
+          net_weight_per_piece?: number
+          packing_charge_per_piece?: number
+          rejection_allowance_percent?: number
+          rod_section_rate_per_kg?: number
+          scrap_rate_per_kg?: number
+          scrap_recovery_percent?: number
+          selling_price_per_piece?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_cost_breakups_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "item_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_cost_revisions: {
+        Row: {
+          change_reason: string | null
+          cnc_cycle_time_seconds: number
+          cost_breakup_id: string
+          cost_per_kg: number | null
+          cost_profile: string
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          freight_charge_per_piece: number
+          gross_profit_percent: number | null
+          gross_rm_cost_per_piece: number | null
+          gross_weight_per_piece: number
+          id: string
+          machine_rate_per_hour: number
+          machining_cost_per_piece: number | null
+          net_rm_cost_per_piece: number | null
+          net_weight_per_piece: number
+          packing_charge_per_piece: number
+          rejection_allowance_percent: number
+          rejection_cost_per_piece: number | null
+          revision_number: number
+          rod_section_rate_per_kg: number
+          scrap_rate_per_kg: number
+          scrap_realisable_value: number | null
+          scrap_recovery_percent: number
+          selling_price_per_piece: number
+          total_cost_per_piece: number | null
+        }
+        Insert: {
+          change_reason?: string | null
+          cnc_cycle_time_seconds: number
+          cost_breakup_id: string
+          cost_per_kg?: number | null
+          cost_profile: string
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          freight_charge_per_piece: number
+          gross_profit_percent?: number | null
+          gross_rm_cost_per_piece?: number | null
+          gross_weight_per_piece: number
+          id?: string
+          machine_rate_per_hour: number
+          machining_cost_per_piece?: number | null
+          net_rm_cost_per_piece?: number | null
+          net_weight_per_piece: number
+          packing_charge_per_piece: number
+          rejection_allowance_percent: number
+          rejection_cost_per_piece?: number | null
+          revision_number: number
+          rod_section_rate_per_kg: number
+          scrap_rate_per_kg: number
+          scrap_realisable_value?: number | null
+          scrap_recovery_percent: number
+          selling_price_per_piece: number
+          total_cost_per_piece?: number | null
+        }
+        Update: {
+          change_reason?: string | null
+          cnc_cycle_time_seconds?: number
+          cost_breakup_id?: string
+          cost_per_kg?: number | null
+          cost_profile?: string
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          freight_charge_per_piece?: number
+          gross_profit_percent?: number | null
+          gross_rm_cost_per_piece?: number | null
+          gross_weight_per_piece?: number
+          id?: string
+          machine_rate_per_hour?: number
+          machining_cost_per_piece?: number | null
+          net_rm_cost_per_piece?: number | null
+          net_weight_per_piece?: number
+          packing_charge_per_piece?: number
+          rejection_allowance_percent?: number
+          rejection_cost_per_piece?: number | null
+          revision_number?: number
+          rod_section_rate_per_kg?: number
+          scrap_rate_per_kg?: number
+          scrap_realisable_value?: number | null
+          scrap_recovery_percent?: number
+          selling_price_per_piece?: number
+          total_cost_per_piece?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_cost_revisions_cost_breakup_id_fkey"
+            columns: ["cost_breakup_id"]
+            isOneToOne: false
+            referencedRelation: "item_cost_breakups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       item_master: {
         Row: {
           alloy: string | null

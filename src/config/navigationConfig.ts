@@ -135,6 +135,7 @@ export const navigationGroups: NavGroup[] = [
       { label: "Supplier Payments", path: "/finance/supplier-payments", icon: CreditCard, pageKey: "supplier-payments" },
       { label: "Customer Adjustments", path: "/finance/adjustments", icon: AlertCircle, pageKey: "adjustments" },
       { label: "TDS Report", path: "/finance/tds", icon: FileSpreadsheet, pageKey: "tds-report" },
+      { label: "Item Cost Breakup", path: "/finance/cost-breakup", icon: FileSpreadsheet, pageKey: "cost-breakup" },
       { label: "Aging", path: "/finance/aging", icon: Clock, pageKey: "aging" },
       { label: "Reconciliations", path: "/reports/reconciliation", icon: AlertCircle, pageKey: "reconciliations" },
       { label: "All Reports", path: "/finance/reports", icon: FileSpreadsheet, pageKey: "finance-reports" },
