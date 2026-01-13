@@ -523,12 +523,12 @@ export default function Dispatch() {
     }
   };
 
-  // Download functions (abbreviated - same as before)
+  // Download functions
   const handleDownloadInvoice = async (shipment: Shipment) => {
     try {
       const { data: dispatchNotes } = await supabase
         .from("dispatch_notes")
-        .select("*")
+        .select("*, work_orders(so_id, financial_snapshot, customer)")
         .eq("shipment_id", shipment.id);
 
       if (!dispatchNotes || dispatchNotes.length === 0) {
@@ -536,28 +536,38 @@ export default function Dispatch() {
         return;
       }
 
-      const lineItems = (dispatchNotes || []).map((dn, idx) => ({
+      // Get customer details and currency from first dispatch note
+      const firstNote = dispatchNotes[0];
+      const financialSnapshot = (firstNote.work_orders as any)?.financial_snapshot;
+      const currency = firstNote.currency || financialSnapshot?.currency || "USD";
+
+      const lineItems = dispatchNotes.map((dn, idx) => ({
         srNo: idx + 1,
         itemCode: dn.item_code,
         description: dn.item_description || dn.item_code,
+        hsCode: '',
         quantity: dn.dispatched_qty,
+        unit: 'Pcs',
         rate: dn.unit_rate || 0,
+        rateBasis: 'Per PCS',
         total: (dn.dispatched_qty * (dn.unit_rate || 0)),
       }));
 
       const invoiceData: CommercialInvoiceData = {
         invoiceNo: `INV-${shipment.ship_id}`,
         invoiceDate: new Date(shipment.created_at).toLocaleDateString('en-GB'),
-        dispatchDate: new Date(shipment.created_at).toLocaleDateString('en-GB'),
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'),
-        customer: {
+        consignee: {
           name: shipment.customer || "Unknown",
-          address: "",
+          country: 'USA',
         },
-        isExport: false,
+        notifyPartySameAsConsignee: true,
+        countryOfOrigin: 'INDIA',
+        finalDestination: 'USA',
+        grossWeightKg: dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0),
+        netWeightKg: dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0),
         lineItems,
-        currency: "INR",
-        subtotal: lineItems.reduce((sum, item) => sum + item.total, 0),
+        currency,
+        totalQuantity: lineItems.reduce((sum, item) => sum + item.quantity, 0),
         totalAmount: lineItems.reduce((sum, item) => sum + item.total, 0),
       };
 
@@ -579,30 +589,28 @@ export default function Dispatch() {
         return;
       }
 
-      const lineItems: PackingListLineItem[] = (dispatchNotes || []).map((dn, idx) => ({
-        srNo: idx + 1,
+      const lineItems: PackingListLineItem[] = dispatchNotes.map((dn, idx) => ({
+        cartonRange: `${idx + 1}`,
+        totalBoxes: 1,
+        piecesPerCarton: dn.dispatched_qty,
+        itemName: dn.item_description || dn.item_code,
         itemCode: dn.item_code || "N/A",
-        description: dn.item_description || dn.item_code,
-        cartonNos: `${idx + 1}`,
-        quantityPerCarton: dn.dispatched_qty,
-        totalQty: dn.dispatched_qty,
-        netWeightKg: dn.net_weight_kg || 0,
+        totalPieces: dn.dispatched_qty,
         grossWeightKg: dn.gross_weight_kg || 0,
       }));
 
       const packingListData: PackingListData = {
         packingListNo: `PL-${shipment.ship_id}`,
         date: new Date(shipment.created_at).toLocaleDateString('en-GB'),
-        dispatchRef: shipment.ship_id,
-        customer: {
+        consignee: {
           name: shipment.customer || "Unknown",
-          address: "",
+          country: 'USA',
         },
-        isExport: false,
+        notifyPartySameAsConsignee: true,
+        finalDestination: 'USA',
         lineItems,
-        totalCartons: dispatchNotes.length,
-        totalQuantity: lineItems.reduce((sum, item) => sum + item.totalQty, 0),
-        totalNetWeight: lineItems.reduce((sum, item) => sum + item.netWeightKg, 0),
+        totalBoxes: dispatchNotes.length,
+        totalQuantity: lineItems.reduce((sum, item) => sum + item.totalPieces, 0),
         totalGrossWeight: lineItems.reduce((sum, item) => sum + item.grossWeightKg, 0),
       };
 

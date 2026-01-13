@@ -20,58 +20,71 @@ const BRAND_COLORS = {
 };
 
 export interface PackingListLineItem {
-  srNo: number;
+  palletNo?: string;
+  cartonRange: string;
+  totalBoxes: number;
+  piecesPerCarton: number;
+  itemName: string;
   itemCode: string;
-  description: string;
-  cartonNos: string;
-  quantityPerCarton: number;
-  totalQty: number;
-  netWeightKg: number;
+  totalPieces: number;
   grossWeightKg: number;
 }
 
 export interface PackingListData {
+  // Document Identification
   packingListNo: string;
   date: string;
-  dispatchRef: string;
-  invoiceRef?: string;
+  
+  // Customer PO Reference
   poNumber?: string;
   poDate?: string;
   
-  // Customer details
-  customer: {
+  // Consignee Details
+  consignee: {
     name: string;
-    address: string;
-    contact?: string;
-    email?: string;
+    addressLine1?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country: string;
   };
   
-  // Notify party (for export)
+  // Notify Party
   notifyParty?: {
     name: string;
     address: string;
   };
+  notifyPartySameAsConsignee: boolean;
   
-  // Export-only fields
-  isExport: boolean;
+  // Transport Details
   portOfLoading?: string;
+  vesselFlightNo?: string;
   portOfDischarge?: string;
-  finalDestination?: string;
-  vesselFlight?: string;
-  countryOfOrigin?: string;
+  finalDestination: string;
   
-  // Line items
+  // Payment & BL
+  termsOfPayment?: string;
+  blNumber?: string;
+  blDate?: string;
+  
+  // Goods Description (header level)
+  goodsDescription?: string;
+  hsCode?: string;
+  
+  // Packing Details
+  kindOfPackages?: string;
+  
+  // Line Items (per pallet/carton grouping)
   lineItems: PackingListLineItem[];
   
   // Totals
-  totalCartons: number;
+  totalBoxes: number;
   totalQuantity: number;
-  totalNetWeight: number;
   totalGrossWeight: number;
   
-  // Packing marks
-  marksNos?: string;
-  kindOfPackages?: string;
+  // Signature
+  signatureDate?: string;
+  signatoryDesignation?: string;
 }
 
 const addLetterhead = (doc: jsPDF): number => {
@@ -94,10 +107,15 @@ const addLetterhead = (doc: jsPDF): number => {
   doc.setTextColor(...BRAND_COLORS.primary);
   doc.text('R.V. INDUSTRIES', 105, 14, { align: 'center' });
   
+  // ISO certification badge area
+  doc.setFontSize(8);
+  doc.setTextColor(...BRAND_COLORS.dark);
+  doc.text('An ISO 9001:2015 Company', 175, 10, { align: 'right' });
+  
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...BRAND_COLORS.dark);
-  doc.text('Precision Brass Components', 105, 19, { align: 'center' });
+  doc.text('Manufacturer of HIGH Precision Brass Components', 105, 19, { align: 'center' });
   
   // Certifications with alternating brand colors
   doc.setFontSize(7);
@@ -147,135 +165,136 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
   // Document title
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...BRAND_COLORS.primary);
   doc.text('PACKING LIST', 105, yPos, { align: 'center' });
-  yPos += 8;
+  yPos += 10;
+  doc.setTextColor(...BRAND_COLORS.dark);
   
-  // Reference details row
-  doc.setFontSize(9);
+  // === CONSIGNEE SECTION (Left) & DOCUMENT DETAILS (Right) ===
+  const leftColX = 15;
+  const rightColX = 120;
+  
+  // Left: Consignee
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text(`PACKING LIST NO.: ${data.packingListNo}`, 15, yPos);
-  doc.text(`DATE: ${data.date}`, 150, yPos);
-  yPos += 5;
+  doc.text('Consignee:', leftColX, yPos);
   
-  doc.text(`DISPATCH REF.: ${data.dispatchRef}`, 15, yPos);
-  if (data.invoiceRef) {
-    doc.text(`INVOICE REF.: ${data.invoiceRef}`, 150, yPos);
-  }
-  yPos += 5;
-  
-  if (data.poNumber) {
-    doc.text(`P.O. NO.: ${data.poNumber}`, 15, yPos);
-    if (data.poDate) {
-      doc.text(`P.O. DATE: ${data.poDate}`, 150, yPos);
-    }
-    yPos += 5;
-  }
-  yPos += 3;
-  
-  // Customer details
-  doc.setFont('helvetica', 'bold');
-  doc.text(data.isExport ? 'Consignee (SHIP TO):' : 'Ship To:', 15, yPos);
-  if (data.isExport && data.notifyParty) {
-    doc.text('Notify Party:', 110, yPos);
-  }
+  // Right: Packing List details
+  doc.text('INVOICE NO.:', rightColX, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.packingListNo, rightColX + 28, yPos);
   yPos += 5;
   
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.text(data.consignee.name, leftColX, yPos);
   
-  const customerText = [
-    data.customer.name,
-    data.customer.address,
-    data.customer.contact ? `Contact: ${data.customer.contact}` : '',
-    data.customer.email ? `Email: ${data.customer.email}` : ''
-  ].filter(Boolean).join('\n');
+  doc.setFont('helvetica', 'bold');
+  doc.text('DATE:', rightColX, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.date, rightColX + 28, yPos);
+  yPos += 4;
   
-  const customerLines = doc.splitTextToSize(customerText, 90);
-  customerLines.forEach((line: string) => {
-    doc.text(line, 15, yPos);
+  // Consignee address lines
+  if (data.consignee.addressLine1) {
+    doc.text(data.consignee.addressLine1, leftColX, yPos);
     yPos += 4;
-  });
-  
-  if (data.isExport && data.notifyParty) {
-    let notifyYPos = yPos - (customerLines.length * 4);
-    const notifyText = `${data.notifyParty.name}\n${data.notifyParty.address}`;
-    const notifyLines = doc.splitTextToSize(notifyText, 85);
-    notifyLines.forEach((line: string) => {
-      doc.text(line, 110, notifyYPos);
-      notifyYPos += 4;
-    });
-    yPos = Math.max(yPos, notifyYPos);
   }
   
-  yPos += 3;
+  let cityStateZip = [data.consignee.city, data.consignee.state, data.consignee.postalCode].filter(Boolean).join(', ');
+  if (cityStateZip) {
+    doc.text(cityStateZip, leftColX, yPos);
+    yPos += 4;
+  }
   
-  // Export-specific shipping details
-  if (data.isExport) {
-    doc.setFontSize(8);
+  doc.text(data.consignee.country, leftColX, yPos);
+  yPos += 6;
+  
+  // PO Reference
+  if (data.poNumber) {
     doc.setFont('helvetica', 'bold');
-    doc.text('Shipping Details:', 15, yPos);
-    yPos += 4;
-    
+    doc.text('P.O. NO.:', leftColX, yPos);
     doc.setFont('helvetica', 'normal');
+    doc.text(data.poNumber, leftColX + 22, yPos);
     
-    if (data.portOfLoading) {
-      doc.text(`Port of Loading: ${data.portOfLoading}`, 15, yPos);
+    if (data.poDate) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('DATE:', rightColX, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(data.poDate, rightColX + 28, yPos);
     }
-    if (data.portOfDischarge) {
-      doc.text(`Port of Discharge: ${data.portOfDischarge}`, 110, yPos);
-    }
-    yPos += 4;
-    
-    if (data.finalDestination) {
-      doc.text(`Final Destination: ${data.finalDestination}`, 15, yPos);
-    }
-    if (data.vesselFlight) {
-      doc.text(`Vessel/Flight: ${data.vesselFlight}`, 110, yPos);
-    }
-    yPos += 4;
-    
-    doc.text(`Country of Origin: ${data.countryOfOrigin || 'INDIA'}`, 15, yPos);
     yPos += 6;
   }
   
-  // Marks & Packages section
-  doc.setFontSize(8);
+  // Notify Party
   doc.setFont('helvetica', 'bold');
-  doc.text('Marks & Nos.:', 15, yPos);
-  doc.text('Kind of Packages:', 80, yPos);
-  doc.text('No. of Packages:', 145, yPos);
-  yPos += 4;
-  
+  doc.text('Notify Party (if other than consignee):', leftColX, yPos);
   doc.setFont('helvetica', 'normal');
-  doc.text(data.marksNos || 'AS MARKED', 15, yPos);
-  doc.text(data.kindOfPackages || 'CARTONS', 80, yPos);
-  doc.text(data.totalCartons.toString(), 145, yPos);
+  doc.text(data.notifyPartySameAsConsignee ? 'As above' : (data.notifyParty?.name || 'As above'), leftColX + 62, yPos);
   yPos += 8;
   
-  // Line items table
-  const tableHead = [['Sr.', 'Item Code', 'Description', 'Carton Nos.', 'Qty/Carton', 'Total Qty', 'Net Wt (Kg)', 'Gross Wt (Kg)']];
+  // === SHIPPING DETAILS TABLE ===
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Port of Loading', 'Vessel/Flight No.', 'Terms of Payment:']],
+    body: [[
+      data.portOfLoading || '',
+      data.vesselFlightNo || 'BY AIR',
+      data.termsOfPayment || ''
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 15, right: 15 },
+  });
+  
+  yPos = doc.lastAutoTable.finalY;
+  
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Port of Discharge', 'Final Destination', 'BL No. & Date']],
+    body: [[
+      data.portOfDischarge || '',
+      data.finalDestination,
+      data.blNumber && data.blDate ? `${data.blNumber} / ${data.blDate}` : (data.blNumber || data.blDate || '')
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 15, right: 15 },
+  });
+  
+  yPos = doc.lastAutoTable.finalY + 5;
+  
+  // === PACKING TABLE ===
+  // Header row for Kind of Packages and Description
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Kind of Packages:', 15, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.kindOfPackages || 'BOXES', 45, yPos);
+  
+  // Description of Goods header
+  let goodsDesc = data.goodsDescription || 'NUTS/SCREW/WASHERS MADE OF BRASS';
+  if (data.hsCode) {
+    goodsDesc += ` (CETH-${data.hsCode})`;
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.text('Description of Goods:', 90, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(goodsDesc, 130, yPos);
+  yPos += 6;
+  
+  // Main packing table
+  const tableHead = [['C/Box No.', 'Total Boxes', 'PC per C/Box', 'Name of Item', 'Item Code', 'Total Pcs', 'Gross in Kgs.']];
   
   const tableData = data.lineItems.map(item => [
-    item.srNo.toString(),
+    item.cartonRange,
+    item.totalBoxes.toString(),
+    item.piecesPerCarton.toLocaleString(),
+    item.itemName,
     item.itemCode,
-    item.description,
-    item.cartonNos,
-    item.quantityPerCarton.toLocaleString(),
-    item.totalQty.toLocaleString(),
-    item.netWeightKg.toFixed(3),
-    item.grossWeightKg.toFixed(3),
-  ]);
-  
-  // Add totals row
-  tableData.push([
-    '',
-    '',
-    'TOTAL',
-    '',
-    '',
-    data.totalQuantity.toLocaleString(),
-    data.totalNetWeight.toFixed(3),
-    data.totalGrossWeight.toFixed(3),
+    item.totalPieces.toLocaleString(),
+    item.grossWeightKg.toFixed(3)
   ]);
   
   autoTable(doc, {
@@ -286,70 +305,42 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
     headStyles: { fillColor: BRAND_COLORS.primary, fontSize: 7, fontStyle: 'bold' },
     bodyStyles: { fontSize: 7 },
     columnStyles: {
-      0: { cellWidth: 10 },
-      1: { cellWidth: 22 },
-      2: { cellWidth: 40 },
-      3: { cellWidth: 25 },
-      4: { cellWidth: 20, halign: 'right' },
+      0: { cellWidth: 22, halign: 'center' },
+      1: { cellWidth: 20, halign: 'center' },
+      2: { cellWidth: 22, halign: 'right' },
+      3: { cellWidth: 38 },
+      4: { cellWidth: 28 },
       5: { cellWidth: 22, halign: 'right' },
-      6: { cellWidth: 23, halign: 'right' },
-      7: { cellWidth: 23, halign: 'right' },
+      6: { cellWidth: 28, halign: 'right' }
     },
     margin: { left: 15, right: 15 },
-    didParseCell: (data) => {
-      // Bold the totals row
-      if (data.row.index === tableData.length - 1) {
-        data.cell.styles.fontStyle = 'bold';
-      }
-    }
   });
   
-  yPos = doc.lastAutoTable.finalY + 8;
+  yPos = doc.lastAutoTable.finalY + 3;
   
-  // Summary section
-  doc.setFontSize(9);
+  // === TOTALS ROW ===
   doc.setFont('helvetica', 'bold');
-  doc.text('PACKING SUMMARY', 15, yPos);
-  yPos += 5;
+  doc.setFontSize(9);
   
-  doc.setFont('helvetica', 'normal');
+  doc.text(`TOTAL ${data.totalBoxes}`, 15, yPos);
+  doc.text(`TOTAL ${data.totalQuantity.toLocaleString()}`, 120, yPos);
+  doc.text(`${data.totalGrossWeight.toFixed(3)}`, 190, yPos, { align: 'right' });
+  yPos += 15;
+  
+  // === SIGNATURE SECTION ===
   doc.setFontSize(8);
-  
-  const summaryData = [
-    ['Total Cartons:', data.totalCartons.toString()],
-    ['Total Quantity:', `${data.totalQuantity.toLocaleString()} pcs`],
-    ['Total Net Weight:', `${data.totalNetWeight.toFixed(3)} Kg`],
-    ['Total Gross Weight:', `${data.totalGrossWeight.toFixed(3)} Kg`],
-  ];
-  
-  summaryData.forEach(([label, value]) => {
-    doc.text(label, 15, yPos);
-    doc.text(value, 60, yPos);
-    yPos += 4;
-  });
-  
+  doc.setFont('helvetica', 'bold');
+  doc.text('SIGNATURE & DATE:', 15, yPos);
   yPos += 10;
   
-  // Declaration
-  doc.setFont('helvetica', 'bold');
-  doc.text('Declaration:', 15, yPos);
-  yPos += 4;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.text('We certify that the goods are packed in accordance with the requirements and the packing list details are true and correct.', 15, yPos, { maxWidth: 180 });
+  doc.text('For, R V INDUSTRIES', 15, yPos);
   yPos += 12;
   
-  // Signature section
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text('For, R V INDUSTRIES', 15, yPos);
-  yPos += 15;
-  doc.text('Authorized Signatory', 15, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.signatureDate || data.date, 15, yPos);
   
-  // Checked by section on right
-  doc.text('Checked By:', 140, yPos - 15);
-  doc.setDrawColor(...BRAND_COLORS.dark);
-  doc.line(140, yPos + 3, 190, yPos + 3);
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.signatoryDesignation || 'PROPRIETOR', 60, yPos);
   
   addFooter(doc, 1, 1);
   
@@ -359,4 +350,29 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
 export const downloadPackingList = (data: PackingListData): void => {
   const doc = generatePackingListPDF(data);
   doc.save(`Packing_List_${data.packingListNo}.pdf`);
+};
+
+// Helper to check which fields are missing for export packing list generation
+export interface MissingPackingFields {
+  portOfLoading?: boolean;
+  portOfDischarge?: boolean;
+  vesselFlightNo?: boolean;
+  termsOfPayment?: boolean;
+  kindOfPackages?: boolean;
+}
+
+export const getMissingPackingFields = (data: Partial<PackingListData>): MissingPackingFields => {
+  const missing: MissingPackingFields = {};
+  
+  if (!data.portOfLoading) missing.portOfLoading = true;
+  if (!data.portOfDischarge) missing.portOfDischarge = true;
+  if (!data.vesselFlightNo) missing.vesselFlightNo = true;
+  if (!data.termsOfPayment) missing.termsOfPayment = true;
+  if (!data.kindOfPackages) missing.kindOfPackages = true;
+  
+  return missing;
+};
+
+export const hasMissingPackingFields = (data: Partial<PackingListData>): boolean => {
+  return Object.keys(getMissingPackingFields(data)).length > 0;
 };
