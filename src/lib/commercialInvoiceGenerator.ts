@@ -25,63 +25,83 @@ export interface CommercialInvoiceLineItem {
   description: string;
   hsCode?: string;
   quantity: number;
+  unit: string;
   rate: number;
+  rateBasis: string;
   total: number;
 }
 
 export interface CommercialInvoiceData {
+  // Document Identification
   invoiceNo: string;
+  financialYear?: string;
   invoiceDate: string;
-  dispatchDate: string;
+  
+  // Customer PO Reference
   poNumber?: string;
   poDate?: string;
   
-  // Customer details
-  customer: {
+  // Consignee Details (Ship To)
+  consignee: {
     name: string;
-    address: string;
+    addressLine1?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country: string;
     contact?: string;
     email?: string;
     gst?: string;
   };
   
-  // Notify party (for export)
+  // Notify Party
   notifyParty?: {
     name: string;
     address: string;
   };
+  notifyPartySameAsConsignee: boolean;
   
-  // Export-only fields
-  isExport: boolean;
+  // Pre-Carriage & Receipt
+  preCarriageBy?: string;
+  placeOfReceipt?: string;
+  
+  // Origin & Destination
+  countryOfOrigin: string;
+  finalDestination: string;
+  
+  // Transport Details
   portOfLoading?: string;
+  vesselFlightNo?: string;
   portOfDischarge?: string;
-  finalDestination?: string;
-  incoterm?: string;
-  vesselFlight?: string;
-  hsCode?: string;
-  countryOfOrigin?: string;
   
-  // Packing details
-  marksNos?: string;
+  // Payment & BL
+  termsOfPayment?: string;
+  blNumber?: string;
+  blDate?: string;
+  
+  // Packing & Identification
+  marksAndNumbers?: string;
   kindOfPackages?: string;
-  totalGrossWeight?: number;
-  totalNetWeight?: number;
+  numberOfPackages?: number;
   
-  // Line items
+  // Weight Details
+  grossWeightKg: number;
+  netWeightKg: number;
+  
+  // Line Items
   lineItems: CommercialInvoiceLineItem[];
   
-  // Totals
+  // Currency & Totals (NEVER converted - always in original sales order currency)
   currency: string;
-  subtotal: number;
-  gstPercent?: number;
-  gstAmount?: number;
+  totalQuantity: number;
   totalAmount: number;
-  advanceAmount?: number;
-  balanceAmount?: number;
   
-  // Payment
-  paymentTermsDays?: number;
-  dueDate: string;
+  // Declaration
+  declarationText?: string;
+  
+  // Signature
+  signatureDate?: string;
+  signatoryDesignation?: string;
 }
 
 const addLetterhead = (doc: jsPDF): number => {
@@ -107,7 +127,7 @@ const addLetterhead = (doc: jsPDF): number => {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...BRAND_COLORS.dark);
-  doc.text('Precision Brass Components', 105, 19, { align: 'center' });
+  doc.text('Manufacturer of HIGH Precision Brass Components', 105, 19, { align: 'center' });
   
   // Certifications with alternating brand colors
   doc.setFontSize(7);
@@ -151,7 +171,7 @@ const addFooter = (doc: jsPDF, pageNumber: number, totalPages: number): void => 
 };
 
 // Convert number to words
-const convertToWords = (amount: number): string => {
+const convertToWords = (amount: number, currencyName: string): string => {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
@@ -178,7 +198,7 @@ const convertToWords = (amount: number): string => {
   let intPart = Math.floor(amount);
   const decPart = Math.round((amount - intPart) * 100);
   
-  if (intPart === 0) return 'Zero';
+  if (intPart === 0) return `Zero ${currencyName}`;
   
   let words = '';
   
@@ -196,11 +216,33 @@ const convertToWords = (amount: number): string => {
     words += convertChunk(intPart);
   }
   
+  words += ` ${currencyName}`;
+  
   if (decPart > 0) {
-    words += ' and ' + decPart + '/100';
+    words += ` and ${decPart}/100`;
   }
   
-  return words.trim();
+  return words.trim() + ' Only';
+};
+
+const getCurrencySymbol = (currency: string): string => {
+  switch (currency) {
+    case 'USD': return '$';
+    case 'EUR': return '€';
+    case 'GBP': return '£';
+    case 'INR': return '₹';
+    default: return currency + ' ';
+  }
+};
+
+const getCurrencyName = (currency: string): string => {
+  switch (currency) {
+    case 'USD': return 'Dollars';
+    case 'EUR': return 'Euros';
+    case 'GBP': return 'Pounds';
+    case 'INR': return 'Rupees';
+    default: return currency;
+  }
 };
 
 export const generateCommercialInvoicePDF = (data: CommercialInvoiceData): jsPDF => {
@@ -210,257 +252,231 @@ export const generateCommercialInvoicePDF = (data: CommercialInvoiceData): jsPDF
   // Document title
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...BRAND_COLORS.primary);
   doc.text('COMMERCIAL INVOICE', 105, yPos, { align: 'center' });
-  yPos += 8;
+  yPos += 10;
+  doc.setTextColor(...BRAND_COLORS.dark);
   
-  // Invoice details row
-  doc.setFontSize(9);
+  // === CONSIGNEE SECTION (Left) & INVOICE DETAILS (Right) ===
+  const leftColX = 15;
+  const rightColX = 120;
+  
+  // Left: Consignee
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text(`INVOICE NO.: ${data.invoiceNo}`, 15, yPos);
-  doc.text(`DATE: ${data.invoiceDate}`, 150, yPos);
-  yPos += 5;
+  doc.text('Consignee:', leftColX, yPos);
   
-  if (data.poNumber) {
-    doc.text(`P.O. NO.: ${data.poNumber}`, 15, yPos);
-    if (data.poDate) {
-      doc.text(`P.O. DATE: ${data.poDate}`, 150, yPos);
-    }
-    yPos += 5;
-  }
-  
-  doc.text(`DISPATCH DATE: ${data.dispatchDate}`, 15, yPos);
-  doc.text(`DUE DATE: ${data.dueDate}`, 150, yPos);
-  yPos += 8;
-  
-  // Customer details
-  doc.setFont('helvetica', 'bold');
-  doc.text(data.isExport ? 'Consignee (SHIP TO):' : 'Bill To:', 15, yPos);
-  if (data.isExport && data.notifyParty) {
-    doc.text('Notify Party:', 110, yPos);
-  }
+  // Right: Invoice details
+  doc.text('INVOICE NO.:', rightColX, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.invoiceNo + (data.financialYear ? `/${data.financialYear}` : ''), rightColX + 28, yPos);
   yPos += 5;
   
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.text(data.consignee.name, leftColX, yPos);
   
-  const customerText = [
-    data.customer.name,
-    data.customer.address,
-    data.customer.contact ? `Contact: ${data.customer.contact}` : '',
-    data.customer.email ? `Email: ${data.customer.email}` : '',
-    data.customer.gst ? `GST: ${data.customer.gst}` : ''
-  ].filter(Boolean).join('\n');
+  doc.setFont('helvetica', 'bold');
+  doc.text('DATE:', rightColX, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.invoiceDate, rightColX + 28, yPos);
+  yPos += 4;
   
-  const customerLines = doc.splitTextToSize(customerText, 90);
-  customerLines.forEach((line: string) => {
-    doc.text(line, 15, yPos);
+  // Consignee address lines
+  if (data.consignee.addressLine1) {
+    doc.text(data.consignee.addressLine1, leftColX, yPos);
     yPos += 4;
+  }
+  
+  let cityStateZip = [data.consignee.city, data.consignee.state, data.consignee.postalCode].filter(Boolean).join(', ');
+  if (cityStateZip) {
+    doc.text(cityStateZip, leftColX, yPos);
+    yPos += 4;
+  }
+  
+  doc.text(data.consignee.country, leftColX, yPos);
+  yPos += 6;
+  
+  // PO Reference
+  if (data.poNumber) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('P.O. NO.:', leftColX, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.poNumber, leftColX + 22, yPos);
+    
+    if (data.poDate) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('DATE:', rightColX, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(data.poDate, rightColX + 28, yPos);
+    }
+    yPos += 6;
+  }
+  
+  // Notify Party
+  doc.setFont('helvetica', 'bold');
+  doc.text('Notify Party (if other than consignee):', leftColX, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.notifyPartySameAsConsignee ? 'As above' : (data.notifyParty?.name || 'As above'), leftColX + 62, yPos);
+  yPos += 8;
+  
+  // === SHIPPING DETAILS TABLE ===
+  // Row 1: Pre-Carriage, Place of Receipt, Country of Origin, Final Destination
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  const tableY = yPos;
+  
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Pre Carriage By', 'Place of receipt of pre carrier', 'Country of Origin', 'Final Destination']],
+    body: [[
+      data.preCarriageBy || 'N.A.',
+      data.placeOfReceipt || 'N.A.',
+      data.countryOfOrigin,
+      data.finalDestination
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 15, right: 15 },
+    tableWidth: 'auto',
   });
   
-  if (data.isExport && data.notifyParty) {
-    let notifyYPos = yPos - (customerLines.length * 4);
-    const notifyText = `${data.notifyParty.name}\n${data.notifyParty.address}`;
-    const notifyLines = doc.splitTextToSize(notifyText, 85);
-    notifyLines.forEach((line: string) => {
-      doc.text(line, 110, notifyYPos);
-      notifyYPos += 4;
-    });
-    yPos = Math.max(yPos, notifyYPos);
-  }
+  yPos = doc.lastAutoTable.finalY;
   
-  yPos += 3;
+  // Row 2: Port of Loading, Vessel/Flight, Terms of Payment
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Port of Loading', 'Vessel/Flight No.', 'Terms of Payment:']],
+    body: [[
+      data.portOfLoading || '',
+      data.vesselFlightNo || 'BY AIR',
+      data.termsOfPayment || ''
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 15, right: 15 },
+  });
   
-  // Export-specific shipping details
-  if (data.isExport) {
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Shipping Details:', 15, yPos);
-    yPos += 4;
-    
-    doc.setFont('helvetica', 'normal');
-    
-    if (data.portOfLoading) {
-      doc.text(`Port of Loading: ${data.portOfLoading}`, 15, yPos);
-    }
-    if (data.portOfDischarge) {
-      doc.text(`Port of Discharge: ${data.portOfDischarge}`, 110, yPos);
-    }
-    yPos += 4;
-    
-    if (data.finalDestination) {
-      doc.text(`Final Destination: ${data.finalDestination}`, 15, yPos);
-    }
-    if (data.vesselFlight) {
-      doc.text(`Vessel/Flight: ${data.vesselFlight}`, 110, yPos);
-    }
-    yPos += 4;
-    
-    doc.text(`Country of Origin: ${data.countryOfOrigin || 'INDIA'}`, 15, yPos);
-    if (data.incoterm) {
-      doc.text(`Incoterms: ${data.incoterm}`, 110, yPos);
-    }
-    yPos += 6;
-  }
+  yPos = doc.lastAutoTable.finalY;
   
-  // Packing details
-  if (data.marksNos || data.kindOfPackages || data.totalGrossWeight) {
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    
-    if (data.marksNos) {
-      doc.text('Marks & Nos.:', 15, yPos);
-    }
-    if (data.kindOfPackages) {
-      doc.text('Kind of Packages:', 80, yPos);
-    }
-    if (data.totalGrossWeight) {
-      doc.text('Gross Weight (Kgs):', 145, yPos);
-    }
-    yPos += 4;
-    
-    doc.setFont('helvetica', 'normal');
-    if (data.marksNos) {
-      doc.text(data.marksNos, 15, yPos);
-    }
-    if (data.kindOfPackages) {
-      doc.text(data.kindOfPackages, 80, yPos);
-    }
-    if (data.totalGrossWeight) {
-      doc.text(data.totalGrossWeight.toFixed(3), 145, yPos);
-    }
-    yPos += 6;
-  }
+  // Row 3: Port of Discharge, Final Destination, BL No. & Date
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Port of Discharge', 'Final Destination', 'BL No. & Date']],
+    body: [[
+      data.portOfDischarge || '',
+      data.finalDestination,
+      data.blNumber && data.blDate ? `${data.blNumber} / ${data.blDate}` : (data.blNumber || data.blDate || '')
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 15, right: 15 },
+  });
   
-  // Line items table
-  const tableHead = data.isExport 
-    ? [['Sr.', 'Item Code', 'Description', 'HS Code', 'Qty (Pcs)', `Rate (${data.currency})`, `Total (${data.currency})`]]
-    : [['Sr.', 'Item Code', 'Description', 'Qty (Pcs)', `Rate (${data.currency})`, `Total (${data.currency})`]];
+  yPos = doc.lastAutoTable.finalY;
+  
+  // Row 4: Weight details & Packages
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Gross Weight in Kgs', 'Nett Weight in Kgs', 'No. of Packages']],
+    body: [[
+      data.grossWeightKg.toFixed(3),
+      data.netWeightKg.toFixed(3),
+      data.numberOfPackages ? `${data.numberOfPackages} ${data.kindOfPackages || 'BOXES'}` : (data.kindOfPackages || '')
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7 },
+    margin: { left: 15, right: 15 },
+  });
+  
+  yPos = doc.lastAutoTable.finalY + 5;
+  
+  // === LINE ITEMS TABLE ===
+  const currencySymbol = getCurrencySymbol(data.currency);
+  
+  const tableHead = [['Sr. No.', 'Description of Goods', 'Quantity', `Rate - ${data.currency}`, 'Total Amount']];
   
   const tableData = data.lineItems.map(item => {
-    const baseRow = [
-      item.srNo.toString(),
-      item.itemCode,
-      item.description,
-    ];
-    
-    if (data.isExport) {
-      baseRow.push(item.hsCode || data.hsCode || '—');
+    // Description includes HS Code and Item Code
+    let description = item.description;
+    if (item.hsCode) {
+      description += `\n(CETH-${item.hsCode})`;
     }
+    description += `\nItem Code: ${item.itemCode}`;
     
-    baseRow.push(
-      item.quantity.toLocaleString(),
-      item.rate.toFixed(4),
-      item.total.toFixed(2)
-    );
-    
-    return baseRow;
+    return [
+      item.srNo.toString(),
+      description,
+      `${item.quantity.toLocaleString()} ${item.unit}`,
+      `${currencySymbol}${item.rate.toFixed(4)}`,
+      `${currencySymbol}${item.total.toFixed(2)}`
+    ];
   });
-  
-  const columnStyles: any = data.isExport ? {
-    0: { cellWidth: 12 },
-    1: { cellWidth: 25 },
-    2: { cellWidth: 55 },
-    3: { cellWidth: 22 },
-    4: { cellWidth: 22, halign: 'right' },
-    5: { cellWidth: 22, halign: 'right' },
-    6: { cellWidth: 27, halign: 'right' }
-  } : {
-    0: { cellWidth: 12 },
-    1: { cellWidth: 30 },
-    2: { cellWidth: 65 },
-    3: { cellWidth: 25, halign: 'right' },
-    4: { cellWidth: 25, halign: 'right' },
-    5: { cellWidth: 28, halign: 'right' }
-  };
   
   autoTable(doc, {
     startY: yPos,
     head: tableHead,
     body: tableData,
     theme: 'grid',
-    headStyles: { fillColor: BRAND_COLORS.primary, fontSize: 7, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 7 },
-    columnStyles,
-    margin: { left: 15, right: 15 }
+    headStyles: { fillColor: BRAND_COLORS.primary, fontSize: 8, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 8 },
+    columnStyles: {
+      0: { cellWidth: 18, halign: 'center' },
+      1: { cellWidth: 75 },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 32, halign: 'right' },
+      4: { cellWidth: 32, halign: 'right' }
+    },
+    margin: { left: 15, right: 15 },
   });
   
-  yPos = doc.lastAutoTable.finalY + 5;
+  yPos = doc.lastAutoTable.finalY + 3;
   
-  // Totals section
-  const currencySymbol = data.currency === 'INR' ? '₹' : data.currency === 'USD' ? '$' : data.currency;
-  
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  
-  doc.text(`SUBTOTAL:`, 130, yPos);
-  doc.text(`${currencySymbol}${data.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' });
-  yPos += 5;
-  
-  if (data.gstAmount && data.gstAmount > 0) {
-    doc.setFont('helvetica', 'normal');
-    doc.text(`GST (${data.gstPercent || 18}%):`, 130, yPos);
-    doc.text(`${currencySymbol}${data.gstAmount.toFixed(2)}`, 190, yPos, { align: 'right' });
-    yPos += 5;
-  }
-  
+  // === TOTALS ===
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text(`TOTAL ${data.currency}:`, 130, yPos);
-  doc.text(`${currencySymbol}${data.totalAmount.toFixed(2)}`, 190, yPos, { align: 'right' });
-  yPos += 6;
   
-  if (data.advanceAmount && data.advanceAmount > 0) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text(`LESS: ADVANCE:`, 130, yPos);
-    doc.text(`-${currencySymbol}${data.advanceAmount.toFixed(2)}`, 190, yPos, { align: 'right' });
-    yPos += 5;
-    
-    doc.setFont('helvetica', 'bold');
-    doc.text(`NET PAYABLE:`, 130, yPos);
-    doc.text(`${currencySymbol}${(data.totalAmount - data.advanceAmount).toFixed(2)}`, 190, yPos, { align: 'right' });
-    yPos += 6;
-  }
+  // Total row
+  doc.text('TOTAL:', 120, yPos);
+  doc.text(`${data.totalQuantity.toLocaleString()}`, 150, yPos, { align: 'right' });
+  doc.text(`TOTAL ${data.currency}: ${currencySymbol}${data.totalAmount.toFixed(2)}`, 190, yPos, { align: 'right' });
+  yPos += 6;
   
   // Amount in words
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  const netAmount = data.advanceAmount ? data.totalAmount - data.advanceAmount : data.totalAmount;
-  const amountInWords = convertToWords(netAmount);
-  doc.text(`Amount in words: ${amountInWords} ${data.currency === 'INR' ? 'Rupees' : data.currency === 'USD' ? 'Dollars' : data.currency} Only`, 15, yPos, { maxWidth: 180 });
+  const amountInWords = convertToWords(data.totalAmount, getCurrencyName(data.currency));
+  doc.text(`Amt ${data.currency}: ${amountInWords}`, 15, yPos, { maxWidth: 175 });
   yPos += 10;
   
-  // Declaration
+  // === DECLARATION ===
   doc.setFont('helvetica', 'bold');
   doc.text('Declaration:', 15, yPos);
   yPos += 4;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.text('We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.', 15, yPos, { maxWidth: 180 });
+  const declaration = data.declarationText || 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.';
+  doc.text(declaration, 15, yPos, { maxWidth: 175 });
   yPos += 12;
   
-  // Bank details for export
-  if (data.isExport) {
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Bank Details:', 15, yPos);
-    yPos += 4;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.text('Bank Name: [Bank Name]', 15, yPos);
-    yPos += 3;
-    doc.text('Account No: [Account Number]', 15, yPos);
-    yPos += 3;
-    doc.text('SWIFT Code: [SWIFT Code]', 15, yPos);
-    yPos += 8;
-  }
-  
-  // Signature section
-  doc.setFontSize(9);
+  // === SIGNATURE SECTION ===
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
+  doc.text('SIGNATURE & DATE:', 15, yPos);
+  yPos += 8;
+  
   doc.text('For, R V INDUSTRIES', 15, yPos);
-  yPos += 15;
-  doc.text('Authorized Signatory', 15, yPos);
+  yPos += 12;
+  
+  doc.text('DATE:', 15, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.signatureDate || data.invoiceDate, 30, yPos);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.signatoryDesignation || 'PROPRIETOR', 80, yPos);
   
   addFooter(doc, 1, 1);
   
@@ -470,4 +486,34 @@ export const generateCommercialInvoicePDF = (data: CommercialInvoiceData): jsPDF
 export const downloadCommercialInvoice = (data: CommercialInvoiceData): void => {
   const doc = generateCommercialInvoicePDF(data);
   doc.save(`Commercial_Invoice_${data.invoiceNo}.pdf`);
+};
+
+// Helper to check which fields are missing for export invoice generation
+export interface MissingExportFields {
+  portOfLoading?: boolean;
+  portOfDischarge?: boolean;
+  vesselFlightNo?: boolean;
+  termsOfPayment?: boolean;
+  blNumber?: boolean;
+  blDate?: boolean;
+  numberOfPackages?: boolean;
+  kindOfPackages?: boolean;
+}
+
+export const getMissingExportFields = (data: Partial<CommercialInvoiceData>): MissingExportFields => {
+  const missing: MissingExportFields = {};
+  
+  if (!data.portOfLoading) missing.portOfLoading = true;
+  if (!data.portOfDischarge) missing.portOfDischarge = true;
+  if (!data.vesselFlightNo) missing.vesselFlightNo = true;
+  if (!data.termsOfPayment) missing.termsOfPayment = true;
+  // BL Number/Date are optional (can be blank)
+  if (!data.numberOfPackages) missing.numberOfPackages = true;
+  if (!data.kindOfPackages) missing.kindOfPackages = true;
+  
+  return missing;
+};
+
+export const hasMissingExportFields = (data: Partial<CommercialInvoiceData>): boolean => {
+  return Object.keys(getMissingExportFields(data)).length > 0;
 };
