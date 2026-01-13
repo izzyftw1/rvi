@@ -17,6 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Link } from "react-router-dom";
 import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
 import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib/packingListGenerator";
+import { ExportDocumentDialog, ExportDocumentFields } from "@/components/dispatch/ExportDocumentDialog";
 
 /**
  * CANONICAL DISPATCH WORKFLOW
@@ -101,6 +102,16 @@ export default function Dispatch() {
   
   // Recent shipments
   const [recentShipments, setRecentShipments] = useState<Shipment[]>([]);
+  
+  // Export document dialog state
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportDocType, setExportDocType] = useState<'invoice' | 'packing-list'>('invoice');
+  const [pendingShipment, setPendingShipment] = useState<Shipment | null>(null);
+  const [pendingExportData, setPendingExportData] = useState<{
+    dispatchNotes: any[];
+    customer: any;
+    currency: string;
+  } | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -523,12 +534,15 @@ export default function Dispatch() {
     }
   };
 
-  // Download functions
+  // Download functions - now show dialog to collect missing export fields
   const handleDownloadInvoice = async (shipment: Shipment) => {
     try {
       const { data: dispatchNotes } = await supabase
         .from("dispatch_notes")
-        .select("*, work_orders(so_id, financial_snapshot, customer)")
+        .select(`*, 
+          work_orders(so_id, financial_snapshot, customer, po_number, po_date),
+          sales_orders:sales_order_id(customer_id, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
+        `)
         .eq("shipment_id", shipment.id);
 
       if (!dispatchNotes || dispatchNotes.length === 0) {
@@ -540,7 +554,55 @@ export default function Dispatch() {
       const firstNote = dispatchNotes[0];
       const financialSnapshot = (firstNote.work_orders as any)?.financial_snapshot;
       const currency = firstNote.currency || financialSnapshot?.currency || "USD";
+      const customer = (firstNote.sales_orders as any)?.customer_master;
 
+      // Store pending data and show dialog
+      setPendingShipment(shipment);
+      setPendingExportData({ dispatchNotes, customer, currency });
+      setExportDocType('invoice');
+      setExportDialogOpen(true);
+    } catch (error: any) {
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
+  const handleDownloadPackingList = async (shipment: Shipment) => {
+    try {
+      const { data: dispatchNotes } = await supabase
+        .from("dispatch_notes")
+        .select(`*, 
+          sales_orders:sales_order_id(customer_id, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
+        `)
+        .eq("shipment_id", shipment.id);
+
+      if (!dispatchNotes || dispatchNotes.length === 0) {
+        toast({ variant: "destructive", description: "No dispatch notes found" });
+        return;
+      }
+
+      const customer = (dispatchNotes[0].sales_orders as any)?.customer_master;
+
+      // Store pending data and show dialog
+      setPendingShipment(shipment);
+      setPendingExportData({ dispatchNotes, customer, currency: 'USD' });
+      setExportDocType('packing-list');
+      setExportDialogOpen(true);
+    } catch (error: any) {
+      toast({ variant: "destructive", description: error.message });
+    }
+  };
+
+  // Handle export dialog confirm - generate PDF with user-provided fields
+  const handleExportDialogConfirm = (fields: ExportDocumentFields) => {
+    if (!pendingShipment || !pendingExportData) return;
+
+    const { dispatchNotes, customer, currency } = pendingExportData;
+
+    if (exportDocType === 'invoice') {
+      const financialSnapshot = (dispatchNotes[0].work_orders as any)?.financial_snapshot;
+      const poNumber = (dispatchNotes[0].work_orders as any)?.po_number;
+      const poDate = (dispatchNotes[0].work_orders as any)?.po_date;
+      
       const lineItems = dispatchNotes.map((dn, idx) => ({
         srNo: idx + 1,
         itemCode: dn.item_code,
@@ -554,15 +616,34 @@ export default function Dispatch() {
       }));
 
       const invoiceData: CommercialInvoiceData = {
-        invoiceNo: `INV-${shipment.ship_id}`,
-        invoiceDate: new Date(shipment.created_at).toLocaleDateString('en-GB'),
+        invoiceNo: `INV-${pendingShipment.ship_id}`,
+        invoiceDate: new Date(pendingShipment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        poNumber: poNumber || undefined,
+        poDate: poDate ? new Date(poDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
         consignee: {
-          name: shipment.customer || "Unknown",
-          country: 'USA',
+          name: customer?.customer_name || pendingShipment.customer || "Unknown",
+          addressLine1: customer?.address_line_1 || '',
+          city: customer?.city || '',
+          state: customer?.state || '',
+          postalCode: customer?.pincode || '',
+          country: customer?.country || 'USA',
+          contact: customer?.primary_contact_name || '',
+          email: customer?.primary_contact_email || '',
+          gst: customer?.gst_number || '',
         },
         notifyPartySameAsConsignee: true,
+        preCarriageBy: fields.preCarriageBy || 'N.A.',
+        placeOfReceipt: fields.placeOfReceipt || 'N.A.',
         countryOfOrigin: 'INDIA',
-        finalDestination: 'USA',
+        finalDestination: customer?.country || 'USA',
+        portOfLoading: fields.portOfLoading,
+        vesselFlightNo: fields.vesselFlightNo,
+        portOfDischarge: fields.portOfDischarge,
+        termsOfPayment: fields.termsOfPayment,
+        blNumber: fields.blNumber || undefined,
+        blDate: fields.blDate ? new Date(fields.blDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
+        kindOfPackages: fields.kindOfPackages,
+        numberOfPackages: fields.numberOfPackages,
         grossWeightKg: dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0),
         netWeightKg: dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0),
         lineItems,
@@ -572,23 +653,9 @@ export default function Dispatch() {
       };
 
       downloadCommercialInvoice(invoiceData);
-    } catch (error: any) {
-      toast({ variant: "destructive", description: error.message });
-    }
-  };
-
-  const handleDownloadPackingList = async (shipment: Shipment) => {
-    try {
-      const { data: dispatchNotes } = await supabase
-        .from("dispatch_notes")
-        .select("*")
-        .eq("shipment_id", shipment.id);
-
-      if (!dispatchNotes || dispatchNotes.length === 0) {
-        toast({ variant: "destructive", description: "No dispatch notes found" });
-        return;
-      }
-
+      toast({ title: "Invoice Generated", description: `Commercial Invoice ${invoiceData.invoiceNo} downloaded.` });
+    } else {
+      // Packing List
       const lineItems: PackingListLineItem[] = dispatchNotes.map((dn, idx) => ({
         cartonRange: `${idx + 1}`,
         totalBoxes: 1,
@@ -600,24 +667,38 @@ export default function Dispatch() {
       }));
 
       const packingListData: PackingListData = {
-        packingListNo: `PL-${shipment.ship_id}`,
-        date: new Date(shipment.created_at).toLocaleDateString('en-GB'),
+        packingListNo: `PL-${pendingShipment.ship_id}`,
+        date: new Date(pendingShipment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         consignee: {
-          name: shipment.customer || "Unknown",
-          country: 'USA',
+          name: customer?.customer_name || pendingShipment.customer || "Unknown",
+          addressLine1: customer?.address_line_1 || '',
+          city: customer?.city || '',
+          state: customer?.state || '',
+          postalCode: customer?.pincode || '',
+          country: customer?.country || 'USA',
         },
         notifyPartySameAsConsignee: true,
-        finalDestination: 'USA',
+        portOfLoading: fields.portOfLoading,
+        vesselFlightNo: fields.vesselFlightNo,
+        portOfDischarge: fields.portOfDischarge,
+        finalDestination: customer?.country || 'USA',
+        termsOfPayment: fields.termsOfPayment,
+        blNumber: fields.blNumber || undefined,
+        blDate: fields.blDate ? new Date(fields.blDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
+        kindOfPackages: fields.kindOfPackages,
         lineItems,
-        totalBoxes: dispatchNotes.length,
+        totalBoxes: fields.numberOfPackages || dispatchNotes.length,
         totalQuantity: lineItems.reduce((sum, item) => sum + item.totalPieces, 0),
         totalGrossWeight: lineItems.reduce((sum, item) => sum + item.grossWeightKg, 0),
       };
 
       downloadPackingList(packingListData);
-    } catch (error: any) {
-      toast({ variant: "destructive", description: error.message });
+      toast({ title: "Packing List Generated", description: `Packing List ${packingListData.packingListNo} downloaded.` });
     }
+
+    // Clear pending state
+    setPendingShipment(null);
+    setPendingExportData(null);
   };
 
   const hasActiveFilters = searchQuery || filterCustomer !== "all" || filterItem !== "all";
@@ -994,6 +1075,17 @@ export default function Dispatch() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Export Document Dialog - collects missing fields before generating */}
+      <ExportDocumentDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        documentType={exportDocType}
+        existingData={{
+          numberOfPackages: pendingExportData?.dispatchNotes?.length || 0,
+        }}
+        onConfirm={handleExportDialogConfirm}
+      />
     </PageContainer>
   );
 }
