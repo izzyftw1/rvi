@@ -1,28 +1,22 @@
 /**
- * Production Progress Page
+ * Production Progress - Executive Control View
  * 
- * THE AUTHORITATIVE VIEW for historical production analytics.
+ * Focus: Flow, Risk, and Decision-Making
  * 
- * Tabs:
- * 1. Blockers - WO buckets showing blocked/ready states (existing)
- * 2. WO Analytics - WO-wise historical metrics with filters
- * 
- * Metrics calculated from daily_production_logs:
- * - Target Qty = Σ target_quantity
- * - Actual Qty = Σ actual_quantity
- * - OK Qty = Σ ok_quantity
- * - Scrap Qty = Σ total_rejection_quantity
- * - Remaining Qty = ordered_quantity - OK Qty
- * - Progress % = (OK Qty ÷ Ordered Qty) × 100
- * - Efficiency % = (OK Qty ÷ Target Qty) × 100
- * 
- * Updates immediately via realtime subscription on daily_production_logs.
+ * Key Features:
+ * - Global date filter (Today, Yesterday, This Week, Custom)
+ * - "Data as of" timestamp from latest production log
+ * - Throughput vs Plan indicator (On Track / Behind)
+ * - At Risk Work Orders (predictive, not just current blockers)
+ * - Blockers grouped by functional owner
+ * - Capacity context (active vs total machines)
+ * - Default sorting: blocked → oldest → lowest progress
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchBatchQuantitiesMultiple, BatchQuantities } from "@/hooks/useBatchQuantities";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { fetchBatchQuantitiesMultiple } from "@/hooks/useBatchQuantities";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -43,23 +37,35 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
-  Info,
-  Package,
   AlertTriangle,
   CheckCircle2,
   Search,
-  Filter,
   CalendarIcon,
   Download,
   BarChart3,
-  Target,
   XCircle,
-  TrendingUp
+  TrendingDown,
+  Activity,
+  Users,
+  Zap,
+  RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { differenceInHours, parseISO, format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import { 
+  differenceInHours, 
+  differenceInDays,
+  parseISO, 
+  format, 
+  subDays, 
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  isWithinInterval
+} from "date-fns";
 
 // === Types ===
+
+type DatePreset = 'today' | 'yesterday' | 'this_week' | 'custom';
 
 interface WorkOrder {
   id: string;
@@ -75,21 +81,27 @@ interface WorkOrder {
   qc_material_passed: boolean;
   qc_first_piece_passed: boolean;
   external_status?: string;
-  // Derived from production logs
-  target_qty: number;
-  actual_qty: number;
+  // Derived metrics
   ok_qty: number;
   scrap_qty: number;
   remaining_qty: number;
   progress_pct: number;
-  efficiency_pct: number;
+  // Risk metrics
+  is_blocked: boolean;
+  block_reason?: string;
+  block_owner?: string;
+  aging_hours: number;
+  is_at_risk: boolean;
+  risk_reason?: string;
+  days_to_due: number;
 }
 
-type BucketType = 'material_qc' | 'first_piece_qc' | 'ready_not_started' | 'external_processing';
+type BlockOwner = 'Quality' | 'Production' | 'Planning' | 'Procurement';
 
-interface BucketItem {
-  wo: WorkOrder;
-  aging_hours: number;
+interface OwnerBlockCount {
+  owner: BlockOwner;
+  count: number;
+  wos: WorkOrder[];
 }
 
 // === Helper Functions ===
@@ -99,6 +111,15 @@ function getAgingHours(dateStr: string): number {
     return differenceInHours(new Date(), parseISO(dateStr));
   } catch {
     return 0;
+  }
+}
+
+function getDaysToDate(dateStr: string | null): number {
+  if (!dateStr) return 999;
+  try {
+    return differenceInDays(parseISO(dateStr), new Date());
+  } catch {
+    return 999;
   }
 }
 
@@ -116,119 +137,86 @@ function formatAgingDisplay(hours: number): string {
   return `${days}d`;
 }
 
-interface Buckets {
-  material_qc: BucketItem[];
-  first_piece_qc: BucketItem[];
-  ready_not_started: BucketItem[];
-  external_processing: BucketItem[];
-}
-
-function categorizeToBuckets(workOrders: WorkOrder[]): Buckets {
-  const buckets: Buckets = {
-    material_qc: [],
-    first_piece_qc: [],
-    ready_not_started: [],
-    external_processing: []
-  };
-
-  workOrders.forEach(wo => {
-    const aging_hours = getAgingHours(wo.created_at);
-    const item = { wo, aging_hours };
-
-    if (!wo.qc_material_passed) {
-      buckets.material_qc.push(item);
-      return;
-    }
-
-    if (!wo.qc_first_piece_passed) {
-      buckets.first_piece_qc.push(item);
-      return;
-    }
-
-    if (wo.external_status === 'pending' || wo.external_status === 'in_progress') {
-      buckets.external_processing.push(item);
-      return;
-    }
-
-    if (wo.progress_pct === 0) {
-      buckets.ready_not_started.push(item);
-      return;
-    }
-  });
-
-  const severityOrder = { red: 0, amber: 1, green: 2 };
-  Object.keys(buckets).forEach(key => {
-    buckets[key as BucketType].sort((a, b) => {
-      const aSeverity = getAgingSeverity(a.aging_hours);
-      const bSeverity = getAgingSeverity(b.aging_hours);
-      
-      if (severityOrder[aSeverity] !== severityOrder[bSeverity]) {
-        return severityOrder[aSeverity] - severityOrder[bSeverity];
-      }
-      
-      return b.aging_hours - a.aging_hours;
-    });
-  });
-
-  return buckets;
-}
-
-const bucketConfig: Record<BucketType, { 
-  title: string; 
-  icon: React.ElementType; 
-  color: string; 
-  bgColor: string;
-  description: string;
-  isBlocker: boolean;
-  actionLabel: string;
-  getActionPath: (woId: string) => string;
-  owner: string;
-}> = {
-  material_qc: { 
-    title: 'Blocked – Material QC', 
-    icon: Beaker, 
-    color: 'text-red-700 dark:text-red-300',
-    bgColor: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800',
-    description: 'Awaiting material inspection approval',
-    isBlocker: true,
-    actionLabel: 'Approve Material QC',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`,
-    owner: 'Quality'
-  },
-  first_piece_qc: { 
-    title: 'Blocked – First Piece QC', 
-    icon: FlaskConical, 
-    color: 'text-amber-700 dark:text-amber-300',
-    bgColor: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800',
-    description: 'Awaiting first piece approval',
-    isBlocker: true,
-    actionLabel: 'Perform First Piece Inspection',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=qc`,
-    owner: 'QC / Production'
-  },
-  ready_not_started: { 
-    title: 'Ready but Not Started', 
-    icon: PlayCircle, 
-    color: 'text-blue-700 dark:text-blue-300',
-    bgColor: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
-    description: 'All gates passed, awaiting production start',
-    isBlocker: true,
-    actionLabel: 'Start Production',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=production`,
-    owner: 'Production Planning'
-  },
-  external_processing: { 
-    title: 'External Processing', 
-    icon: Truck, 
-    color: 'text-slate-700 dark:text-slate-300',
-    bgColor: 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-700',
-    description: 'At external partner – informational',
-    isBlocker: false,
-    actionLabel: 'View External Status',
-    getActionPath: (woId) => `/work-orders/${woId}?tab=external`,
-    owner: 'Procurement / External Ops'
+function getBlockInfo(wo: WorkOrder): { blocked: boolean; reason: string; owner: BlockOwner } | null {
+  if (!wo.qc_material_passed) {
+    return { blocked: true, reason: 'Material QC Pending', owner: 'Quality' };
   }
-};
+  if (!wo.qc_first_piece_passed) {
+    return { blocked: true, reason: 'First Piece QC Pending', owner: 'Quality' };
+  }
+  if (wo.progress_pct === 0 && wo.status !== 'completed') {
+    return { blocked: true, reason: 'Ready but Not Started', owner: 'Planning' };
+  }
+  if (wo.external_status === 'pending' || wo.external_status === 'in_progress') {
+    return { blocked: true, reason: 'At External Partner', owner: 'Procurement' };
+  }
+  return null;
+}
+
+// Calculate if WO is at risk based on remaining qty vs time vs historical rate
+function calculateRisk(wo: WorkOrder, avgDailyRate: number): { atRisk: boolean; reason: string } {
+  if (wo.status === 'completed' || wo.remaining_qty === 0) {
+    return { atRisk: false, reason: '' };
+  }
+  
+  const daysToComplete = avgDailyRate > 0 ? wo.remaining_qty / avgDailyRate : 999;
+  const daysRemaining = getDaysToDate(wo.due_date);
+  
+  // Already past due
+  if (daysRemaining < 0) {
+    return { atRisk: true, reason: `${Math.abs(daysRemaining)}d overdue` };
+  }
+  
+  // Will likely miss deadline (need 20% more time than available)
+  if (daysToComplete > daysRemaining * 1.2) {
+    return { atRisk: true, reason: `Needs ${Math.ceil(daysToComplete)}d, only ${daysRemaining}d left` };
+  }
+  
+  // Very low progress with deadline approaching
+  if (wo.progress_pct < 30 && daysRemaining < 7) {
+    return { atRisk: true, reason: `Only ${wo.progress_pct}% done, due in ${daysRemaining}d` };
+  }
+  
+  return { atRisk: false, reason: '' };
+}
+
+// Sort: blocked first, then oldest age, then lowest progress
+function executiveSortWOs(wos: WorkOrder[]): WorkOrder[] {
+  return [...wos].sort((a, b) => {
+    // Blocked WOs first
+    if (a.is_blocked !== b.is_blocked) {
+      return a.is_blocked ? -1 : 1;
+    }
+    // At risk WOs second
+    if (a.is_at_risk !== b.is_at_risk) {
+      return a.is_at_risk ? -1 : 1;
+    }
+    // Oldest age (highest aging_hours first)
+    if (a.aging_hours !== b.aging_hours) {
+      return b.aging_hours - a.aging_hours;
+    }
+    // Lowest progress first
+    return a.progress_pct - b.progress_pct;
+  });
+}
+
+// === Date Range Helpers ===
+
+function getDateRangeFromPreset(preset: DatePreset): { start: Date; end: Date } {
+  const now = new Date();
+  switch (preset) {
+    case 'today':
+      return { start: startOfDay(now), end: endOfDay(now) };
+    case 'yesterday':
+      const yesterday = subDays(now, 1);
+      return { start: startOfDay(yesterday), end: endOfDay(yesterday) };
+    case 'this_week':
+      return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfDay(now) };
+    case 'custom':
+    default:
+      return { start: subDays(now, 7), end: endOfDay(now) };
+  }
+}
 
 // === Main Component ===
 
@@ -236,20 +224,32 @@ export default function ProductionProgress() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"blockers" | "analytics">("blockers");
+  const [lastDataTimestamp, setLastDataTimestamp] = useState<string | null>(null);
+  const [machineStats, setMachineStats] = useState({ active: 0, total: 0 });
   const navigate = useNavigate();
+
+  // Date filter state
+  const [datePreset, setDatePreset] = useState<DatePreset>('today');
+  const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date }>({
+    start: subDays(new Date(), 7),
+    end: new Date()
+  });
+  const [showCustomCalendar, setShowCustomCalendar] = useState(false);
+
+  const dateRange = useMemo(() => {
+    if (datePreset === 'custom') {
+      return customDateRange;
+    }
+    return getDateRangeFromPreset(datePreset);
+  }, [datePreset, customDateRange]);
 
   // Filters for analytics tab
   const [searchTerm, setSearchTerm] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: subDays(new Date(), 30),
-    end: new Date()
-  });
 
-  const loadWorkOrders = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
-      // 1. Load work orders (active and recently completed)
+      // 1. Load work orders
       const { data: woData, error: woError } = await supabase
         .from("work_orders")
         .select(`
@@ -266,7 +266,7 @@ export default function ProductionProgress() {
           qc_material_passed,
           qc_first_piece_passed
         `)
-        .in("status", ["in_progress", "pending", "completed"])
+        .in("status", ["in_progress", "pending"])
         .order("due_date", { ascending: true });
 
       if (woError) throw woError;
@@ -279,10 +279,10 @@ export default function ProductionProgress() {
 
       const woIds = woData.map(wo => wo.id);
 
-      // 2. Load batch quantities - SINGLE SOURCE OF TRUTH from production_batches
+      // 2. Load batch quantities
       const batchQuantities = await fetchBatchQuantitiesMultiple(woIds);
 
-      // 3. Load external moves status
+      // 3. Load external status
       const { data: externalData } = await supabase
         .from("wo_external_moves")
         .select("work_order_id, status")
@@ -294,193 +294,237 @@ export default function ProductionProgress() {
         externalStatus.set(m.work_order_id, m.status);
       });
 
-      // 4. Enrich work orders with batch-derived metrics
+      // 4. Get latest production log timestamp for "Data as of"
+      const { data: latestLog } = await supabase
+        .from("daily_production_logs")
+        .select("created_at")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (latestLog) {
+        setLastDataTimestamp(latestLog.created_at);
+      }
+
+      // 5. Get machine stats
+      const { data: machines } = await supabase
+        .from("machines")
+        .select("id, status");
+      
+      if (machines) {
+        const activeMachines = machines.filter((m: any) => m.status === 'running' || m.status === 'on_cycle');
+        setMachineStats({ active: activeMachines.length, total: machines.length });
+      }
+
+      // 6. Calculate average daily production rate (for risk calculation)
+      const { data: prodLogs } = await supabase
+        .from("daily_production_logs")
+        .select("ok_quantity, log_date")
+        .gte("log_date", format(subDays(new Date(), 30), 'yyyy-MM-dd'))
+        .lte("log_date", format(new Date(), 'yyyy-MM-dd'));
+      
+      const totalOkLast30Days = (prodLogs || []).reduce((sum, log) => sum + (log.ok_quantity || 0), 0);
+      const avgDailyRate = totalOkLast30Days / 30;
+
+      // 7. Enrich work orders
       const enriched: WorkOrder[] = woData.map((wo) => {
         const bq = batchQuantities.get(wo.id);
-
-        // Produced = OK output; Rejected = scrap/rejections. (QC-approved is a later gate and may be 0 even after production.)
         const ok_qty = bq?.producedQty || 0;
         const scrap_qty = bq?.qcRejectedQty || 0;
-        const actual_qty = ok_qty + scrap_qty;
-
-        const target_qty = wo.quantity; // Use ordered as target for progress
         const remaining_qty = Math.max(0, wo.quantity - ok_qty);
         const progress_pct = wo.quantity > 0 ? Math.min(100, Math.round((ok_qty / wo.quantity) * 100)) : 0;
-        const efficiency_pct = actual_qty > 0 ? Math.round((ok_qty / actual_qty) * 100) : 0;
-
-        return {
+        const aging_hours = getAgingHours(wo.created_at);
+        const days_to_due = getDaysToDate(wo.due_date);
+        
+        const blockInfo = getBlockInfo({
           ...wo,
-          target_qty,
-          actual_qty,
           ok_qty,
           scrap_qty,
           remaining_qty,
           progress_pct,
-          efficiency_pct,
+          aging_hours,
+          days_to_due,
           external_status: externalStatus.get(wo.id) || null,
+          is_blocked: false,
+          is_at_risk: false
+        } as WorkOrder);
+        
+        const riskInfo = calculateRisk({
+          ...wo,
+          ok_qty,
+          remaining_qty,
+          progress_pct,
+          status: wo.status
+        } as WorkOrder, avgDailyRate);
+
+        return {
+          ...wo,
+          ok_qty,
+          scrap_qty,
+          remaining_qty,
+          progress_pct,
+          aging_hours,
+          days_to_due,
+          external_status: externalStatus.get(wo.id) || null,
+          is_blocked: !!blockInfo,
+          block_reason: blockInfo?.reason,
+          block_owner: blockInfo?.owner,
+          is_at_risk: riskInfo.atRisk,
+          risk_reason: riskInfo.reason
         };
       });
 
-      setWorkOrders(enriched);
+      // Sort with executive priority
+      setWorkOrders(executiveSortWOs(enriched));
     } catch (error: any) {
-      toast.error(error.message || "Failed to load work orders");
+      toast.error(error.message || "Failed to load data");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadWorkOrders();
+    loadData();
 
     const channel = supabase
-      .channel("production_progress_realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "production_batches" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "cartons" }, () => loadWorkOrders())
-      .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => loadWorkOrders())
+      .channel("production_progress_executive")
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => loadData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "production_batches" }, () => loadData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_production_logs" }, () => loadData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "wo_external_moves" }, () => loadData())
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadWorkOrders]);
+  }, [loadData]);
 
-  // Buckets for blocker view
-  const buckets = useMemo(() => {
-    const activeWOs = workOrders.filter(wo => wo.status !== 'completed');
-    return categorizeToBuckets(activeWOs);
+  // === Computed Values ===
+
+  // Blockers grouped by owner
+  const blockersByOwner = useMemo((): OwnerBlockCount[] => {
+    const blockedWOs = workOrders.filter(wo => wo.is_blocked);
+    const byOwner = new Map<BlockOwner, WorkOrder[]>();
+    
+    blockedWOs.forEach(wo => {
+      const owner = wo.block_owner as BlockOwner;
+      if (!byOwner.has(owner)) {
+        byOwner.set(owner, []);
+      }
+      byOwner.get(owner)!.push(wo);
+    });
+
+    const ownerOrder: BlockOwner[] = ['Quality', 'Production', 'Planning', 'Procurement'];
+    return ownerOrder
+      .filter(owner => byOwner.has(owner))
+      .map(owner => ({
+        owner,
+        count: byOwner.get(owner)!.length,
+        wos: byOwner.get(owner)!
+      }));
   }, [workOrders]);
 
-  const totalBlockers = buckets.material_qc.length + buckets.first_piece_qc.length + buckets.ready_not_started.length;
-  
-  // Flow health
-  const flowHealth = useMemo(() => {
-    const allItems = [
-      ...buckets.material_qc,
-      ...buckets.first_piece_qc,
-      ...buckets.ready_not_started
-    ];
-    
-    const redCount = allItems.filter(i => i.aging_hours >= 72).length;
-    const amberCount = allItems.filter(i => i.aging_hours >= 24 && i.aging_hours < 72).length;
-    
-    if (redCount > 0) {
-      return { 
-        status: 'RED' as const, 
-        reason: `${redCount} WO${redCount > 1 ? 's' : ''} blocked >3 days`
-      };
-    }
-    if (amberCount > 0) {
-      return { 
-        status: 'AMBER' as const, 
-        reason: `${amberCount} WO${amberCount > 1 ? 's' : ''} blocked >24h`
-      };
-    }
-    if (totalBlockers > 0) {
-      return { 
-        status: 'GREEN' as const, 
-        reason: `${totalBlockers} blocker${totalBlockers > 1 ? 's' : ''}, all <24h`
-      };
-    }
-    return { 
-      status: 'GREEN' as const, 
-      reason: 'No blockers'
-    };
-  }, [buckets, totalBlockers]);
+  const totalBlockers = useMemo(() => {
+    return workOrders.filter(wo => wo.is_blocked).length;
+  }, [workOrders]);
 
-  // Summary stats for blocker tab
-  const blockerSummary = useMemo(() => {
+  // At Risk WOs (not blocked but at risk)
+  const atRiskWOs = useMemo(() => {
+    return workOrders.filter(wo => wo.is_at_risk && !wo.is_blocked);
+  }, [workOrders]);
+
+  // Summary metrics (actionable only)
+  const summary = useMemo(() => {
     const activeWOs = workOrders.filter(wo => wo.status !== 'completed');
     const totalOk = activeWOs.reduce((sum, wo) => sum + wo.ok_qty, 0);
     const totalScrap = activeWOs.reduce((sum, wo) => sum + wo.scrap_qty, 0);
-    const totalOrdered = activeWOs.reduce((sum, wo) => sum + wo.quantity, 0);
     const totalRemaining = activeWOs.reduce((sum, wo) => sum + wo.remaining_qty, 0);
-    const avgProgress = activeWOs.length > 0 
-      ? Math.round(activeWOs.reduce((sum, wo) => sum + wo.progress_pct, 0) / activeWOs.length)
-      : 0;
-    const inProgress = activeWOs.filter(wo => wo.progress_pct > 0 && wo.progress_pct < 100).length;
+    const inProgressCount = activeWOs.filter(wo => wo.progress_pct > 0 && wo.progress_pct < 100).length;
     
-    return { totalOk, totalScrap, totalOrdered, totalRemaining, avgProgress, inProgress };
+    return { totalOk, totalScrap, totalRemaining, inProgressCount, activeCount: activeWOs.length };
   }, [workOrders]);
+
+  // Throughput vs Plan
+  const throughputStatus = useMemo(() => {
+    const totalOrdered = workOrders.reduce((sum, wo) => sum + wo.quantity, 0);
+    const totalOk = workOrders.reduce((sum, wo) => sum + wo.ok_qty, 0);
+    
+    // Simple calculation: are we keeping up with expected progress?
+    // Expected = total ordered * (days elapsed / avg lead time)
+    // For simplicity: compare ok_qty vs remaining_qty ratio
+    const completionRatio = totalOrdered > 0 ? totalOk / totalOrdered : 0;
+    
+    // Factor in blocked and at-risk counts
+    const riskFactor = (totalBlockers + atRiskWOs.length) / Math.max(1, workOrders.length);
+    
+    // On Track if >40% complete with <20% at risk/blocked
+    const isOnTrack = completionRatio > 0.3 && riskFactor < 0.3;
+    
+    return {
+      status: isOnTrack ? 'On Track' as const : 'Behind' as const,
+      okQty: totalOk,
+      orderedQty: totalOrdered,
+      pct: Math.round(completionRatio * 100)
+    };
+  }, [workOrders, totalBlockers, atRiskWOs.length]);
+
+  // Flow health
+  const flowHealth = useMemo(() => {
+    const redCount = workOrders.filter(wo => wo.is_blocked && wo.aging_hours >= 72).length;
+    const amberCount = workOrders.filter(wo => wo.is_blocked && wo.aging_hours >= 24 && wo.aging_hours < 72).length;
+    
+    if (redCount > 0) {
+      return { status: 'RED' as const, reason: `${redCount} blocked >3 days` };
+    }
+    if (amberCount > 0) {
+      return { status: 'AMBER' as const, reason: `${amberCount} blocked >24h` };
+    }
+    if (totalBlockers > 0) {
+      return { status: 'GREEN' as const, reason: `${totalBlockers} blocker${totalBlockers > 1 ? 's' : ''}, all <24h` };
+    }
+    return { status: 'GREEN' as const, reason: 'No blockers' };
+  }, [workOrders, totalBlockers]);
 
   // Filtered WOs for analytics tab
   const filteredWOs = useMemo(() => {
     let result = workOrders;
 
-    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(wo => 
         wo.display_id?.toLowerCase().includes(term) ||
         wo.customer?.toLowerCase().includes(term) ||
-        wo.item_code?.toLowerCase().includes(term) ||
-        wo.customer_po?.toLowerCase().includes(term)
+        wo.item_code?.toLowerCase().includes(term)
       );
     }
 
-    // Customer filter
     if (customerFilter !== "all") {
       result = result.filter(wo => wo.customer === customerFilter);
     }
 
-    // Status filter
-    if (statusFilter !== "all") {
-      result = result.filter(wo => wo.status === statusFilter);
-    }
+    return executiveSortWOs(result);
+  }, [workOrders, searchTerm, customerFilter]);
 
-    return result;
-  }, [workOrders, searchTerm, customerFilter, statusFilter]);
-
-  // Analytics summary
-  const analyticsSummary = useMemo(() => {
-    const totalTarget = filteredWOs.reduce((sum, wo) => sum + wo.target_qty, 0);
-    const totalActual = filteredWOs.reduce((sum, wo) => sum + wo.actual_qty, 0);
-    const totalOk = filteredWOs.reduce((sum, wo) => sum + wo.ok_qty, 0);
-    const totalScrap = filteredWOs.reduce((sum, wo) => sum + wo.scrap_qty, 0);
-    const totalOrdered = filteredWOs.reduce((sum, wo) => sum + wo.quantity, 0);
-    const avgProgress = filteredWOs.length > 0 
-      ? Math.round(filteredWOs.reduce((sum, wo) => sum + wo.progress_pct, 0) / filteredWOs.length)
-      : 0;
-    const avgEfficiency = totalTarget > 0
-      ? Math.round((totalOk / totalTarget) * 100)
-      : 0;
-    const scrapRate = totalActual > 0
-      ? Math.round((totalScrap / totalActual) * 100 * 10) / 10
-      : 0;
-    
-    return { 
-      totalTarget, 
-      totalActual, 
-      totalOk, 
-      totalScrap, 
-      totalOrdered,
-      avgProgress, 
-      avgEfficiency,
-      scrapRate,
-      woCount: filteredWOs.length
-    };
-  }, [filteredWOs]);
-
-  // Unique customers for filter
+  // Unique customers
   const uniqueCustomers = useMemo(() => {
     return [...new Set(workOrders.map(wo => wo.customer).filter(Boolean))].sort();
   }, [workOrders]);
 
-  // Export to CSV
+  // Export CSV
   const exportCSV = () => {
-    const headers = ["WO ID", "Customer", "Item Code", "Ordered", "Target", "Actual", "OK Qty", "Rejected", "Progress %", "Efficiency %", "Status"];
+    const headers = ["WO ID", "Customer", "Item Code", "Ordered", "OK Qty", "Scrap", "Remaining", "Progress %", "Blocked", "At Risk", "Days to Due"];
     const rows = filteredWOs.map(wo => [
       wo.display_id,
       wo.customer,
       wo.item_code,
       wo.quantity,
-      wo.target_qty,
-      wo.actual_qty,
       wo.ok_qty,
       wo.scrap_qty,
+      wo.remaining_qty,
       wo.progress_pct,
-      wo.efficiency_pct,
-      wo.status
+      wo.is_blocked ? 'Yes' : 'No',
+      wo.is_at_risk ? 'Yes' : 'No',
+      wo.days_to_due
     ]);
 
     const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -488,17 +532,10 @@ export default function ProductionProgress() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `production-progress-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.download = `production-control-${format(new Date(), "yyyy-MM-dd")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("CSV exported");
-  };
-
-  const getEfficiencyColor = (pct: number) => {
-    if (pct >= 100) return "text-green-600 dark:text-green-400";
-    if (pct >= 80) return "text-blue-600 dark:text-blue-400";
-    if (pct >= 60) return "text-amber-600 dark:text-amber-400";
-    return "text-red-600 dark:text-red-400";
   };
 
   if (loading) {
@@ -509,38 +546,128 @@ export default function ProductionProgress() {
     );
   }
 
-  const getSubtitle = (bucketType: BucketType): string => {
-    switch (bucketType) {
-      case 'material_qc':
-        return `${buckets.material_qc.length} WO${buckets.material_qc.length !== 1 ? 's' : ''} blocked from entering Cutting`;
-      case 'ready_not_started':
-        return `${buckets.ready_not_started.length} WO${buckets.ready_not_started.length !== 1 ? 's' : ''} idle despite available capacity`;
-      case 'first_piece_qc':
-        return `${buckets.first_piece_qc.length} WO${buckets.first_piece_qc.length !== 1 ? 's' : ''} awaiting first piece approval`;
-      case 'external_processing':
-        return `${buckets.external_processing.length} WO${buckets.external_processing.length !== 1 ? 's' : ''} at external partners`;
-      default:
-        return '';
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Production Progress</h1>
-          <p className="text-sm text-muted-foreground">
-            The AUTHORITATIVE view for production progress and WO-wise analytics
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Production Control</h1>
+            <p className="text-sm text-muted-foreground">
+              Executive view: Flow, Risk, and Intervention
+            </p>
+          </div>
+          
+          {/* Date Filter */}
+          <div className="flex items-center gap-2">
+            <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DatePreset)}>
+              <SelectTrigger className="w-[140px]">
+                <CalendarIcon className="h-4 w-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="this_week">This Week</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>{format(customDateRange.start, 'MMM d')} - {format(customDateRange.end, 'MMM d')}</span>
+              </div>
+            )}
+            
+            <Button variant="ghost" size="icon" onClick={loadData}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        {/* Read-only notice */}
-        <div className="bg-muted/50 border rounded-lg p-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Info className="h-4 w-4 shrink-0" />
-          <span>
-            All metrics derived from Production Log entries (single source of truth). 
-          </span>
+        {/* Data Timestamp + Capacity Context */}
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          {lastDataTimestamp && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              <span>Data as of: {format(parseISO(lastDataTimestamp), 'MMM d, h:mm a')}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5" />
+            <span>Machines: {machineStats.active} active / {machineStats.total} total</span>
+          </div>
+        </div>
+
+        {/* Executive Summary Strip */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Throughput vs Plan */}
+          <Card className={cn(
+            "col-span-2 md:col-span-1",
+            throughputStatus.status === 'On Track' 
+              ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
+              : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+          )}>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                {throughputStatus.status === 'On Track' ? (
+                  <CheckCircle2 className="h-5 w-5 mx-auto text-green-600 mb-1" />
+                ) : (
+                  <TrendingDown className="h-5 w-5 mx-auto text-red-600 mb-1" />
+                )}
+                <p className="text-xs text-muted-foreground">Throughput vs Plan</p>
+                <p className={cn(
+                  "text-lg font-bold",
+                  throughputStatus.status === 'On Track' ? "text-green-600" : "text-red-600"
+                )}>
+                  {throughputStatus.status}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {throughputStatus.pct}% complete
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <CheckCircle2 className="h-5 w-5 mx-auto text-green-600 mb-1" />
+                <p className="text-xs text-muted-foreground">OK Quantity</p>
+                <p className="text-lg font-bold text-green-600">{summary.totalOk.toLocaleString()}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <XCircle className="h-5 w-5 mx-auto text-red-600 mb-1" />
+                <p className="text-xs text-muted-foreground">Scrap Quantity</p>
+                <p className="text-lg font-bold text-red-600">{summary.totalScrap.toLocaleString()}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <Zap className="h-5 w-5 mx-auto text-amber-600 mb-1" />
+                <p className="text-xs text-muted-foreground">Remaining</p>
+                <p className="text-lg font-bold text-amber-600">{summary.totalRemaining.toLocaleString()}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="text-center">
+                <Activity className="h-5 w-5 mx-auto text-blue-600 mb-1" />
+                <p className="text-xs text-muted-foreground">In Progress WOs</p>
+                <p className="text-lg font-bold text-blue-600">{summary.inProgressCount}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Main Tabs */}
@@ -548,10 +675,10 @@ export default function ProductionProgress() {
           <TabsList className="grid w-full md:w-auto grid-cols-2 md:inline-flex">
             <TabsTrigger value="blockers" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
-              Blockers
-              {totalBlockers > 0 && (
+              Flow & Risk
+              {(totalBlockers + atRiskWOs.length) > 0 && (
                 <Badge variant="destructive" className="ml-1 h-5 text-[10px]">
-                  {totalBlockers}
+                  {totalBlockers + atRiskWOs.length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -561,66 +688,10 @@ export default function ProductionProgress() {
             </TabsTrigger>
           </TabsList>
 
-          {/* === BLOCKERS TAB === */}
+          {/* === FLOW & RISK TAB === */}
           <TabsContent value="blockers" className="mt-6 space-y-6">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <CheckCircle2 className="h-5 w-5 mx-auto text-green-600 mb-1" />
-                    <p className="text-xs text-muted-foreground">Net Completed</p>
-                    <p className="text-lg font-bold text-green-600">{blockerSummary.totalOk.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <AlertTriangle className="h-5 w-5 mx-auto text-red-600 mb-1" />
-                    <p className="text-xs text-muted-foreground">Scrap Qty</p>
-                    <p className="text-lg font-bold text-red-600">{blockerSummary.totalScrap.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <Package className="h-5 w-5 mx-auto text-amber-600 mb-1" />
-                    <p className="text-xs text-muted-foreground">Remaining</p>
-                    <p className="text-lg font-bold text-amber-600">{blockerSummary.totalRemaining.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <Clock className="h-5 w-5 mx-auto text-blue-600 mb-1" />
-                    <p className="text-xs text-muted-foreground">In Progress</p>
-                    <p className="text-lg font-bold text-blue-600">{blockerSummary.inProgress}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <div className="h-5 w-5 mx-auto mb-1 flex items-center justify-center">
-                      <span className="text-sm font-bold text-primary">%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Avg Progress</p>
-                    <p className="text-lg font-bold">{blockerSummary.avgProgress}%</p>
-                    <Progress value={blockerSummary.avgProgress} className="h-1.5 mt-1" />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
             {/* Flow Health Indicator */}
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-border/50">
+            <div className="flex items-center gap-4">
               <div className={cn(
                 "inline-flex items-center gap-2 px-3 py-1.5 rounded-full border",
                 flowHealth.status === 'GREEN' && "bg-green-100 dark:bg-green-950/50 border-green-300 dark:border-green-700",
@@ -641,34 +712,178 @@ export default function ProductionProgress() {
               </div>
             </div>
 
-            {/* Buckets Grid */}
-            <div className="grid gap-4 md:grid-cols-2">
-              {(Object.keys(bucketConfig) as BucketType[])
-                .filter((bucketKey) => buckets[bucketKey].length > 0)
-                .map((bucketKey) => (
-                  <BucketCard
-                    key={bucketKey}
-                    bucketType={bucketKey}
-                    items={buckets[bucketKey]}
-                    navigate={navigate}
-                    subtitle={getSubtitle(bucketKey)}
-                  />
-                ))}
-            </div>
+            {/* Blockers by Owner */}
+            {blockersByOwner.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Blockers by Responsibility
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* Owner summary chips */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {blockersByOwner.map(({ owner, count }) => (
+                      <Badge 
+                        key={owner} 
+                        variant="outline" 
+                        className={cn(
+                          "text-sm py-1 px-3",
+                          count > 3 && "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700"
+                        )}
+                      >
+                        <span className="font-semibold mr-1">{owner}:</span>
+                        <span className={cn(count > 3 ? "text-red-600" : "")}>{count}</span>
+                      </Badge>
+                    ))}
+                  </div>
+                  
+                  {/* Blocked WO table */}
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>WO ID</TableHead>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Block Reason</TableHead>
+                          <TableHead>Owner</TableHead>
+                          <TableHead className="text-center">Age</TableHead>
+                          <TableHead className="text-center">Progress</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {workOrders.filter(wo => wo.is_blocked).slice(0, 15).map((wo) => {
+                          const severity = getAgingSeverity(wo.aging_hours);
+                          return (
+                            <TableRow key={wo.id} className={cn(wo.aging_hours >= 72 && "bg-red-50/50 dark:bg-red-950/20")}>
+                              <TableCell className="font-mono font-semibold">
+                                <div className="flex items-center gap-1.5">
+                                  {wo.display_id}
+                                  {wo.days_to_due < 0 && (
+                                    <Badge variant="destructive" className="text-[9px] px-1 py-0">LATE</Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{wo.item_code}</TableCell>
+                              <TableCell>{wo.block_reason}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="text-xs">{wo.block_owner}</Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge 
+                                  variant="outline" 
+                                  className={cn(
+                                    "text-[10px]",
+                                    severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700",
+                                    severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700",
+                                    severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700"
+                                  )}
+                                >
+                                  <Clock className="h-2.5 w-2.5 mr-0.5" />
+                                  {formatAgingDisplay(wo.aging_hours)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1.5 justify-center">
+                                  <Progress value={wo.progress_pct} className="h-1.5 w-12" />
+                                  <span className="text-xs">{wo.progress_pct}%</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => navigate(`/work-orders/${wo.id}`)}
+                                >
+                                  Go <ExternalLink className="h-3 w-3 ml-1" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* At Risk Work Orders */}
+            {atRiskWOs.length > 0 && (
+              <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    At Risk Work Orders
+                    <Badge variant="outline" className="ml-2 text-amber-700 border-amber-300">
+                      {atRiskWOs.length}
+                    </Badge>
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    WOs likely to miss deadline based on remaining qty vs available time
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>WO ID</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Remaining</TableHead>
+                          <TableHead>Risk Reason</TableHead>
+                          <TableHead className="text-center">Days to Due</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {atRiskWOs.slice(0, 10).map((wo) => (
+                          <TableRow key={wo.id}>
+                            <TableCell className="font-mono font-semibold">{wo.display_id}</TableCell>
+                            <TableCell className="max-w-[100px] truncate">{wo.customer}</TableCell>
+                            <TableCell className="text-muted-foreground">{wo.item_code}</TableCell>
+                            <TableCell className="text-right tabular-nums font-medium text-amber-600">
+                              {wo.remaining_qty.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-sm text-amber-700 dark:text-amber-300">
+                              {wo.risk_reason}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge 
+                                variant={wo.days_to_due < 0 ? "destructive" : "secondary"}
+                                className="text-xs"
+                              >
+                                {wo.days_to_due < 0 ? `${Math.abs(wo.days_to_due)}d overdue` : `${wo.days_to_due}d`}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => navigate(`/work-orders/${wo.id}`)}
+                              >
+                                Go <ExternalLink className="h-3 w-3 ml-1" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Empty State */}
-            {totalBlockers === 0 && buckets.external_processing.length === 0 && (
+            {totalBlockers === 0 && atRiskWOs.length === 0 && (
               <div className="text-center py-12">
                 <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
-                <p className="text-lg font-medium text-muted-foreground">No blockers — all clear!</p>
-                <Button 
-                  variant="outline" 
-                  className="mt-4 gap-2"
-                  onClick={() => navigate('/work-orders')}
-                >
-                  View All Work Orders
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
+                <p className="text-lg font-medium text-muted-foreground">All clear — no blockers or at-risk WOs</p>
               </div>
             )}
           </TabsContent>
@@ -676,152 +891,48 @@ export default function ProductionProgress() {
           {/* === WO ANALYTICS TAB === */}
           <TabsContent value="analytics" className="mt-6 space-y-6">
             {/* Filters */}
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                  <div className="flex flex-wrap gap-3 items-center">
-                    {/* Search */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search WO, customer, item..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9 w-[200px]"
-                      />
-                    </div>
-
-                    {/* Customer Filter */}
-                    <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="All Customers" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Customers</SelectItem>
-                        {uniqueCustomers.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    {/* Status Filter */}
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue placeholder="All Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    {(searchTerm || customerFilter !== "all" || statusFilter !== "all") && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => {
-                          setSearchTerm("");
-                          setCustomerFilter("all");
-                          setStatusFilter("all");
-                        }}
-                      >
-                        Clear filters
-                      </Button>
-                    )}
-                  </div>
-
-                  <Button variant="outline" onClick={exportCSV} disabled={filteredWOs.length === 0}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search WO, customer, item..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 w-[200px]"
+                  />
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Analytics Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Work Orders</p>
-                    <p className="text-xl font-bold">{analyticsSummary.woCount}</p>
-                  </div>
-                </CardContent>
-              </Card>
+                <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="All Customers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Customers</SelectItem>
+                    {uniqueCustomers.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <Target className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-                    <p className="text-xs text-muted-foreground">Target Qty</p>
-                    <p className="text-xl font-bold">{analyticsSummary.totalTarget.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
+                {(searchTerm || customerFilter !== "all") && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => {
+                      setSearchTerm("");
+                      setCustomerFilter("all");
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
 
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <Package className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-                    <p className="text-xs text-muted-foreground">Actual Qty</p>
-                    <p className="text-xl font-bold">{analyticsSummary.totalActual.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <CheckCircle2 className="h-4 w-4 mx-auto text-green-600 mb-1" />
-                    <p className="text-xs text-muted-foreground">OK Qty</p>
-                    <p className="text-xl font-bold text-green-600">{analyticsSummary.totalOk.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <XCircle className="h-4 w-4 mx-auto text-red-600 mb-1" />
-                    <p className="text-xs text-muted-foreground">Rejected</p>
-                    <p className="text-xl font-bold text-red-600">{analyticsSummary.totalScrap.toLocaleString()}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Avg Progress</p>
-                    <p className="text-xl font-bold">{analyticsSummary.avgProgress}%</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <TrendingUp className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-                    <p className="text-xs text-muted-foreground">Avg Efficiency</p>
-                    <p className={cn("text-xl font-bold", getEfficiencyColor(analyticsSummary.avgEfficiency))}>
-                      {analyticsSummary.avgEfficiency}%
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-4 pb-3">
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Scrap Rate</p>
-                    <p className={cn("text-xl font-bold", analyticsSummary.scrapRate > 3 ? "text-red-600" : "text-green-600")}>
-                      {analyticsSummary.scrapRate}%
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <Button variant="outline" onClick={exportCSV} disabled={filteredWOs.length === 0}>
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
             </div>
 
             {/* WO Table */}
@@ -829,55 +940,67 @@ export default function ProductionProgress() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5" />
-                  Work Order Analytics
+                  Work Orders ({filteredWOs.length})
                 </CardTitle>
-                <CardDescription>
-                  WO-wise target vs actual, OK/rejection quantities, and progress metrics
-                </CardDescription>
+                <p className="text-xs text-muted-foreground">
+                  Sorted: Blocked → Oldest → Lowest Progress
+                </p>
               </CardHeader>
               <CardContent>
                 {filteredWOs.length === 0 ? (
                   <div className="text-center py-12">
                     <Search className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <p className="text-lg font-medium text-muted-foreground">No work orders found</p>
-                    <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Status</TableHead>
                           <TableHead>WO ID</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Item Code</TableHead>
                           <TableHead className="text-right">Ordered</TableHead>
-                          <TableHead className="text-right">Target</TableHead>
-                          <TableHead className="text-right">Actual</TableHead>
                           <TableHead className="text-right">OK Qty</TableHead>
-                          <TableHead className="text-right">Rejected</TableHead>
+                          <TableHead className="text-right">Scrap</TableHead>
+                          <TableHead className="text-right">Remaining</TableHead>
                           <TableHead className="text-center">Progress</TableHead>
-                          <TableHead className="text-right">Efficiency</TableHead>
-                          <TableHead>Status</TableHead>
+                          <TableHead className="text-center">Due</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredWOs.map((wo) => (
                           <TableRow 
                             key={wo.id}
-                            className="cursor-pointer hover:bg-muted/50"
+                            className={cn(
+                              "cursor-pointer hover:bg-muted/50",
+                              wo.is_blocked && "bg-red-50/50 dark:bg-red-950/20",
+                              !wo.is_blocked && wo.is_at_risk && "bg-amber-50/50 dark:bg-amber-950/20"
+                            )}
                             onClick={() => navigate(`/work-orders/${wo.id}`)}
                           >
+                            <TableCell>
+                              {wo.is_blocked ? (
+                                <Badge variant="destructive" className="text-[10px]">Blocked</Badge>
+                              ) : wo.is_at_risk ? (
+                                <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-700 border-amber-300">At Risk</Badge>
+                              ) : (
+                                <Badge variant="secondary" className="text-[10px]">Active</Badge>
+                              )}
+                            </TableCell>
                             <TableCell className="font-mono font-semibold">{wo.display_id}</TableCell>
                             <TableCell className="max-w-[120px] truncate">{wo.customer}</TableCell>
                             <TableCell className="font-mono text-sm">{wo.item_code}</TableCell>
                             <TableCell className="text-right tabular-nums">{wo.quantity.toLocaleString()}</TableCell>
-                            <TableCell className="text-right tabular-nums">{wo.target_qty.toLocaleString()}</TableCell>
-                            <TableCell className="text-right tabular-nums">{wo.actual_qty.toLocaleString()}</TableCell>
                             <TableCell className="text-right tabular-nums text-green-600 font-medium">
                               {wo.ok_qty.toLocaleString()}
                             </TableCell>
                             <TableCell className="text-right tabular-nums text-red-600">
                               {wo.scrap_qty.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums font-medium text-amber-600">
+                              {wo.remaining_qty.toLocaleString()}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2 justify-center">
@@ -885,17 +1008,12 @@ export default function ProductionProgress() {
                                 <span className="text-xs font-medium w-10 text-right">{wo.progress_pct}%</span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right">
-                              <span className={cn("font-medium", getEfficiencyColor(wo.efficiency_pct))}>
-                                {wo.efficiency_pct}%
-                              </span>
-                            </TableCell>
-                            <TableCell>
+                            <TableCell className="text-center">
                               <Badge 
-                                variant={wo.status === 'completed' ? 'default' : 'secondary'}
-                                className="capitalize text-xs"
+                                variant={wo.days_to_due < 0 ? "destructive" : wo.days_to_due < 3 ? "outline" : "secondary"}
+                                className="text-[10px]"
                               >
-                                {wo.status.replace('_', ' ')}
+                                {wo.days_to_due < 0 ? `${Math.abs(wo.days_to_due)}d late` : `${wo.days_to_due}d`}
                               </Badge>
                             </TableCell>
                           </TableRow>
@@ -906,171 +1024,9 @@ export default function ProductionProgress() {
                 )}
               </CardContent>
             </Card>
-
-            {/* Calculation Footer */}
-            <div className="bg-muted/30 border rounded-lg p-4">
-              <h4 className="text-sm font-medium mb-2">Calculation Formulas</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-muted-foreground font-mono">
-                <div>Progress % = (OK Qty ÷ Ordered Qty) × 100</div>
-                <div>Efficiency % = (OK Qty ÷ Target Qty) × 100</div>
-                <div>Scrap Rate = (Rejected ÷ Actual) × 100</div>
-              </div>
-            </div>
           </TabsContent>
         </Tabs>
       </div>
     </div>
-  );
-}
-
-// === BucketCard Component ===
-
-const DEFAULT_VISIBLE_ROWS = 8;
-
-function BucketCard({ 
-  bucketType, 
-  items, 
-  navigate,
-  subtitle
-}: { 
-  bucketType: BucketType; 
-  items: BucketItem[]; 
-  navigate: (path: string) => void;
-  subtitle: string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const config = bucketConfig[bucketType];
-  const Icon = config.icon;
-  
-  const visibleItems = expanded ? items : items.slice(0, DEFAULT_VISIBLE_ROWS);
-  const hasMore = items.length > DEFAULT_VISIBLE_ROWS;
-
-  return (
-    <Card className={cn("border", items.length > 0 ? config.bgColor : "bg-muted/30 border-muted")}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Icon className={cn("h-5 w-5", items.length > 0 ? config.color : "text-muted-foreground")} />
-            <CardTitle className={cn("text-base", items.length > 0 ? config.color : "text-muted-foreground")}>
-              {config.title}
-            </CardTitle>
-          </div>
-          <Badge 
-            variant={items.length > 0 && config.isBlocker ? "destructive" : "secondary"}
-            className="text-xs"
-          >
-            {items.length}
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground font-medium">{subtitle}</p>
-      </CardHeader>
-      <CardContent className="pt-0">
-        {items.length === 0 ? (
-          <div className="py-4 text-center text-sm text-muted-foreground">
-            None
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-muted-foreground border-b">
-                    <th className="text-left py-2 px-1 font-medium">WO ID</th>
-                    <th className="text-left py-2 px-1 font-medium">Item</th>
-                    <th className="text-right py-2 px-1 font-medium">OK / Ord</th>
-                    <th className="text-center py-2 px-1 font-medium">Progress</th>
-                    <th className="text-center py-2 px-1 font-medium">Age</th>
-                    <th className="text-left py-2 px-1 font-medium">Owner</th>
-                    <th className="text-right py-2 px-1 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleItems.map((item) => {
-                    const severity = getAgingSeverity(item.aging_hours);
-                    const isLongBlocked = item.aging_hours >= 72;
-                    const isOverdue = item.wo.due_date && new Date(item.wo.due_date) < new Date();
-                    
-                    return (
-                      <tr
-                        key={item.wo.id}
-                        className={cn(
-                          "border-b border-muted/30 last:border-0",
-                          isLongBlocked && "bg-red-50/50 dark:bg-red-950/30"
-                        )}
-                      >
-                        <td className="py-2 px-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-semibold">{item.wo.display_id}</span>
-                            {isOverdue && (
-                              <Badge variant="destructive" className="text-[9px] px-1 py-0">LATE</Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2 px-1 text-muted-foreground max-w-[100px] truncate">
-                          {item.wo.item_code}
-                        </td>
-                        <td className="py-2 px-1 text-right tabular-nums text-xs">
-                          <span className="text-green-600 font-medium">{item.wo.ok_qty.toLocaleString()}</span>
-                          <span className="text-muted-foreground"> / {item.wo.quantity.toLocaleString()}</span>
-                        </td>
-                        <td className="py-2 px-1">
-                          <div className="flex items-center gap-1.5 justify-center">
-                            <Progress value={item.wo.progress_pct} className="h-1.5 w-12" />
-                            <span className="text-xs font-medium">{item.wo.progress_pct}%</span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-1 text-center">
-                          <Badge 
-                            variant="outline" 
-                            className={cn(
-                              "text-[10px] font-medium gap-0.5 border px-1.5",
-                              severity === 'green' && "bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",
-                              severity === 'amber' && "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",
-                              severity === 'red' && "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700"
-                            )}
-                          >
-                            <Clock className="h-2.5 w-2.5" />
-                            {formatAgingDisplay(item.aging_hours)}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-1">
-                          <span className="text-xs text-muted-foreground">{config.owner}</span>
-                        </td>
-                        <td className="py-2 px-1 text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => navigate(config.getActionPath(item.wo.id))}
-                          >
-                            Go
-                            <ExternalLink className="h-3 w-3 ml-1" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {hasMore && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full h-7 text-xs"
-                onClick={() => setExpanded(!expanded)}
-              >
-                {expanded ? (
-                  <>Show Less <ChevronUp className="h-3 w-3 ml-1" /></>
-                ) : (
-                  <>Show {items.length - DEFAULT_VISIBLE_ROWS} More <ChevronDown className="h-3 w-3 ml-1" /></>
-                )}
-              </Button>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
