@@ -187,8 +187,8 @@ export const PAGE_KEYS: Record<string, string> = {
   'factory-calendar': 'Factory Calendar',
 };
 
-// Admin & Finance department types that bypass all permission checks
-const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance'];
+// Admin, Finance, and Super Admin department types that bypass all permission checks
+const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance', 'super_admin'];
 
 export const useDepartmentPermissions = () => {
   const [departmentDefaults, setDepartmentDefaults] = useState<DepartmentDefault[]>([]);

@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter, AlertTriangle } from "lucide-react";
+import { UserPlus, Edit, Trash2, CheckCircle2, XCircle, Loader2, Search, Filter, AlertTriangle, Key, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { UserPermissionOverrides } from "./UserPermissionOverrides";
@@ -33,8 +33,11 @@ interface UsersManagementProps {
   departments: any[];
 }
 
-// Admin/Finance department types that bypass permission checks
-const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance'];
+// Admin/Finance/Super Admin department types that bypass permission checks
+const BYPASS_DEPARTMENT_TYPES = ['admin', 'finance', 'super_admin'];
+
+// Only super_admin can delete users, change passwords, change emails
+const SUPER_ADMIN_DEPARTMENT_TYPE = 'super_admin';
 
 export function UsersManagement({ departments }: UsersManagementProps) {
   const [users, setUsers] = useState<UserWithDepartment[]>([]);
@@ -42,12 +45,24 @@ export function UsersManagement({ departments }: UsersManagementProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithDepartment | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  const [currentUserDeptType, setCurrentUserDeptType] = useState<string | null>(null);
+  
+  // Super Admin specific state
+  const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
+  const [changeEmailDialogOpen, setChangeEmailDialogOpen] = useState(false);
+  const [targetUserId, setTargetUserId] = useState<string | null>(null);
+  const [targetUserName, setTargetUserName] = useState<string>("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [processingOperation, setProcessingOperation] = useState(false);
+  
   const [newUser, setNewUser] = useState({
     email: "",
     full_name: "",
@@ -59,6 +74,7 @@ export function UsersManagement({ departments }: UsersManagementProps) {
 
   useEffect(() => {
     loadUsers();
+    loadCurrentUserDeptType();
     
     // Set up real-time subscription for profile changes
     const profilesChannel = supabase
@@ -76,6 +92,33 @@ export function UsersManagement({ departments }: UsersManagementProps) {
       supabase.removeChannel(profilesChannel);
     };
   }, []);
+
+  const loadCurrentUserDeptType = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('department_id')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile?.department_id) {
+        const { data: dept } = await supabase
+          .from('departments')
+          .select('type')
+          .eq('id', profile.department_id)
+          .single();
+        
+        if (dept) {
+          setCurrentUserDeptType(dept.type);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading current user dept type:', error);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -231,23 +274,136 @@ export function UsersManagement({ departments }: UsersManagementProps) {
     }
   };
 
+  const isSuperAdmin = currentUserDeptType === SUPER_ADMIN_DEPARTMENT_TYPE;
+
+  // Super Admin Operations via Edge Function
+  const callAdminOperation = async (operation: string, targetUserId: string, extraData: Record<string, string> = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No active session');
+
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/admin-user-operations`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          operation,
+          target_user_id: targetUserId,
+          ...extraData
+        }),
+      }
+    );
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || `Failed to ${operation}`);
+    }
+    return result;
+  };
+
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
 
-    try {
+    if (!isSuperAdmin) {
       toast({
-        title: "Info",
-        description: "User deletion requires Supabase Admin API. Please contact system administrator.",
+        title: "Access Denied",
+        description: "Only Super Admin can delete users.",
+        variant: "destructive",
       });
-      
       setDeleteDialogOpen(false);
       setUserToDelete(null);
+      return;
+    }
+
+    setDeletingUser(true);
+    try {
+      await callAdminOperation('delete', userToDelete);
+      toast({
+        title: "Success",
+        description: "User deleted successfully",
+      });
+      loadUsers();
     } catch (error: any) {
       toast({ 
         title: "Error", 
         description: error.message || "Failed to delete user", 
         variant: "destructive" 
       });
+    } finally {
+      setDeletingUser(false);
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!targetUserId || !newPassword) return;
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Validation Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setProcessingOperation(true);
+    try {
+      await callAdminOperation('update_password', targetUserId, { new_password: newPassword });
+      toast({
+        title: "Success",
+        description: "Password changed successfully",
+      });
+      setChangePasswordDialogOpen(false);
+      setNewPassword("");
+      setTargetUserId(null);
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to change password", 
+        variant: "destructive" 
+      });
+    } finally {
+      setProcessingOperation(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!targetUserId || !newEmail) return;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setProcessingOperation(true);
+    try {
+      await callAdminOperation('update_email', targetUserId, { new_email: newEmail });
+      toast({
+        title: "Success",
+        description: "Email changed successfully",
+      });
+      setChangeEmailDialogOpen(false);
+      setNewEmail("");
+      setTargetUserId(null);
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to change email", 
+        variant: "destructive" 
+      });
+    } finally {
+      setProcessingOperation(false);
     }
   };
 
@@ -439,7 +595,37 @@ export function UsersManagement({ departments }: UsersManagementProps) {
                           </TableCell>
                           
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end gap-1">
+                              {isSuperAdmin && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Change Password"
+                                    onClick={() => {
+                                      setTargetUserId(user.id);
+                                      setTargetUserName(user.full_name || 'User');
+                                      setNewPassword("");
+                                      setChangePasswordDialogOpen(true);
+                                    }}
+                                  >
+                                    <Key className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Change Email"
+                                    onClick={() => {
+                                      setTargetUserId(user.id);
+                                      setTargetUserName(user.full_name || 'User');
+                                      setNewEmail("");
+                                      setChangeEmailDialogOpen(true);
+                                    }}
+                                  >
+                                    <Mail className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -450,16 +636,18 @@ export function UsersManagement({ departments }: UsersManagementProps) {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setUserToDelete(user.id);
-                                  setDeleteDialogOpen(true);
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              {isSuperAdmin && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setUserToDelete(user.id);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -586,11 +774,83 @@ export function UsersManagement({ departments }: UsersManagementProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deletingUser}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeleteUser}>
-              Yes, Delete User
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={deletingUser}>
+              {deletingUser ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deleting...</> : "Yes, Delete User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Password Dialog - Super Admin Only */}
+      <Dialog open={changePasswordDialogOpen} onOpenChange={setChangePasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Change Password
+            </DialogTitle>
+            <DialogDescription>
+              Set a new password for {targetUserName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new_password">New Password</Label>
+              <Input
+                id="new_password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                disabled={processingOperation}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangePasswordDialogOpen(false)} disabled={processingOperation}>
+              Cancel
+            </Button>
+            <Button onClick={handleChangePassword} disabled={processingOperation || !newPassword}>
+              {processingOperation ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : "Update Password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Email Dialog - Super Admin Only */}
+      <Dialog open={changeEmailDialogOpen} onOpenChange={setChangeEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Change Email
+            </DialogTitle>
+            <DialogDescription>
+              Set a new email for {targetUserName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new_email">New Email</Label>
+              <Input
+                id="new_email"
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="user@example.com"
+                disabled={processingOperation}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangeEmailDialogOpen(false)} disabled={processingOperation}>
+              Cancel
+            </Button>
+            <Button onClick={handleChangeEmail} disabled={processingOperation || !newEmail}>
+              {processingOperation ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : "Update Email"}
             </Button>
           </DialogFooter>
         </DialogContent>
