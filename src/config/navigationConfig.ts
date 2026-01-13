@@ -104,6 +104,7 @@ export const navigationGroups: NavGroup[] = [
       { label: "Setter Efficiency", path: "/setter-efficiency", icon: Timer, pageKey: "setter-efficiency" },
       { label: "Floor Dashboard", path: "/floor-dashboard", icon: Activity, pageKey: "floor-dashboard" },
       { label: "Production Progress", path: "/production-progress", icon: Activity, pageKey: "production-progress" },
+      { label: "External Processing", path: "/external-processing-performance", icon: Handshake, pageKey: "external-processing" },
     ]
   },
   {
@@ -152,14 +153,6 @@ export const navigationGroups: NavGroup[] = [
       { label: "Dispatch", path: "/dispatch", icon: Truck, pageKey: "dispatch" },
     ]
   },
-  {
-    title: "External Processes",
-    icon: Handshake,
-    allowedRoles: ['admin', 'production', 'logistics', 'ops_manager'],
-    items: [
-      { label: "External Processing", path: "/external-processing-performance", icon: Handshake, pageKey: "external-processing" },
-    ]
-  }
 ];
 
 /**
