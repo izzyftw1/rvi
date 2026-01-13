@@ -30,6 +30,9 @@ interface PermissionResult {
  * Covers ALL routes in App.tsx - both navigation and non-navigation pages
  */
 export const routeToPageKey: Record<string, string> = {
+  // === HOME DASHBOARD (Management-level, Admin/Finance/Super Admin only) ===
+  '/': 'home-dashboard',
+  
   // === SALES & CUSTOMERS ===
   '/sales': 'sales-orders',
   '/customers': 'customers',
@@ -126,6 +129,9 @@ export const routeToPageKey: Record<string, string> = {
  * Used in Admin UI for permission management
  */
 export const PAGE_KEYS: Record<string, string> = {
+  // Home Dashboard (management only)
+  'home-dashboard': 'Home Dashboard',
+  
   // Sales & Customers
   'sales-orders': 'Sales Orders',
   'customers': 'Customers',

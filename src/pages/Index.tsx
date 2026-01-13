@@ -45,6 +45,7 @@ import { QualityLossSignals } from "@/components/dashboard/QualityLossSignals";
 import { DeliveryRiskPanel } from "@/components/dashboard/DeliveryRiskPanel";
 import { CriticalTodayStrip } from "@/components/dashboard/CriticalTodayStrip";
 import { LossImpactIndicator } from "@/components/dashboard/LossImpactIndicator";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 interface DashboardSummary {
   material_waiting_qc: number;
@@ -76,6 +77,7 @@ interface ExternalProcessData {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { isBypassUser, userDepartmentType, loading: permissionsLoading } = useDepartmentPermissions();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -92,6 +94,26 @@ const Index = () => {
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<OperatingMode>("internal");
+
+  // Department-based redirect mapping for non-admin users
+  const departmentLandingPages: Record<string, string> = {
+    production: '/work-orders',
+    quality: '/quality',
+    sales: '/sales',
+    packing: '/packing',
+    design: '/items',
+  };
+
+  // Redirect non-admin users to their department landing page
+  useEffect(() => {
+    if (permissionsLoading) return;
+    
+    // Only bypass users (admin, finance, super_admin) can see the main dashboard
+    if (!isBypassUser && userDepartmentType) {
+      const landingPage = departmentLandingPages[userDepartmentType] || '/work-orders';
+      navigate(landingPage, { replace: true });
+    }
+  }, [permissionsLoading, isBypassUser, userDepartmentType, navigate]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -240,7 +262,8 @@ const Index = () => {
   const externalActiveTotal = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.activeMoves ?? 0), 0);
   const externalWipPcs = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.pcs ?? 0), 0);
 
-  if (loading) {
+  // Show loading while checking permissions or data
+  if (loading || permissionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -249,6 +272,11 @@ const Index = () => {
         </div>
       </div>
     );
+  }
+
+  // Non-bypass users should be redirected - show nothing while redirect happens
+  if (!isBypassUser) {
+    return null;
   }
 
   return (
