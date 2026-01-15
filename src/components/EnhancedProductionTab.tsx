@@ -47,7 +47,7 @@ export function EnhancedProductionTab({ woId, workOrder }: EnhancedProductionTab
         {
           event: '*',
           schema: 'public',
-          table: 'production_logs',
+          table: 'daily_production_logs',
           filter: `wo_id=eq.${woId}`
         },
         () => {
@@ -63,12 +63,13 @@ export function EnhancedProductionTab({ woId, workOrder }: EnhancedProductionTab
 
   const loadLogs = async () => {
     try {
-      // First get production logs
+      // Query daily_production_logs which is the actual data source
       const { data: logsData, error: logsError } = await supabase
-        .from('production_logs')
+        .from('daily_production_logs')
         .select('*')
         .eq('wo_id', woId)
-        .order('log_timestamp', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (logsError) throw logsError;
 
@@ -76,10 +77,10 @@ export function EnhancedProductionTab({ woId, workOrder }: EnhancedProductionTab
       const machineIds = Array.from(new Set(logsData?.map(l => l.machine_id).filter(Boolean)));
       const operatorIds = Array.from(new Set(logsData?.map(l => l.operator_id).filter(Boolean)));
 
-      const { data: machines } = await supabase
+      const { data: machines } = machineIds.length > 0 ? await supabase
         .from('machines')
         .select('id, machine_id, name')
-        .in('id', machineIds);
+        .in('id', machineIds) : { data: [] };
 
       const { data: profiles } = operatorIds.length > 0 ? await supabase
         .from('profiles')
@@ -87,7 +88,15 @@ export function EnhancedProductionTab({ woId, workOrder }: EnhancedProductionTab
         .in('id', operatorIds as string[]) : { data: [] };
 
       const enriched = (logsData || []).map(log => ({
-        ...log,
+        id: log.id,
+        log_timestamp: log.created_at,
+        machine_id: log.machine_id,
+        operator_id: log.operator_id,
+        run_state: 'production',
+        quantity_completed: log.ok_quantity || log.actual_quantity || 0,
+        quantity_scrap: log.total_rejection_quantity || 0,
+        shift: log.shift,
+        remarks: log.product_description || null,
         machines: machines?.find(m => m.id === log.machine_id),
         profiles: log.operator_id ? profiles?.find(p => p.id === log.operator_id) : null
       }));

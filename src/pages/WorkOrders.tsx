@@ -20,6 +20,7 @@ import { isPast, parseISO, differenceInDays, format as formatDate } from "date-f
 import { cn } from "@/lib/utils";
 import { useWOBatchStages, WOBatchStageBreakdown, getEmptyBreakdown } from "@/hooks/useWOBatchStages";
 import { fetchBatchQuantitiesMultiple } from "@/hooks/useBatchQuantities";
+import { CustomerName } from "@/components/CustomerName";
 
 // Internal stages
 const INTERNAL_STAGES = {
@@ -1828,7 +1829,7 @@ const WorkOrders = () => {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{wo.party_code || wo.customer_name || wo.customer || 'Unknown'}</span>
+                      <CustomerName partyCode={wo.party_code} customerName={wo.customer_name || wo.customer} />
                       <span>•</span>
                       <span>{wo.item_code}</span>
                       <span>•</span>

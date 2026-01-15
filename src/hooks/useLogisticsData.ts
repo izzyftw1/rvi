@@ -90,7 +90,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
   const [cartons, setCartons] = useState<CartonData[]>([]);
   const [dispatches, setDispatches] = useState<DispatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [customers, setCustomers] = useState<{ id: string; customer_name: string }[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; customer_name: string; party_code?: string | null }[]>([]);
   const [workOrders, setWorkOrders] = useState<{ id: string; display_id: string }[]>([]);
 
   const loadData = useCallback(async () => {
@@ -169,7 +169,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       // Load customers for filter
       const { data: customerData } = await supabase
         .from("customer_master")
-        .select("id, customer_name")
+        .select("id, customer_name, party_code")
         .order("customer_name");
       setCustomers(customerData || []);
 

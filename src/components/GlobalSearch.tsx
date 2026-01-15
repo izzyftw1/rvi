@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useCanViewCustomerName } from "@/hooks/useCustomerDisplay";
 
 interface SearchResult {
   id: string;
@@ -28,6 +29,7 @@ export const GlobalSearch = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { hasAnyRole, isFinanceRole } = useUserRole();
+  const { canView: canViewCustomerName } = useCanViewCustomerName();
 
   // Keyboard shortcut: Ctrl+K or Cmd+K
   useEffect(() => {
@@ -71,9 +73,9 @@ export const GlobalSearch = () => {
           allResults.push({
             id: c.id,
             type: 'customer',
-            title: c.customer_name,
+            title: canViewCustomerName ? c.customer_name : (c.party_code || 'Customer'),
             subtitle: c.party_code || undefined,
-            metadata: [c.city, c.country].filter(Boolean).join(', ')
+            metadata: canViewCustomerName ? [c.city, c.country].filter(Boolean).join(', ') : undefined
           });
         });
       }

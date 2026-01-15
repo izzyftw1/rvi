@@ -176,8 +176,58 @@ function formatValue(value: any): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return value.toLocaleString();
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'object') {
+    // Format dates if detected
+    if (value instanceof Date) return format(value, 'dd MMM yyyy, HH:mm');
+    return JSON.stringify(value);
+  }
+  // Check if it's an ISO date string
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    try {
+      return format(new Date(value), 'dd MMM yyyy, HH:mm');
+    } catch {
+      return value;
+    }
+  }
   return String(value);
+}
+
+function formatFieldName(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase())
+    .replace(/Id$/, 'ID')
+    .replace(/Qty/, 'Quantity');
+}
+
+function formatDetailsAsReadable(details: any): React.ReactNode {
+  if (!details || typeof details !== 'object') {
+    return <p className="text-muted-foreground">No additional details</p>;
+  }
+  
+  const entries = Object.entries(details).filter(([key, value]) => 
+    value !== null && value !== undefined && value !== ''
+  );
+  
+  if (entries.length === 0) {
+    return <p className="text-muted-foreground">No additional details</p>;
+  }
+  
+  return (
+    <div className="grid gap-1.5">
+      {entries.map(([key, value]) => (
+        <div key={key} className="flex items-start gap-2">
+          <span className="text-muted-foreground min-w-[100px] shrink-0">{formatFieldName(key)}:</span>
+          <span className="font-medium break-words">
+            {typeof value === 'object' && value !== null 
+              ? JSON.stringify(value, null, 2)
+              : formatValue(value)
+            }
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function getSummary(entry: AuditEntry): string {
@@ -287,7 +337,7 @@ function AuditEntryCard({ entry, isExpanded, onToggle }: {
           </div>
         )}
         
-        {/* Expandable raw details */}
+        {/* Expandable full details */}
         {hasDetails && (
           <Collapsible open={isExpanded} onOpenChange={onToggle}>
             <CollapsibleTrigger asChild>
@@ -297,9 +347,9 @@ function AuditEntryCard({ entry, isExpanded, onToggle }: {
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <pre className="mt-2 p-3 bg-muted rounded-md text-xs overflow-x-auto max-h-48">
-                {JSON.stringify(entry.action_details, null, 2)}
-              </pre>
+              <div className="mt-2 p-3 bg-muted rounded-md text-xs space-y-2 max-h-48 overflow-y-auto">
+                {formatDetailsAsReadable(entry.action_details)}
+              </div>
             </CollapsibleContent>
           </Collapsible>
         )}

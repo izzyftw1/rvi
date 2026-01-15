@@ -177,7 +177,7 @@ export function WOCompletionStatus({ woId, orderedQty, currentStatus, onStatusCh
       detail: `${status.totalProduced.toLocaleString()} / ${status.orderedQty.toLocaleString()} pcs`,
     },
     {
-      label: "Final QC Complete",
+      label: "Dispatch QC Complete",
       icon: FlaskConical,
       passed: status.allBatchesFinalQCComplete,
       detail: `${status.totalFinalQCApproved.toLocaleString()} pcs approved`,
@@ -320,7 +320,7 @@ export function WOCompletionStatus({ woId, orderedQty, currentStatus, onStatusCh
               <span className="font-medium">{status?.totalProduced.toLocaleString()} pcs</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">QC Approved:</span>
+              <span className="text-muted-foreground">Dispatch QC Approved:</span>
               <span className="font-medium">{status?.totalFinalQCApproved.toLocaleString()} pcs</span>
             </div>
             <div className="flex justify-between text-sm">
