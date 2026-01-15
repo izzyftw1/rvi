@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useCustomerDisplayText } from "@/components/CustomerName";
 
 interface Customer {
   id: string;
@@ -52,6 +53,7 @@ interface SalesOrder {
 const NewWorkOrder = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { getDisplayText, canView: canViewCustomerName } = useCustomerDisplayText();
   const [loading, setLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [createdWO, setCreatedWO] = useState<any>(null);
@@ -319,10 +321,12 @@ const NewWorkOrder = () => {
                         >
                           {selectedCustomer ? (
                             <span className="truncate">
-                              {selectedCustomer.customer_name}
-                              {selectedCustomer.party_code && (
-                                <span className="text-muted-foreground ml-2">({selectedCustomer.party_code})</span>
-                              )}
+                              {canViewCustomerName 
+                                ? (selectedCustomer.party_code 
+                                    ? `${selectedCustomer.party_code} - ${selectedCustomer.customer_name}`
+                                    : selectedCustomer.customer_name)
+                                : (selectedCustomer.party_code || selectedCustomer.customer_name)
+                              }
                             </span>
                           ) : (
                             <span className="text-muted-foreground">
@@ -358,8 +362,13 @@ const NewWorkOrder = () => {
                                     )}
                                   />
                                   <div className="flex flex-col">
-                                    <span>{customer.customer_name}</span>
-                                    {customer.party_code && (
+                                    <span>
+                                      {canViewCustomerName 
+                                        ? customer.customer_name 
+                                        : (customer.party_code || customer.customer_name)
+                                      }
+                                    </span>
+                                    {customer.party_code && canViewCustomerName && (
                                       <span className="text-xs text-muted-foreground">{customer.party_code}</span>
                                     )}
                                   </div>

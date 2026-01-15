@@ -12,6 +12,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CustomerName } from "@/components/CustomerName";
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -29,7 +30,7 @@ export default function Invoices() {
         .from("invoices")
         .select(`
           *,
-          customer_master!customer_id(customer_name),
+          customer_master!customer_id(customer_name, party_code),
           ar_followups(next_followup_date)
         `)
         .order("invoice_date", { ascending: false });
@@ -188,7 +189,12 @@ export default function Invoices() {
                       return (
                         <TableRow key={invoice.id}>
                           <TableCell className="font-medium">{invoice.invoice_no}</TableCell>
-                          <TableCell>{invoice.customer_master?.customer_name || '—'}</TableCell>
+                          <TableCell>
+                            <CustomerName 
+                              customerName={invoice.customer_master?.customer_name}
+                              partyCode={invoice.customer_master?.party_code}
+                            />
+                          </TableCell>
                           <TableCell>{format(new Date(invoice.invoice_date), 'MMM dd, yyyy')}</TableCell>
                           <TableCell>{format(new Date(invoice.due_date), 'MMM dd, yyyy')}</TableCell>
                           <TableCell className="text-right">

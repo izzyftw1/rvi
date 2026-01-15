@@ -75,13 +75,19 @@ export default function CustomerMaster() {
       .from("customer_last_order" as any)
       .select("*");
     
-    // Load users for account owner display
+    // Load users for account owner display and derive their emails
     const { data: profilesData } = await supabase
       .from("profiles")
       .select("id, full_name");
     
+    // Derive emails from names for known salespeople
+    const enrichedProfiles = (profilesData || []).map(p => ({
+      ...p,
+      email: deriveEmailFromName(p.full_name)
+    }));
+    
     if (customersData) setCustomers(customersData);
-    if (profilesData) setUsers(profilesData);
+    if (enrichedProfiles) setUsers(enrichedProfiles);
     
     // Map last order dates
     if (orderDates) {
@@ -107,13 +113,38 @@ export default function CustomerMaster() {
     }
   };
 
+  // Derive email from name for known salespeople
+  const deriveEmailFromName = (name: string | null): string | null => {
+    if (!name) return null;
+    const nameLower = name.toLowerCase().trim();
+    const firstName = nameLower.split(' ')[0];
+    
+    const nameToEmail: Record<string, string> = {
+      'sales': 'sales@brasspartsindia.net',
+      'abhi': 'abhi@brasspartsindia.net',
+      'ronak': 'ronak@brasspartsindia.net',
+      'amit': 'amit@brasspartsindia.net',
+      'mitul': 'mitul@brasspartsindia.net',
+      'nitish': 'nitish@brasspartsindia.net',
+      'harsha': 'harsha@brasspartsindia.net',
+      'sahil': 'sahil@brasspartsindia.net',
+      'atulkumar': 'atulkumar@brasspartsindia.net',
+      'atul': 'atulkumar@brasspartsindia.net',
+      'marcin': 'marcin@brasspartsindia.net',
+      'dhaval': 'dhaval@brasspartsindia.net',
+    };
+    
+    return nameToEmail[firstName] || null;
+  };
+
   // Generate party code based on form data
   const generatePartyCodeForForm = () => {
     const selectedUser = users.find(u => u.id === formData.account_owner);
     return generateDeterministicPartyCode({
       country: formData.country,
       state: formData.state,
-      salespersonName: selectedUser?.full_name,
+      salespersonEmail: selectedUser?.email, // Use email for accurate code lookup
+      salespersonName: selectedUser?.full_name, // Fallback to name
       existingPartyCodes,
     });
   };

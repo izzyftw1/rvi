@@ -27,6 +27,7 @@ import { PROCESS_TYPES } from "@/config/materialMasters";
 import { PackagingCalculator, PackagingRow, PACKAGING_OPTIONS } from "@/components/logistics/PackagingCalculator";
 import { PCSEstimationSection, PCSEstimation } from "@/components/logistics/PCSEstimationSection";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
+import { useCanViewCustomerName } from "@/hooks/useCustomerDisplay";
 
 interface Supplier {
   id: string;
@@ -183,6 +184,7 @@ const MATERIAL_TYPES = [
 export default function GateRegister() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const { canView: canViewCustomerName } = useCanViewCustomerName();
   const [activeTab, setActiveTab] = useState<'goods_in' | 'goods_out' | 'ledger'>('goods_in');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);

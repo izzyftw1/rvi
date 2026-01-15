@@ -60,10 +60,63 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
   }, [open]);
 
   const loadUsers = async () => {
-    const { data } = await supabase
+    // First get profiles
+    const { data: profilesData } = await supabase
       .from("profiles")
       .select("id, full_name");
-    if (data) setUsers(data);
+    
+    // Get emails from auth users via edge function or RPC - for now use profiles id
+    // The id in profiles matches auth.users.id, so we can look up emails
+    const profiles = profilesData || [];
+    
+    // Try to get emails for these users - the id is the auth.users id
+    // We'll enrich with email lookup
+    const enrichedProfiles = await Promise.all(
+      profiles.map(async (p) => {
+        // Try to get email from supplier_accounts or other sources
+        const { data: accountData } = await supabase
+          .from("supplier_accounts")
+          .select("user_id")
+          .eq("user_id", p.id)
+          .limit(1);
+        
+        // For now, we'll use full_name to derive email pattern for known salespeople
+        // This matches the offline logic where salespeople have specific emails
+        const emailFromName = deriveEmailFromName(p.full_name);
+        
+        return {
+          ...p,
+          email: emailFromName
+        };
+      })
+    );
+    
+    if (enrichedProfiles) setUsers(enrichedProfiles);
+  };
+  
+  // Derive email from name for known salespeople
+  const deriveEmailFromName = (name: string | null): string | null => {
+    if (!name) return null;
+    const nameLower = name.toLowerCase().trim();
+    const firstName = nameLower.split(' ')[0];
+    
+    // Map known names to their emails
+    const nameToEmail: Record<string, string> = {
+      'sales': 'sales@brasspartsindia.net',
+      'abhi': 'abhi@brasspartsindia.net',
+      'ronak': 'ronak@brasspartsindia.net',
+      'amit': 'amit@brasspartsindia.net',
+      'mitul': 'mitul@brasspartsindia.net',
+      'nitish': 'nitish@brasspartsindia.net',
+      'harsha': 'harsha@brasspartsindia.net',
+      'sahil': 'sahil@brasspartsindia.net',
+      'atulkumar': 'atulkumar@brasspartsindia.net',
+      'atul': 'atulkumar@brasspartsindia.net',
+      'marcin': 'marcin@brasspartsindia.net',
+      'dhaval': 'dhaval@brasspartsindia.net',
+    };
+    
+    return nameToEmail[firstName] || null;
   };
 
   const loadExistingPartyCodes = async () => {
@@ -82,7 +135,8 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
     return generateDeterministicPartyCode({
       country: formData.country,
       state: formData.state,
-      salespersonName: selectedUser?.full_name,
+      salespersonEmail: selectedUser?.email, // Use email for accurate code lookup
+      salespersonName: selectedUser?.full_name, // Fallback to name
       existingPartyCodes,
     });
   };
