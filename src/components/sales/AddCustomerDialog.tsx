@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FormSection, FormRow, FormField, FormActions, FormContainer, RequiredIndicator } from "@/components/ui/form-layout";
 import { getTdsRate, getPanEntityType, isValidPan } from "@/lib/tdsUtils";
 import { Badge } from "@/components/ui/badge";
+import { generatePartyCode as generateDeterministicPartyCode } from "@/lib/partyCodeGenerator";
 
 const COUNTRIES = [
   "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain",
@@ -29,6 +30,7 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
+  const [existingPartyCodes, setExistingPartyCodes] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     customer_name: "",
     party_code: "",
@@ -53,6 +55,7 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
   useEffect(() => {
     if (open) {
       loadUsers();
+      loadExistingPartyCodes();
     }
   }, [open]);
 
@@ -63,10 +66,25 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
     if (data) setUsers(data);
   };
 
-  const generatePartyCode = (name: string) => {
-    const prefix = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    return `${prefix}${randomNum}`;
+  const loadExistingPartyCodes = async () => {
+    const { data } = await supabase
+      .from("customer_master")
+      .select("party_code")
+      .not("party_code", "is", null);
+    if (data) {
+      setExistingPartyCodes(data.map(c => c.party_code).filter(Boolean));
+    }
+  };
+
+  // Generate party code based on current form state
+  const generatePartyCodeForForm = () => {
+    const selectedUser = users.find(u => u.id === formData.account_owner);
+    return generateDeterministicPartyCode({
+      country: formData.country,
+      state: formData.state,
+      salespersonName: selectedUser?.full_name,
+      existingPartyCodes,
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -86,7 +104,7 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
     try {
       const dataToSave = {
         customer_name: formData.customer_name,
-        party_code: formData.party_code || generatePartyCode(formData.customer_name),
+        party_code: formData.party_code || generatePartyCodeForForm(),
         account_owner: formData.account_owner || null,
         address_line_1: formData.address_line_1 || null,
         pincode: formData.pincode || null,
@@ -162,11 +180,9 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
               <Input
                 value={formData.customer_name}
                 onChange={(e) => {
-                  const name = e.target.value;
                   setFormData({
                     ...formData,
-                    customer_name: name,
-                    party_code: formData.party_code || (name.length >= 3 ? generatePartyCode(name) : "")
+                    customer_name: e.target.value,
                   });
                 }}
                 placeholder="Enter customer name"
@@ -176,11 +192,27 @@ export function AddCustomerDialog({ open, onOpenChange, onCustomerAdded }: AddCu
             <FormRow>
               <FormField>
                 <Label>Party Code</Label>
-                <Input
-                  value={formData.party_code}
-                  onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
-                  placeholder="Auto-generated"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    value={formData.party_code}
+                    onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
+                    placeholder="Auto-generated on save"
+                    readOnly
+                    className="bg-muted"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setFormData({ ...formData, party_code: generatePartyCodeForForm() })}
+                    disabled={!formData.country}
+                  >
+                    Preview
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Code generated automatically based on country, state, and account owner
+                </p>
               </FormField>
               <FormField>
                 <Label>Account Owner</Label>
