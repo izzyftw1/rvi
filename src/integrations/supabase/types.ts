@@ -10585,6 +10585,10 @@ export type Database = {
           total_scrap: number
         }[]
       }
+      has_department_type: {
+        Args: { _dept_type: string; _user_id: string }
+        Returns: boolean
+      }
       has_permission: {
         Args: { _action: string; _module: string; _user_id: string }
         Returns: boolean
@@ -10597,7 +10601,9 @@ export type Database = {
         Returns: boolean
       }
       is_admin_department: { Args: { user_id: string }; Returns: boolean }
+      is_admin_user: { Args: { _user_id: string }; Returns: boolean }
       is_finance_role: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       is_supplier_user: { Args: { _user_id: string }; Returns: boolean }
       manage_user_role: {
         Args: {

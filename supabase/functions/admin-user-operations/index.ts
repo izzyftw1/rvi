@@ -96,7 +96,32 @@ serve(async (req) => {
 
     switch (operation) {
       case 'delete': {
-        // Delete the user from auth.users (this will cascade to profiles due to FK)
+        // First, clean up related data that might have foreign key constraints
+        // Delete user_roles entries
+        await supabaseAdmin
+          .from('user_roles')
+          .delete()
+          .eq('user_id', target_user_id);
+
+        // Delete user_permission_overrides
+        await supabaseAdmin
+          .from('user_permission_overrides')
+          .delete()
+          .eq('user_id', target_user_id);
+
+        // Delete supplier_accounts linked to this user
+        await supabaseAdmin
+          .from('supplier_accounts')
+          .delete()
+          .eq('user_id', target_user_id);
+
+        // Delete the profile (should cascade from auth.users but do it explicitly)
+        await supabaseAdmin
+          .from('profiles')
+          .delete()
+          .eq('id', target_user_id);
+
+        // Finally delete the user from auth.users
         const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(target_user_id);
         if (deleteError) {
           throw new Error(`Failed to delete user: ${deleteError.message}`);
