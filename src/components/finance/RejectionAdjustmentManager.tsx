@@ -52,6 +52,7 @@ export function RejectionAdjustmentManager() {
   const [adjustments, setAdjustments] = useState<CreditAdjustment[]>([]);
   const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [applying, setApplying] = useState(false);
   
@@ -77,9 +78,10 @@ export function RejectionAdjustmentManager() {
   }, []);
 
   const loadData = async () => {
+    setLoadError(null);
     try {
       // Load credit adjustments with pending/partial status
-      const { data: adjData } = await supabase
+      const { data: adjData, error: adjError } = await supabase
         .from("customer_credit_adjustments")
         .select(`
           *,
@@ -88,6 +90,11 @@ export function RejectionAdjustmentManager() {
           ncrs!ncr_id(ncr_number)
         `)
         .order("created_at", { ascending: false });
+
+      if (adjError) {
+        console.error("Error loading adjustments:", adjError);
+        setLoadError(`Failed to load adjustments: ${adjError.message}`);
+      }
 
       const formattedAdj = (adjData || []).map((adj: any) => ({
         ...adj,
@@ -98,7 +105,7 @@ export function RejectionAdjustmentManager() {
       setAdjustments(formattedAdj);
 
       // Load invoices that can be short-closed
-      const { data: invData } = await supabase
+      const { data: invData, error: invError } = await supabase
         .from("invoices")
         .select(`
           id, invoice_no, customer_id, currency, total_amount, balance_amount, status,
@@ -108,23 +115,38 @@ export function RejectionAdjustmentManager() {
         .gt("balance_amount", 0)
         .order("invoice_no");
 
+      if (invError) {
+        console.error("Error loading invoices:", invError);
+        setLoadError(prev => prev ? `${prev}; Failed to load invoices: ${invError.message}` : `Failed to load invoices: ${invError.message}`);
+      }
+
       setPendingInvoices((invData || []).map((inv: any) => ({
         ...inv,
         customer_name: inv.customer_master?.customer_name
       })));
 
       // Load open NCRs for linking
-      const { data: ncrData } = await supabase
+      const { data: ncrData, error: ncrError } = await supabase
         .from("ncrs")
         .select("id, ncr_number, rejected_quantity, item_code, disposition")
         .in("status", ["OPEN", "ACTION_IN_PROGRESS"])
         .order("created_at", { ascending: false })
         .limit(50);
 
+      if (ncrError) {
+        console.error("Error loading NCRs:", ncrError);
+      }
+
       setNcrs(ncrData || []);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading data:", error);
+      setLoadError(error.message || "Failed to load data");
+      toast({
+        title: "Error loading data",
+        description: error.message || "Failed to load adjustment data",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -292,6 +314,22 @@ export function RejectionAdjustmentManager() {
 
   if (loading) {
     return <div className="text-center py-8 text-muted-foreground">Loading...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            {loadError}
+          </AlertDescription>
+        </Alert>
+        <Button onClick={() => loadData()} variant="outline">
+          Retry
+        </Button>
+      </div>
+    );
   }
 
   return (

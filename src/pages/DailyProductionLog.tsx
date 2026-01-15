@@ -435,10 +435,10 @@ export default function DailyProductionLog() {
     setSelectedWO(wo || null);
     form.setValue("wo_id", nextWOId);
 
-    // Reset target override when WO changes
-    setEnableTargetOverride(false);
-    setTargetOverride("");
-    setTargetOverrideReason("");
+    // Reset cycle time override when WO changes
+    setEnableCycleTimeOverride(false);
+    setCycleTimeOverride("");
+    setCycleTimeOverrideReason("");
     
     // Check for overproduction warning
     if (wo) {
@@ -505,11 +505,11 @@ export default function DailyProductionLog() {
       return;
     }
 
-    // Validate target override if enabled
-    if (enableTargetOverride && !targetOverrideReason.trim()) {
+    // Validate cycle time override if enabled
+    if (enableCycleTimeOverride && !cycleTimeOverrideReason.trim()) {
       toast({
         title: "Override Reason Required",
-        description: "Please provide a reason for the target override",
+        description: "Please provide a reason for the cycle time override",
         variant: "destructive",
       });
       return;
@@ -541,11 +541,11 @@ export default function DailyProductionLog() {
         created_by: userData.user?.id,
       };
 
-      // Add target override fields if applicable
-      if (enableTargetOverride && targetOverride) {
-        insertData.target_override = parseInt(targetOverride, 10);
-        insertData.target_override_reason = targetOverrideReason;
-        insertData.target_override_by = userData.user?.id;
+      // Add cycle time override fields if applicable
+      if (enableCycleTimeOverride && cycleTimeOverride) {
+        insertData.cycle_time_override = parseFloat(cycleTimeOverride);
+        insertData.cycle_time_override_reason = cycleTimeOverrideReason;
+        insertData.cycle_time_override_by = userData.user?.id;
       }
 
       // Add optional fields and get/create batch
@@ -599,18 +599,18 @@ export default function DailyProductionLog() {
       if (logData && userData.user?.id) {
         const auditEntries = [];
         
-        // Log target override if applied
-        if (enableTargetOverride && targetOverride) {
+        // Log cycle time override if applied
+        if (enableCycleTimeOverride && cycleTimeOverride) {
           auditEntries.push({
             user_id: userData.user.id,
-            action_type: 'target_override',
+            action_type: 'cycle_time_override',
             module: 'production_log',
             entity_type: 'daily_production_logs',
             entity_id: logData.id,
             action_details: {
-              original_target: calculatedTargetQuantity,
-              override_target: parseInt(targetOverride, 10),
-              reason: targetOverrideReason,
+              original_cycle_time: selectedWO?.cycle_time_seconds,
+              override_cycle_time: parseFloat(cycleTimeOverride),
+              reason: cycleTimeOverrideReason,
             },
           });
         }
@@ -681,9 +681,9 @@ export default function DailyProductionLog() {
     setDowntimeEvents([]);
     setNewDowntimeDuration("");
     setNewDowntimeRemark("");
-    setEnableTargetOverride(false);
-    setTargetOverride("");
-    setTargetOverrideReason("");
+    setEnableCycleTimeOverride(false);
+    setCycleTimeOverride("");
+    setCycleTimeOverrideReason("");
     setRejectionBreakdown({
       rejection_dent: 0,
       rejection_scratch: 0,
@@ -1322,46 +1322,47 @@ export default function DailyProductionLog() {
                           </div>
                         </div>
 
-                        {/* Target Override (Admin Only) */}
-                        {isAdmin ? (
-                          <div className="sm:col-span-2 space-y-3 p-3 border border-dashed border-amber-500/50 bg-amber-50/30 dark:bg-amber-900/10 rounded-lg">
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id="target-override"
-                                checked={enableTargetOverride}
-                                onCheckedChange={(checked) => setEnableTargetOverride(checked as boolean)}
-                              />
-                              <label htmlFor="target-override" className="text-sm font-medium cursor-pointer">
-                                Override Target (Admin Only)
-                              </label>
-                            </div>
-                            
-                            {enableTargetOverride && (
-                              <div className="space-y-2">
+                        {/* Cycle Time Override (Available to all users) */}
+                        <div className="sm:col-span-2 space-y-3 p-3 border border-dashed border-blue-500/50 bg-blue-50/30 dark:bg-blue-900/10 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="cycle-time-override"
+                              checked={enableCycleTimeOverride}
+                              onCheckedChange={(checked) => setEnableCycleTimeOverride(checked as boolean)}
+                            />
+                            <label htmlFor="cycle-time-override" className="text-sm font-medium cursor-pointer">
+                              Override Cycle Time
+                            </label>
+                          </div>
+                          
+                          {enableCycleTimeOverride && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
                                 <Input
                                   type="number"
-                                  placeholder="Override target quantity"
-                                  value={targetOverride}
-                                  onChange={(e) => setTargetOverride(e.target.value)}
-                                  min="1"
+                                  placeholder="Cycle time in seconds"
+                                  value={cycleTimeOverride}
+                                  onChange={(e) => setCycleTimeOverride(e.target.value)}
+                                  min="0.1"
+                                  step="0.1"
                                 />
-                                <Textarea
-                                  placeholder="Reason for override (required)"
-                                  value={targetOverrideReason}
-                                  onChange={(e) => setTargetOverrideReason(e.target.value)}
-                                  rows={2}
-                                  className="resize-none"
-                                />
+                                <span className="text-sm text-muted-foreground whitespace-nowrap">seconds</span>
                               </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="sm:col-span-2 p-3 border border-dashed rounded-lg bg-muted/30">
-                            <p className="text-xs text-muted-foreground text-center">
-                              Target override requires Admin role
-                            </p>
-                          </div>
-                        )}
+                              {selectedWO?.cycle_time_seconds && (
+                                <p className="text-xs text-muted-foreground">
+                                  Original: {selectedWO.cycle_time_seconds}s
+                                </p>
+                              )}
+                              <Textarea
+                                placeholder="Reason for override (required)"
+                                value={cycleTimeOverrideReason}
+                                onChange={(e) => setCycleTimeOverrideReason(e.target.value)}
+                                rows={2}
+                                className="resize-none"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
