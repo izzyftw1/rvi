@@ -8,11 +8,12 @@ import { CalendarIcon, X, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { LogisticsFilters } from "@/hooks/useLogisticsData";
+import { useCanViewCustomerName } from "@/hooks/useCustomerDisplay";
 
 interface LogisticsFiltersBarProps {
   filters: LogisticsFilters;
   onFilterChange: (filters: Partial<LogisticsFilters>) => void;
-  customers: { id: string; customer_name: string }[];
+  customers: { id: string; customer_name: string; party_code?: string | null }[];
   workOrders: { id: string; display_id: string }[];
 }
 
@@ -22,6 +23,7 @@ export const LogisticsFiltersBar = memo(({
   customers, 
   workOrders 
 }: LogisticsFiltersBarProps) => {
+  const { canView: canViewCustomerName } = useCanViewCustomerName();
   const hasActiveFilters = filters.customer || filters.workOrder || filters.itemCode || 
     filters.dispatchStatus || filters.dateRange.from || filters.dateRange.to;
 
@@ -85,7 +87,12 @@ export const LogisticsFiltersBar = memo(({
         <SelectContent>
           <SelectItem value="all">All Customers</SelectItem>
           {customers.map((c) => (
-            <SelectItem key={c.id} value={c.customer_name}>{c.customer_name}</SelectItem>
+            <SelectItem key={c.id} value={c.customer_name}>
+              {canViewCustomerName 
+                ? (c.party_code ? `${c.party_code} - ${c.customer_name}` : c.customer_name)
+                : (c.party_code || c.customer_name)
+              }
+            </SelectItem>
           ))}
         </SelectContent>
       </Select>

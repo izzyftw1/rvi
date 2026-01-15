@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CustomerName, useCustomerDisplayText } from "@/components/CustomerName";
 
 interface CustomerReceipt {
   id: string;
@@ -32,12 +33,14 @@ interface CustomerReceipt {
   notes: string | null;
   customer_master?: {
     customer_name: string;
+    party_code: string | null;
   };
 }
 
 interface Customer {
   id: string;
   customer_name: string;
+  party_code: string | null;
 }
 
 export default function Payments() {
@@ -70,7 +73,7 @@ export default function Payments() {
         .from("customer_receipts")
         .select(`
           *,
-          customer_master!customer_receipts_customer_id_fkey(customer_name)
+          customer_master!customer_receipts_customer_id_fkey(customer_name, party_code)
         `)
         .order("receipt_date", { ascending: false });
 
@@ -92,7 +95,7 @@ export default function Payments() {
     try {
       const { data } = await supabase
         .from("customer_master")
-        .select("id, customer_name")
+        .select("id, customer_name, party_code")
         .order("customer_name");
 
       setCustomers(data || []);
@@ -324,7 +327,7 @@ export default function Payments() {
                           <SelectContent>
                             {customers.map((cust) => (
                               <SelectItem key={cust.id} value={cust.id}>
-                                {cust.customer_name}
+                                {cust.party_code ? `${cust.party_code} - ${cust.customer_name}` : cust.customer_name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -481,7 +484,12 @@ export default function Payments() {
                       <TableRow key={receipt.id}>
                         <TableCell className="font-medium">{receipt.receipt_no}</TableCell>
                         <TableCell>{format(new Date(receipt.receipt_date), "MMM dd, yyyy")}</TableCell>
-                        <TableCell>{receipt.customer_master?.customer_name || "—"}</TableCell>
+                        <TableCell>
+                          <CustomerName 
+                            customerName={receipt.customer_master?.customer_name}
+                            partyCode={receipt.customer_master?.party_code}
+                          />
+                        </TableCell>
                         <TableCell className="text-right font-medium">
                           {receipt.currency} {Number(receipt.total_amount).toLocaleString()}
                         </TableCell>
