@@ -745,7 +745,7 @@ const WorkOrderDetail = () => {
                 variant="default"
                 size="sm"
                 disabled={qcGatesBlocked || productionNotReleased}
-                title={qcGatesBlocked ? 'QC gates must pass or be waived before assigning machines' : productionNotReleased ? 'Unlock production logging first' : ''}
+                title={qcGatesBlocked ? 'Material QC must pass before assigning machines' : productionNotReleased ? 'Unlock production logging first' : ''}
               >
                 <Cpu className="h-4 w-4 mr-2" />
                 Assign Machines

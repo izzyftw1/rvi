@@ -19,9 +19,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { downloadCSV } from "@/lib/exportHelpers";
+import { useCanViewCustomerName } from "@/hooks/useCustomerDisplay";
 
 export default function Logistics() {
   const navigate = useNavigate();
+  const { canView: canViewCustomerName } = useCanViewCustomerName();
   const [filters, setFilters] = useState<LogisticsFilters>({
     dateRange: { from: null, to: null },
     customer: "",
@@ -197,7 +199,9 @@ export default function Logistics() {
                 <SelectContent>
                   <SelectItem value="all">All Customers</SelectItem>
                   {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.customer_name}>{c.customer_name}</SelectItem>
+                    <SelectItem key={c.id} value={c.customer_name}>
+                      {canViewCustomerName ? c.customer_name : (c.party_code || c.customer_name)}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
