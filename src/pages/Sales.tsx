@@ -469,9 +469,37 @@ export default function Sales() {
       });
       if (error) throw new Error(error.message || 'Failed to generate proforma');
       if (!data?.success) throw new Error(data?.error || 'Failed to generate proforma');
+      
+      // Force download by fetching the PDF and creating a blob
       if (data.downloadUrl) {
-        window.open(data.downloadUrl, '_blank');
+        try {
+          const response = await fetch(data.downloadUrl);
+          if (!response.ok) throw new Error('Failed to fetch PDF');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `Proforma-${data.proformaNo || order.so_number || 'Invoice'}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        } catch (fetchError) {
+          // Fallback to window.open if fetch fails
+          const newWindow = window.open(data.downloadUrl, '_blank');
+          if (!newWindow) {
+            // If popup blocked, create a download link
+            const link = document.createElement('a');
+            link.href = data.downloadUrl;
+            link.target = '_blank';
+            link.download = `Proforma-${data.proformaNo || 'Invoice'}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+        }
       }
+      
       toast({ description: data.isExisting 
         ? `Proforma invoice ${data.proformaNo} downloaded`
         : `Proforma invoice ${data.proformaNo} generated and saved` 
