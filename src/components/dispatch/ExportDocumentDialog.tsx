@@ -26,6 +26,7 @@ export interface ExportDocumentFields {
   kindOfPackages: string;
   preCarriageBy: string;
   placeOfReceipt: string;
+  documentNo: string; // For invoice or packing list number override
 }
 
 export interface PackingDataFromERP {
@@ -89,6 +90,7 @@ export function ExportDocumentDialog({
     kindOfPackages: existingData?.kindOfPackages || 'BOXES',
     preCarriageBy: existingData?.preCarriageBy || 'N.A.',
     placeOfReceipt: existingData?.placeOfReceipt || 'N.A.',
+    documentNo: existingData?.documentNo || '',
   });
 
   // Update fields when packingData changes
@@ -122,6 +124,28 @@ export function ExportDocumentDialog({
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
+          {/* Document Number Override */}
+          <div className="space-y-3 p-3 border border-dashed border-primary/30 rounded-lg bg-primary/5">
+            <h4 className="font-medium text-sm flex items-center gap-2">
+              <FileDown className="h-4 w-4" />
+              {documentType === 'invoice' ? 'Invoice Number' : 'Packing List Number'}
+            </h4>
+            <div className="space-y-2">
+              <Label htmlFor="documentNo">
+                {documentType === 'invoice' ? 'Invoice Number' : 'Packing List Number'} (Optional Override)
+              </Label>
+              <Input
+                id="documentNo"
+                value={fields.documentNo}
+                onChange={(e) => setFields(prev => ({ ...prev, documentNo: e.target.value }))}
+                placeholder={documentType === 'invoice' ? 'Leave blank for auto-generated INV-xxx' : 'Leave blank for auto-generated PL-xxx'}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to use the default auto-generated number
+              </p>
+            </div>
+          </div>
+
           {/* Auto-populated Packing Details from ERP */}
           {packingData && (packingData.totalCartons > 0 || packingData.totalGrossWeight > 0) && (
             <Alert className="bg-muted/50">

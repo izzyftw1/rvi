@@ -98,18 +98,22 @@ export const DispatchQCInspectionForm = ({
   }, [measurements]);
 
   // Load existing dispatch QC approved quantity to calculate remaining available
+  // Only count approved qty - rejected pieces at Dispatch QC don't reduce the eligible pool
+  // because production rejections are ALREADY excluded from totalOKQty
   const loadExistingDispatchQCQuantity = async () => {
     try {
       const { data, error } = await supabase
         .from('dispatch_qc_batches')
-        .select('qc_approved_quantity, rejected_quantity')
+        .select('qc_approved_quantity, consumed_quantity')
         .eq('work_order_id', workOrderId);
 
       if (error) throw error;
       
+      // Only count approved quantities (pieces that moved forward to packing)
+      // Rejected pieces at Dispatch QC are scrapped - they don't reduce the eligible pool
+      // because totalOKQty already excludes production rejections
       const totalApproved = (data || []).reduce((sum, b) => sum + (b.qc_approved_quantity || 0), 0);
-      const totalRejected = (data || []).reduce((sum, b) => sum + (b.rejected_quantity || 0), 0);
-      setExistingApprovedQty(totalApproved + totalRejected);
+      setExistingApprovedQty(totalApproved);
     } catch (error) {
       console.error('Error loading existing dispatch QC quantity:', error);
     }

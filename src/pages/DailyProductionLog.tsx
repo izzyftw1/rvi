@@ -240,10 +240,10 @@ export default function DailyProductionLog() {
   const [newDowntimeDuration, setNewDowntimeDuration] = useState<string>("");
   const [newDowntimeRemark, setNewDowntimeRemark] = useState<string>("");
 
-  // Target override state (Supervisor only)
-  const [enableTargetOverride, setEnableTargetOverride] = useState(false);
-  const [targetOverride, setTargetOverride] = useState<string>("");
-  const [targetOverrideReason, setTargetOverrideReason] = useState<string>("");
+  // Cycle time override state (available to all users)
+  const [enableCycleTimeOverride, setEnableCycleTimeOverride] = useState(false);
+  const [cycleTimeOverride, setCycleTimeOverride] = useState<string>("");
+  const [cycleTimeOverrideReason, setCycleTimeOverrideReason] = useState<string>("");
 
   // Rejection breakdown state
   const [rejectionBreakdown, setRejectionBreakdown] = useState<RejectionBreakdown>({
@@ -295,19 +295,22 @@ export default function DailyProductionLog() {
     return Math.max(0, shiftDurationMinutes - totalDowntimeMinutes);
   }, [shiftDurationMinutes, totalDowntimeMinutes]);
 
-  // Calculate target quantity: (runtime minutes × 60) / cycle time seconds
-  const calculatedTargetQuantity = useMemo(() => {
-    return calculateTargetQuantity(actualRuntimeMinutes, selectedWO?.cycle_time_seconds || null);
-  }, [actualRuntimeMinutes, selectedWO?.cycle_time_seconds]);
-
-  // Effective target (override if set, otherwise calculated)
-  const effectiveTarget = useMemo(() => {
-    if (enableTargetOverride && targetOverride) {
-      const override = parseInt(targetOverride, 10);
+  // Get effective cycle time (override if set, otherwise from WO)
+  const effectiveCycleTime = useMemo(() => {
+    if (enableCycleTimeOverride && cycleTimeOverride) {
+      const override = parseFloat(cycleTimeOverride);
       if (!isNaN(override) && override > 0) return override;
     }
-    return calculatedTargetQuantity;
-  }, [enableTargetOverride, targetOverride, calculatedTargetQuantity]);
+    return selectedWO?.cycle_time_seconds || null;
+  }, [enableCycleTimeOverride, cycleTimeOverride, selectedWO?.cycle_time_seconds]);
+
+  // Calculate target quantity: (runtime minutes × 60) / cycle time seconds
+  const calculatedTargetQuantity = useMemo(() => {
+    return calculateTargetQuantity(actualRuntimeMinutes, effectiveCycleTime);
+  }, [actualRuntimeMinutes, effectiveCycleTime]);
+
+  // Effective target is always the calculated target (using effective cycle time)
+  const effectiveTarget = calculatedTargetQuantity;
 
   // Calculate total rejection quantity
   const totalRejectionQuantity = useMemo(() => {

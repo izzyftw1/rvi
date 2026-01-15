@@ -796,7 +796,7 @@ export default function Dispatch() {
       }));
 
       const invoiceData: CommercialInvoiceData = {
-        invoiceNo: `INV-${pendingShipment.ship_id}`,
+        invoiceNo: fields.documentNo?.trim() || `INV-${pendingShipment.ship_id}`,
         invoiceDate: new Date(pendingShipment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         poNumber: poNumber || undefined,
         poDate: poDate ? new Date(poDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
@@ -847,7 +847,7 @@ export default function Dispatch() {
       }));
 
       const packingListData: PackingListData = {
-        packingListNo: `PL-${pendingShipment.ship_id}`,
+        packingListNo: fields.documentNo?.trim() || `PL-${pendingShipment.ship_id}`,
         date: new Date(pendingShipment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         consignee: {
           name: customer?.customer_name || pendingShipment.customer || "Unknown",
