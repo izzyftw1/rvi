@@ -69,7 +69,7 @@ export const routeToPageKey: Record<string, string> = {
   '/quality': 'quality-dashboard',
   '/qc/incoming': 'qc-incoming',
   '/hourly-qc': 'hourly-qc',
-  '/final-qc': 'final-qc',
+  '/dispatch-qc': 'dispatch-qc',
   '/ncr': 'ncr',
   '/quality/traceability': 'traceability',
   '/quality/documents': 'quality-documents',
@@ -77,7 +77,7 @@ export const routeToPageKey: Record<string, string> = {
   '/tolerance-setup': 'tolerances',
   '/instruments': 'instruments',
   '/genealogy': 'traceability',
-  '/dispatch-qc-report': 'final-qc',
+  '/dispatch-qc-report': 'dispatch-qc',
   
   // === FINANCE ===
   '/finance/dashboard': 'finance-dashboard',
