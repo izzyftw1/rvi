@@ -168,7 +168,7 @@ const FinalQCList = () => {
             ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900" 
             : "hover:border-primary/40"
         }`}
-        onClick={() => navigate(`/final-qc/${wo.id}`)}
+        onClick={() => navigate(`/dispatch-qc/${wo.id}`)}
       >
         <CardContent className="p-4">
           <div className="flex items-center justify-between gap-4">
@@ -235,7 +235,7 @@ const FinalQCList = () => {
               className="gap-2"
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/final-qc/${wo.id}`);
+                navigate(`/dispatch-qc/${wo.id}`);
               }}
             >
               {isReleased ? (
