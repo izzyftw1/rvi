@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
+import { generatePartyCode as generateDeterministicPartyCode } from "@/lib/partyCodeGenerator";
+import { CustomerName, useCustomerDisplayText } from "@/components/CustomerName";
 
 const COUNTRIES = [
   "United States", "United Kingdom", "Canada", "Australia", "Germany", "France", "Italy", "Spain",
@@ -25,8 +27,10 @@ const COUNTRIES = [
 export default function CustomerMaster() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { getDisplayText, canView: canViewCustomerName } = useCustomerDisplayText();
   const [customers, setCustomers] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [existingPartyCodes, setExistingPartyCodes] = useState<string[]>([]);
   const [lastOrderDates, setLastOrderDates] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,6 +58,7 @@ export default function CustomerMaster() {
 
   useEffect(() => {
     loadCustomers();
+    loadExistingPartyCodes();
   }, []);
 
   const loadCustomers = async () => {
@@ -92,10 +97,25 @@ export default function CustomerMaster() {
     setLoading(false);
   };
 
-  const generatePartyCode = (name: string) => {
-    const prefix = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    return `${prefix}${randomNum}`;
+  const loadExistingPartyCodes = async () => {
+    const { data } = await supabase
+      .from("customer_master")
+      .select("party_code")
+      .not("party_code", "is", null);
+    if (data) {
+      setExistingPartyCodes(data.map(c => c.party_code).filter(Boolean));
+    }
+  };
+
+  // Generate party code based on form data
+  const generatePartyCodeForForm = () => {
+    const selectedUser = users.find(u => u.id === formData.account_owner);
+    return generateDeterministicPartyCode({
+      country: formData.country,
+      state: formData.state,
+      salespersonName: selectedUser?.full_name,
+      existingPartyCodes,
+    });
   };
 
   const handleAdd = () => {
@@ -162,7 +182,7 @@ export default function CustomerMaster() {
     try {
       const dataToSave = {
         customer_name: formData.customer_name,
-        party_code: formData.party_code || generatePartyCode(formData.customer_name),
+        party_code: editingCustomer?.party_code || formData.party_code || generatePartyCodeForForm(),
         account_owner: formData.account_owner || null,
         address_line_1: formData.address_line_1 || null,
         pincode: formData.pincode || null,
@@ -401,24 +421,35 @@ export default function CustomerMaster() {
                 <Label>Customer Name *</Label>
                 <Input
                   value={formData.customer_name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setFormData({
-                      ...formData,
-                      customer_name: name,
-                      party_code: formData.party_code || (name.length >= 3 ? generatePartyCode(name) : "")
-                    });
-                  }}
+                  onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
                   placeholder="Enter customer name"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Party Code</Label>
-                <Input
-                  value={formData.party_code}
-                  onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
-                  placeholder="Auto-generated or enter custom code"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    value={formData.party_code}
+                    readOnly={!!editingCustomer}
+                    className={editingCustomer ? "bg-muted" : ""}
+                    onChange={(e) => setFormData({ ...formData, party_code: e.target.value })}
+                    placeholder={editingCustomer ? "Cannot change" : "Auto-generated on save"}
+                  />
+                  {!editingCustomer && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setFormData({ ...formData, party_code: generatePartyCodeForForm() })}
+                      disabled={!formData.country}
+                    >
+                      Preview
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {editingCustomer ? "Party code cannot be changed after creation" : "Generated based on country, state & account owner"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Account Owner</Label>
