@@ -10585,6 +10585,10 @@ export type Database = {
           total_scrap: number
         }[]
       }
+      has_any_department_type: {
+        Args: { _dept_types: string[]; _user_id: string }
+        Returns: boolean
+      }
       has_department_type: {
         Args: { _dept_type: string; _user_id: string }
         Returns: boolean
