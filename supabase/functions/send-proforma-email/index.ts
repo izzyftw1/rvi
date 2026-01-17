@@ -26,6 +26,81 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // ===== AUTHENTICATION CHECK =====
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error("No authorization header provided");
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized: No authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create an authenticated Supabase client to verify the user
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      console.error("Authentication failed:", authError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized: Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log("Authenticated user:", user.id);
+
+    // ===== AUTHORIZATION CHECK =====
+    // Check if user has access via department-based permissions (sales, admin, finance)
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
+    
+    const { data: profile, error: profileError } = await serviceClient
+      .from('profiles')
+      .select('department_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile?.department_id) {
+      console.error("Could not fetch user profile:", profileError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Forbidden: User profile not found' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: department, error: deptError } = await serviceClient
+      .from('departments')
+      .select('type')
+      .eq('id', profile.department_id)
+      .single();
+
+    if (deptError || !department) {
+      console.error("Could not fetch department:", deptError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Forbidden: Department not found' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Only allow sales, admin, finance, and super_admin departments
+    const allowedDepartments = ['sales', 'admin', 'finance', 'super_admin'];
+    if (!allowedDepartments.includes(department.type)) {
+      console.error("User department not authorized:", department.type);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Forbidden: Insufficient permissions to send emails' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log("User authorized with department:", department.type);
+
+    // ===== REQUEST VALIDATION =====
     const { 
       proformaId,
       customerEmail, 
@@ -35,14 +110,48 @@ const handler = async (req: Request): Promise<Response> => {
       pdfUrl
     }: ProformaEmailRequest = await req.json();
 
-    if (!customerEmail || !pdfUrl) {
-      throw new Error("Missing required fields: customerEmail and pdfUrl");
+    if (!customerEmail || !pdfUrl || !proformaId) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Missing required fields: customerEmail, pdfUrl, and proformaId are required" }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ===== VERIFY PROFORMA ACCESS =====
+    // Check that the proforma exists and user can access it
+    const { data: proforma, error: proformaError } = await serviceClient
+      .from('proforma_invoices')
+      .select('id, sales_order_id, proforma_no')
+      .eq('id', proformaId)
+      .single();
+
+    if (proformaError || !proforma) {
+      console.error("Proforma not found:", proformaError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Proforma not found or access denied' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ===== VALIDATE PDF URL BELONGS TO THIS PROJECT =====
+    // Ensure pdfUrl is a valid Supabase storage URL from this project
+    const expectedUrlPrefix = `${supabaseUrl}/storage/v1/object/`;
+    if (!pdfUrl.startsWith(expectedUrlPrefix)) {
+      console.error("Invalid PDF URL - not a Supabase storage URL:", pdfUrl);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid PDF URL' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Download PDF from Supabase Storage
     const pdfResponse = await fetch(pdfUrl);
     if (!pdfResponse.ok) {
-      throw new Error("Failed to download PDF from storage");
+      console.error("Failed to download PDF from storage:", pdfResponse.statusText);
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to download PDF from storage" }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
     const pdfBuffer = await pdfResponse.arrayBuffer();
@@ -107,15 +216,12 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (emailResponse.error) {
+      console.error("Resend email error:", emailResponse.error);
       throw emailResponse.error;
     }
 
     // Update proforma_invoices record with sent timestamp
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    await supabase
+    await serviceClient
       .from('proforma_invoices')
       .update({
         sent_to_email: customerEmail,
@@ -123,7 +229,14 @@ const handler = async (req: Request): Promise<Response> => {
       })
       .eq('id', proformaId);
 
-    console.log("Proforma email sent successfully:", emailResponse);
+    // ===== AUDIT LOG =====
+    console.log("Proforma email sent successfully:", {
+      proformaId,
+      proformaNo,
+      sentTo: customerEmail,
+      sentBy: user.id,
+      timestamp: new Date().toISOString()
+    });
 
     return new Response(JSON.stringify({ 
       success: true,
