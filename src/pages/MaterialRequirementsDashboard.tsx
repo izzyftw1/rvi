@@ -91,19 +91,38 @@ export default function MaterialRequirementsDashboard() {
   useEffect(() => {
     loadRequirements();
 
-    // Real-time subscription
+    // Real-time subscription to ALL tables that affect material status
     const channel = supabase
-      .channel('material-requirements-changes')
+      .channel('material-requirements-comprehensive')
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'material_requirements_v2'
-        },
-        () => {
-          loadRequirements();
-        }
+        { event: '*', schema: 'public', table: 'material_requirements_v2' },
+        () => loadRequirements()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'material_lots' },
+        () => loadRequirements()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_lots' },
+        () => loadRequirements()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'raw_purchase_orders' },
+        () => loadRequirements()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'raw_po_receipts' },
+        () => loadRequirements()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gate_register' },
+        () => loadRequirements()
       )
       .subscribe();
 
