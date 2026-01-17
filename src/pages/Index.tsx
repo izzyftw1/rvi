@@ -160,18 +160,86 @@ const Index = () => {
 
   const loadDashboardData = async () => {
     try {
-      // Load summary data - use defaults since view schema changed
+      const today = new Date().toISOString().split('T')[0];
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Parallel queries for live summary data
+      const [
+        materialQcResult,
+        maintenanceResult,
+        delayedWoResult,
+        qcPendingResult,
+        pipelineResult,
+        productionResult,
+        lateDeliveriesResult,
+        dueTodayResult,
+        completedOnTimeResult,
+        totalCompletedResult
+      ] = await Promise.all([
+        // Material waiting QC - raw_purchase_orders with incoming_qc_status = 'pending'
+        supabase.from('raw_purchase_orders').select('id', { count: 'exact', head: true })
+          .eq('incoming_qc_status', 'pending'),
+        
+        // Maintenance overdue - machines with next_maintenance_date < today
+        supabase.from('machines').select('id', { count: 'exact', head: true })
+          .lt('next_maintenance_date', today)
+          .eq('status', 'active'),
+        
+        // Work orders delayed - status pending/in_progress and due_date < today
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .in('status', ['pending', 'in_progress'])
+          .lt('due_date', today),
+        
+        // QC pending approval - hourly_qc_checks with status 'pending'
+        supabase.from('hourly_qc_checks').select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        
+        // Orders in pipeline - work_orders with status 'pending'
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        
+        // Orders in production - work_orders with status 'in_progress'
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .eq('status', 'in_progress'),
+        
+        // Late deliveries - dispatches where dispatched_at > work_order due_date (simplified: count overdue WOs that are completed)
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .eq('status', 'completed')
+          .lt('due_date', today),
+        
+        // Due today
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .eq('due_date', today)
+          .in('status', ['pending', 'in_progress']),
+        
+        // On-time rate calculation: completed on time in last 7 days
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .eq('status', 'completed')
+          .gte('updated_at', sevenDaysAgo)
+          .gte('due_date', sevenDaysAgo),
+        
+        // Total completed in last 7 days
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .eq('status', 'completed')
+          .gte('updated_at', sevenDaysAgo)
+      ]);
+
+      // Calculate on-time rate
+      const completedOnTime = completedOnTimeResult.count ?? 0;
+      const totalCompleted = totalCompletedResult.count ?? 0;
+      const onTimeRate = totalCompleted > 0 ? Math.round((completedOnTime / totalCompleted) * 100) : 100;
+
       setSummary({
-        material_waiting_qc: 0,
-        maintenance_overdue: 0,
-        work_orders_delayed: 0,
-        qc_pending_approval: 0,
-        orders_in_pipeline: 0,
-        orders_in_production: 0,
-        external_wip_pcs: 0,
-        late_deliveries: 0,
-        due_today: 0,
-        on_time_rate_7d: 95
+        material_waiting_qc: materialQcResult.count ?? 0,
+        maintenance_overdue: maintenanceResult.count ?? 0,
+        work_orders_delayed: delayedWoResult.count ?? 0,
+        qc_pending_approval: qcPendingResult.count ?? 0,
+        orders_in_pipeline: pipelineResult.count ?? 0,
+        orders_in_production: productionResult.count ?? 0,
+        external_wip_pcs: 0, // Will be calculated from external data below
+        late_deliveries: lateDeliveriesResult.count ?? 0,
+        due_today: dueTodayResult.count ?? 0,
+        on_time_rate_7d: onTimeRate
       });
 
       // Load internal flow data
@@ -223,6 +291,10 @@ const Index = () => {
         });
 
         setExternalData(extData);
+        
+        // Update external WIP in summary
+        const totalExternalPcs = Object.values(extData).reduce((sum, p) => sum + p.pcs, 0);
+        setSummary(prev => prev ? { ...prev, external_wip_pcs: totalExternalPcs } : prev);
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
