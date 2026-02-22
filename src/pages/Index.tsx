@@ -1,50 +1,40 @@
 /**
- * Homepage Control Tower - Decision-First Dashboard
+ * Homepage - Executive Factory Overview
  * 
  * Design Principles:
- * 1. DECISION-FIRST: Prioritize actionable blockers over status metrics
- * 2. URGENCY: Critical items at top, sorted by days blocked and impact
- * 3. OWNERSHIP: Each blocked item shows responsible department
- * 4. IMPACT: Show financial/delivery risk indicators
+ * 1. CLARITY: 5 KPIs at top, then actionable items, then details on demand
+ * 2. UNIFIED: No mode toggle — internal + external shown together
+ * 3. PROGRESSIVE DISCLOSURE: Summary → Actions → Details (collapsible)
+ * 4. FINANCIAL FRAMING: Business impact emphasized
  * 5. READ-ONLY: All cards drill down only, no data entry
- * 6. NO DUPLICATION: Internal/External modes don't double-count WIP
  * 
- * Layout Order (Internal Mode):
- * 1. Executive Risk Bar - Global alerts (always visible)
- * 2. Actionable Blockers - "Needs Your Decision" section
- * 3. Delivery Risk Panel - Upcoming deadline pressure
- * 4. Quality Loss Signals - Quality issues needing attention
- * 5. Today's Snapshot - Status context (secondary)
- * 6. Production Pipeline - Operational view (tertiary)
- * 
- * Data Sources:
- * - Internal WIP: internal_flow_summary_vw (work_orders by current_stage)
- * - External WIP: external_processing_summary_vw (wo_external_moves with status='sent')
- * - Blockers: work_orders with blocks, sorted by urgency
- * - Delivery Risk: work_orders with due_date in next 7 days
- * - Quality Signals: daily_production_logs, qc_records, ncrs
+ * Layout:
+ * 1. Risk Bar (compact, always visible)
+ * 2. Executive KPI Hero (5 numbers)
+ * 3. Needs Your Decision (top action list)
+ * 4. Two-column: Delivery Risk + External SLA
+ * 5. Two-column: Production Pipeline + Quality Signals
+ * 6. Collapsible: Performance Alerts, Loss Impact, Factory Snapshot
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Factory, ArrowDownUp, ExternalLink } from "lucide-react";
+import { Factory, ArrowDownUp, ExternalLink, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ControlTowerHeader } from "@/components/dashboard/ControlTowerHeader";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ExecutiveKPIHero } from "@/components/dashboard/ExecutiveKPIHero";
 import { ActionableBlockers } from "@/components/dashboard/ActionableBlockers";
 import { ThresholdAlerts } from "@/components/dashboard/ThresholdAlerts";
 import { InternalFlowPanel } from "@/components/dashboard/InternalFlowPanel";
 import { ExternalFlowPanel } from "@/components/dashboard/ExternalFlowPanel";
 import { ExecutiveRiskBar } from "@/components/dashboard/ExecutiveRiskBar";
-import { ModeToggle, OperatingMode } from "@/components/dashboard/ModeToggle";
-import { InternalSummaryStrip } from "@/components/dashboard/InternalSummaryStrip";
-import { ExternalSummaryStrip } from "@/components/dashboard/ExternalSummaryStrip";
-import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 import { TodayFactorySnapshot } from "@/components/dashboard/TodayFactorySnapshot";
 import { OverdueReturnsTable } from "@/components/dashboard/OverdueReturnsTable";
 import { QualityLossSignals } from "@/components/dashboard/QualityLossSignals";
 import { DeliveryRiskPanel } from "@/components/dashboard/DeliveryRiskPanel";
 import { CriticalTodayStrip } from "@/components/dashboard/CriticalTodayStrip";
 import { LossImpactIndicator } from "@/components/dashboard/LossImpactIndicator";
+import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 interface DashboardSummary {
@@ -58,14 +48,9 @@ interface DashboardSummary {
   late_deliveries: number;
   due_today: number;
   on_time_rate_7d: number;
-}
-
-interface InternalFlowStage {
-  stage_name: string;
-  active_jobs: number;
-  pcs_remaining: number;
-  kg_remaining: number;
-  avg_wait_hours: number;
+  active_orders: number;
+  rejection_rate: number;
+  blocked_count: number;
 }
 
 interface ExternalProcessData {
@@ -81,7 +66,6 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [internalFlow, setInternalFlow] = useState<InternalFlowStage[]>([]);
   const [externalData, setExternalData] = useState<Record<string, ExternalProcessData>>({
     job_work: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
     plating: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
@@ -89,11 +73,10 @@ const Index = () => {
     blasting: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
     forging_ext: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 },
     heat_treatment: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
-    // Note: Cutting is internal, not external - tracked in internal flow
   });
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeMode, setActiveMode] = useState<OperatingMode>("internal");
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // Department-based redirect mapping for non-admin users
   const departmentLandingPages: Record<string, string> = {
@@ -107,8 +90,6 @@ const Index = () => {
   // Redirect non-admin users to their department landing page
   useEffect(() => {
     if (permissionsLoading) return;
-    
-    // Only bypass users (admin, finance, super_admin) can see the main dashboard
     if (!isBypassUser && userDepartmentType) {
       const landingPage = departmentLandingPages[userDepartmentType] || '/work-orders';
       navigate(landingPage, { replace: true });
@@ -163,7 +144,6 @@ const Index = () => {
       const today = new Date().toISOString().split('T')[0];
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-      // Parallel queries for live summary data
       const [
         materialQcResult,
         maintenanceResult,
@@ -174,60 +154,53 @@ const Index = () => {
         lateDeliveriesResult,
         dueTodayResult,
         completedOnTimeResult,
-        totalCompletedResult
+        totalCompletedResult,
+        activeOrdersResult,
+        todayLogsResult,
+        blockedResult,
       ] = await Promise.all([
-        // Material waiting QC - raw_purchase_orders with incoming_qc_status = 'pending'
         supabase.from('raw_purchase_orders').select('id', { count: 'exact', head: true })
           .eq('incoming_qc_status', 'pending'),
-        
-        // Maintenance overdue - machines with next_maintenance_date < today
         supabase.from('machines').select('id', { count: 'exact', head: true })
-          .lt('next_maintenance_date', today)
-          .eq('status', 'active'),
-        
-        // Work orders delayed - status pending/in_progress and due_date < today
+          .lt('next_maintenance_date', today).eq('status', 'active'),
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
-          .in('status', ['pending', 'in_progress'])
-          .lt('due_date', today),
-        
-        // QC pending approval - hourly_qc_checks with status 'pending'
+          .in('status', ['pending', 'in_progress']).lt('due_date', today),
         supabase.from('hourly_qc_checks').select('id', { count: 'exact', head: true })
           .eq('status', 'pending'),
-        
-        // Orders in pipeline - work_orders with status 'pending'
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
           .eq('status', 'pending'),
-        
-        // Orders in production - work_orders with status 'in_progress'
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
           .eq('status', 'in_progress'),
-        
-        // Late deliveries - dispatches where dispatched_at > work_order due_date (simplified: count overdue WOs that are completed)
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
-          .eq('status', 'completed')
-          .lt('due_date', today),
-        
-        // Due today
+          .eq('status', 'completed').lt('due_date', today),
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
-          .eq('due_date', today)
-          .in('status', ['pending', 'in_progress']),
-        
-        // On-time rate calculation: completed on time in last 7 days
+          .eq('due_date', today).in('status', ['pending', 'in_progress']),
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
-          .eq('status', 'completed')
-          .gte('updated_at', sevenDaysAgo)
-          .gte('due_date', sevenDaysAgo),
-        
-        // Total completed in last 7 days
+          .eq('status', 'completed').gte('updated_at', sevenDaysAgo).gte('due_date', sevenDaysAgo),
         supabase.from('work_orders').select('id', { count: 'exact', head: true })
-          .eq('status', 'completed')
-          .gte('updated_at', sevenDaysAgo)
+          .eq('status', 'completed').gte('updated_at', sevenDaysAgo),
+        // Active orders (not completed/shipped)
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .not('status', 'in', '("completed","shipped","cancelled")'),
+        // Today's rejection data
+        supabase.from('daily_production_logs')
+          .select('actual_quantity, total_rejection_quantity')
+          .eq('log_date', today),
+        // Blocked orders (delayed + QC blocked)
+        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+          .in('status', ['pending', 'in_progress']).lt('due_date', today),
       ]);
 
       // Calculate on-time rate
       const completedOnTime = completedOnTimeResult.count ?? 0;
       const totalCompleted = totalCompletedResult.count ?? 0;
       const onTimeRate = totalCompleted > 0 ? Math.round((completedOnTime / totalCompleted) * 100) : 100;
+
+      // Calculate rejection rate from today's logs
+      const logs = todayLogsResult.data || [];
+      const totalProduced = logs.reduce((sum, l) => sum + (l.actual_quantity || 0), 0);
+      const totalRejected = logs.reduce((sum, l) => sum + (l.total_rejection_quantity || 0), 0);
+      const rejectionRate = totalProduced > 0 ? (totalRejected / (totalProduced + totalRejected)) * 100 : 0;
 
       setSummary({
         material_waiting_qc: materialQcResult.count ?? 0,
@@ -236,20 +209,14 @@ const Index = () => {
         qc_pending_approval: qcPendingResult.count ?? 0,
         orders_in_pipeline: pipelineResult.count ?? 0,
         orders_in_production: productionResult.count ?? 0,
-        external_wip_pcs: 0, // Will be calculated from external data below
+        external_wip_pcs: 0,
         late_deliveries: lateDeliveriesResult.count ?? 0,
         due_today: dueTodayResult.count ?? 0,
-        on_time_rate_7d: onTimeRate
+        on_time_rate_7d: onTimeRate,
+        active_orders: activeOrdersResult.count ?? 0,
+        rejection_rate: rejectionRate,
+        blocked_count: blockedResult.count ?? 0,
       });
-
-      // Load internal flow data
-      const { data: flowData, error: flowError } = await supabase
-        .from('internal_flow_summary_vw')
-        .select('*');
-
-      if (!flowError && flowData) {
-        setInternalFlow(flowData);
-      }
 
       // Load external processing data
       const { data: extSummary, error: extError } = await supabase
@@ -266,24 +233,17 @@ const Index = () => {
           heat_treatment: { pcs: 0, kg: 0, activeMoves: 0, overdue: 0 }
         };
 
-        // Map process names from view to internal keys
         const processKeyMap: Record<string, string> = {
-          'Job Work': 'job_work',
-          'Plating': 'plating',
-          'Buffing': 'buffing',
-          'Blasting': 'blasting',
-          'Forging': 'forging_ext',
-          'Heat Treatment': 'heat_treatment'
+          'Job Work': 'job_work', 'Plating': 'plating', 'Buffing': 'buffing',
+          'Blasting': 'blasting', 'Forging': 'forging_ext', 'Heat Treatment': 'heat_treatment'
         };
 
         extSummary.forEach((row: any) => {
-          const processName = row.process_name as string;
-          const processKey = processKeyMap[processName] || processName.toLowerCase().replace(/\s+/g, '_');
+          const processKey = processKeyMap[row.process_name] || row.process_name.toLowerCase().replace(/\s+/g, '_');
           if (extData[processKey]) {
-            const kgTotal = row.kg_total ?? 0;
             extData[processKey] = {
               pcs: Math.round(row.pcs_total || 0),
-              kg: parseFloat(Number(kgTotal).toFixed(1)),
+              kg: parseFloat(Number(row.kg_total ?? 0).toFixed(1)),
               activeMoves: row.active_moves || 0,
               overdue: row.overdue || 0
             };
@@ -291,8 +251,6 @@ const Index = () => {
         });
 
         setExternalData(extData);
-        
-        // Update external WIP in summary
         const totalExternalPcs = Object.values(extData).reduce((sum, p) => sum + p.pcs, 0);
         setSummary(prev => prev ? { ...prev, external_wip_pcs: totalExternalPcs } : prev);
       }
@@ -308,160 +266,140 @@ const Index = () => {
 
   const getProcessLabel = (key: string) => {
     const labels: Record<string, string> = {
-      job_work: 'Job Work',
-      plating: 'Plating',
-      buffing: 'Buffing',
-      blasting: 'Blasting',
-      forging_ext: 'Forging',
-      heat_treatment: 'Heat Treatment'
-      // Cutting is internal - not listed here
+      job_work: 'Job Work', plating: 'Plating', buffing: 'Buffing',
+      blasting: 'Blasting', forging_ext: 'Forging', heat_treatment: 'Heat Treatment'
     };
     return labels[key] || key;
   };
 
-  // Calculate metrics with null-safety
-  const criticalCount = (summary?.maintenance_overdue ?? 0) + (summary?.work_orders_delayed ?? 0) + (summary?.late_deliveries ?? 0);
-  const warningCount = (summary?.material_waiting_qc ?? 0) + (summary?.qc_pending_approval ?? 0);
-  const allClear = criticalCount === 0 && warningCount === 0;
-
-  // Internal metrics with null-safety
-  const internalJobCount = Array.isArray(internalFlow) 
-    ? internalFlow.reduce((sum, s) => sum + (s?.active_jobs ?? 0), 0) 
-    : 0;
-
-  // External metrics with null-safety
+  // External metrics
   const externalOverdueTotal = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.overdue ?? 0), 0);
   const externalActiveTotal = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.activeMoves ?? 0), 0);
-  const externalWipPcs = Object.values(externalData ?? {}).reduce((sum, p) => sum + (p?.pcs ?? 0), 0);
 
-  // Show loading while checking permissions or data
   if (loading || permissionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <Factory className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading Control Tower...</p>
+          <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
-  // Non-bypass users should be redirected - show nothing while redirect happens
   if (!isBypassUser) {
     return null;
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Critical Today Strip - Only visible when issues exist */}
+      {/* Critical strip — only visible when issues exist */}
       <CriticalTodayStrip />
       
-      {/* Executive Risk Bar - Global, always visible, unaffected by mode */}
+      {/* Compact risk bar — always visible */}
       <ExecutiveRiskBar />
       
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Control Tower Header */}
-        <ControlTowerHeader 
-          criticalCount={criticalCount} 
-          warningCount={warningCount} 
-          allClear={allClear} 
+        {/* ── HERO: Executive KPIs ─────────────────────── */}
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">
+            Factory Overview
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            Real-time executive snapshot
+          </p>
+        </div>
+
+        <ExecutiveKPIHero
+          activeOrders={summary?.active_orders ?? 0}
+          onTimeRate={summary?.on_time_rate_7d ?? 100}
+          rejectionRate={summary?.rejection_rate ?? 0}
+          externalOverdue={externalOverdueTotal}
+          externalTotal={externalActiveTotal}
+          blockedOrders={summary?.blocked_count ?? 0}
         />
 
-        {/* Mode Toggle - Prominent, centered */}
-        <ModeToggle
-          activeMode={activeMode}
-          onModeChange={setActiveMode}
-          internalJobCount={internalJobCount}
-          externalOverdueCount={externalOverdueTotal}
-          externalActiveCount={externalActiveTotal}
-        />
+        {/* ── PRIMARY: What needs your attention ───────── */}
+        <ActionableBlockers />
 
-        {/* Mode-specific Content */}
-        {activeMode === "internal" ? (
-          <div className="space-y-4">
-            {/* PRIMARY: Actionable Blockers - What needs decision NOW */}
-            <ActionableBlockers />
+        {/* ── SECONDARY: Two-column — Delivery Risk + External ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <DeliveryRiskPanel />
 
-            {/* THRESHOLD ALERTS: Performance issues needing attention */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ArrowDownUp className="h-4 w-4 text-primary" />
+                  External Processing
+                </CardTitle>
+                <button
+                  onClick={() => navigate('/partners')}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  Full View <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ExternalFlowPanel 
+                data={externalData} 
+                onProcessClick={handleProcessClick} 
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── TERTIARY: Two-column — Pipeline + Quality ──── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Factory className="h-4 w-4 text-primary" />
+                  Production Pipeline
+                </CardTitle>
+                <button
+                  onClick={() => navigate('/production-progress')}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  Full View <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <InternalFlowPanel stages={[]} />
+            </CardContent>
+          </Card>
+
+          <QualityLossSignals />
+        </div>
+
+        {/* ── DETAILS: Collapsible deep-dive section ───── */}
+        <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <CollapsibleTrigger asChild>
+            <button className="w-full flex items-center justify-between py-2.5 px-4 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors border border-border/30">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span className="font-medium">Detailed Insights</span>
+                <span className="text-muted-foreground/60">
+                  Performance alerts, loss impact, today's snapshot
+                </span>
+              </div>
+              {detailsOpen ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 pt-4">
             <ThresholdAlerts />
-
-            {/* SECONDARY: Delivery Risk - Upcoming pressure */}
-            <DeliveryRiskPanel />
-
-            {/* TERTIARY: Quality Signals - Issues to watch */}
-            <QualityLossSignals />
-
-            {/* LOSS IMPACT: Visual emphasis on losses */}
             <LossImpactIndicator />
-
-            {/* CONTEXT: Today's Status (collapsed priority) */}
             <TodayFactorySnapshot />
-
-            {/* REFERENCE: Production Pipeline */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Factory className="h-5 w-5 text-primary" />
-                    Production Pipeline
-                  </CardTitle>
-                  <button
-                    onClick={() => navigate('/production-progress')}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                  >
-                    Full View <ExternalLink className="h-3 w-3" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <InternalFlowPanel stages={internalFlow} />
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <ArrowDownUp className="h-5 w-5 text-primary" />
-                    External Processing Status
-                  </CardTitle>
-                  <button
-                    onClick={() => navigate('/partners')}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                  >
-                    Full View <ExternalLink className="h-3 w-3" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ExternalFlowPanel 
-                  data={externalData} 
-                  onProcessClick={handleProcessClick} 
-                />
-              </CardContent>
-            </Card>
-
-            {/* Overdue Returns Table - Primary action list for external follow-ups */}
-            <OverdueReturnsTable selectedProcess={selectedProcess} />
-          </div>
-        )}
-
-        {/* Mode-specific Summary Strip */}
-        {activeMode === "internal" ? (
-          <InternalSummaryStrip
-            ordersInPipeline={summary?.orders_in_pipeline || 0}
-            ordersInProduction={summary?.orders_in_production || 0}
-            onTimeRate={summary?.on_time_rate_7d || 100}
-          />
-        ) : (
-          <ExternalSummaryStrip
-            totalActiveMoves={externalActiveTotal}
-            totalWipPcs={externalWipPcs}
-            overdueCount={externalOverdueTotal}
-          />
-        )}
+            <OverdueReturnsTable selectedProcess={null} />
+          </CollapsibleContent>
+        </Collapsible>
       </main>
 
       {/* External Processing Detail Drawer */}
