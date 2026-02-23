@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { z } from "zod";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
+import { createGateEntry } from "@/lib/gateRegisterUtils";
 
 // Validation schema for external receipt
 const receiptSchema = z.object({
@@ -238,6 +239,23 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         direction: 'IN',
         relatedPartnerId: move.partner_id,
         relatedChallanId: move.id,
+      });
+
+      // AUTO-CREATE GATE REGISTER ENTRY (IN) - SSOT integration
+      await createGateEntry({
+        direction: 'IN',
+        material_type: 'external_process',
+        gross_weight_kg: totalWeight,
+        net_weight_kg: totalWeight,
+        estimated_pcs: qty,
+        item_name: null,
+        partner_id: move.partner_id || null,
+        process_type: move.process || null,
+        work_order_id: move.work_order_id,
+        challan_no: move.challan_no || null,
+        qc_required: true,
+        remarks: `Auto: Received from ${move.process} - ${qty} pcs via ExternalReceipt`,
+        created_by: user?.id || null,
       });
 
       toast({

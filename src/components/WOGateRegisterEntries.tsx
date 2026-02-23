@@ -183,8 +183,8 @@ export function WOGateRegisterEntries({ workOrderId }: WOGateRegisterEntriesProp
   }
 
   // Summary stats
-  const inCount = entries.filter(e => e.direction === 'in').length;
-  const outCount = entries.filter(e => e.direction === 'out').length;
+  const inCount = entries.filter(e => e.direction.toUpperCase() === 'IN').length;
+  const outCount = entries.filter(e => e.direction.toUpperCase() === 'OUT').length;
   const pendingQC = entries.filter(e => e.qc_required && e.qc_status !== 'passed').length;
 
   return (

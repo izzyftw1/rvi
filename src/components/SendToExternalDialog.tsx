@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
 import { FormSection, FormRow, FormField, FormActions, FormHint, RequiredIndicator } from "@/components/ui/form-layout";
+import { createGateEntry } from "@/lib/gateRegisterUtils";
 import { PROCESS_OPTIONS, PRE_PRODUCTION_PROCESSES, INTERNAL_PROCESSES } from "@/config/materialMasters";
 
 interface ExternalPartner {
@@ -481,6 +482,23 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         direction: 'OUT',
         relatedPartnerId: partnerId,
         relatedChallanId: moveData?.id,
+      });
+
+      // AUTO-CREATE GATE REGISTER ENTRY (OUT) - SSOT integration
+      await createGateEntry({
+        direction: 'OUT',
+        material_type: 'external_process',
+        gross_weight_kg: totalWeight,
+        net_weight_kg: totalWeight,
+        estimated_pcs: qty,
+        item_name: workOrder.item_code || null,
+        partner_id: partnerId || null,
+        process_type: process || null,
+        work_order_id: workOrder.id,
+        challan_no: challanNo,
+        qc_required: false,
+        remarks: `Auto: Sent to ${partnerName} for ${process} via Work Order`,
+        created_by: user?.id || null,
       });
       
       toast({
