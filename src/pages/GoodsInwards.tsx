@@ -20,6 +20,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
+import { createGateEntry } from "@/lib/gateRegisterUtils";
 
 type ReceiptType = 'supplier_to_factory' | 'partner_to_factory' | 'partner_to_partner' | 'partner_to_packing';
 
@@ -355,6 +356,22 @@ export default function GoodsInwards() {
         direction: 'IN',
         relatedPartnerId: selectedMovement.partner_id,
         relatedChallanId: selectedMovement.id,
+      });
+
+      // AUTO-CREATE GATE REGISTER ENTRY (IN) - SSOT integration
+      await createGateEntry({
+        direction: 'IN',
+        material_type: 'external_process',
+        gross_weight_kg: 0, // Weight not captured in this flow
+        estimated_pcs: qtyReceived,
+        partner_id: selectedMovement.partner_id || null,
+        process_type: selectedMovement.process_type || null,
+        work_order_id: selectedMovement.work_order_id || null,
+        challan_no: formData.challan_no || selectedMovement.challan_no || null,
+        dc_number: formData.dc_number || null,
+        qc_required: formData.requires_qc,
+        remarks: `Auto: ${qtyReceived} ${selectedMovement.unit} from ${selectedMovement.partner_name} via GoodsInwards`,
+        created_by: user?.id || null,
       });
 
       toast({ 

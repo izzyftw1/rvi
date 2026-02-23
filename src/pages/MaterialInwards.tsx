@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createExecutionRecord } from "@/hooks/useExecutionRecord";
+import { createGateEntry } from "@/lib/gateRegisterUtils";
 
 interface RPO {
   id: string;
@@ -412,6 +413,26 @@ export default function MaterialInwards() {
           direction: 'IN',
         });
       }
+
+      // AUTO-CREATE GATE REGISTER ENTRY (IN) - SSOT integration
+      await createGateEntry({
+        direction: 'IN',
+        material_type: 'raw_material',
+        gross_weight_kg: qtyReceived,
+        net_weight_kg: qtyReceived,
+        alloy: selectedRPO.alloy || null,
+        rod_section_size: selectedRPO.material_size_mm || null,
+        heat_no: formData.heat_no || null,
+        supplier_id: selectedRPO.supplier_id || null,
+        supplier_name: selectedRPO.suppliers?.name || null,
+        work_order_id: selectedRPO.wo_id || null,
+        rpo_id: selectedRPO.id,
+        challan_no: formData.supplier_invoice_no || null,
+        transporter: formData.transporter || null,
+        qc_required: true,
+        remarks: `Auto: Material receipt for RPO ${selectedRPO.rpo_no} via MaterialInwards`,
+        created_by: user?.id || null,
+      });
 
       // Reset form
       setSelectedRPO(null);

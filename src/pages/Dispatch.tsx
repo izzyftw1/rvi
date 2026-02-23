@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
 import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib/packingListGenerator";
 import { ExportDocumentDialog, ExportDocumentFields } from "@/components/dispatch/ExportDocumentDialog";
+import { createGateEntry } from "@/lib/gateRegisterUtils";
 
 /**
  * CANONICAL DISPATCH WORKFLOW
@@ -501,6 +502,35 @@ export default function Dispatch() {
           net_weight_kg: woData?.net_weight_per_pc ? (dispatchQty * woData.net_weight_per_pc / 1000) : null,
           created_by: user?.id,
           remarks: isPartial ? `Partial dispatch: ${dispatchQty}/${batch.available_qty}` : null,
+        });
+      }
+
+      // AUTO-CREATE GATE REGISTER ENTRIES (OUT) for each dispatched batch
+      for (const batch of selectedBatches) {
+        const dispatchQty = getDispatchQty(batch);
+        const { data: woWeight } = await supabase
+          .from("work_orders")
+          .select("gross_weight_per_pc, item_code, customer")
+          .eq("id", batch.wo_id)
+          .single();
+
+        const grossWeightKg = woWeight?.gross_weight_per_pc 
+          ? (dispatchQty * woWeight.gross_weight_per_pc / 1000) 
+          : 0;
+
+        await createGateEntry({
+          direction: 'OUT',
+          material_type: 'finished_goods',
+          gross_weight_kg: grossWeightKg,
+          net_weight_kg: grossWeightKg,
+          estimated_pcs: dispatchQty,
+          item_name: woWeight?.item_code || batch.work_orders?.item_code || null,
+          party_code: woWeight?.customer || batch.work_orders?.customer || null,
+          work_order_id: batch.wo_id,
+          challan_no: generatedShipId,
+          qc_required: false,
+          remarks: `Auto: Dispatch ${generatedShipId} - ${dispatchQty} pcs`,
+          created_by: user?.id || null,
         });
       }
 
