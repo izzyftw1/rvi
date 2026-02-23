@@ -741,11 +741,15 @@ export default function GateRegister() {
 
     setLoading(true);
     try {
-      // Determine estimated_pcs - only for external processes with PCS estimation
-      const estimatedPcs = formData.material_type === 'external_process' && pcsEstimation.estimatedPcs
-        ? pcsEstimation.estimatedPcs
-        : null;
-      
+      // --- Determine estimated_pcs: for external processes use PCS estimation OR fall back to qty from WO ---
+      // POINT 11 FIX: Use net weight as fallback when estimated_pcs is 0
+      let estimatedPcs: number | null = null;
+      if (formData.material_type === 'external_process' && pcsEstimation.estimatedPcs) {
+        estimatedPcs = pcsEstimation.estimatedPcs;
+      }
+
+      const effectiveNetWeight = netWeight > 0 ? netWeight : grossWeight;
+
       // Explicitly typed payload to avoid TS2589
       const insertPayload: {
         direction: string;
@@ -786,12 +790,11 @@ export default function GateRegister() {
       } = {
         direction: formDirection,
         material_type: formData.material_type,
-        gate_entry_no: `GIN-${Date.now()}`, // Placeholder, will be overwritten by trigger if exists
+        gate_entry_no: `GIN-${Date.now()}`,
         gross_weight_kg: grossWeight,
         tare_weight_kg: tareWeight,
-        net_weight_kg: netWeight > 0 ? netWeight : grossWeight,
-        status: 'completed', // Set to completed to trigger inventory creation for raw material
-        // PCS estimation fields (only populated for external processes)
+        net_weight_kg: effectiveNetWeight,
+        status: 'completed',
         estimated_pcs: estimatedPcs,
         avg_weight_per_pc: formData.material_type === 'external_process' && pcsEstimation.avgWeightPerPc
           ? pcsEstimation.avgWeightPerPc
@@ -808,7 +811,7 @@ export default function GateRegister() {
         alloy: formData.alloy || null,
         heat_no: formData.heat_no || null,
         tc_number: formData.tc_number || null,
-        packaging_type_id: null, // No longer used - using packagingRows now
+        packaging_type_id: null,
         packaging_count: packagingRows.filter(r => r.type !== 'NONE').reduce((sum, r) => sum + r.count, 0) || null,
         supplier_id: formData.supplier_id || null,
         supplier_name: formData.supplier_name || null,
@@ -823,7 +826,7 @@ export default function GateRegister() {
         vehicle_no: formData.vehicle_no || null,
         transporter: formData.transporter || null,
         qc_required: formData.qc_required,
-        qc_status: formData.qc_required ? 'pending' : 'pending',
+        qc_status: formData.qc_required ? 'pending' : 'not_required',
         remarks: formData.remarks || null,
         created_by: user?.id || null,
       };
@@ -836,44 +839,69 @@ export default function GateRegister() {
 
       if (error) throw error;
 
-      // RAW MATERIAL RECEIPT WORKFLOW - Update RPO, create receipt record, create inventory lot
+      // ===================================================================
+      // RAW MATERIAL RECEIPT WORKFLOW (Points 1-10)
+      // ===================================================================
       if (formData.material_type === 'raw_material' && formDirection === 'IN') {
-        const receivedQtyKg = netWeight > 0 ? netWeight : grossWeight;
-        
-        // If linked to an RPO, update RPO-related tables
+        const receivedQtyKg = effectiveNetWeight;
+        const supplierName = formData.supplier_name || suppliers.find(s => s.id === formData.supplier_id)?.name || 'Unknown';
+
+        // POINT 5: Create material_lots record (triggers production notification)
+        const materialLotId = `ML-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
+        const { data: materialLotData, error: materialLotError } = await supabase
+          .from("material_lots")
+          .insert({
+            lot_id: materialLotId,
+            alloy: formData.alloy || 'N/A',
+            heat_no: formData.heat_no || 'N/A',
+            gross_weight: grossWeight,
+            net_weight: receivedQtyKg,
+            supplier: supplierName,
+            material_size_mm: formData.rod_section_size || null,
+            po_id: null,
+            qc_status: formData.qc_required ? 'pending' : null,
+            status: 'received' as any,
+            received_by: user?.id || null,
+          })
+          .select()
+          .single();
+
+        if (materialLotError) {
+          console.error("Failed to create material_lots record:", materialLotError);
+          toast({ variant: "destructive", description: `Material lot creation failed: ${materialLotError.message}` });
+        }
+
         if (formData.rpo_id) {
           const selectedRPO = rpos.find(r => r.id === formData.rpo_id);
-          
-          // 1. Create raw_po_receipts record
-          // Note: gi_ref is a FK to material_lots, not gate_register, so we leave it null
-          const { data: receiptData, error: receiptError } = await supabase
+
+          // POINT 1,3: Create raw_po_receipts with gate_register_id and gi_ref to material_lots
+          const { error: receiptError } = await supabase
             .from("raw_po_receipts")
             .insert({
               rpo_id: formData.rpo_id,
-              gi_ref: null,
+              gi_ref: materialLotData?.id || null,
+              gate_register_id: data.id,
               received_date: new Date().toISOString().split('T')[0],
               qty_received_kg: receivedQtyKg,
               supplier_invoice_no: formData.challan_no || null,
               lr_no: null,
               transporter: formData.transporter || null,
               notes: `Gate Entry: ${data.gate_entry_no}. ${formData.remarks || ''}`.trim(),
-            })
-            .select()
-            .single();
-          
+            } as any);
+
           if (receiptError) {
             console.error("Failed to create raw_po_receipts record:", receiptError);
             toast({ variant: "destructive", description: `RPO receipt failed: ${receiptError.message}` });
           }
-          
-          // 2. Create inventory_lots record
+
+          // POINT 4: Create inventory_lots with safe defaults for NOT NULL columns
           const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
           const { error: lotError } = await supabase
             .from("inventory_lots")
             .insert({
               lot_id: lotId,
-              material_size_mm: formData.rod_section_size || null,
-              alloy: formData.alloy || null,
+              material_size_mm: formData.rod_section_size || 'N/A',
+              alloy: formData.alloy || 'N/A',
               qty_kg: receivedQtyKg,
               supplier_id: formData.supplier_id || null,
               rpo_id: formData.rpo_id,
@@ -881,36 +909,50 @@ export default function GateRegister() {
               received_date: new Date().toISOString().split('T')[0],
               cost_rate: selectedRPO?.rate_per_kg || null,
             });
-          
+
           if (lotError) {
             console.error("Failed to create inventory_lots record:", lotError);
             toast({ variant: "destructive", description: `Inventory lot failed: ${lotError.message}` });
           }
-          
-          // 3. Calculate total received for RPO and update status
+
+          // POINT 2,6: Calculate total received and update RPO status with valid enum
           const { data: allReceipts } = await supabase
             .from("raw_po_receipts")
             .select("qty_received_kg")
             .eq("rpo_id", formData.rpo_id);
-          
+
           const totalReceivedKg = allReceipts?.reduce((sum, r) => sum + (r.qty_received_kg || 0), 0) || 0;
           const orderedQty = selectedRPO?.qty_ordered_kg || 0;
-          
-          // Determine new RPO status (valid enum: pending_approval, approved, part_received, closed, cancelled)
-          let newStatus = 'part_received';
-          if (totalReceivedKg >= orderedQty) {
-            newStatus = 'closed';
-          }
-          
+
+          // POINT 6: Use valid rpo_status enum values
+          const newStatus: 'part_received' | 'closed' = totalReceivedKg >= orderedQty ? 'closed' : 'part_received';
+
           await supabase
             .from("raw_purchase_orders")
-            .update({ 
-              status: newStatus as any,
+            .update({
+              status: newStatus,
               updated_at: new Date().toISOString()
             })
             .eq("id", formData.rpo_id);
-          
-          // 4. Create execution record for traceability (only if linked to WO)
+
+          // POINT 7: Create reconciliation record if there's a variance
+          const qtyDelta = totalReceivedKg - orderedQty;
+          if (newStatus === 'closed' && Math.abs(qtyDelta) > 0.1) {
+            const reason: 'short_supply' | 'excess_supply' = qtyDelta < 0 ? 'short_supply' : 'excess_supply';
+            const rateDelta = selectedRPO?.rate_per_kg ? qtyDelta * selectedRPO.rate_per_kg : null;
+            await supabase
+              .from("raw_po_reconciliations")
+              .insert({
+                rpo_id: formData.rpo_id,
+                qty_delta_kg: qtyDelta,
+                amount_delta: rateDelta,
+                reason: reason,
+                resolution: 'pending' as any,
+                notes: `Auto-created on RPO closure. Gate Entry: ${data.gate_entry_no}`,
+              });
+          }
+
+          // POINT 8: Create execution record (even without WO link for traceability)
           if (formData.work_order_id) {
             await createExecutionRecord({
               workOrderId: formData.work_order_id,
@@ -923,16 +965,17 @@ export default function GateRegister() {
               relatedChallanId: null,
             });
           }
-          
+
         } else {
           // Ad-hoc receipt without RPO - still create inventory lot
+          // POINT 4: Safe defaults
           const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
           const { error: lotError } = await supabase
             .from("inventory_lots")
             .insert({
               lot_id: lotId,
-              material_size_mm: formData.rod_section_size || null,
-              alloy: formData.alloy || null,
+              material_size_mm: formData.rod_section_size || 'N/A',
+              alloy: formData.alloy || 'N/A',
               qty_kg: receivedQtyKg,
               supplier_id: formData.supplier_id || null,
               rpo_id: null,
@@ -940,65 +983,112 @@ export default function GateRegister() {
               received_date: new Date().toISOString().split('T')[0],
               cost_rate: null,
             });
-          
+
           if (lotError) {
             console.error("Failed to create inventory_lots record:", lotError);
             toast({ variant: "destructive", description: `Inventory lot failed: ${lotError.message}` });
           }
+
+          // POINT 8: Execution record even without RPO if WO is linked
+          if (formData.work_order_id) {
+            await createExecutionRecord({
+              workOrderId: formData.work_order_id,
+              operationType: 'RAW_MATERIAL',
+              processName: 'Raw Material Receipt',
+              quantity: receivedQtyKg,
+              unit: 'kg',
+              direction: 'IN',
+              relatedPartnerId: null,
+              relatedChallanId: null,
+            });
+          }
         }
-        
+
+        // POINT 9: Create qc_records entry for QC team visibility when QC is required
+        if (formData.qc_required && formData.work_order_id) {
+          const qcId = `QC-INC-${data.gate_entry_no}`;
+          await supabase
+            .from("qc_records")
+            .insert({
+              qc_id: qcId,
+              wo_id: formData.work_order_id,
+              qc_type: 'incoming' as any,
+              result: 'pending' as any,
+              heat_no: formData.heat_no || null,
+              material_grade: formData.alloy || formData.material_grade || null,
+              material_lot_id: null, // Will be linked by QC team during inspection
+              remarks: `Auto-created from Gate Register ${data.gate_entry_no}. Qty: ${effectiveNetWeight} kg`,
+              inspected_quantity: 0,
+            });
+        }
+
         // Reload RPOs to reflect updated quantities
         loadRPOs();
       }
 
-      // If this is an external process with a work order, sync with wo_external_moves and production_batches
+      // ===================================================================
+      // EXTERNAL PROCESS WORKFLOW (Points 11-30)
+      // ===================================================================
       if (formData.material_type === 'external_process' && formData.work_order_id && formData.process_type) {
-        const qtySent = data.estimated_pcs || 0;
-        const netWeightKg = data.net_weight_kg || 0;
-        
+        // POINT 11 FIX: Use estimated_pcs if available, otherwise use net weight as the quantity
+        // This ensures wo_external_moves always has meaningful quantity
+        const qtySent = estimatedPcs || 0;
+        const netWeightKg = effectiveNetWeight;
+        // POINT 11: Fallback — if no pcs, use weight as quantity indicator
+        const effectiveQtySent = qtySent > 0 ? qtySent : Math.round(netWeightKg);
+
         if (formDirection === 'OUT') {
-          // Goods OUT = sending to external partner
-          
-          // 1. Create wo_external_moves record
+          // =============== GOODS OUT = Sending to External Partner ===============
+
+          // POINT 18: Auto-generate challan if not provided
+          const challanNo = formData.challan_no || `DC-${data.gate_entry_no}`;
+
+          // POINT 12,15: Create wo_external_moves with weight tracking + expected_return_date
           const { data: moveData, error: moveError } = await supabase
             .from("wo_external_moves")
             .insert([{
               work_order_id: formData.work_order_id,
               process: formData.process_type,
               partner_id: formData.partner_id || null,
-              challan_no: formData.challan_no || data.gate_entry_no,
+              challan_no: challanNo,
               remarks: formData.remarks || null,
               created_by: user?.id || null,
               status: 'sent',
-              quantity_sent: qtySent,
+              quantity_sent: effectiveQtySent,
               dispatch_date: new Date().toISOString().split('T')[0],
-            }])
+              // POINT 15: Set expected return date (default 7 days)
+              expected_return_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              // POINT 12: Weight tracking
+              weight_sent_kg: netWeightKg,
+              gate_register_id: data.id,
+            } as any])
             .select()
             .single();
-          
+
           if (moveError) {
-            console.warn("Failed to create wo_external_moves record:", moveError);
+            console.error("Failed to create wo_external_moves record:", moveError);
+            toast({ variant: "destructive", description: `External move record failed: ${moveError.message}` });
           } else if (moveData) {
             // Link gate register entry to the external move
             await supabase
               .from("gate_register")
               .update({ external_movement_id: moveData.id })
               .eq("id", data.id);
-            
+
             // Update work_orders.qty_external_wip and location
             const { data: woData } = await supabase
               .from("work_orders")
               .select("qty_external_wip")
               .eq("id", formData.work_order_id)
               .single();
-            
+
             const partnerName = partners.find(p => p.id === formData.partner_id)?.name || 'External Partner';
             const currentWip = woData?.qty_external_wip || 0;
-            
+
             await supabase
               .from("work_orders")
               .update({
-                qty_external_wip: currentWip + qtySent,
+                qty_external_wip: currentWip + effectiveQtySent,
                 external_status: 'sent',
                 external_process_type: formData.process_type,
                 material_location: partnerName,
@@ -1006,20 +1096,19 @@ export default function GateRegister() {
               })
               .eq("id", formData.work_order_id);
           }
-          
-          // 2. Update production_batches to reflect external location
-          // Find active batches for this WO and update their location
+
+          // POINT 13,14: Update ALL active production_batches (not just 1) with broader filter
           const { data: activeBatches } = await supabase
             .from("production_batches")
             .select("id, batch_quantity")
             .eq("wo_id", formData.work_order_id)
             .is("ended_at", null)
-            .eq("current_location_type", "factory")
-            .order("created_at", { ascending: false })
-            .limit(1);
-          
+            .in("current_location_type", ["factory", "transit"])
+            .order("created_at", { ascending: false });
+
           if (activeBatches && activeBatches.length > 0) {
-            const batch = activeBatches[0];
+            // Update all matching active batches
+            const batchIds = activeBatches.map(b => b.id);
             await supabase
               .from("production_batches")
               .update({
@@ -1030,102 +1119,112 @@ export default function GateRegister() {
                 external_sent_at: new Date().toISOString(),
                 stage_entered_at: new Date().toISOString(),
               })
-              .eq("id", batch.id);
+              .in("id", batchIds);
           }
-          
-          // 3. Create execution record for traceability
+
+          // Create execution record for traceability
           if (moveData) {
             await createExecutionRecord({
               workOrderId: formData.work_order_id,
               operationType: 'EXTERNAL_PROCESS',
               processName: formData.process_type,
-              quantity: qtySent,
-              unit: 'pcs',
+              quantity: effectiveQtySent,
+              unit: qtySent > 0 ? 'pcs' : 'kg',
               direction: 'OUT',
               relatedPartnerId: formData.partner_id || null,
               relatedChallanId: moveData.id,
             });
           }
-          
+
         } else if (formDirection === 'IN') {
-          // Goods IN = receiving from external partner
-          
-          // 1. Find and update the pending external move
+          // =============== GOODS IN = Receiving from External Partner ===============
+
+          // POINT 21: Match ALL pending moves (not just latest) and distribute received qty
           const { data: pendingMoves } = await supabase
             .from("wo_external_moves")
             .select("*")
             .eq("work_order_id", formData.work_order_id)
             .eq("process", formData.process_type)
             .in("status", ["sent", "partial"])
-            .order("dispatch_date", { ascending: false })
-            .limit(1);
-          
+            .order("dispatch_date", { ascending: true }); // FIFO order
+
+          const receivedQty = estimatedPcs || Math.round(effectiveNetWeight);
+          let remainingToAllocate = receivedQty;
+
           if (pendingMoves && pendingMoves.length > 0) {
-            const move = pendingMoves[0];
-            const receivedQty = data.estimated_pcs || 0;
-            const newTotalReturned = (move.quantity_returned || 0) + receivedQty;
-            const newStatus = newTotalReturned >= (move.quantity_sent || 0) ? 'completed' : 'partial';
-            
-            await supabase
-              .from("wo_external_moves")
-              .update({ 
-                quantity_returned: newTotalReturned,
-                returned_date: new Date().toISOString().split('T')[0],
-                status: newStatus 
-              })
-              .eq("id", move.id);
-            
-            // Link gate register entry to the external move
-            await supabase
-              .from("gate_register")
-              .update({ external_movement_id: move.id })
-              .eq("id", data.id);
-            
-            // 3. Update work_orders to reduce qty_external_wip and update status
+            for (const move of pendingMoves) {
+              if (remainingToAllocate <= 0) break;
+
+              const pendingQty = (move.quantity_sent || 0) - (move.quantity_returned || 0);
+              // POINT 22: Don't allocate more than what's pending for this move
+              const allocatedQty = Math.min(remainingToAllocate, pendingQty > 0 ? pendingQty : remainingToAllocate);
+              const newTotalReturned = (move.quantity_returned || 0) + allocatedQty;
+              const newStatus = newTotalReturned >= (move.quantity_sent || 0) ? 'completed' : 'partial';
+
+              await supabase
+                .from("wo_external_moves")
+                .update({
+                  quantity_returned: newTotalReturned,
+                  returned_date: new Date().toISOString().split('T')[0],
+                  status: newStatus,
+                  // POINT 12: Track returned weight
+                  weight_returned_kg: ((move as any).weight_returned_kg || 0) + effectiveNetWeight,
+                  gate_register_id: data.id,
+                } as any)
+                .eq("id", move.id);
+
+              remainingToAllocate -= allocatedQty;
+
+              // Link gate register entry to the first matched move
+              if (move === pendingMoves[0]) {
+                await supabase
+                  .from("gate_register")
+                  .update({ external_movement_id: move.id })
+                  .eq("id", data.id);
+              }
+            }
+
+            // POINT 23: Update work_orders to reduce qty_external_wip
             const { data: woData } = await supabase
               .from("work_orders")
               .select("qty_external_wip, external_process_type")
               .eq("id", formData.work_order_id)
               .single();
-            
+
             if (woData) {
               const currentWip = woData.qty_external_wip || 0;
               const newWip = Math.max(0, currentWip - receivedQty);
-              
+
               const woUpdateData: any = {
                 qty_external_wip: newWip,
                 updated_at: new Date().toISOString(),
               };
-              
+
               // If all external WIP returned, update location and status
               if (newWip === 0) {
                 woUpdateData.external_status = null;
                 woUpdateData.material_location = 'Factory';
               }
-              
+
               await supabase
                 .from("work_orders")
                 .update(woUpdateData)
                 .eq("id", formData.work_order_id);
             }
-            
-            // 4. Update production_batches to return to factory
-            // Find batches at external partner for this WO/process
+
+            // POINT 26: Update ALL batches at external partner (not just 1)
             const { data: externalBatches } = await supabase
               .from("production_batches")
               .select("id, batch_quantity")
               .eq("wo_id", formData.work_order_id)
               .is("ended_at", null)
               .eq("current_location_type", "external_partner")
-              .eq("current_process", formData.process_type)
-              .order("created_at", { ascending: false })
-              .limit(1);
-            
+              .eq("current_process", formData.process_type);
+
             if (externalBatches && externalBatches.length > 0) {
-              const batch = externalBatches[0];
-              // Determine if QC is required after external return
               const requiresQC = formData.qc_required;
-              
+              const batchIds = externalBatches.map(b => b.id);
+
               await supabase
                 .from("production_batches")
                 .update({
@@ -1136,10 +1235,45 @@ export default function GateRegister() {
                   requires_qc_on_return: requiresQC,
                   post_external_qc_status: requiresQC ? 'pending' : 'passed',
                 })
-                .eq("id", batch.id);
+                .in("id", batchIds);
             }
-            
-            // 5. Create execution record for traceability
+
+            // POINT 24: Create qc_records for post-external QC visibility
+            if (formData.qc_required) {
+              const qcId = `QC-EXT-${data.gate_entry_no}`;
+              await supabase
+                .from("qc_records")
+                .insert({
+                  qc_id: qcId,
+                  wo_id: formData.work_order_id,
+                  qc_type: 'post_external' as any,
+                  result: 'pending' as any,
+                  heat_no: formData.heat_no || null,
+                  remarks: `Post-external QC for ${formData.process_type}. Gate Entry: ${data.gate_entry_no}. Qty: ${receivedQty} pcs, Weight: ${effectiveNetWeight} kg`,
+                  inspected_quantity: 0,
+                });
+            }
+
+            // POINT 25: Create inventory record on external return for tracking
+            if (formData.work_order_id) {
+              const linkedWO = workOrders.find(w => w.id === formData.work_order_id);
+              const lotId = `LOT-EXT-${data.gate_entry_no}`;
+              await supabase
+                .from("inventory_lots")
+                .insert({
+                  lot_id: lotId,
+                  material_size_mm: formData.rod_section_size || linkedWO?.item_code || 'N/A',
+                  alloy: formData.alloy || 'N/A',
+                  qty_kg: effectiveNetWeight,
+                  supplier_id: null,
+                  rpo_id: null,
+                  heat_no: formData.heat_no || null,
+                  received_date: new Date().toISOString().split('T')[0],
+                  cost_rate: null,
+                });
+            }
+
+            // Create execution record for traceability
             await createExecutionRecord({
               workOrderId: formData.work_order_id,
               operationType: 'EXTERNAL_PROCESS',
@@ -1148,11 +1282,119 @@ export default function GateRegister() {
               unit: 'pcs',
               direction: 'IN',
               relatedPartnerId: formData.partner_id || null,
-              relatedChallanId: move.id,
+              relatedChallanId: pendingMoves[0]?.id || null,
+            });
+          } else {
+            // No pending moves found — create a standalone return record
+            toast({
+              title: "Warning",
+              description: "No pending external move found for this WO/process. Entry recorded but could not match to a challan.",
             });
           }
         }
       }
+
+      // ===================================================================
+      // FINISHED GOODS DISPATCH WORKFLOW (Points 31-40)
+      // ===================================================================
+      if (formData.material_type === 'finished_goods' && formDirection === 'OUT') {
+        const linkedWO = workOrders.find(w => w.id === formData.work_order_id);
+
+        if (formData.work_order_id && linkedWO) {
+          // POINT 31: Create dispatch_notes record for finance/logistics visibility
+          const dispatchNoteNo = `DN-${data.gate_entry_no}`;
+          const dispatchedQty = estimatedPcs || Math.round(effectiveNetWeight);
+
+          const { error: dnError } = await supabase
+            .from("dispatch_notes")
+            .insert({
+              dispatch_note_no: dispatchNoteNo,
+              work_order_id: formData.work_order_id,
+              item_code: linkedWO.item_code || 'N/A',
+              item_description: formData.item_name || linkedWO.item_code || null,
+              dispatched_qty: dispatchedQty,
+              packed_qty: dispatchedQty,
+              dispatch_date: new Date().toISOString().split('T')[0],
+              gross_weight_kg: grossWeight,
+              net_weight_kg: effectiveNetWeight,
+              remarks: `Gate Register dispatch: ${data.gate_entry_no}. ${formData.remarks || ''}`.trim(),
+              created_by: user?.id || null,
+              sales_order_id: null, // Can be linked manually later
+            });
+
+          if (dnError) {
+            console.error("Failed to create dispatch_notes record:", dnError);
+            toast({ variant: "destructive", description: `Dispatch note failed: ${dnError.message}` });
+          }
+
+          // POINT 37: Update work order qty_dispatched
+          const { data: woData } = await supabase
+            .from("work_orders")
+            .select("qty_dispatched")
+            .eq("id", formData.work_order_id)
+            .single();
+
+          const currentDispatched = woData?.qty_dispatched || 0;
+          await supabase
+            .from("work_orders")
+            .update({
+              qty_dispatched: currentDispatched + dispatchedQty,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", formData.work_order_id);
+
+          // Create execution record for dispatch traceability
+          await createExecutionRecord({
+            workOrderId: formData.work_order_id,
+            operationType: 'DISPATCH',
+            processName: 'Finished Goods Dispatch',
+            quantity: dispatchedQty,
+            unit: 'pcs',
+            direction: 'OUT',
+            relatedPartnerId: null,
+            relatedChallanId: null,
+          });
+        }
+      }
+
+      // ===================================================================
+      // SCRAP OUT — execution record for traceability (Point 40)
+      // ===================================================================
+      if (formData.material_type === 'scrap' && formDirection === 'OUT' && formData.work_order_id) {
+        await createExecutionRecord({
+          workOrderId: formData.work_order_id,
+          operationType: 'DISPATCH',
+          processName: 'Scrap Dispatch',
+          quantity: effectiveNetWeight,
+          unit: 'kg',
+          direction: 'OUT',
+          relatedPartnerId: null,
+          relatedChallanId: null,
+        });
+      }
+
+      // ===================================================================
+      // POINT 50: Create audit_logs entry for every gate register action
+      // ===================================================================
+      await supabase
+        .from("audit_logs")
+        .insert({
+          table_name: 'gate_register',
+          record_id: data.id,
+          action: `gate_${formDirection.toLowerCase()}_${formData.material_type}`,
+          changed_by: user?.id || null,
+          new_data: {
+            gate_entry_no: data.gate_entry_no,
+            direction: formDirection,
+            material_type: formData.material_type,
+            net_weight_kg: effectiveNetWeight,
+            estimated_pcs: estimatedPcs,
+            rpo_id: formData.rpo_id || null,
+            work_order_id: formData.work_order_id || null,
+            partner_id: formData.partner_id || null,
+            process_type: formData.process_type || null,
+          },
+        });
 
       toast({
         title: "Entry Created",
@@ -1162,13 +1404,13 @@ export default function GateRegister() {
       setFormOpen(false);
       loadEntries();
 
-      // Offer to print tag - include work order number if linked
+      // Offer to print tag
       if (data) {
-        const linkedWO = formData.work_order_id 
+        const linkedWO = formData.work_order_id
           ? workOrders.find(w => w.id === formData.work_order_id)
           : null;
-        const entryData = { 
-          ...data, 
+        const entryData = {
+          ...data,
           direction: data.direction as 'IN' | 'OUT',
           wo_number: linkedWO?.wo_number || null
         };

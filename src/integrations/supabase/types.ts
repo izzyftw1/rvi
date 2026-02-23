@@ -2618,13 +2618,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          alloy: string
+          alloy?: string
           cost_rate?: number | null
           created_at?: string
           heat_no?: string | null
           id?: string
           lot_id: string
-          material_size_mm: string
+          material_size_mm?: string
           qty_kg: number
           received_date?: string
           rpo_id?: string | null
@@ -7026,6 +7026,7 @@ export type Database = {
         Row: {
           amount_on_invoice: number | null
           created_at: string
+          gate_register_id: string | null
           gi_ref: string | null
           id: string
           lr_no: string | null
@@ -7041,6 +7042,7 @@ export type Database = {
         Insert: {
           amount_on_invoice?: number | null
           created_at?: string
+          gate_register_id?: string | null
           gi_ref?: string | null
           id?: string
           lr_no?: string | null
@@ -7056,6 +7058,7 @@ export type Database = {
         Update: {
           amount_on_invoice?: number | null
           created_at?: string
+          gate_register_id?: string | null
           gi_ref?: string | null
           id?: string
           lr_no?: string | null
@@ -7069,6 +7072,13 @@ export type Database = {
           transporter?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "raw_po_receipts_gate_register_id_fkey"
+            columns: ["gate_register_id"]
+            isOneToOne: false
+            referencedRelation: "gate_register"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "raw_po_receipts_gi_ref_fkey"
             columns: ["gi_ref"]
@@ -8853,16 +8863,20 @@ export type Database = {
           created_by: string | null
           dispatch_date: string | null
           expected_return_date: string | null
+          gate_register_id: string | null
           id: string
           operation_tag: string | null
           partner_id: string | null
           process: string
+          quantity_rejected: number | null
           quantity_returned: number | null
           quantity_sent: number
           remarks: string | null
           returned_date: string | null
           status: string | null
           updated_at: string | null
+          weight_returned_kg: number | null
+          weight_sent_kg: number | null
           work_order_id: string
         }
         Insert: {
@@ -8871,16 +8885,20 @@ export type Database = {
           created_by?: string | null
           dispatch_date?: string | null
           expected_return_date?: string | null
+          gate_register_id?: string | null
           id?: string
           operation_tag?: string | null
           partner_id?: string | null
           process: string
+          quantity_rejected?: number | null
           quantity_returned?: number | null
           quantity_sent: number
           remarks?: string | null
           returned_date?: string | null
           status?: string | null
           updated_at?: string | null
+          weight_returned_kg?: number | null
+          weight_sent_kg?: number | null
           work_order_id: string
         }
         Update: {
@@ -8889,19 +8907,30 @@ export type Database = {
           created_by?: string | null
           dispatch_date?: string | null
           expected_return_date?: string | null
+          gate_register_id?: string | null
           id?: string
           operation_tag?: string | null
           partner_id?: string | null
           process?: string
+          quantity_rejected?: number | null
           quantity_returned?: number | null
           quantity_sent?: number
           remarks?: string | null
           returned_date?: string | null
           status?: string | null
           updated_at?: string | null
+          weight_returned_kg?: number | null
+          weight_sent_kg?: number | null
           work_order_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "wo_external_moves_gate_register_id_fkey"
+            columns: ["gate_register_id"]
+            isOneToOne: false
+            referencedRelation: "gate_register"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "wo_external_moves_partner_id_fkey"
             columns: ["partner_id"]
