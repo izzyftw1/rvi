@@ -10,7 +10,7 @@ import { format, parseISO } from "date-fns";
 interface GateEntry {
   id: string;
   gate_entry_no: string;
-  direction: 'in' | 'out';
+  direction: 'in' | 'out' | 'IN' | 'OUT';
   material_type: string;
   entry_date: string;
   entry_time: string;
@@ -135,8 +135,10 @@ export function WOGateRegisterEntries({ workOrderId }: WOGateRegisterEntriesProp
     }
   };
 
-  const getDirectionBadge = (direction: 'in' | 'out') => {
-    if (direction === 'in') {
+  // POINT 28: Handle both uppercase IN/OUT and lowercase in/out from gate_register
+  const getDirectionBadge = (direction: 'in' | 'out' | 'IN' | 'OUT') => {
+    const normalizedDirection = direction.toUpperCase();
+    if (normalizedDirection === 'IN') {
       return (
         <Badge variant="outline" className="gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30">
           <Inbox className="h-3 w-3" />
