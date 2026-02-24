@@ -518,6 +518,18 @@ export default function Dispatch() {
           ? (dispatchQty * woWeight.gross_weight_per_pc / 1000) 
           : 0;
 
+        // Resolve customer_id for gate entry filtering
+        let customerId: string | null = null;
+        if (woWeight?.customer) {
+          const { data: custData } = await supabase
+            .from("customer_master")
+            .select("id")
+            .eq("customer_name", woWeight.customer)
+            .limit(1)
+            .maybeSingle();
+          customerId = custData?.id || null;
+        }
+
         await createGateEntry({
           direction: 'OUT',
           material_type: 'finished_goods',
@@ -526,8 +538,10 @@ export default function Dispatch() {
           estimated_pcs: dispatchQty,
           item_name: woWeight?.item_code || batch.work_orders?.item_code || null,
           party_code: woWeight?.customer || batch.work_orders?.customer || null,
+          customer_id: customerId,
           work_order_id: batch.wo_id,
           challan_no: generatedShipId,
+          dc_number: generatedShipId,
           qc_required: false,
           remarks: `Auto: Dispatch ${generatedShipId} - ${dispatchQty} pcs`,
           created_by: user?.id || null,

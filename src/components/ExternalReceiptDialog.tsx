@@ -241,6 +241,13 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         relatedChallanId: move.id,
       });
 
+      // Get item name from work order for gate entry enrichment
+      const { data: woItemData } = await supabase
+        .from("work_orders")
+        .select("item_code, customer")
+        .eq("id", move.work_order_id)
+        .single();
+
       // AUTO-CREATE GATE REGISTER ENTRY (IN) - SSOT integration
       await createGateEntry({
         direction: 'IN',
@@ -248,13 +255,13 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         gross_weight_kg: totalWeight,
         net_weight_kg: totalWeight,
         estimated_pcs: qty,
-        item_name: null,
+        item_name: woItemData?.item_code || null,
         partner_id: move.partner_id || null,
         process_type: move.process || null,
         work_order_id: move.work_order_id,
         challan_no: move.challan_no || null,
         qc_required: true,
-        remarks: `Auto: Received from ${move.process} - ${qty} pcs via ExternalReceipt`,
+        remarks: `Auto: Received ${qty} pcs from ${move.process} via ExternalReceipt`,
         created_by: user?.id || null,
       });
 
