@@ -48,6 +48,7 @@ export default function CustomerMaster() {
     gst_number: "",
     gst_type: "not_applicable" as "domestic" | "export" | "not_applicable",
     pan_number: "",
+    is_export_customer: false,
     credit_limit_amount: "",
     credit_limit_currency: "USD",
     payment_terms_days: "30",
@@ -163,6 +164,7 @@ export default function CustomerMaster() {
       gst_number: "",
       gst_type: "not_applicable",
       pan_number: "",
+      is_export_customer: false,
       credit_limit_amount: "",
       credit_limit_currency: "USD",
       payment_terms_days: "30",
@@ -187,6 +189,7 @@ export default function CustomerMaster() {
       gst_number: customer.gst_number || "",
       gst_type: customer.gst_type || "not_applicable",
       pan_number: customer.pan_number || "",
+      is_export_customer: customer.is_export_customer || false,
       credit_limit_amount: customer.credit_limit_amount?.toString() || "",
       credit_limit_currency: customer.credit_limit_currency || "USD",
       payment_terms_days: customer.payment_terms_days?.toString() || "30",
@@ -223,6 +226,7 @@ export default function CustomerMaster() {
         gst_number: formData.gst_number || null,
         gst_type: formData.gst_type,
         pan_number: formData.pan_number || null,
+        is_export_customer: formData.is_export_customer,
         credit_limit_amount: formData.credit_limit_amount ? parseFloat(formData.credit_limit_amount) : null,
         credit_limit_currency: formData.credit_limit_currency,
         payment_terms_days: formData.payment_terms_days ? parseInt(formData.payment_terms_days) : 30,
@@ -536,6 +540,30 @@ export default function CustomerMaster() {
                   <p className="text-xs text-muted-foreground">Required for TDS calculation on domestic customers</p>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label>PAN Number</Label>
+                <Input
+                  value={formData.pan_number}
+                  onChange={(e) => setFormData({ ...formData, pan_number: e.target.value.toUpperCase() })}
+                  placeholder="XXXXX0000X"
+                  maxLength={10}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Export Customer</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <input
+                    type="checkbox"
+                    id="edit_is_export"
+                    checked={formData.is_export_customer}
+                    onChange={(e) => setFormData({ ...formData, is_export_customer: e.target.checked })}
+                    className="rounded border-input"
+                  />
+                  <label htmlFor="edit_is_export" className="text-sm cursor-pointer">
+                    No TDS applicable (export)
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-3">
