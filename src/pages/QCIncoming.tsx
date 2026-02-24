@@ -45,6 +45,15 @@ export default function QCIncoming() {
 
   useEffect(() => {
     loadWorkOrdersQCStatus();
+
+    const channel = supabase
+      .channel('incoming-qc-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadWorkOrdersQCStatus)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_material_issues' }, loadWorkOrdersQCStatus)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, loadWorkOrdersQCStatus)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const loadWorkOrdersQCStatus = async () => {
@@ -57,7 +66,9 @@ export default function QCIncoming() {
           qc_material_status, qc_material_passed, qc_first_piece_status,
           material_size_mm, bom
         `)
-        .order("created_at", { ascending: false });
+        .in('status', ['pending', 'in_progress', 'qc', 'packing'])
+        .order("created_at", { ascending: false })
+        .limit(200);
 
       if (woError) throw woError;
       if (!wos) { setWorkOrders([]); return; }

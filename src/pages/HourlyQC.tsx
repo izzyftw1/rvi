@@ -265,7 +265,7 @@ const HourlyQC = () => {
       const { data: qcCheckData, error } = await supabase.from('hourly_qc_checks').insert({
         wo_id: selectedWorkOrder.id,
         machine_id: machineId,
-        operator_id: (await supabase.auth.getUser()).data.user?.id,
+        operator_id: null, // Operator selected separately; FK references people.id not auth.users
         operation: operation,
         dimensions: dimensionsData,
         status: overallStatus,

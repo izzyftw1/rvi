@@ -317,8 +317,8 @@ export default function QualityDocuments() {
                           </TableCell>
                           <TableCell>
                             <Badge variant={
-                              ncr.status === "closed" ? "default" :
-                              ncr.status === "open" ? "destructive" : "secondary"
+                              ncr.status === "CLOSED" ? "default" :
+                              ncr.status === "OPEN" ? "destructive" : "secondary"
                             }>
                               {ncr.status}
                             </Badge>

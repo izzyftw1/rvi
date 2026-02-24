@@ -78,15 +78,18 @@ const Quality = () => {
 
       if (woError) throw woError;
 
+      const woIds = (workOrders || []).map(wo => wo.id);
+
+      // Only fetch QC records for the active work orders to avoid 1000 row limit
       const { data: qcRecords, error: qcError } = await supabase
         .from("qc_records")
         .select("id, result, wo_id, created_at, qc_type")
+        .in("wo_id", woIds.length > 0 ? woIds : ["00000000-0000-0000-0000-000000000000"])
         .order("created_at", { ascending: false });
 
       if (qcError) throw qcError;
 
       // Fetch production metrics from daily_production_logs for all work orders
-      const woIds = (workOrders || []).map(wo => wo.id);
       const { data: productionLogs } = await supabase
         .from("daily_production_logs")
         .select(`
