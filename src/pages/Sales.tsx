@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download, AlertCircle, Info } from "lucide-react";
+import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download, AlertCircle, Info, Edit } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,8 @@ import { AddCustomerDialog } from "@/components/sales/AddCustomerDialog";
 import { AddItemDialog } from "@/components/sales/AddItemDialog";
 import { getTdsRate, getPanEntityType, isValidPan } from "@/lib/tdsUtils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useCanViewCustomerName } from "@/hooks/useCustomerDisplay";
+import { CustomerName } from "@/components/CustomerName";
 
 // Simplified line item - ONLY commercial data, NO manufacturing specs
 interface LineItem {
@@ -73,6 +75,9 @@ export default function Sales() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<any>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const { canView: canViewCustomerName } = useCanViewCustomerName();
 
   const isIndianCustomer = formData.customer_country?.toLowerCase() === 'india';
   
@@ -461,6 +466,48 @@ export default function Sales() {
     }
   };
 
+  const handleEditOrder = (order: any) => {
+    setEditingOrder({
+      ...order,
+      po_number: order.po_number || "",
+      po_date: order.po_date || "",
+      expected_delivery_date: order.expected_delivery_date || "",
+      drawing_number: order.drawing_number || "",
+      currency: order.currency || "USD",
+      payment_terms_days: order.payment_terms_days || 30,
+      incoterm: order.incoterm || "EXW",
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOrder) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("sales_orders")
+        .update({
+          po_number: editingOrder.po_number,
+          expected_delivery_date: editingOrder.expected_delivery_date || null,
+          drawing_number: editingOrder.drawing_number || null,
+          currency: editingOrder.currency,
+          payment_terms_days: editingOrder.payment_terms_days ? Number(editingOrder.payment_terms_days) : null,
+          incoterm: editingOrder.incoterm,
+        })
+        .eq("id", editingOrder.id);
+
+      if (error) throw error;
+      toast({ description: `Sales order ${editingOrder.so_id} updated` });
+      setIsEditDialogOpen(false);
+      setEditingOrder(null);
+      await loadSalesOrders();
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDownloadProforma = async (order: any) => {
     try {
       setLoading(true);
@@ -548,7 +595,10 @@ export default function Sales() {
                         <SelectContent className="bg-background z-50">
                           {customers.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
-                              {c.customer_name} {c.country ? `(${c.country})` : ''}
+                              {canViewCustomerName 
+                                ? `${c.party_code || ''} - ${c.customer_name}${c.country ? ` (${c.country})` : ''}`
+                                : `${c.party_code || 'N/A'}${c.country ? ` (${c.country})` : ''}`
+                              }
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -929,7 +979,13 @@ export default function Sales() {
                           {order.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">{order.customer}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        <CustomerName 
+                          customerName={order.customer} 
+                          partyCode={order.party_code} 
+                          showBoth={true}
+                        />
+                      </TableCell>
                       <TableCell className="text-center">
                         {itemCount > 0 ? itemCount : <span className="text-muted-foreground">—</span>}
                       </TableCell>
@@ -951,6 +1007,14 @@ export default function Sales() {
                             }}
                           >
                             <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditOrder(order)}
+                            title="Edit order"
+                          >
+                            <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -990,7 +1054,13 @@ export default function Sales() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <Label className="text-muted-foreground">Customer</Label>
-                    <p className="font-medium">{selectedOrder.customer}</p>
+                    <p className="font-medium">
+                      <CustomerName 
+                        customerName={selectedOrder.customer} 
+                        partyCode={selectedOrder.party_code} 
+                        showBoth={true}
+                      />
+                    </p>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">PO Number</Label>
@@ -1059,6 +1129,79 @@ export default function Sales() {
                       <span>{selectedOrder.currency} {(selectedOrder.total_amount || 0).toFixed(2)}</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Sales Order: {editingOrder?.so_id}</DialogTitle>
+            </DialogHeader>
+            {editingOrder && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Customer</Label>
+                    <Input value={editingOrder.customer} disabled className="bg-muted" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>PO Number</Label>
+                    <Input
+                      value={editingOrder.po_number}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, po_number: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expected Delivery Date</Label>
+                    <Input
+                      type="date"
+                      value={editingOrder.expected_delivery_date || ""}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, expected_delivery_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Drawing Number</Label>
+                    <Input
+                      value={editingOrder.drawing_number || ""}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, drawing_number: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select value={editingOrder.currency} onValueChange={(v) => setEditingOrder({ ...editingOrder, currency: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Payment Terms (Days)</Label>
+                    <Input
+                      type="number"
+                      value={editingOrder.payment_terms_days || ""}
+                      onChange={(e) => setEditingOrder({ ...editingOrder, payment_terms_days: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Incoterm</Label>
+                    <Select value={editingOrder.incoterm || "EXW"} onValueChange={(v) => setEditingOrder({ ...editingOrder, incoterm: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        {INCOTERMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleSaveEdit} disabled={loading}>
+                    {loading ? 'Saving...' : 'Save Changes'}
+                  </Button>
                 </div>
               </div>
             )}
