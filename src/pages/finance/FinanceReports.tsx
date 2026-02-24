@@ -151,10 +151,17 @@ export default function FinanceReports() {
       const today = new Date();
       let aging = (invoices || []).map((inv: any) => {
         const daysOverdue = Math.floor((today.getTime() - new Date(inv.due_date).getTime()) / (1000 * 60 * 60 * 24));
+        // FIX #74: Sync aging buckets with Aging.tsx (Current, 1-15, 16-30, 31-45, 46-60, >60)
+        let bucket = 'Current';
+        if (daysOverdue > 60) bucket = '>60';
+        else if (daysOverdue > 45) bucket = '46-60';
+        else if (daysOverdue > 30) bucket = '31-45';
+        else if (daysOverdue > 15) bucket = '16-30';
+        else if (daysOverdue > 0) bucket = '1-15';
         return {
           ...inv,
           days_overdue: Math.max(0, daysOverdue),
-          aging_bucket: daysOverdue <= 30 ? '0-30' : daysOverdue <= 60 ? '31-60' : daysOverdue <= 90 ? '61-90' : '90+',
+          aging_bucket: bucket,
         };
       });
 

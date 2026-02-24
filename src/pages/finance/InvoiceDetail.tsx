@@ -312,7 +312,14 @@ export default function InvoiceDetail() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Invoice Summary</CardTitle>
-                  {getStatusBadge(invoice.status)}
+                  <div className="flex items-center gap-2">
+                    {invoice.is_locked && (
+                      <Badge variant="outline" className="border-amber-500 text-amber-700">
+                        <Lock className="h-3 w-3 mr-1" />Locked
+                      </Badge>
+                    )}
+                    {getStatusBadge(invoice.status)}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -341,10 +348,26 @@ export default function InvoiceDetail() {
                 </div>
 
                 {invoice.gst_amount > 0 && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">GST ({invoice.gst_percent}%)</p>
-                    <p className="font-medium">{invoice.currency} {invoice.gst_amount?.toLocaleString()}</p>
-                  </div>
+                  <>
+                    {/* FIX #12: Show GST split */}
+                    {invoice.gst_type === 'cgst_sgst' ? (
+                      <>
+                        <div>
+                          <p className="text-sm text-muted-foreground">CGST ({(invoice.gst_percent || 0) / 2}%)</p>
+                          <p className="font-medium">{invoice.currency} {(invoice.cgst_amount || 0).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">SGST ({(invoice.gst_percent || 0) / 2}%)</p>
+                          <p className="font-medium">{invoice.currency} {(invoice.sgst_amount || 0).toLocaleString()}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <p className="text-sm text-muted-foreground">IGST ({invoice.gst_percent}%)</p>
+                        <p className="font-medium">{invoice.currency} {(invoice.igst_amount || invoice.gst_amount || 0).toLocaleString()}</p>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <Separator />
