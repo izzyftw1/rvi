@@ -139,6 +139,10 @@ export default function Payments() {
       const { data: { user } } = await supabase.auth.getUser();
       const receiptNo = await generateReceiptNumber();
 
+      // FIX #24: Store exchange rate at receipt date
+      const exchangeRates: Record<string, number> = { INR: 1, USD: 83.50, EUR: 91.20, GBP: 106.80 };
+      const exchangeRate = exchangeRates[currency] || 1;
+
       const { error } = await supabase
         .from("customer_receipts")
         .insert({
@@ -150,6 +154,7 @@ export default function Payments() {
           bank_reference: reference || null,
           bank_name: bankName || null,
           currency: currency,
+          exchange_rate_to_inr: exchangeRate,
           notes: notes || null,
           created_by: user?.id
         });

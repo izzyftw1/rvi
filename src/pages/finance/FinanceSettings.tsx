@@ -213,11 +213,16 @@ export default function FinanceSettings() {
             <Card>
               <CardHeader><CardTitle>Tax Configuration</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Domestic GST Rate</Label>
+                    <Label>IGST Rate (Inter-State)</Label>
                     <Input type="number" value="18" readOnly className="bg-muted" />
-                    <p className="text-xs text-muted-foreground">Applied to domestic invoices. Export invoices are zero-rated.</p>
+                    <p className="text-xs text-muted-foreground">Applied for inter-state domestic sales</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CGST + SGST (Intra-State)</Label>
+                    <Input type="number" value="9 + 9" readOnly className="bg-muted" />
+                    <p className="text-xs text-muted-foreground">Applied when customer state = company state (Maharashtra)</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Export Tax Rate</Label>
@@ -227,7 +232,7 @@ export default function FinanceSettings() {
                 </div>
                 <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
                   <AlertCircle className="h-4 w-4 inline mr-1" />
-                  Tax rates are currently system-managed. CGST/SGST/IGST split is determined by customer state vs company state.
+                  GST split (CGST/SGST vs IGST) is auto-determined by comparing customer state with company state (Maharashtra). Export invoices are zero-rated.
                 </div>
               </CardContent>
             </Card>

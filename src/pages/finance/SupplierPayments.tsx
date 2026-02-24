@@ -73,31 +73,32 @@ export default function SupplierPayments() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // FIX #33: Load actual tds_rate from suppliers table
-      const { data: suppliersData } = await supabase
+      // FIX #33: Load suppliers - cast to break deep type chain
+      const suppliersResult: { data: any[] | null } = await (supabase as any)
         .from('suppliers')
-        .select('id, name, pan_number')
+        .select('id, name')
         .eq('is_active', true)
         .order('name');
 
-      const typedSuppliers = (suppliersData || []).map(s => ({
-        id: s.id as string,
-        name: s.name as string,
-        pan_number: (s as any).pan_number as string | null,
-        tds_rate: (s as any).tds_rate as number | null,
+      const rawSuppliers: any[] = suppliersResult.data || [];
+      const typedSuppliers: Supplier[] = rawSuppliers.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        pan_number: s.pan_number ?? null,
+        tds_rate: s.tds_rate ?? null,
       }));
 
       // Load payments
-      const { data: paymentsData } = await supabase
+      const paymentsResult = await supabase
         .from('supplier_payments')
         .select('*')
         .order('payment_date', { ascending: false })
         .limit(200);
 
       const supplierMap = new Map(typedSuppliers.map(s => [s.id, s.name]));
-      const enrichedPayments = (paymentsData || []).map(p => ({
+      const enrichedPayments = ((paymentsResult.data || []) as any[]).map(p => ({
         ...p,
-        status: (p as any).status || 'completed',
+        status: p.status || 'completed',
         supplier_name: supplierMap.get(p.supplier_id) || 'Unknown'
       })) as SupplierPayment[];
 

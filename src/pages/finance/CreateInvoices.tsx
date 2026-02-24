@@ -316,10 +316,18 @@ export default function CreateInvoices() {
 
         // Calculate totals from dispatched quantities
         const subtotal = calculateShipmentTotal(shipment);
-        // Determine GST based on export status (no GST for exports)
+        // FIX #12: GST split - IGST for inter-state/export, CGST+SGST for intra-state
         const isExport = shipment.is_export;
         const gstPercent = isExport ? 0 : 18;
         const gstAmount = (subtotal * gstPercent) / 100;
+        // Determine GST type based on customer state vs company state (Maharashtra)
+        const companyState = 'Maharashtra';
+        const customerState = (shipment as any).customer_state || '';
+        const isIntraState = !isExport && customerState.toLowerCase() === companyState.toLowerCase();
+        const gstType = isExport ? 'export' : isIntraState ? 'cgst_sgst' : 'igst';
+        const cgstAmount = gstType === 'cgst_sgst' ? gstAmount / 2 : 0;
+        const sgstAmount = gstType === 'cgst_sgst' ? gstAmount / 2 : 0;
+        const igstAmount = gstType === 'igst' ? gstAmount : 0;
         const totalAmount = subtotal + gstAmount;
 
         // Check for open customer adjustments to auto-apply (INTERNAL ONLY - not on PDF)
@@ -375,6 +383,12 @@ export default function CreateInvoices() {
             created_by: user?.id,
             internal_adjustment_total: internalAdjustmentTotal > 0 ? internalAdjustmentTotal : null,
             internal_adjustment_notes: internalAdjustmentNotes || null,
+            is_locked: true, // FIX #11: Lock invoice immediately on creation
+            // FIX #12: GST split
+            cgst_amount: cgstAmount,
+            sgst_amount: sgstAmount,
+            igst_amount: igstAmount,
+            gst_type: gstType,
             // Export fields
             is_export: isExport,
             customer_address: shipment.customer_address,

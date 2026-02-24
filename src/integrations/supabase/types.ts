@@ -430,6 +430,8 @@ export type Database = {
           adjustment_type: string
           applied_at: string | null
           applied_to_invoice_id: string | null
+          approved_at: string | null
+          approved_by: string | null
           closure_adjustment_id: string | null
           created_at: string
           created_by: string | null
@@ -443,6 +445,7 @@ export type Database = {
           reason: string
           rejection_qty: number | null
           remaining_amount: number
+          requires_approval: boolean | null
           source_invoice_id: string | null
           status: string
           unit_rate: number | null
@@ -452,6 +455,8 @@ export type Database = {
           adjustment_type?: string
           applied_at?: string | null
           applied_to_invoice_id?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           closure_adjustment_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -465,6 +470,7 @@ export type Database = {
           reason: string
           rejection_qty?: number | null
           remaining_amount: number
+          requires_approval?: boolean | null
           source_invoice_id?: string | null
           status?: string
           unit_rate?: number | null
@@ -474,6 +480,8 @@ export type Database = {
           adjustment_type?: string
           applied_at?: string | null
           applied_to_invoice_id?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           closure_adjustment_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -487,6 +495,7 @@ export type Database = {
           reason?: string
           rejection_qty?: number | null
           remaining_amount?: number
+          requires_approval?: boolean | null
           source_invoice_id?: string | null
           status?: string
           unit_rate?: number | null
@@ -3101,6 +3110,7 @@ export type Database = {
         Row: {
           adjustment_amount: number
           balance_amount: number
+          cgst_amount: number | null
           closed_adjusted_at: string | null
           closed_adjusted_by: string | null
           closure_adjustment_total: number | null
@@ -3121,8 +3131,10 @@ export type Database = {
           gross_amount: number | null
           gst_amount: number | null
           gst_percent: number | null
+          gst_type: string | null
           hs_code: string | null
           id: string
+          igst_amount: number | null
           incoterm: string | null
           internal_adjustment_notes: string | null
           internal_adjustment_total: number | null
@@ -3141,6 +3153,7 @@ export type Database = {
           port_of_discharge: string | null
           port_of_loading: string | null
           recovery_stage: Database["public"]["Enums"]["recovery_stage"] | null
+          sgst_amount: number | null
           shipment_id: string | null
           short_close_reason: string | null
           short_closed: boolean
@@ -3159,6 +3172,7 @@ export type Database = {
         Insert: {
           adjustment_amount?: number
           balance_amount?: number
+          cgst_amount?: number | null
           closed_adjusted_at?: string | null
           closed_adjusted_by?: string | null
           closure_adjustment_total?: number | null
@@ -3179,8 +3193,10 @@ export type Database = {
           gross_amount?: number | null
           gst_amount?: number | null
           gst_percent?: number | null
+          gst_type?: string | null
           hs_code?: string | null
           id?: string
+          igst_amount?: number | null
           incoterm?: string | null
           internal_adjustment_notes?: string | null
           internal_adjustment_total?: number | null
@@ -3199,6 +3215,7 @@ export type Database = {
           port_of_discharge?: string | null
           port_of_loading?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
+          sgst_amount?: number | null
           shipment_id?: string | null
           short_close_reason?: string | null
           short_closed?: boolean
@@ -3217,6 +3234,7 @@ export type Database = {
         Update: {
           adjustment_amount?: number
           balance_amount?: number
+          cgst_amount?: number | null
           closed_adjusted_at?: string | null
           closed_adjusted_by?: string | null
           closure_adjustment_total?: number | null
@@ -3237,8 +3255,10 @@ export type Database = {
           gross_amount?: number | null
           gst_amount?: number | null
           gst_percent?: number | null
+          gst_type?: string | null
           hs_code?: string | null
           id?: string
+          igst_amount?: number | null
           incoterm?: string | null
           internal_adjustment_notes?: string | null
           internal_adjustment_total?: number | null
@@ -3257,6 +3277,7 @@ export type Database = {
           port_of_discharge?: string | null
           port_of_loading?: string | null
           recovery_stage?: Database["public"]["Enums"]["recovery_stage"] | null
+          sgst_amount?: number | null
           shipment_id?: string | null
           short_close_reason?: string | null
           short_closed?: boolean
@@ -8500,6 +8521,66 @@ export type Database = {
           },
         ]
       }
+      supplier_invoices: {
+        Row: {
+          balance_amount: number
+          created_at: string | null
+          created_by: string | null
+          currency: string | null
+          due_date: string | null
+          id: string
+          invoice_date: string
+          invoice_number: string
+          notes: string | null
+          paid_amount: number
+          po_id: string | null
+          status: string | null
+          subtotal: number
+          supplier_id: string
+          tax_amount: number
+          total_amount: number
+          updated_at: string | null
+        }
+        Insert: {
+          balance_amount?: number
+          created_at?: string | null
+          created_by?: string | null
+          currency?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number: string
+          notes?: string | null
+          paid_amount?: number
+          po_id?: string | null
+          status?: string | null
+          subtotal?: number
+          supplier_id: string
+          tax_amount?: number
+          total_amount?: number
+          updated_at?: string | null
+        }
+        Update: {
+          balance_amount?: number
+          created_at?: string | null
+          created_by?: string | null
+          currency?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          notes?: string | null
+          paid_amount?: number
+          po_id?: string | null
+          status?: string | null
+          subtotal?: number
+          supplier_id?: string
+          tax_amount?: number
+          total_amount?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       supplier_payments: {
         Row: {
           amount: number
@@ -8513,6 +8594,7 @@ export type Database = {
           reference_no: string | null
           status: string
           supplier_id: string
+          supplier_invoice_id: string | null
           updated_at: string
         }
         Insert: {
@@ -8527,6 +8609,7 @@ export type Database = {
           reference_no?: string | null
           status?: string
           supplier_id: string
+          supplier_invoice_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -8541,6 +8624,7 @@ export type Database = {
           reference_no?: string | null
           status?: string
           supplier_id?: string
+          supplier_invoice_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -8549,6 +8633,13 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payments_supplier_invoice_id_fkey"
+            columns: ["supplier_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_invoices"
             referencedColumns: ["id"]
           },
         ]
@@ -10712,6 +10803,7 @@ export type Database = {
         Args: { _user_id: string; _wo_id: string }
         Returns: boolean
       }
+      update_overdue_invoices: { Args: never; Returns: undefined }
       update_wo_stage: {
         Args: {
           _new_stage: Database["public"]["Enums"]["wo_stage"]
