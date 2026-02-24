@@ -621,6 +621,7 @@ export type Database = {
           created_by: string | null
           currency: string | null
           customer_id: string
+          exchange_rate_to_inr: number | null
           id: string
           notes: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
@@ -639,6 +640,7 @@ export type Database = {
           created_by?: string | null
           currency?: string | null
           customer_id: string
+          exchange_rate_to_inr?: number | null
           id?: string
           notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
@@ -657,6 +659,7 @@ export type Database = {
           created_by?: string | null
           currency?: string | null
           customer_id?: string
+          exchange_rate_to_inr?: number | null
           id?: string
           notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
@@ -1961,6 +1964,42 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_period_locks: {
+        Row: {
+          created_at: string
+          id: string
+          locked: boolean
+          locked_at: string | null
+          locked_by: string | null
+          period_end: string
+          period_start: string
+          period_type: string
+          unlock_reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          locked?: boolean
+          locked_at?: string | null
+          locked_by?: string | null
+          period_end: string
+          period_start: string
+          period_type: string
+          unlock_reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          locked?: boolean
+          locked_at?: string | null
+          locked_by?: string | null
+          period_end?: string
+          period_start?: string
+          period_type?: string
+          unlock_reason?: string | null
+        }
+        Relationships: []
+      }
       finished_goods_inventory: {
         Row: {
           created_at: string
@@ -3090,6 +3129,7 @@ export type Database = {
           invoice_date: string
           invoice_no: string
           is_export: boolean | null
+          is_locked: boolean
           kind_of_packages: string | null
           marks_nos: string | null
           net_payable: number | null
@@ -3147,6 +3187,7 @@ export type Database = {
           invoice_date?: string
           invoice_no: string
           is_export?: boolean | null
+          is_locked?: boolean
           kind_of_packages?: string | null
           marks_nos?: string | null
           net_payable?: number | null
@@ -3204,6 +3245,7 @@ export type Database = {
           invoice_date?: string
           invoice_no?: string
           is_export?: boolean | null
+          is_locked?: boolean
           kind_of_packages?: string | null
           marks_nos?: string | null
           net_payable?: number | null
@@ -8467,7 +8509,9 @@ export type Database = {
           notes: string | null
           payment_date: string
           payment_method: string
+          po_id: string | null
           reference_no: string | null
+          status: string
           supplier_id: string
           updated_at: string
         }
@@ -8479,7 +8523,9 @@ export type Database = {
           notes?: string | null
           payment_date?: string
           payment_method?: string
+          po_id?: string | null
           reference_no?: string | null
+          status?: string
           supplier_id: string
           updated_at?: string
         }
@@ -8491,7 +8537,9 @@ export type Database = {
           notes?: string | null
           payment_date?: string
           payment_method?: string
+          po_id?: string | null
           reference_no?: string | null
+          status?: string
           supplier_id?: string
           updated_at?: string
         }
