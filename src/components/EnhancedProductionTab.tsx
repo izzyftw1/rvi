@@ -83,7 +83,7 @@ export function EnhancedProductionTab({ woId, workOrder }: EnhancedProductionTab
         .in('id', machineIds) : { data: [] };
 
       const { data: profiles } = operatorIds.length > 0 ? await supabase
-        .from('profiles')
+        .from('people')
         .select('id, full_name')
         .in('id', operatorIds as string[]) : { data: [] };
 

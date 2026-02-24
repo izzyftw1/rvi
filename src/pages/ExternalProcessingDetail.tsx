@@ -36,7 +36,9 @@ const PROCESS_LABELS: Record<string, string> = {
   plating: 'Plating',
   buffing: 'Buffing',
   blasting: 'Blasting',
-  forging_ext: 'Forging'
+  forging_ext: 'Forging',
+  heat_treatment: 'Heat Treatment',
+  grinding: 'Grinding',
 };
 
 const ExternalProcessingDetail = () => {

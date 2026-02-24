@@ -167,7 +167,6 @@ const WorkOrderDetail = () => {
           .eq("id", woData.sales_order)
           .single();
         setSalesOrder(soData || null);
-        setSalesOrder(soData);
       }
 
       // Load routing steps

@@ -127,7 +127,7 @@ const FloorDashboard = () => {
               </Badge>
             </h1>
             <p className="text-sm text-muted-foreground">
-              Real-time batch tracking from production_batches
+              Real-time production batch tracking
             </p>
           </div>
 
@@ -402,7 +402,7 @@ const FloorDashboard = () => {
 
         {/* Source indicator */}
         <p className="text-[10px] text-muted-foreground italic text-right">
-          All data derived from production_batches (current_location_type, current_process)
+          All data derived from real-time batch tracking
         </p>
       </div>
     </div>
