@@ -358,21 +358,58 @@ export default function GoodsInwards() {
         relatedChallanId: selectedMovement.id,
       });
 
+      // Calculate weight from work order data for accurate gate register
+      let grossWeightKg = 0;
+      let itemName: string | null = null;
+      const { data: woWeightData } = await supabase
+        .from("work_orders")
+        .select("gross_weight_per_pc, item_code")
+        .eq("id", selectedMovement.work_order_id)
+        .single();
+      if (woWeightData) {
+        grossWeightKg = woWeightData.gross_weight_per_pc
+          ? (qtyReceived * woWeightData.gross_weight_per_pc / 1000)
+          : 0;
+        itemName = woWeightData.item_code || null;
+      }
+
       // AUTO-CREATE GATE REGISTER ENTRY (IN) - SSOT integration
       await createGateEntry({
         direction: 'IN',
         material_type: 'external_process',
-        gross_weight_kg: 0, // Weight not captured in this flow
+        gross_weight_kg: grossWeightKg,
+        net_weight_kg: grossWeightKg,
         estimated_pcs: qtyReceived,
+        item_name: itemName,
         partner_id: selectedMovement.partner_id || null,
         process_type: selectedMovement.process_type || null,
         work_order_id: selectedMovement.work_order_id || null,
         challan_no: formData.challan_no || selectedMovement.challan_no || null,
         dc_number: formData.dc_number || null,
         qc_required: formData.requires_qc,
-        remarks: `Auto: ${qtyReceived} ${selectedMovement.unit} from ${selectedMovement.partner_name} via GoodsInwards`,
+        remarks: `Auto: ${qtyReceived} ${selectedMovement.unit} received from ${selectedMovement.partner_name} via GoodsInwards`,
         created_by: user?.id || null,
       });
+
+      // PARTNER-TO-PARTNER: Also create an OUT gate entry for the forwarding leg
+      if (receiptType === 'partner_to_partner' && formData.destination_partner_id) {
+        const destPartner = partners.find(p => p.id === formData.destination_partner_id);
+        await createGateEntry({
+          direction: 'OUT',
+          material_type: 'external_process',
+          gross_weight_kg: grossWeightKg,
+          net_weight_kg: grossWeightKg,
+          estimated_pcs: qtyReceived,
+          item_name: itemName,
+          partner_id: formData.destination_partner_id,
+          process_type: formData.process_type || selectedMovement.process_type || null,
+          work_order_id: selectedMovement.work_order_id || null,
+          challan_no: formData.dc_number || null,
+          qc_required: false,
+          remarks: `Auto: Forwarded ${qtyReceived} ${selectedMovement.unit} from ${selectedMovement.partner_name} → ${destPartner?.name || 'Partner'} via GoodsInwards`,
+          created_by: user?.id || null,
+        });
+      }
 
       toast({ 
         title: "Receipt Recorded", 
