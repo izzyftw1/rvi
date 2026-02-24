@@ -80,6 +80,8 @@ interface WorkOrder {
   current_stage: string;
   qc_material_passed: boolean;
   qc_first_piece_passed: boolean;
+  qc_material_status?: string;
+  qc_first_piece_status?: string;
   external_status?: string;
   // Derived metrics
   ok_qty: number;
@@ -138,6 +140,7 @@ function formatAgingDisplay(hours: number): string {
 }
 
 function getBlockInfo(wo: WorkOrder): { blocked: boolean; reason: string; owner: BlockOwner } | null {
+  // qc_material_passed and qc_first_piece_passed are booleans derived from the string status fields
   if (!wo.qc_material_passed) {
     return { blocked: true, reason: 'Material QC Pending', owner: 'Quality' };
   }
@@ -263,8 +266,8 @@ export default function ProductionProgress() {
           due_date,
           created_at,
           current_stage,
-          qc_material_passed,
-          qc_first_piece_passed
+          qc_material_status,
+          qc_first_piece_status
         `)
         .in("status", ["in_progress", "pending"])
         .order("due_date", { ascending: true });
@@ -336,8 +339,14 @@ export default function ProductionProgress() {
         const aging_hours = getAgingHours(wo.created_at);
         const days_to_due = getDaysToDate(wo.due_date);
         
+        // Derive boolean QC pass flags from status strings
+        const qc_material_passed = wo.qc_material_status === 'passed' || wo.qc_material_status === 'waived';
+        const qc_first_piece_passed = wo.qc_first_piece_status === 'passed' || wo.qc_first_piece_status === 'waived';
+
         const blockInfo = getBlockInfo({
           ...wo,
+          qc_material_passed,
+          qc_first_piece_passed,
           ok_qty,
           scrap_qty,
           remaining_qty,
@@ -359,6 +368,8 @@ export default function ProductionProgress() {
 
         return {
           ...wo,
+          qc_material_passed,
+          qc_first_piece_passed,
           ok_qty,
           scrap_qty,
           remaining_qty,

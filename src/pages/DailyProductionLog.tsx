@@ -541,11 +541,9 @@ export default function DailyProductionLog() {
         created_by: userData.user?.id,
       };
 
-      // Add cycle time override fields if applicable
+      // Store cycle time override in the cycle_time_seconds field (which exists in schema)
       if (enableCycleTimeOverride && cycleTimeOverride) {
-        insertData.cycle_time_override = parseFloat(cycleTimeOverride);
-        insertData.cycle_time_override_reason = cycleTimeOverrideReason;
-        insertData.cycle_time_override_by = userData.user?.id;
+        insertData.cycle_time_seconds = parseFloat(cycleTimeOverride);
       }
 
       // Add optional fields and get/create batch
