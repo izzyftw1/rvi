@@ -17,8 +17,9 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import {
   Package, Search, Truck, ArrowDownToLine, ArrowUpFromLine,
   Plus, RefreshCw, FileText, Calendar, Building2, Home, Scale,
-  Printer, Tag, Box, Factory, Trash2
+  Printer, Tag, Box, Factory, Trash2, BarChart3
 } from "lucide-react";
+import { GateRegisterReports } from "@/components/gate/GateRegisterReports";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
@@ -275,6 +276,7 @@ export default function GateRegister() {
   // Print dialog
   const [printEntry, setPrintEntry] = useState<GateEntry | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
 
   // Gross weight for calculations
   const grossWeight = parseFloat(formData.gross_weight_kg) || 0;
@@ -1488,6 +1490,10 @@ export default function GateRegister() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button onClick={() => setReportsOpen(true)} variant="outline" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Reports
+            </Button>
             <Button onClick={() => openNewEntry('IN')} className="bg-emerald-600 hover:bg-emerald-700">
               <ArrowDownToLine className="h-4 w-4 mr-2" />
               Goods In
@@ -2141,6 +2147,8 @@ export default function GateRegister() {
         </Dialog>
 
         {/* Print Tag Dialog */}
+        <GateRegisterReports open={reportsOpen} onOpenChange={setReportsOpen} />
+
         {printEntry && (
           <GateTagPrintDialog
             open={printDialogOpen}
