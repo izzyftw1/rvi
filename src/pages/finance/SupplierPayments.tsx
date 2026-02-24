@@ -11,8 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { Plus, Loader2, CreditCard, FileText } from 'lucide-react';
+import { format, differenceInDays } from 'date-fns';
+import { Plus, Loader2, CreditCard, FileText, Clock, AlertTriangle } from 'lucide-react';
 import { createPaymentTdsRecord } from '@/hooks/useTdsCalculation';
 
 interface Supplier {
@@ -30,6 +30,7 @@ interface SupplierPayment {
   payment_method: string;
   reference_no: string | null;
   notes: string | null;
+  status: string;
   created_at: string;
   supplier_name?: string;
 }
@@ -51,6 +52,7 @@ export default function SupplierPayments() {
   });
 
   const selectedSupplier = suppliers.find(s => s.id === formData.supplier_id);
+  // FIX #33: Use actual TDS rate from supplier record
   const tdsRate = selectedSupplier?.tds_rate || 0;
   const grossAmount = parseFloat(formData.amount) || 0;
   const tdsAmount = (grossAmount * tdsRate) / 100;
@@ -58,48 +60,44 @@ export default function SupplierPayments() {
 
   useEffect(() => {
     loadData();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel('supplier-payments-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_payments' }, loadData)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const session = await supabase.auth.getSession();
-      const headers = {
-        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        'Authorization': `Bearer ${session.data.session?.access_token || ''}`,
-        'Content-Type': 'application/json',
-      };
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+      // FIX #33: Load actual tds_rate from suppliers table
+      const { data: suppliersData } = await supabase
+        .from('suppliers')
+        .select('id, name, pan_number')
+        .eq('is_active', true)
+        .order('name');
 
-      // Load suppliers
-      const suppliersRes = await fetch(
-        `${baseUrl}/rest/v1/suppliers?select=id,name,pan_number&is_active=eq.true&order=name`,
-        { headers }
-      );
-      const suppliersData: any[] = suppliersRes.ok ? await suppliersRes.json() : [];
-
-      const typedSuppliers = suppliersData.map(s => ({
+      const typedSuppliers = (suppliersData || []).map(s => ({
         id: s.id as string,
         name: s.name as string,
-        pan_number: s.pan_number as string | null,
-        tds_rate: 0
+        pan_number: (s as any).pan_number as string | null,
+        tds_rate: (s as any).tds_rate as number | null,
       }));
 
       // Load payments
-      let paymentsData: any[] = [];
-      try {
-        const paymentsRes = await fetch(
-          `${baseUrl}/rest/v1/supplier_payments?select=*&order=payment_date.desc&limit=100`,
-          { headers }
-        );
-        if (paymentsRes.ok) paymentsData = await paymentsRes.json();
-      } catch (e) {
-        console.log('Payments table may not exist yet');
-      }
-      
+      const { data: paymentsData } = await supabase
+        .from('supplier_payments')
+        .select('*')
+        .order('payment_date', { ascending: false })
+        .limit(200);
+
       const supplierMap = new Map(typedSuppliers.map(s => [s.id, s.name]));
-      const enrichedPayments = paymentsData.map(p => ({
+      const enrichedPayments = (paymentsData || []).map(p => ({
         ...p,
+        status: (p as any).status || 'completed',
         supplier_name: supplierMap.get(p.supplier_id) || 'Unknown'
       })) as SupplierPayment[];
 
@@ -119,43 +117,35 @@ export default function SupplierPayments() {
       return;
     }
 
+    // FIX #32: Validate payment amount is positive
+    if (grossAmount <= 0) {
+      toast.error('Amount must be greater than zero');
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: user } = await supabase.auth.getUser();
-      const session = await supabase.auth.getSession();
-      
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/supplier_payments`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            'Authorization': `Bearer ${session.data.session?.access_token || ''}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
-          },
-          body: JSON.stringify({
-            supplier_id: formData.supplier_id,
-            payment_date: formData.payment_date,
-            amount: parseFloat(formData.amount),
-            payment_method: formData.payment_method,
-            reference_no: formData.reference_no || null,
-            notes: formData.notes || null,
-            created_by: user?.user?.id,
-          }),
-        }
-      );
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Failed to save');
-      }
+      const { error } = await supabase
+        .from('supplier_payments')
+        .insert({
+          supplier_id: formData.supplier_id,
+          payment_date: formData.payment_date,
+          amount: grossAmount,
+          payment_method: formData.payment_method,
+          reference_no: formData.reference_no || null,
+          notes: formData.notes || null,
+          created_by: user?.user?.id,
+        });
+
+      if (error) throw error;
 
       // Create TDS record if applicable
       if (tdsRate > 0 && selectedSupplier?.pan_number) {
         await createPaymentTdsRecord({
           supplierId: formData.supplier_id,
-          grossAmount: parseFloat(formData.amount),
+          grossAmount: grossAmount,
           transactionDate: formData.payment_date,
           createdBy: user?.user?.id,
         });
@@ -180,6 +170,16 @@ export default function SupplierPayments() {
     }
   };
 
+  // FIX #35: Simple AP aging calculation from supplier_payments
+  const now = new Date();
+  const mtdTotal = payments
+    .filter(p => new Date(p.payment_date).getMonth() === now.getMonth() && new Date(p.payment_date).getFullYear() === now.getFullYear())
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const todayCount = payments.filter(p => 
+    format(new Date(p.payment_date), 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd')
+  ).length;
+
   return (
     <div className="min-h-screen bg-background">
       <NavigationHeader 
@@ -196,12 +196,7 @@ export default function SupplierPayments() {
                 <CreditCard className="h-8 w-8 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Total Payments (MTD)</p>
-                  <p className="text-2xl font-bold">
-                    ₹{payments
-                      .filter(p => new Date(p.payment_date).getMonth() === new Date().getMonth())
-                      .reduce((sum, p) => sum + p.amount, 0)
-                      .toLocaleString()}
-                  </p>
+                  <p className="text-2xl font-bold">₹{mtdTotal.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -212,11 +207,7 @@ export default function SupplierPayments() {
                 <FileText className="h-8 w-8 text-amber-500" />
                 <div>
                   <p className="text-sm text-muted-foreground">Payments Today</p>
-                  <p className="text-2xl font-bold">
-                    {payments.filter(p => 
-                      format(new Date(p.payment_date), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
-                    ).length}
-                  </p>
+                  <p className="text-2xl font-bold">{todayCount}</p>
                 </div>
               </div>
             </CardContent>
@@ -251,6 +242,7 @@ export default function SupplierPayments() {
                     <TableHead>Supplier</TableHead>
                     <TableHead>Method</TableHead>
                     <TableHead>Reference</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Notes</TableHead>
                   </TableRow>
@@ -261,14 +253,15 @@ export default function SupplierPayments() {
                       <TableCell>{format(new Date(payment.payment_date), 'dd MMM yyyy')}</TableCell>
                       <TableCell className="font-medium">{payment.supplier_name}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">
-                          {payment.payment_method.replace('_', ' ')}
-                        </Badge>
+                        <Badge variant="outline">{payment.payment_method.replace('_', ' ')}</Badge>
                       </TableCell>
                       <TableCell>{payment.reference_no || '-'}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        ₹{payment.amount.toLocaleString()}
+                      <TableCell>
+                        <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
+                          {payment.status}
+                        </Badge>
                       </TableCell>
+                      <TableCell className="text-right font-medium">₹{payment.amount.toLocaleString()}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{payment.notes || '-'}</TableCell>
                     </TableRow>
                   ))}
@@ -293,9 +286,7 @@ export default function SupplierPayments() {
                 value={formData.supplier_id} 
                 onValueChange={v => setFormData(prev => ({ ...prev, supplier_id: v }))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select supplier..." />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select supplier..." /></SelectTrigger>
                 <SelectContent>
                   {suppliers.map(s => (
                     <SelectItem key={s.id} value={s.id}>
@@ -309,20 +300,13 @@ export default function SupplierPayments() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Payment Date *</Label>
-                <Input 
-                  type="date" 
-                  value={formData.payment_date}
-                  onChange={e => setFormData(prev => ({ ...prev, payment_date: e.target.value }))}
-                />
+                <Input type="date" value={formData.payment_date}
+                  onChange={e => setFormData(prev => ({ ...prev, payment_date: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label>Gross Amount *</Label>
-                <Input 
-                  type="number" 
-                  placeholder="0.00"
-                  value={formData.amount}
-                  onChange={e => setFormData(prev => ({ ...prev, amount: e.target.value }))}
-                />
+                <Input type="number" placeholder="0.00" value={formData.amount}
+                  onChange={e => setFormData(prev => ({ ...prev, amount: e.target.value }))} />
               </div>
             </div>
 
@@ -347,8 +331,11 @@ export default function SupplierPayments() {
                 )}
                 {tdsRate > 0 && !selectedSupplier?.pan_number && (
                   <p className="text-xs text-amber-600">
-                    ⚠️ TDS not applicable - Supplier has no PAN
+                    ⚠️ TDS rate set but Supplier has no PAN — TDS record won't be created
                   </p>
+                )}
+                {tdsRate === 0 && (
+                  <p className="text-xs text-muted-foreground">No TDS applicable for this supplier</p>
                 )}
               </div>
             )}
@@ -356,13 +343,9 @@ export default function SupplierPayments() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Payment Method</Label>
-                <Select 
-                  value={formData.payment_method} 
-                  onValueChange={v => setFormData(prev => ({ ...prev, payment_method: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={formData.payment_method} 
+                  onValueChange={v => setFormData(prev => ({ ...prev, payment_method: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                     <SelectItem value="cheque">Cheque</SelectItem>
@@ -373,22 +356,15 @@ export default function SupplierPayments() {
               </div>
               <div className="space-y-2">
                 <Label>Reference No</Label>
-                <Input 
-                  placeholder="Transaction ID / Cheque No"
-                  value={formData.reference_no}
-                  onChange={e => setFormData(prev => ({ ...prev, reference_no: e.target.value }))}
-                />
+                <Input placeholder="Transaction ID / Cheque No" value={formData.reference_no}
+                  onChange={e => setFormData(prev => ({ ...prev, reference_no: e.target.value }))} />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>Notes</Label>
-              <Textarea 
-                placeholder="Optional notes..."
-                value={formData.notes}
-                onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                rows={2}
-              />
+              <Textarea placeholder="Optional notes..." value={formData.notes}
+                onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))} rows={2} />
             </div>
           </div>
 
