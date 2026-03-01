@@ -736,6 +736,12 @@ export default function GateRegister() {
       return;
     }
 
+    // P2 FIX: External process entries MUST have a work order linked
+    if (formData.material_type === 'external_process' && !formData.work_order_id) {
+      toast({ variant: "destructive", description: "Work Order is required for external process entries to maintain traceability" });
+      return;
+    }
+
     if (formData.material_type === 'raw_material' && formDirection === 'IN' && !formData.heat_no) {
       toast({ variant: "destructive", description: "Heat number is required for raw material" });
       return;

@@ -374,11 +374,11 @@ export default function Dispatch() {
       );
     }
     
-    // Legacy cartons without dispatch_qc_batch_id - treat as approved if packed
+    // P2 FIX: Legacy cartons without dispatch_qc_batch_id - flag as needing QC
     return (
-      <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1">
+      <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
         <AlertTriangle className="h-3 w-3" />
-        Legacy
+        QC Required
       </Badge>
     );
   };
@@ -405,6 +405,18 @@ export default function Dispatch() {
     }
 
     const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
+    
+    // P2 FIX: Block dispatch of legacy cartons without dispatch QC
+    const legacyCartons = selectedBatches.filter(b => !b.dispatch_qc_batch_id);
+    if (legacyCartons.length > 0) {
+      toast({ 
+        variant: "destructive", 
+        title: "Dispatch QC Required",
+        description: `${legacyCartons.length} carton(s) lack Dispatch QC approval. Complete QC inspection before dispatching.` 
+      });
+      return;
+    }
+
     const generatedShipId = shipmentId.trim() || `SHIP-${Date.now().toString().slice(-8)}`;
     const primaryCustomer = selectedBatches[0]?.work_orders?.customer || "Unknown";
 
