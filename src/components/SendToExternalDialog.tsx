@@ -434,14 +434,18 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       
       if (batchError) {
         console.error("Failed to create production batch for external:", batchError);
-        // Don't fail the whole operation, challan was already created
         toast({
           title: "Warning",
           description: "Challan created but batch tracking failed. Data may not appear in dashboards.",
           variant: "destructive",
         });
-      } else {
-        console.log("Created external batch:", batchData?.id);
+      } else if (batchData?.id) {
+        console.log("Created external batch:", batchData.id);
+        // P1 FIX: Link batch_id back to wo_external_moves for traceability
+        await supabase
+          .from("wo_external_moves")
+          .update({ batch_id: batchData.id })
+          .eq("id", moveData?.id);
       }
 
       // Reload quantity tracking
@@ -459,8 +463,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         relatedChallanId: moveData?.id,
       });
 
-      // AUTO-CREATE GATE REGISTER ENTRY (OUT) - SSOT integration
-      await createGateEntry({
+      // P1 FIX: AUTO-CREATE GATE REGISTER ENTRY (OUT) with external_movement_id linked
+      const gateEntry = await createGateEntry({
         direction: 'OUT',
         material_type: 'external_process',
         gross_weight_kg: totalWeight,
@@ -471,10 +475,19 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         process_type: process || null,
         work_order_id: workOrder.id,
         challan_no: challanNo,
+        external_movement_id: moveData?.id || null,  // P1 FIX: Link gate entry to specific move
         qc_required: false,
         remarks: `Auto: Sent to ${partnerName} for ${process} via Work Order`,
         created_by: user?.id || null,
       });
+
+      // P1 FIX: Link gate_register_id back to wo_external_moves
+      if (gateEntry?.id && moveData?.id) {
+        await supabase
+          .from("wo_external_moves")
+          .update({ gate_register_id: gateEntry.id })
+          .eq("id", moveData.id);
+      }
       
       toast({
         title: "Challan Created",
