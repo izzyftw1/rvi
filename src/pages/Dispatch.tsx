@@ -405,6 +405,18 @@ export default function Dispatch() {
     }
 
     const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
+    
+    // P2 FIX: Block dispatch of legacy cartons without dispatch QC
+    const legacyCartons = selectedBatches.filter(b => !b.dispatch_qc_batch_id);
+    if (legacyCartons.length > 0) {
+      toast({ 
+        variant: "destructive", 
+        title: "Dispatch QC Required",
+        description: `${legacyCartons.length} carton(s) lack Dispatch QC approval. Complete QC inspection before dispatching.` 
+      });
+      return;
+    }
+
     const generatedShipId = shipmentId.trim() || `SHIP-${Date.now().toString().slice(-8)}`;
     const primaryCustomer = selectedBatches[0]?.work_orders?.customer || "Unknown";
 
