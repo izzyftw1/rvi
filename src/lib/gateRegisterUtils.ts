@@ -29,6 +29,7 @@ export interface CreateGateEntryParams {
   dc_number?: string | null;
   vehicle_no?: string | null;
   transporter?: string | null;
+  external_movement_id?: string | null;  // P1 FIX: FK to wo_external_moves for referential integrity
   qc_required?: boolean;
   remarks?: string | null;
   created_by?: string | null;
@@ -65,6 +66,7 @@ export async function createGateEntry(params: CreateGateEntryParams): Promise<{ 
       dc_number: params.dc_number ?? null,
       vehicle_no: params.vehicle_no ?? null,
       transporter: params.transporter ?? null,
+      external_movement_id: params.external_movement_id ?? null,  // P1 FIX: Link gate entry to specific external move
       qc_required: params.qc_required ?? false,
       qc_status: params.qc_required ? 'pending' : 'not_required',
       remarks: params.remarks ?? null,

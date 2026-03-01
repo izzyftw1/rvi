@@ -97,18 +97,20 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     
     setLoadingQty(true);
     try {
-      // Fetch all external moves for this work order
+      // P0 FIX: Calculate available qty as WO quantity minus net external pending
+      // net_pending = total_sent - total_returned across ALL moves (not just active)
       const { data: moves, error } = await supabase
         .from("wo_external_moves")
-        .select("quantity_sent, quantity_returned")
-        .eq("work_order_id", workOrder.id)
-        .in("status", ["sent", "in_transit", "partial"]);
+        .select("quantity_sent, quantity_returned, status")
+        .eq("work_order_id", workOrder.id);
       
       if (error) throw error;
       
       const totalSent = (moves || []).reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
       const totalReceived = (moves || []).reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
-      const remaining = (workOrder.quantity || 0) - totalSent + totalReceived;
+      // P0 FIX: Available = WO qty - (sent - returned) = WO qty - net pending
+      const netPending = totalSent - totalReceived;
+      const remaining = (workOrder.quantity || 0) - netPending;
       
       setTotalSentQty(totalSent);
       setTotalReceivedQty(totalReceived);
