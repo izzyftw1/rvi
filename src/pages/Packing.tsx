@@ -431,6 +431,24 @@ const Packing = () => {
       return;
     }
 
+    // P1 FIX: Block packing if any batch for this WO has pending post-external QC
+    const { data: pendingExtQC } = await supabase
+      .from("production_batches")
+      .select("id, batch_number")
+      .eq("wo_id", selectedBatch.work_order_id)
+      .eq("requires_qc_on_return", true)
+      .in("post_external_qc_status", ["pending", "failed"]);
+
+    if (pendingExtQC && pendingExtQC.length > 0) {
+      const batchNums = pendingExtQC.map(b => `#${b.batch_number}`).join(", ");
+      toast({ 
+        variant: "destructive", 
+        title: "Post-External QC Required",
+        description: `Batches ${batchNums} returned from external processing require QC approval before packing.` 
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
