@@ -49,6 +49,13 @@ export const QCActionDrawer = ({
       return;
     }
 
+    // P2 FIX: File size validation (max 10MB)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('File size must be under 10MB');
+      return;
+    }
+
     try {
       setUploadingFile(true);
       const fileExt = file.name.split('.').pop();
