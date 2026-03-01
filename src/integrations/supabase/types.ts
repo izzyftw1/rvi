@@ -10828,6 +10828,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      validate_stage_transition: {
+        Args: { p_current_stage: string; p_new_stage: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role:
