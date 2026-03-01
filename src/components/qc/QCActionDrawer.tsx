@@ -5,8 +5,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, Ban, Upload, FileText, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, Upload, FileText, Loader2, ShieldAlert } from "lucide-react";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface QCActionDrawerProps {
   woId: string;
