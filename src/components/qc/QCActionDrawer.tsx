@@ -95,6 +95,11 @@ export const QCActionDrawer = ({
   };
 
   const handleQCAction = async (action: 'passed' | 'failed' | 'waived') => {
+    // P0 FIX: RBAC check for waiver
+    if (action === 'waived' && !canWaive) {
+      toast.error('Only Admin or Quality roles can waive QC stages');
+      return;
+    }
     if (action === 'waived' && !waiveReason.trim()) {
       toast.error('Please provide a reason for waiving this QC stage');
       return;
