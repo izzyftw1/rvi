@@ -8997,6 +8997,7 @@ export type Database = {
       }
       wo_external_moves: {
         Row: {
+          batch_id: string | null
           challan_no: string | null
           created_at: string | null
           created_by: string | null
@@ -9019,6 +9020,7 @@ export type Database = {
           work_order_id: string
         }
         Insert: {
+          batch_id?: string | null
           challan_no?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -9041,6 +9043,7 @@ export type Database = {
           work_order_id: string
         }
         Update: {
+          batch_id?: string | null
           challan_no?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -9063,6 +9066,20 @@ export type Database = {
           work_order_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "wo_external_moves_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_external_moves_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "wo_external_moves_gate_register_id_fkey"
             columns: ["gate_register_id"]
