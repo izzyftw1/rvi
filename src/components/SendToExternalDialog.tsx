@@ -97,20 +97,30 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     
     setLoadingQty(true);
     try {
-      // P0 FIX: Calculate available qty as WO quantity minus net external pending
-      // net_pending = total_sent - total_returned across ALL moves (not just active)
-      const { data: moves, error } = await supabase
-        .from("wo_external_moves")
-        .select("quantity_sent, quantity_returned, status")
-        .eq("work_order_id", workOrder.id);
+      // P1 FIX #23: Calculate available qty based on PRODUCED qty, not WO ordered qty
+      // Available = produced_qty - net_external_pending
+      const [movesResult, batchResult] = await Promise.all([
+        supabase
+          .from("wo_external_moves")
+          .select("quantity_sent, quantity_returned, status")
+          .eq("work_order_id", workOrder.id),
+        supabase
+          .from("production_batches")
+          .select("produced_qty")
+          .eq("wo_id", workOrder.id),
+      ]);
       
-      if (error) throw error;
+      if (movesResult.error) throw movesResult.error;
       
-      const totalSent = (moves || []).reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
-      const totalReceived = (moves || []).reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
-      // P0 FIX: Available = WO qty - (sent - returned) = WO qty - net pending
+      const moves = movesResult.data || [];
+      const totalSent = moves.reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
+      const totalReceived = moves.reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
       const netPending = totalSent - totalReceived;
-      const remaining = (workOrder.quantity || 0) - netPending;
+      
+      // Use produced qty from batches, fallback to WO qty_completed, then WO quantity
+      const totalProduced = (batchResult.data || []).reduce((sum, b) => sum + (b.produced_qty || 0), 0);
+      const baseQty = totalProduced > 0 ? totalProduced : (workOrder.qty_completed || workOrder.quantity || 0);
+      const remaining = baseQty - netPending;
       
       setTotalSentQty(totalSent);
       setTotalReceivedQty(totalReceived);

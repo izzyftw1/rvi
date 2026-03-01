@@ -374,11 +374,11 @@ export default function Dispatch() {
       );
     }
     
-    // Legacy cartons without dispatch_qc_batch_id - treat as approved if packed
+    // P2 FIX: Legacy cartons without dispatch_qc_batch_id - flag as needing QC
     return (
-      <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1">
+      <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
         <AlertTriangle className="h-3 w-3" />
-        Legacy
+        QC Required
       </Badge>
     );
   };

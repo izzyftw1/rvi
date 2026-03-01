@@ -463,7 +463,32 @@ const WorkOrderDetail = () => {
     }
   };
 
+  // P1 FIX #13: State machine validation for stage transitions
+  const VALID_TRANSITIONS: Record<string, string[]> = {
+    pending: ['cutting', 'forging', 'production', 'external'],
+    cutting: ['forging', 'production', 'external'],
+    forging: ['production', 'external', 'cutting'],
+    production: ['qc', 'external', 'packing'],
+    external: ['production', 'qc'],
+    qc: ['production', 'packing', 'external'],
+    packing: ['dispatched', 'qc'],
+    dispatched: ['completed'],
+  };
+
   const handleStageUpdate = async (newStage: string) => {
+    const currentStage = wo?.current_stage || 'pending';
+    const allowedStages = VALID_TRANSITIONS[currentStage] || [];
+
+    // Enforce state machine unless admin override
+    if (!allowedStages.includes(newStage) && !hasAnyRole(['admin'])) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Stage Transition",
+        description: `Cannot move from "${currentStage}" to "${newStage}". Allowed: ${allowedStages.join(', ') || 'none'}.`,
+      });
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("work_orders")
