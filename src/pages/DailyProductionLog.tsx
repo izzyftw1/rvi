@@ -505,6 +505,32 @@ export default function DailyProductionLog() {
       return;
     }
 
+    // P0 FIX: Check QC gate status before allowing production log
+    if (data.wo_id) {
+      const { data: woQC } = await supabase
+        .from("work_orders")
+        .select("qc_material_status, qc_first_piece_status")
+        .eq("id", data.wo_id)
+        .single();
+
+      if (woQC?.qc_material_status === 'failed') {
+        toast({
+          title: "QC Gate Blocked",
+          description: "Raw Material QC has FAILED for this work order. Resolve QC before logging production.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (woQC?.qc_first_piece_status === 'failed') {
+        toast({
+          title: "QC Gate Blocked",
+          description: "First Piece QC has FAILED for this work order. Resolve QC before logging production.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     // Validate cycle time override if enabled
     if (enableCycleTimeOverride && !cycleTimeOverrideReason.trim()) {
       toast({

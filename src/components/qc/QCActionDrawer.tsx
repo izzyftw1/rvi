@@ -5,8 +5,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, Ban, Upload, FileText, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Ban, Upload, FileText, Loader2, ShieldAlert } from "lucide-react";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface QCActionDrawerProps {
   woId: string;
@@ -23,6 +24,8 @@ export const QCActionDrawer = ({
   currentRemarks,
   onUpdate 
 }: QCActionDrawerProps) => {
+  const { hasAnyRole } = useUserRole();
+  const canWaive = hasAnyRole(['admin', 'super_admin', 'quality']);
   const [loading, setLoading] = useState(false);
   const [remarks, setRemarks] = useState(currentRemarks || '');
   const [waiveReason, setWaiveReason] = useState('');
@@ -43,6 +46,13 @@ export const QCActionDrawer = ({
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
     if (!allowedTypes.includes(file.type)) {
       toast.error('Only PDF, JPG, and PNG files are allowed');
+      return;
+    }
+
+    // P2 FIX: File size validation (max 10MB)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('File size must be under 10MB');
       return;
     }
 
@@ -85,6 +95,11 @@ export const QCActionDrawer = ({
   };
 
   const handleQCAction = async (action: 'passed' | 'failed' | 'waived') => {
+    // P0 FIX: RBAC check for waiver
+    if (action === 'waived' && !canWaive) {
+      toast.error('Only Admin or Quality roles can waive QC stages');
+      return;
+    }
     if (action === 'waived' && !waiveReason.trim()) {
       toast.error('Please provide a reason for waiving this QC stage');
       return;
@@ -159,46 +174,8 @@ export const QCActionDrawer = ({
         if (error) throw error;
       }
 
-      // Also update work_order QC status fields for consistency
-      const statusValue = action === 'waived' ? 'waived' : action === 'passed' ? 'passed' : 'failed';
-      const woUpdateData: Record<string, any> = {};
-      
-      if (qcType === 'incoming') {
-        woUpdateData.qc_material_status = statusValue;
-        woUpdateData.qc_material_passed = action === 'passed' || action === 'waived';
-        woUpdateData.qc_material_approved_by = user?.id;
-        woUpdateData.qc_material_approved_at = timestamp;
-        woUpdateData.qc_material_remarks = remarks || null;
-        // Also update legacy field
-        woUpdateData.qc_raw_material_status = statusValue;
-        woUpdateData.qc_raw_material_approved_by = user?.id;
-        woUpdateData.qc_raw_material_approved_at = timestamp;
-        woUpdateData.qc_raw_material_remarks = remarks || null;
-      } else if (qcType === 'first_piece') {
-        woUpdateData.qc_first_piece_status = statusValue;
-        woUpdateData.qc_first_piece_passed = action === 'passed' || action === 'waived';
-        woUpdateData.qc_first_piece_approved_by = user?.id;
-        woUpdateData.qc_first_piece_approved_at = timestamp;
-        woUpdateData.qc_first_piece_remarks = remarks || null;
-      } else if (qcType === 'final') {
-        woUpdateData.qc_final_status = statusValue;
-        woUpdateData.qc_final_approved_by = user?.id;
-        woUpdateData.qc_final_approved_at = timestamp;
-        woUpdateData.qc_final_remarks = remarks || null;
-        // final_qc_result uses CHECK constraint: passed/blocked/pending/waived/failed
-        woUpdateData.final_qc_result = statusValue;
-      }
-
-      if (Object.keys(woUpdateData).length > 0) {
-        const { error: woError } = await supabase
-          .from('work_orders')
-          .update(woUpdateData)
-          .eq('id', woId);
-        
-        if (woError) {
-          console.error('Failed to update work order QC status:', woError);
-        }
-      }
+      // WO QC status is now synced automatically by the unified DB trigger (unified_sync_qc_to_wo)
+      // No manual work_order update needed here - prevents race conditions
 
       toast.success(`${stageLabels[qcType]} marked as ${action}`);
       onUpdate();
@@ -288,10 +265,11 @@ export const QCActionDrawer = ({
           </Button>
           <Button
             onClick={() => handleQCAction('waived')}
-            disabled={loading || !waiveReason.trim()}
+            disabled={loading || !waiveReason.trim() || !canWaive}
             variant="secondary"
+            title={!canWaive ? 'Only Admin or Quality roles can waive' : undefined}
           >
-            <Ban className="h-4 w-4 mr-2" />
+            {!canWaive ? <ShieldAlert className="h-4 w-4 mr-2" /> : <Ban className="h-4 w-4 mr-2" />}
             Waive
           </Button>
         </div>
