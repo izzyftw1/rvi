@@ -402,39 +402,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         console.error("Failed to log material movement:", movementError);
       }
       
-      // Update work order with external processing status - CRITICAL GAP 5 FIX
-      const currentWip = workOrder.qty_external_wip || 0;
-      
-      const stageMap: Record<string, string> = {
-        'Forging': 'forging',
-        'Plating': 'plating',
-        'Buffing': 'buffing',
-        'Blasting': 'blasting',
-        'Job Work': 'job_work',
-        'Heat Treatment': 'heat_treatment',
-        'Cutting': 'cutting',
-        'Anodizing': 'anodizing',
-        'Painting': 'painting',
-      };
-      
-      const newStage = stageMap[process!] || process!.toLowerCase().replace(/\s+/g, '_');
-      
-      const { error: updateError } = await supabase
-        .from("work_orders")
-        .update({
-          current_stage: newStage as any,
-          external_status: 'sent',
-          external_process_type: process,
-          qty_external_wip: currentWip + qty,
-          material_location: partnerName,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", workOrder.id);
-
-      if (updateError) {
-        console.error("Failed to update work order stage:", updateError);
-        // Don't throw - external move was created successfully
-      }
+      // P1 FIX: REMOVED redundant work_orders update block.
+      // The sync_wo_on_external_move DB trigger automatically handles:
+      // - qty_external_wip aggregation
+      // - external_status
+      // - external_process_type
+      // - material_location
       
       // Also create/update production batch for external process tracking
       // CRITICAL FIX: Explicitly cast stage_type to the enum type and include stage_entered_at
