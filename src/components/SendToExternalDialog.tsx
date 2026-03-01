@@ -97,18 +97,20 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
     
     setLoadingQty(true);
     try {
-      // Fetch all external moves for this work order
+      // P0 FIX: Calculate available qty as WO quantity minus net external pending
+      // net_pending = total_sent - total_returned across ALL moves (not just active)
       const { data: moves, error } = await supabase
         .from("wo_external_moves")
-        .select("quantity_sent, quantity_returned")
-        .eq("work_order_id", workOrder.id)
-        .in("status", ["sent", "in_transit", "partial"]);
+        .select("quantity_sent, quantity_returned, status")
+        .eq("work_order_id", workOrder.id);
       
       if (error) throw error;
       
       const totalSent = (moves || []).reduce((sum, m) => sum + (m.quantity_sent || 0), 0);
       const totalReceived = (moves || []).reduce((sum, m) => sum + (m.quantity_returned || 0), 0);
-      const remaining = (workOrder.quantity || 0) - totalSent + totalReceived;
+      // P0 FIX: Available = WO qty - (sent - returned) = WO qty - net pending
+      const netPending = totalSent - totalReceived;
+      const remaining = (workOrder.quantity || 0) - netPending;
       
       setTotalSentQty(totalSent);
       setTotalReceivedQty(totalReceived);
@@ -400,39 +402,12 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         console.error("Failed to log material movement:", movementError);
       }
       
-      // Update work order with external processing status - CRITICAL GAP 5 FIX
-      const currentWip = workOrder.qty_external_wip || 0;
-      
-      const stageMap: Record<string, string> = {
-        'Forging': 'forging',
-        'Plating': 'plating',
-        'Buffing': 'buffing',
-        'Blasting': 'blasting',
-        'Job Work': 'job_work',
-        'Heat Treatment': 'heat_treatment',
-        'Cutting': 'cutting',
-        'Anodizing': 'anodizing',
-        'Painting': 'painting',
-      };
-      
-      const newStage = stageMap[process!] || process!.toLowerCase().replace(/\s+/g, '_');
-      
-      const { error: updateError } = await supabase
-        .from("work_orders")
-        .update({
-          current_stage: newStage as any,
-          external_status: 'sent',
-          external_process_type: process,
-          qty_external_wip: currentWip + qty,
-          material_location: partnerName,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", workOrder.id);
-
-      if (updateError) {
-        console.error("Failed to update work order stage:", updateError);
-        // Don't throw - external move was created successfully
-      }
+      // P1 FIX: REMOVED redundant work_orders update block.
+      // The sync_wo_on_external_move DB trigger automatically handles:
+      // - qty_external_wip aggregation
+      // - external_status
+      // - external_process_type
+      // - material_location
       
       // Also create/update production batch for external process tracking
       // CRITICAL FIX: Explicitly cast stage_type to the enum type and include stage_entered_at
@@ -459,14 +434,18 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
       
       if (batchError) {
         console.error("Failed to create production batch for external:", batchError);
-        // Don't fail the whole operation, challan was already created
         toast({
           title: "Warning",
           description: "Challan created but batch tracking failed. Data may not appear in dashboards.",
           variant: "destructive",
         });
-      } else {
-        console.log("Created external batch:", batchData?.id);
+      } else if (batchData?.id) {
+        console.log("Created external batch:", batchData.id);
+        // P1 FIX: Link batch_id back to wo_external_moves for traceability
+        await supabase
+          .from("wo_external_moves")
+          .update({ batch_id: batchData.id })
+          .eq("id", moveData?.id);
       }
 
       // Reload quantity tracking
@@ -484,8 +463,8 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         relatedChallanId: moveData?.id,
       });
 
-      // AUTO-CREATE GATE REGISTER ENTRY (OUT) - SSOT integration
-      await createGateEntry({
+      // P1 FIX: AUTO-CREATE GATE REGISTER ENTRY (OUT) with external_movement_id linked
+      const gateEntry = await createGateEntry({
         direction: 'OUT',
         material_type: 'external_process',
         gross_weight_kg: totalWeight,
@@ -496,10 +475,19 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         process_type: process || null,
         work_order_id: workOrder.id,
         challan_no: challanNo,
+        external_movement_id: moveData?.id || null,  // P1 FIX: Link gate entry to specific move
         qc_required: false,
         remarks: `Auto: Sent to ${partnerName} for ${process} via Work Order`,
         created_by: user?.id || null,
       });
+
+      // P1 FIX: Link gate_register_id back to wo_external_moves
+      if (gateEntry?.id && moveData?.id) {
+        await supabase
+          .from("wo_external_moves")
+          .update({ gate_register_id: gateEntry.id })
+          .eq("id", moveData.id);
+      }
       
       toast({
         title: "Challan Created",

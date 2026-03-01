@@ -18,7 +18,6 @@ const receiptSchema = z.object({
     .positive("Quantity must be greater than 0")
     .max(999999, "Quantity too large"),
   grnNo: z.string().max(100, "GRN number too long").optional(),
-  rate: z.number().positive("Rate must be positive").optional(),
   remarks: z.string().max(500, "Remarks must be less than 500 characters").optional(),
 });
 
@@ -37,7 +36,6 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
   const canCreate = hasAnyRole(['production', 'logistics', 'admin']);
   const [qtyReceived, setQtyReceived] = useState<string>("");
   const [grnNo, setGrnNo] = useState<string>("");
-  const [rate, setRate] = useState<string>("");
   const [remarks, setRemarks] = useState<string>("");
 
   const getMaxReceivable = () => {
@@ -56,7 +54,6 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       return;
     }
     
-    // Validate inputs
     const qty = parseFloat(qtyReceived);
     const maxQty = getMaxReceivable();
     
@@ -65,11 +62,9 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       receiptSchema.parse({
         qtyReceived: qty,
         grnNo: grnNo?.trim() || undefined,
-        rate: rate ? parseFloat(rate) : undefined,
         remarks: remarks?.trim() || undefined,
       });
       
-      // Additional validation for max quantity
       if (qty > maxQty) {
         toast({
           title: "Invalid quantity",
@@ -93,16 +88,17 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Insert receipt record
+      // P0 FIX: Use correct column names for wo_external_receipts
+      // Schema: id, move_id, quantity_received, grn_no, received_at, received_by, remarks, created_at
       const { error: receiptError } = await supabase
         .from("wo_external_receipts" as any)
         .insert({
           move_id: move.id,
-          qty_received: qty,
+          quantity_received: qty,  // P0 FIX: was 'qty_received'
           grn_no: grnNo || null,
-          rate: rate ? parseFloat(rate) : null,
+          received_by: user?.id,   // P0 FIX: was 'created_by' (doesn't exist)
           remarks: remarks || null,
-          created_by: user?.id,
+          // P0 FIX: removed 'rate' (column doesn't exist) and 'created_by' (doesn't exist)
         });
 
       if (receiptError) throw receiptError;
@@ -115,7 +111,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         .single();
       
       const weightPerPc = woWeightData?.gross_weight_per_pc || 0;
-      const totalWeight = (qty * weightPerPc) / 1000; // Convert grams to kg
+      const totalWeight = (qty * weightPerPc) / 1000;
 
       // Log material movement (IN)
       const { error: movementError } = await supabase
@@ -133,12 +129,14 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       
       if (movementError) {
         console.error("Failed to log material movement:", movementError);
-        // Don't fail the operation
       }
 
-      // Update the wo_external_moves record with received quantity
+      // P1 FIX: Update wo_external_moves - the sync_wo_on_external_move DB trigger
+      // will automatically update work_orders.qty_external_wip, external_status, etc.
+      // So we ONLY update the move record, removing redundant WO updates.
       const newQtyReturned = (move.quantity_returned || 0) + qty;
-      const moveStatus = newQtyReturned >= (move.quantity_sent || 0) ? 'received' : 'partial';
+      const qtySent = move.quantity_sent ?? move.qty_sent ?? 0;
+      const moveStatus = newQtyReturned >= qtySent ? 'received' : 'partial';
       
       const { error: moveUpdateError } = await supabase
         .from("wo_external_moves")
@@ -153,81 +151,52 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
       if (moveUpdateError) {
         console.error("Failed to update external move:", moveUpdateError);
       }
+      // NOTE: sync_wo_on_external_move trigger now handles all work_orders updates automatically
 
-      // Update work order to reduce qty_external_wip and update progress
-      const { data: woData, error: woFetchError } = await supabase
-        .from("work_orders")
-        .select("qty_external_wip, current_stage, external_process_type, quantity")
-        .eq("id", move.work_order_id)
-        .single();
+      // P1 FIX: Update production_batch stage_type from 'external' back to trigger
+      // the reset_batch_qc_on_external_return trigger which sets requires_qc_on_return=true
+      // and post_external_qc_status='pending'
+      if (move.batch_id) {
+        const { error: batchUpdateError } = await supabase
+          .from("production_batches")
+          .update({
+            stage_type: 'production' as any,
+            current_location_type: 'factory',
+            current_location_ref: null,
+            batch_status: 'in_progress',
+            ended_at: new Date().toISOString(),
+            stage_entered_at: new Date().toISOString(),
+          })
+          .eq("id", move.batch_id);
 
-      if (woFetchError) throw woFetchError;
+        if (batchUpdateError) {
+          console.error("Failed to update production batch for QC trigger:", batchUpdateError);
+        }
+      } else {
+        // Fallback: find batch by wo_id + external partner + stage_type
+        const { data: externalBatch } = await supabase
+          .from("production_batches")
+          .select("id")
+          .eq("wo_id", move.work_order_id)
+          .eq("stage_type", "external" as any)
+          .eq("external_partner_id", move.partner_id)
+          .limit(1)
+          .maybeSingle();
 
-      const currentWip = woData.qty_external_wip || 0;
-      const newWip = Math.max(0, currentWip - qty);
-
-      // Prepare update object
-      const updateData: any = {
-        qty_external_wip: newWip,
-        updated_at: new Date().toISOString(),
-      };
-
-      // If WIP reaches zero, look up next process from process_flow
-      if (newWip === 0) {
-        const currentProcess = woData.external_process_type || move.process;
-        
-        // Fetch next process from process_flow
-        const { data: flowData, error: flowError } = await supabase
-          .from("process_flow")
-          .select("next_process, is_external")
-          .eq("process_type", currentProcess)
-          .single();
-        
-        if (!flowError && flowData) {
-          if (flowData.next_process) {
-            // Move to next process in the chain
-            const stageMap: Record<string, string> = {
-              'Forging': 'forging',
-              'Plating': 'plating',
-              'Buffing': 'buffing',
-              'Blasting': 'blasting',
-              'Job Work': 'job_work',
-              'Dispatch': 'dispatch',
-            };
-            updateData.current_stage = (stageMap[flowData.next_process] || flowData.next_process.toLowerCase().replace(' ', '_')) as any;
-            updateData.external_process_type = flowData.is_external ? flowData.next_process : null;
-            updateData.external_status = flowData.is_external ? 'pending' : null;
-            updateData.material_location = flowData.is_external ? 'Pending Assignment' : 'Factory';
-          } else {
-            // No next process - mark as ready for dispatch
-            updateData.current_stage = 'dispatch' as any;
-            updateData.ready_for_dispatch = true;
-            updateData.external_status = null;
-            updateData.external_process_type = null;
-            updateData.material_location = 'Factory';
-          }
-        } else {
-          // Fallback: move to production if no process flow found
-          updateData.current_stage = 'production' as any;
-          updateData.external_status = null;
-          updateData.external_process_type = null;
-          updateData.material_location = 'Factory';
+        if (externalBatch) {
+          await supabase
+            .from("production_batches")
+            .update({
+              stage_type: 'production' as any,
+              current_location_type: 'factory',
+              current_location_ref: null,
+              batch_status: 'in_progress',
+              ended_at: new Date().toISOString(),
+              stage_entered_at: new Date().toISOString(),
+            })
+            .eq("id", externalBatch.id);
         }
       }
-
-      const { error: woUpdateError } = await supabase
-        .from("work_orders")
-        .update(updateData)
-        .eq("id", move.work_order_id);
-
-      if (woUpdateError) {
-        console.error("Failed to update work order:", woUpdateError);
-        // Don't fail the operation if WO update fails
-      }
-
-      const nextStageName = updateData.current_stage ? 
-        updateData.current_stage.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 
-        '';
 
       // Create execution record for external process IN
       await createExecutionRecord({
@@ -248,8 +217,8 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         .eq("id", move.work_order_id)
         .single();
 
-      // AUTO-CREATE GATE REGISTER ENTRY (IN) - SSOT integration
-      await createGateEntry({
+      // P1 FIX: AUTO-CREATE GATE REGISTER ENTRY (IN) with external_movement_id linked
+      const gateEntry = await createGateEntry({
         direction: 'IN',
         material_type: 'external_process',
         gross_weight_kg: totalWeight,
@@ -260,6 +229,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
         process_type: move.process || null,
         work_order_id: move.work_order_id,
         challan_no: move.challan_no || null,
+        external_movement_id: move.id,  // P1 FIX: Link to specific external move
         qc_required: true,
         remarks: `Auto: Received ${qty} pcs from ${move.process} via ExternalReceipt`,
         created_by: user?.id || null,
@@ -267,7 +237,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
 
       toast({
         title: "Material Received",
-        description: `Material returned from ${move.process} - ${qty} pcs ready for ${nextStageName || 'next step'}.`,
+        description: `${qty} pcs received from ${move.process}. QC inspection required before further processing.`,
       });
 
       onSuccess();
@@ -288,7 +258,6 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
   const resetForm = () => {
     setQtyReceived("");
     setGrnNo("");
-    setRate("");
     setRemarks("");
   };
 
@@ -326,18 +295,6 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
               }}
               placeholder="Optional"
               maxLength={100}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Rate (per pc)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              placeholder="Optional"
             />
           </div>
 
