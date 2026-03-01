@@ -303,10 +303,11 @@ export const QCActionDrawer = ({
           </Button>
           <Button
             onClick={() => handleQCAction('waived')}
-            disabled={loading || !waiveReason.trim()}
+            disabled={loading || !waiveReason.trim() || !canWaive}
             variant="secondary"
+            title={!canWaive ? 'Only Admin or Quality roles can waive' : undefined}
           >
-            <Ban className="h-4 w-4 mr-2" />
+            {!canWaive ? <ShieldAlert className="h-4 w-4 mr-2" /> : <Ban className="h-4 w-4 mr-2" />}
             Waive
           </Button>
         </div>
