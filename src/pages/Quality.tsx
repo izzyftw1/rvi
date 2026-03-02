@@ -353,9 +353,9 @@ const Quality = () => {
         if (e.work_order_id) extMap.set(e.work_order_id, e);
       });
 
-      const mapped: QCWorkOrder[] = (woRes.data || []).map((wo) => {
+      const mapped: QCWorkOrder[] = (woRes.data || []).map((wo: any) => {
         const { state, daysInState, riskLevel } = computeQualityState(wo, activeNCRs, extMap);
-        const orderValue = (wo.order_qty || 0) * (wo.unit_rate || 0);
+        const orderValue = wo.quantity || 0;
         return {
           id: wo.id,
           wo_number: wo.wo_number || "",
@@ -363,8 +363,8 @@ const Quality = () => {
           customer: wo.customer || "—",
           item_code: wo.item_code || "—",
           status: wo.status,
-          order_qty: wo.order_qty || 0,
-          unit_rate: wo.unit_rate,
+          order_qty: wo.quantity || 0,
+          unit_rate: null,
           due_date: wo.due_date,
           created_at: wo.created_at,
           qc_material_status: wo.qc_material_status,
@@ -374,9 +374,9 @@ const Quality = () => {
           risk_level: riskLevel,
           order_value: orderValue,
           supplier: null,
-          machine_id: wo.machine_id,
+          machine_id: null,
           has_active_ncr: activeNCRs.has(wo.id),
-          external_status: extMap.get(wo.id)?.process || null,
+          external_status: extMap.get(wo.id)?.process_type || null,
           dispatch_qc_status: null,
         };
       });
