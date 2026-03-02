@@ -644,30 +644,30 @@ const Quality = () => {
               />
             </div>
 
-            <SafeSelect value={filterCustomer} onValueChange={setFilterCustomer}>
-              <SafeSelectTrigger className="w-[160px] h-8 text-xs">
-                <SafeSelectValue placeholder="Customer" />
-              </SafeSelectTrigger>
-              <SafeSelectContent>
-                <SafeSelectItem value="all">All Customers</SafeSelectItem>
+            <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+              <SelectTrigger className="w-[160px] h-8 text-xs">
+                <SelectValue placeholder="Customer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Customers</SelectItem>
                 {customers.map((c) => (
-                  <SafeSelectItem key={c} value={c}>{c}</SafeSelectItem>
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
-              </SafeSelectContent>
-            </SafeSelect>
+              </SelectContent>
+            </Select>
 
-            <SafeSelect value={filterRisk} onValueChange={setFilterRisk}>
-              <SafeSelectTrigger className="w-[130px] h-8 text-xs">
-                <SafeSelectValue placeholder="Risk" />
-              </SafeSelectTrigger>
-              <SafeSelectContent>
-                <SafeSelectItem value="all">All Risk</SafeSelectItem>
-                <SafeSelectItem value="critical">Critical</SafeSelectItem>
-                <SafeSelectItem value="high">High</SafeSelectItem>
-                <SafeSelectItem value="medium">Medium</SafeSelectItem>
-                <SafeSelectItem value="low">Low</SafeSelectItem>
-              </SafeSelectContent>
-            </SafeSelect>
+            <Select value={filterRisk} onValueChange={setFilterRisk}>
+              <SelectTrigger className="w-[130px] h-8 text-xs">
+                <SelectValue placeholder="Risk" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Risk</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
 
             {(filterCustomer !== "all" || filterRisk !== "all" || searchQuery) && (
               <Button
