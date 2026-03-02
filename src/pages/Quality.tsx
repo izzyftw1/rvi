@@ -17,7 +17,9 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
-import { SafeSelect, SafeSelectTrigger, SafeSelectValue, SafeSelectContent, SafeSelectItem } from "@/components/ui/safe-select";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Shield, AlertTriangle, Clock, Truck, ArrowRight, Search,
   Ban, Activity, Eye, Package, ExternalLink, Filter,
