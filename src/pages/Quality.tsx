@@ -21,9 +21,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Shield, AlertTriangle, Clock, Truck, ArrowRight, Search,
-  Ban, Activity, Eye, Package, ExternalLink, Filter,
-  ChevronRight, IndianRupee, XCircle,
+  Shield, AlertTriangle, Clock, Truck, Search,
+  Ban, Activity, Package, ExternalLink,
+  ChevronRight, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInDays, differenceInHours, parseISO, format } from "date-fns";
