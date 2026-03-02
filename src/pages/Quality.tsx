@@ -326,17 +326,17 @@ const Quality = () => {
       const [woRes, ncrRes, extRes] = await Promise.all([
         supabase
           .from("work_orders")
-          .select("id, wo_number, display_id, customer, item_code, status, order_qty, unit_rate, due_date, created_at, qc_material_status, qc_first_piece_status, machine_id")
-          .in("status", ["pending", "in_progress", "qc", "packing", "cutting"])
+          .select("id, wo_number, display_id, customer, item_code, status, quantity, due_date, created_at, qc_material_status, qc_first_piece_status, machine_id")
+          .in("status", ["pending", "in_progress", "qc", "packing"])
           .order("created_at", { ascending: false })
           .limit(500),
         supabase
           .from("ncrs")
           .select("work_order_id, status")
-          .in("status", ["open", "in_progress", "investigation"]),
+          .in("status", ["OPEN", "ACTION_IN_PROGRESS"]),
         supabase
           .from("external_movements")
-          .select("work_order_id, status, process")
+          .select("work_order_id, status, process_type")
           .eq("status", "sent"),
       ]);
 
