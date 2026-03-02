@@ -1,178 +1,396 @@
+/**
+ * Quality Control Tower — Real-time, exception-focused operational dashboard.
+ * State-driven by computed WO_QUALITY_STATE. No vanity metrics.
+ * Answers: "Where is quality risk right now and what action is required?"
+ */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-
-import { PageHeader, PageContainer } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TrendingUp, Eye, ArrowRight, Inbox, FlaskConical } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
-import { QCSummaryStats, QCInfoAlert, QCActionRequired, QCHistory } from "@/components/qc/QCPageLayout";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { QCStatusIndicator } from "@/components/qc/QCStatusIndicator";
+import { SafeSelect, SafeSelectTrigger, SafeSelectValue, SafeSelectContent, SafeSelectItem } from "@/components/ui/safe-select";
+import {
+  Shield, AlertTriangle, Clock, Truck, ArrowRight, Search,
+  Ban, Activity, Eye, Package, ExternalLink, Filter,
+  ChevronRight, IndianRupee, XCircle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { differenceInDays, differenceInHours, parseISO, format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
-interface ProductionMetrics {
-  runtime_minutes: number;
-  actual_quantity: number;
-  rejection_quantity: number;
-  efficiency: number;
-  machine_name: string;
-  operator_name: string;
-  shift: string;
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPES
+// ═══════════════════════════════════════════════════════════════════════════
 
-interface WorkOrderQCSummary {
+type QualityState =
+  | "BLOCKED_MATERIAL_QC"
+  | "BLOCKED_FIRST_PIECE"
+  | "BLOCKED_NCR"
+  | "QC_OVERDUE"
+  | "DISPATCH_AT_RISK"
+  | "EXTERNAL_PENDING"
+  | "IN_PROCESS"
+  | "ON_TRACK";
+
+type Segment = "all" | "incoming" | "first_piece" | "in_process" | "external" | "dispatch" | "blocked";
+
+interface QCWorkOrder {
   id: string;
   wo_number: string;
+  display_id: string;
   customer: string;
   item_code: string;
   status: string;
+  order_qty: number;
+  unit_rate: number | null;
+  due_date: string | null;
+  created_at: string;
   qc_material_status: string | null;
   qc_first_piece_status: string | null;
-  pending_qc_count: number;
-  passed_qc_count: number;
-  failed_qc_count: number;
-  last_qc_date: string | null;
-  qc_type_needed: string | null;
-  // Production metrics from Daily Production Log (read-only)
-  production_metrics: ProductionMetrics | null;
+  quality_state: QualityState;
+  days_in_state: number;
+  risk_level: "critical" | "high" | "medium" | "low";
+  order_value: number;
+  supplier: string | null;
+  machine_id: string | null;
+  has_active_ncr: boolean;
+  external_status: string | null;
+  dispatch_qc_status: string | null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUALITY STATE COMPUTER — Single source of truth
+// ═══════════════════════════════════════════════════════════════════════════
+
+const computeQualityState = (wo: any, ncrs: Set<string>, extMoves: Map<string, any>): {
+  state: QualityState;
+  daysInState: number;
+  riskLevel: "critical" | "high" | "medium" | "low";
+} => {
+  const now = new Date();
+  const dueDate = wo.due_date ? parseISO(wo.due_date) : null;
+  const daysToDue = dueDate ? differenceInDays(dueDate, now) : 999;
+  const createdDaysAgo = differenceInDays(now, parseISO(wo.created_at));
+
+  // 1. NCR active → blocked
+  if (ncrs.has(wo.id)) {
+    return {
+      state: "BLOCKED_NCR",
+      daysInState: createdDaysAgo,
+      riskLevel: daysToDue <= 1 ? "critical" : daysToDue <= 3 ? "high" : "medium",
+    };
+  }
+
+  // 2. Material QC not passed
+  const matStatus = wo.qc_material_status;
+  if (!matStatus || matStatus === "pending" || matStatus === "failed") {
+    return {
+      state: "BLOCKED_MATERIAL_QC",
+      daysInState: createdDaysAgo,
+      riskLevel: matStatus === "failed" ? "critical" : daysToDue <= 3 ? "high" : "medium",
+    };
+  }
+
+  // 3. First piece not passed
+  const fpStatus = wo.qc_first_piece_status;
+  if (!fpStatus || fpStatus === "pending" || fpStatus === "failed") {
+    return {
+      state: "BLOCKED_FIRST_PIECE",
+      daysInState: createdDaysAgo,
+      riskLevel: fpStatus === "failed" ? "critical" : daysToDue <= 3 ? "high" : "medium",
+    };
+  }
+
+  // 4. External pending
+  if (extMoves.has(wo.id)) {
+    return {
+      state: "EXTERNAL_PENDING",
+      daysInState: createdDaysAgo,
+      riskLevel: daysToDue <= 3 ? "high" : "medium",
+    };
+  }
+
+  // 5. Dispatch at risk
+  if (daysToDue <= 1 && wo.status !== "completed" && wo.status !== "shipped") {
+    return {
+      state: "DISPATCH_AT_RISK",
+      daysInState: 0,
+      riskLevel: daysToDue <= 0 ? "critical" : "high",
+    };
+  }
+
+  // 6. In process (QC gates passed, production ongoing)
+  if (wo.status === "in_progress" || wo.status === "qc") {
+    return {
+      state: "IN_PROCESS",
+      daysInState: createdDaysAgo,
+      riskLevel: daysToDue <= 3 ? "medium" : "low",
+    };
+  }
+
+  return {
+    state: "ON_TRACK",
+    daysInState: createdDaysAgo,
+    riskLevel: "low",
+  };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE BADGE CONFIG
+// ═══════════════════════════════════════════════════════════════════════════
+
+const STATE_CONFIG: Record<QualityState, { label: string; className: string; icon: any }> = {
+  BLOCKED_MATERIAL_QC: {
+    label: "Material QC Blocked",
+    className: "bg-destructive/10 text-destructive border-destructive/30",
+    icon: Ban,
+  },
+  BLOCKED_FIRST_PIECE: {
+    label: "First Piece Blocked",
+    className: "bg-destructive/10 text-destructive border-destructive/30",
+    icon: Ban,
+  },
+  BLOCKED_NCR: {
+    label: "NCR Active",
+    className: "bg-destructive/15 text-destructive border-destructive/40",
+    icon: XCircle,
+  },
+  QC_OVERDUE: {
+    label: "QC Overdue",
+    className: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30",
+    icon: Clock,
+  },
+  DISPATCH_AT_RISK: {
+    label: "Dispatch at Risk",
+    className: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30",
+    icon: Truck,
+  },
+  EXTERNAL_PENDING: {
+    label: "External Pending",
+    className: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30",
+    icon: ExternalLink,
+  },
+  IN_PROCESS: {
+    label: "In Process",
+    className: "bg-primary/10 text-primary border-primary/30",
+    icon: Activity,
+  },
+  ON_TRACK: {
+    label: "On Track",
+    className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
+    icon: Shield,
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEGMENT CONFIG
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SEGMENTS: { key: Segment; label: string; icon: any }[] = [
+  { key: "all", label: "All", icon: Shield },
+  { key: "incoming", label: "Incoming", icon: Package },
+  { key: "first_piece", label: "First Piece", icon: Activity },
+  { key: "in_process", label: "In-Process", icon: Activity },
+  { key: "external", label: "External", icon: ExternalLink },
+  { key: "dispatch", label: "Dispatch", icon: Truck },
+  { key: "blocked", label: "Blocked", icon: Ban },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const OperationalPanel = ({
+  title, count, subtitle, icon: Icon, variant, onClick, className,
+}: {
+  title: string; count: number; subtitle: string;
+  icon: any; variant: "danger" | "warning" | "alert";
+  onClick?: () => void; className?: string;
+}) => {
+  const variantStyles = {
+    danger: "border-destructive/30 bg-destructive/5",
+    warning: "border-amber-500/30 bg-amber-500/5",
+    alert: "border-orange-500/30 bg-orange-500/5",
+  };
+  const iconStyles = {
+    danger: "text-destructive",
+    warning: "text-amber-600 dark:text-amber-400",
+    alert: "text-orange-600 dark:text-orange-400",
+  };
+  const countStyles = {
+    danger: "text-destructive",
+    warning: "text-amber-700 dark:text-amber-300",
+    alert: "text-orange-700 dark:text-orange-300",
+  };
+
+  return (
+    <Card
+      className={cn(
+        "cursor-pointer transition-all hover:shadow-md",
+        variantStyles[variant],
+        className
+      )}
+      onClick={onClick}
+    >
+      <CardContent className="py-4 px-5">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {title}
+            </p>
+            <p className={cn("text-3xl font-bold tabular-nums", countStyles[variant])}>
+              {count}
+            </p>
+            <p className="text-xs text-muted-foreground leading-tight">{subtitle}</p>
+          </div>
+          <div className={cn("p-2 rounded-lg bg-background/60", iconStyles[variant])}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const QualityStateBadge = ({ state }: { state: QualityState }) => {
+  const config = STATE_CONFIG[state];
+  const Icon = config.icon;
+  return (
+    <Badge variant="outline" className={cn("text-[11px] font-medium gap-1", config.className)}>
+      <Icon className="h-3 w-3" />
+      {config.label}
+    </Badge>
+  );
+};
+
+const RiskIndicator = ({ level }: { level: "critical" | "high" | "medium" | "low" }) => {
+  const styles = {
+    critical: "bg-destructive text-destructive-foreground",
+    high: "bg-orange-500 text-white",
+    medium: "bg-amber-500 text-white",
+    low: "bg-muted text-muted-foreground",
+  };
+  return (
+    <span className={cn("text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded", styles[level])}>
+      {level}
+    </span>
+  );
+};
+
+const formatCurrency = (value: number) => {
+  if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
+  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
+  if (value >= 1000) return `₹${(value / 1000).toFixed(0)}K`;
+  return `₹${value.toFixed(0)}`;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ═══════════════════════════════════════════════════════════════════════════
 
 const Quality = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [workOrderSummaries, setWorkOrderSummaries] = useState<WorkOrderQCSummary[]>([]);
-  const [qcStats, setQcStats] = useState({
-    total: 0,
-    passed: 0,
-    failed: 0,
-    pending: 0,
-    passRate: 0
-  });
-  
-  // Read filter and tab from URL params
-  const urlFilter = searchParams.get('filter');
-  const urlTab = searchParams.get('tab');
-  const [activeView, setActiveView] = useState<string>(() => {
-    if (urlTab === 'first-piece') return 'first-piece';
-    if (urlFilter === 'pending') return 'pending';
-    return 'all';
-  });
+  const [workOrders, setWorkOrders] = useState<QCWorkOrder[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const segment = (searchParams.get("segment") as Segment) || "all";
+  const setSegment = (s: Segment) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("segment", s);
+    setSearchParams(params, { replace: true });
+  };
+
+  // ─── Context filters ───
+  const [filterCustomer, setFilterCustomer] = useState<string>("all");
+  const [filterRisk, setFilterRisk] = useState<string>("all");
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      
-      const { data: workOrders, error: woError } = await supabase
-        .from("work_orders")
-        .select(`
-          id, wo_number, customer, item_code, status,
-          qc_material_status, qc_first_piece_status
-        `)
-        .in('status', ['pending', 'in_progress', 'qc', 'packing'])
-        .order("created_at", { ascending: false })
-        .limit(100);
 
-      if (woError) throw woError;
+      // Parallel fetches
+      const [woRes, ncrRes, extRes] = await Promise.all([
+        supabase
+          .from("work_orders")
+          .select("id, wo_number, display_id, customer, item_code, status, order_qty, unit_rate, due_date, created_at, qc_material_status, qc_first_piece_status, machine_id")
+          .in("status", ["pending", "in_progress", "qc", "packing", "cutting"])
+          .order("created_at", { ascending: false })
+          .limit(500),
+        supabase
+          .from("ncrs")
+          .select("work_order_id, status")
+          .in("status", ["open", "in_progress", "investigation"]),
+        supabase
+          .from("external_movements")
+          .select("work_order_id, status, process")
+          .eq("status", "sent"),
+      ]);
 
-      const woIds = (workOrders || []).map(wo => wo.id);
+      if (woRes.error) throw woRes.error;
 
-      // Only fetch QC records for the active work orders to avoid 1000 row limit
-      const { data: qcRecords, error: qcError } = await supabase
-        .from("qc_records")
-        .select("id, result, wo_id, created_at, qc_type")
-        .in("wo_id", woIds.length > 0 ? woIds : ["00000000-0000-0000-0000-000000000000"])
-        .order("created_at", { ascending: false });
-
-      if (qcError) throw qcError;
-
-      // Fetch production metrics from daily_production_logs for all work orders
-      const { data: productionLogs } = await supabase
-        .from("daily_production_logs")
-        .select(`
-          wo_id,
-          actual_runtime_minutes,
-          actual_quantity,
-          total_rejection_quantity,
-          efficiency_percentage,
-          shift,
-          machines:machine_id(name),
-          operator:operator_id(full_name)
-        `)
-        .in("wo_id", woIds)
-        .order("log_date", { ascending: false });
-
-      // Map production metrics by wo_id (use latest log per WO)
-      const productionByWo = new Map<string, ProductionMetrics>();
-      productionLogs?.forEach(log => {
-        if (!productionByWo.has(log.wo_id)) {
-          productionByWo.set(log.wo_id, {
-            runtime_minutes: log.actual_runtime_minutes || 0,
-            actual_quantity: log.actual_quantity || 0,
-            rejection_quantity: log.total_rejection_quantity || 0,
-            efficiency: log.efficiency_percentage || 0,
-            machine_name: (log.machines as any)?.name || "-",
-            operator_name: (log.operator as any)?.full_name || "-",
-            shift: log.shift || "-",
-          });
-        }
+      // Build lookup maps
+      const activeNCRs = new Set<string>();
+      (ncrRes.data || []).forEach((n) => {
+        if (n.work_order_id) activeNCRs.add(n.work_order_id);
       });
 
-      const total = qcRecords?.length || 0;
-      const passed = qcRecords?.filter(r => r.result === 'pass').length || 0;
-      const failed = qcRecords?.filter(r => r.result === 'fail').length || 0;
-      const pending = qcRecords?.filter(r => r.result === 'pending').length || 0;
-      const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
-
-      setQcStats({ total, passed, failed, pending, passRate });
-
-      const qcByWo = new Map<string, { pending: number; passed: number; failed: number; lastDate: string | null; neededType: string | null }>();
-      qcRecords?.forEach(qc => {
-        const existing = qcByWo.get(qc.wo_id) || { pending: 0, passed: 0, failed: 0, lastDate: null, neededType: null };
-        if (qc.result === 'pending') {
-          existing.pending++;
-          existing.neededType = qc.qc_type;
-        }
-        if (qc.result === 'pass') existing.passed++;
-        if (qc.result === 'fail') existing.failed++;
-        if (!existing.lastDate || new Date(qc.created_at) > new Date(existing.lastDate)) {
-          existing.lastDate = qc.created_at;
-        }
-        qcByWo.set(qc.wo_id, existing);
+      const extMap = new Map<string, any>();
+      (extRes.data || []).forEach((e) => {
+        if (e.work_order_id) extMap.set(e.work_order_id, e);
       });
 
-      const summaries: WorkOrderQCSummary[] = (workOrders || []).map(wo => {
-        const qcInfo = qcByWo.get(wo.id);
-        const prodMetrics = productionByWo.get(wo.id) || null;
+      const mapped: QCWorkOrder[] = (woRes.data || []).map((wo) => {
+        const { state, daysInState, riskLevel } = computeQualityState(wo, activeNCRs, extMap);
+        const orderValue = (wo.order_qty || 0) * (wo.unit_rate || 0);
         return {
           id: wo.id,
-          wo_number: wo.wo_number,
-          customer: wo.customer,
-          item_code: wo.item_code,
+          wo_number: wo.wo_number || "",
+          display_id: wo.display_id || wo.wo_number || "—",
+          customer: wo.customer || "—",
+          item_code: wo.item_code || "—",
           status: wo.status,
+          order_qty: wo.order_qty || 0,
+          unit_rate: wo.unit_rate,
+          due_date: wo.due_date,
+          created_at: wo.created_at,
           qc_material_status: wo.qc_material_status,
           qc_first_piece_status: wo.qc_first_piece_status,
-          pending_qc_count: qcInfo?.pending || 0,
-          passed_qc_count: qcInfo?.passed || 0,
-          failed_qc_count: qcInfo?.failed || 0,
-          last_qc_date: qcInfo?.lastDate || null,
-          qc_type_needed: qcInfo?.neededType || null,
-          production_metrics: prodMetrics,
+          quality_state: state,
+          days_in_state: daysInState,
+          risk_level: riskLevel,
+          order_value: orderValue,
+          supplier: null,
+          machine_id: wo.machine_id,
+          has_active_ncr: activeNCRs.has(wo.id),
+          external_status: extMap.get(wo.id)?.process || null,
+          dispatch_qc_status: null,
         };
       });
 
-      summaries.sort((a, b) => {
-        if (a.pending_qc_count > 0 && b.pending_qc_count === 0) return -1;
-        if (a.pending_qc_count === 0 && b.pending_qc_count > 0) return 1;
-        return 0;
+      // Default sort: highest risk first
+      mapped.sort((a, b) => {
+        const riskOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+        if (riskOrder[a.risk_level] !== riskOrder[b.risk_level]) {
+          return riskOrder[a.risk_level] - riskOrder[b.risk_level];
+        }
+        return b.days_in_state - a.days_in_state;
       });
 
-      setWorkOrderSummaries(summaries);
+      setWorkOrders(mapped);
     } catch (error: any) {
-      console.error("Error loading QC data:", error);
+      console.error("QC Control Tower load error:", error);
       toast({ variant: "destructive", title: "Error loading QC data", description: error.message });
     } finally {
       setLoading(false);
@@ -181,34 +399,123 @@ const Quality = () => {
 
   useEffect(() => {
     loadData();
-
     const channel = supabase
-      .channel("qc-dashboard-realtime")
+      .channel("qc-control-tower")
       .on("postgres_changes", { event: "*", schema: "public", table: "qc_records" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, loadData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "ncrs" }, loadData)
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [loadData]);
 
-  const workOrdersNeedingAction = useMemo(() => 
-    workOrderSummaries.filter(wo => 
-      wo.pending_qc_count > 0 || 
-      wo.qc_material_status === 'pending' || 
-      wo.qc_first_piece_status === 'pending'
-    ), [workOrderSummaries]
+  // ─── Computed aggregates ───
+  const blockedCount = useMemo(
+    () => workOrders.filter((w) => ["BLOCKED_MATERIAL_QC", "BLOCKED_FIRST_PIECE", "BLOCKED_NCR"].includes(w.quality_state)).length,
+    [workOrders]
   );
+  const blockedValue = useMemo(
+    () => workOrders.filter((w) => ["BLOCKED_MATERIAL_QC", "BLOCKED_FIRST_PIECE", "BLOCKED_NCR"].includes(w.quality_state))
+      .reduce((s, w) => s + w.order_value, 0),
+    [workOrders]
+  );
+  const overdueCount = useMemo(
+    () => workOrders.filter((w) => w.quality_state === "QC_OVERDUE" || (w.days_in_state > 2 && ["BLOCKED_MATERIAL_QC", "BLOCKED_FIRST_PIECE"].includes(w.quality_state))).length,
+    [workOrders]
+  );
+  const dispatchRiskCount = useMemo(
+    () => workOrders.filter((w) => w.quality_state === "DISPATCH_AT_RISK").length,
+    [workOrders]
+  );
+  const dispatchRiskValue = useMemo(
+    () => workOrders.filter((w) => w.quality_state === "DISPATCH_AT_RISK").reduce((s, w) => s + w.order_value, 0),
+    [workOrders]
+  );
+
+  // ─── Segment filtering ───
+  const segmentedOrders = useMemo(() => {
+    let filtered = workOrders;
+
+    switch (segment) {
+      case "incoming":
+        filtered = workOrders.filter((w) => w.quality_state === "BLOCKED_MATERIAL_QC");
+        break;
+      case "first_piece":
+        filtered = workOrders.filter((w) => w.quality_state === "BLOCKED_FIRST_PIECE");
+        break;
+      case "in_process":
+        filtered = workOrders.filter((w) => w.quality_state === "IN_PROCESS");
+        break;
+      case "external":
+        filtered = workOrders.filter((w) => w.quality_state === "EXTERNAL_PENDING");
+        break;
+      case "dispatch":
+        filtered = workOrders.filter((w) => w.quality_state === "DISPATCH_AT_RISK");
+        break;
+      case "blocked":
+        filtered = workOrders.filter((w) =>
+          ["BLOCKED_MATERIAL_QC", "BLOCKED_FIRST_PIECE", "BLOCKED_NCR"].includes(w.quality_state)
+        );
+        break;
+    }
+
+    // Apply search
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (w) =>
+          w.wo_number.toLowerCase().includes(q) ||
+          w.display_id.toLowerCase().includes(q) ||
+          w.customer.toLowerCase().includes(q) ||
+          w.item_code.toLowerCase().includes(q)
+      );
+    }
+
+    // Apply context filters
+    if (filterCustomer !== "all") {
+      filtered = filtered.filter((w) => w.customer === filterCustomer);
+    }
+    if (filterRisk !== "all") {
+      filtered = filtered.filter((w) => w.risk_level === filterRisk);
+    }
+
+    return filtered;
+  }, [workOrders, segment, searchQuery, filterCustomer, filterRisk]);
+
+  // Unique customers for filter
+  const customers = useMemo(
+    () => [...new Set(workOrders.map((w) => w.customer).filter(Boolean))].sort(),
+    [workOrders]
+  );
+
+  // Quick action routing
+  const getQuickAction = (wo: QCWorkOrder) => {
+    switch (wo.quality_state) {
+      case "BLOCKED_MATERIAL_QC":
+        return { label: "Approve Material", path: `/work-orders/${wo.id}?tab=qc` };
+      case "BLOCKED_FIRST_PIECE":
+        return { label: "Approve FP", path: `/work-orders/${wo.id}?tab=qc` };
+      case "BLOCKED_NCR":
+        return { label: "View NCR", path: `/ncr?wo=${wo.id}` };
+      case "EXTERNAL_PENDING":
+        return { label: "Check External", path: `/work-orders/${wo.id}?tab=external` };
+      case "DISPATCH_AT_RISK":
+        return { label: "Dispatch QC", path: `/dispatch-qc?wo=${wo.id}` };
+      default:
+        return { label: "View", path: `/work-orders/${wo.id}` };
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
         <PageContainer maxWidth="2xl">
-          <div className="space-y-6">
-            <Skeleton className="h-10 w-64" />
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20" />)}
+          <div className="space-y-5">
+            <Skeleton className="h-8 w-72" />
+            <div className="grid grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
             </div>
-            <Skeleton className="h-64" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-96" />
           </div>
         </PageContainer>
       </div>
@@ -218,161 +525,272 @@ const Quality = () => {
   return (
     <div className="min-h-screen bg-background">
       <PageContainer maxWidth="2xl">
-        <div className="space-y-6">
-          {/* Header */}
-          <PageHeader
-            title="Quality Control Overview"
-            description="Quality metrics and inspection status across all work orders"
-            icon={<TrendingUp className="h-6 w-6" />}
-          />
+        <div className="space-y-5">
 
-          {/* Info */}
-          <QCInfoAlert
-            title="QC Actions are Work Order Based"
-            description="Navigate to the specific Work Order to perform QC inspections. This dashboard provides an overview."
-          />
+          {/* ═══ HEADER ═══ */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Quality Control Tower
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Real-time exception view · {workOrders.length} active work orders
+              </p>
+            </div>
+            {/* Financial impact indicator */}
+            <div className="flex gap-4 text-right">
+              {blockedValue > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Blocked Value</p>
+                  <p className="text-lg font-bold text-destructive tabular-nums">{formatCurrency(blockedValue)}</p>
+                </div>
+              )}
+              {dispatchRiskValue > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Dispatch Risk</p>
+                  <p className="text-lg font-bold text-orange-600 dark:text-orange-400 tabular-nums">{formatCurrency(dispatchRiskValue)}</p>
+                </div>
+              )}
+            </div>
+          </div>
 
-          {/* Summary Stats */}
-          <QCSummaryStats
-            stats={[
-              { label: 'Total Inspections', value: qcStats.total, type: 'total' },
-              { label: 'Pass Rate', value: qcStats.passRate, type: 'passed' },
-              { label: 'Failed', value: qcStats.failed, type: 'failed' },
-              { label: 'Pending', value: qcStats.pending, type: 'pending' },
-            ]}
-          />
+          {/* ═══ OPERATIONAL PANELS ═══ */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <OperationalPanel
+              title="Blocked Production"
+              count={blockedCount}
+              subtitle={`${formatCurrency(blockedValue)} order value impacted`}
+              icon={Ban}
+              variant="danger"
+              onClick={() => setSegment("blocked")}
+            />
+            <OperationalPanel
+              title="QC Overdue"
+              count={overdueCount}
+              subtitle="First Piece or Material QC pending >48h"
+              icon={Clock}
+              variant="warning"
+              onClick={() => setSegment("incoming")}
+            />
+            <OperationalPanel
+              title="Dispatch at Risk"
+              count={dispatchRiskCount}
+              subtitle={`Due <24h, QC incomplete · ${formatCurrency(dispatchRiskValue)}`}
+              icon={Truck}
+              variant="alert"
+              onClick={() => setSegment("dispatch")}
+            />
+          </div>
 
-          {/* Action Required */}
-          {workOrdersNeedingAction.length > 0 && (
-            <QCActionRequired
-              title="Work Orders Requiring QC"
-              description="Click on a work order to navigate and perform the required inspection"
-              count={workOrdersNeedingAction.length}
-            >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Work Order</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Item Code</TableHead>
-                    <TableHead>Material QC</TableHead>
-                    <TableHead>First Piece</TableHead>
-                    <TableHead>Pending</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {workOrdersNeedingAction.map((wo) => (
-                    <TableRow 
-                      key={wo.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
-                    >
-                      <TableCell className="font-medium">{wo.wo_number}</TableCell>
-                      <TableCell>{wo.customer}</TableCell>
-                      <TableCell>{wo.item_code}</TableCell>
-                      <TableCell><QCStatusIndicator status={wo.qc_material_status as any} size="sm" /></TableCell>
-                      <TableCell><QCStatusIndicator status={wo.qc_first_piece_status as any} size="sm" /></TableCell>
-                      <TableCell>
-                        {wo.pending_qc_count > 0 && (
-                          <Badge variant="outline" className="text-amber-600 border-amber-300 text-xs">
-                            {wo.pending_qc_count}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-primary text-sm">
-                          Go <ArrowRight className="h-3.5 w-3.5" />
-                        </div>
-                      </TableCell>
+          {/* ═══ SEGMENT TOGGLE ═══ */}
+          <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg overflow-x-auto">
+            {SEGMENTS.map((seg) => {
+              const Icon = seg.icon;
+              const isActive = segment === seg.key;
+              const count = seg.key === "all"
+                ? workOrders.length
+                : seg.key === "blocked"
+                ? blockedCount
+                : seg.key === "incoming"
+                ? workOrders.filter((w) => w.quality_state === "BLOCKED_MATERIAL_QC").length
+                : seg.key === "first_piece"
+                ? workOrders.filter((w) => w.quality_state === "BLOCKED_FIRST_PIECE").length
+                : seg.key === "in_process"
+                ? workOrders.filter((w) => w.quality_state === "IN_PROCESS").length
+                : seg.key === "external"
+                ? workOrders.filter((w) => w.quality_state === "EXTERNAL_PENDING").length
+                : seg.key === "dispatch"
+                ? workOrders.filter((w) => w.quality_state === "DISPATCH_AT_RISK").length
+                : 0;
+
+              return (
+                <button
+                  key={seg.key}
+                  onClick={() => setSegment(seg.key)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap",
+                    isActive
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {seg.label}
+                  {count > 0 && (
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded-full tabular-nums",
+                      isActive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    )}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ═══ CONTEXT FILTERS ═══ */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search WO, customer, item..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-8 text-xs"
+              />
+            </div>
+
+            <SafeSelect value={filterCustomer} onValueChange={setFilterCustomer}>
+              <SafeSelectTrigger className="w-[160px] h-8 text-xs">
+                <SafeSelectValue placeholder="Customer" />
+              </SafeSelectTrigger>
+              <SafeSelectContent>
+                <SafeSelectItem value="all">All Customers</SafeSelectItem>
+                {customers.map((c) => (
+                  <SafeSelectItem key={c} value={c}>{c}</SafeSelectItem>
+                ))}
+              </SafeSelectContent>
+            </SafeSelect>
+
+            <SafeSelect value={filterRisk} onValueChange={setFilterRisk}>
+              <SafeSelectTrigger className="w-[130px] h-8 text-xs">
+                <SafeSelectValue placeholder="Risk" />
+              </SafeSelectTrigger>
+              <SafeSelectContent>
+                <SafeSelectItem value="all">All Risk</SafeSelectItem>
+                <SafeSelectItem value="critical">Critical</SafeSelectItem>
+                <SafeSelectItem value="high">High</SafeSelectItem>
+                <SafeSelectItem value="medium">Medium</SafeSelectItem>
+                <SafeSelectItem value="low">Low</SafeSelectItem>
+              </SafeSelectContent>
+            </SafeSelect>
+
+            {(filterCustomer !== "all" || filterRisk !== "all" || searchQuery) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setFilterCustomer("all");
+                  setFilterRisk("all");
+                  setSearchQuery("");
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
+
+            <span className="text-[11px] text-muted-foreground ml-auto tabular-nums">
+              {segmentedOrders.length} result{segmentedOrders.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {/* ═══ PRIMARY TABLE ═══ */}
+          {segmentedOrders.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <EmptyState
+                  icon="quality"
+                  title={segment === "all" ? "No Active QC Items" : `No ${SEGMENTS.find(s => s.key === segment)?.label} items`}
+                  description="Work orders requiring quality attention will appear here."
+                  size="md"
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[110px]">WO ID</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Quality State</TableHead>
+                      <TableHead className="text-center">Days</TableHead>
+                      <TableHead className="text-center">Risk</TableHead>
+                      <TableHead className="text-right">Value</TableHead>
+                      {segment === "incoming" && <TableHead>Material QC</TableHead>}
+                      {segment === "first_piece" && <TableHead>First Piece</TableHead>}
+                      <TableHead className="text-right w-[130px]">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </QCActionRequired>
+                  </TableHeader>
+                  <TableBody>
+                    {segmentedOrders.map((wo) => {
+                      const action = getQuickAction(wo);
+                      return (
+                        <TableRow
+                          key={wo.id}
+                          className={cn(
+                            "cursor-pointer transition-colors",
+                            wo.risk_level === "critical" && "bg-destructive/[0.03]",
+                            wo.risk_level === "high" && "bg-orange-500/[0.02]"
+                          )}
+                          onClick={() => navigate(`/work-orders/${wo.id}`)}
+                        >
+                          <TableCell className="font-medium text-xs">
+                            <div className="flex items-center gap-1.5">
+                              {wo.risk_level === "critical" && (
+                                <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
+                              )}
+                              <span className="hover:underline">{wo.display_id}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs max-w-[140px] truncate">{wo.customer}</TableCell>
+                          <TableCell className="text-xs">{wo.item_code}</TableCell>
+                          <TableCell>
+                            <QualityStateBadge state={wo.quality_state} />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={cn(
+                              "text-xs tabular-nums font-medium",
+                              wo.days_in_state > 5 && "text-destructive",
+                              wo.days_in_state > 2 && wo.days_in_state <= 5 && "text-amber-600 dark:text-amber-400"
+                            )}>
+                              {wo.days_in_state}d
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <RiskIndicator level={wo.risk_level} />
+                          </TableCell>
+                          <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                            {wo.order_value > 0 ? formatCurrency(wo.order_value) : "—"}
+                          </TableCell>
+                          {segment === "incoming" && (
+                            <TableCell>
+                              <QCStatusIndicator status={wo.qc_material_status as any} size="sm" />
+                            </TableCell>
+                          )}
+                          {segment === "first_piece" && (
+                            <TableCell>
+                              <QCStatusIndicator status={wo.qc_first_piece_status as any} size="sm" />
+                            </TableCell>
+                          )}
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(action.path);
+                              }}
+                            >
+                              {action.label}
+                              <ChevronRight className="h-3 w-3" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
           )}
 
-          {/* History - All Work Orders */}
-          <QCHistory
-            title="All Active Work Orders"
-            description="Overview of quality control status"
-          >
-            {workOrderSummaries.length === 0 ? (
-              <EmptyState
-                icon="quality"
-                title="No Active Work Orders"
-                description="Work orders requiring quality inspection will appear here. Create a work order and complete Material QC or First Piece QC to see them in this list."
-                hint="QC records are created during production when inspections are performed."
-                size="md"
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Work Order</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Item Code</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Material QC</TableHead>
-                    <TableHead>First Piece</TableHead>
-                    <TableHead className="text-center">Passed</TableHead>
-                    <TableHead className="text-center">Failed</TableHead>
-                    <TableHead className="text-right text-xs">Prod Qty</TableHead>
-                    <TableHead className="text-right text-xs">Rej Qty</TableHead>
-                    <TableHead className="text-right text-xs">Eff %</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {workOrderSummaries.map((wo) => (
-                    <TableRow 
-                      key={wo.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/work-orders/${wo.id}?tab=qc`)}
-                    >
-                      <TableCell className="font-medium">{wo.wo_number}</TableCell>
-                      <TableCell>{wo.customer}</TableCell>
-                      <TableCell>{wo.item_code}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="capitalize text-xs">{wo.status}</Badge>
-                      </TableCell>
-                      <TableCell><QCStatusIndicator status={wo.qc_material_status as any} size="sm" /></TableCell>
-                      <TableCell><QCStatusIndicator status={wo.qc_first_piece_status as any} size="sm" /></TableCell>
-                      <TableCell className="text-center">
-                        {wo.passed_qc_count > 0 && (
-                          <span className="text-emerald-600 font-medium">{wo.passed_qc_count}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {wo.failed_qc_count > 0 && (
-                          <span className="text-destructive font-medium">{wo.failed_qc_count}</span>
-                        )}
-                      </TableCell>
-                      {/* Production metrics from Daily Production Log - Read Only */}
-                      <TableCell className="text-right text-sm">
-                        {wo.production_metrics?.actual_quantity ?? '-'}
-                      </TableCell>
-                      <TableCell className="text-right text-sm">
-                        {wo.production_metrics?.rejection_quantity ? (
-                          <span className="text-destructive">{wo.production_metrics.rejection_quantity}</span>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right text-sm">
-                        {wo.production_metrics?.efficiency ? (
-                          <span className={wo.production_metrics.efficiency >= 100 ? 'text-emerald-600' : 'text-amber-600'}>
-                            {wo.production_metrics.efficiency.toFixed(1)}%
-                          </span>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Eye className="h-4 w-4 text-primary" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </QCHistory>
         </div>
       </PageContainer>
     </div>
