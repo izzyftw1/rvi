@@ -60,12 +60,14 @@ const Auth = () => {
 
       if (error) throw error;
 
-      // Update last login time
+      // Update last login time and log event
       if (data.user) {
         await supabase
           .from("profiles")
           .update({ last_login: new Date().toISOString() })
           .eq("id", data.user.id);
+        
+        log('login', 'User logged in', { email: loginEmail });
       }
 
       toast({
