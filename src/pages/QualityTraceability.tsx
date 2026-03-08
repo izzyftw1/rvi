@@ -76,7 +76,7 @@ export default function QualityTraceability() {
 
         case "item_code":
           const { data: itemWo } = await supabase
-            .from("work_orders")
+            .from("work_orders_restricted")
             .select("*")
             .ilike("item_code", `%${searchTerm}%`)
             .order("created_at", { ascending: false })
