@@ -42,12 +42,12 @@ export const ProductionReleaseSection = ({
   releasedByName,
   onReleased 
 }: ProductionReleaseSectionProps) => {
-  const { hasAnyRole } = useUserRole();
+  const { canPerform } = useActionPermission();
   const [showReleaseDialog, setShowReleaseDialog] = useState(false);
   const [releaseNotes, setReleaseNotes] = useState('');
   const [isReleasing, setIsReleasing] = useState(false);
 
-  const canRelease = hasAnyRole(['admin', 'production']);
+  const canRelease = canPerform('release_production');
   const isReleased = workOrder.production_release_status === 'RELEASED';
 
   // Check if release is allowed

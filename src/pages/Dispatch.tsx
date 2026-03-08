@@ -521,7 +521,7 @@ export default function Dispatch() {
       for (const batch of selectedBatches) {
         const dispatchQty = getDispatchQty(batch);
         const { data: woWeight } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("gross_weight_per_pc, item_code, customer")
           .eq("id", batch.wo_id)
           .single();

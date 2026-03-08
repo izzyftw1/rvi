@@ -75,10 +75,10 @@ export default function CreateInvoices() {
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState("ready");
   const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
-  const { hasAnyRole, loading: roleLoading } = useUserRole();
+  const { canPerform, loading: roleLoading } = useActionPermission();
   
   // Only finance_admin or admin can override invoice quantities
-  const canOverrideQty = hasAnyRole(['finance_admin', 'admin', 'super_admin']);
+  const canOverrideQty = canPerform('create_invoice');
 
   useEffect(() => {
     loadInvoiceableShipments();

@@ -175,7 +175,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
 
       // Load work orders for filter
       const { data: woFilterData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id")
         .in("status", ["pending", "in_progress", "packing", "qc"])
         .order("created_at", { ascending: false })

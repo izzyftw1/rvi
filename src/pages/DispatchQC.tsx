@@ -142,7 +142,7 @@ const DispatchQC = () => {
     try {
       // Load work order
       const { data: woData, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .eq("id", woId)
         .single();
