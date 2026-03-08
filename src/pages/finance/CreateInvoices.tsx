@@ -12,7 +12,7 @@ import { Loader2, Package, Truck, FileText, AlertTriangle, CheckCircle2, Edit2, 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useActionPermission } from "@/hooks/useActionPermission";
 import { generateCommercialInvoicePDF, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
 import { format } from "date-fns";
 interface DispatchNoteItem {
