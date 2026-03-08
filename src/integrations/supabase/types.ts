@@ -10649,7 +10649,7 @@ export type Database = {
           _num_machines?: number
           _quantity: number
         }
-        Returns: unknown
+        Returns: string
       }
       can_access_page: {
         Args: { _page_key: string; _user_id: string }
