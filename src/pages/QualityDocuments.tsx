@@ -79,7 +79,7 @@ export default function QualityDocuments() {
       let woMap: Record<string, any> = {};
       if (woIds.length > 0) {
         const { data: workOrders } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("id, wo_number, customer, item_code")
           .in("id", woIds);
         (workOrders || []).forEach(wo => {
