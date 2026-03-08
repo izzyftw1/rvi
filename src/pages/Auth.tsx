@@ -20,6 +20,7 @@ import rvLogo from "@/assets/rv-logo.jpg";
 const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { log } = useAuditLog();
   const [loading, setLoading] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState("");
