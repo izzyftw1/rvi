@@ -106,7 +106,7 @@ export default function QualityTraceability() {
 
             if (issueData) {
               const { data: woFromLot } = await supabase
-                .from("work_orders")
+                .from("work_orders_restricted")
                 .select("*")
                 .eq("id", issueData.wo_id)
                 .maybeSingle();
