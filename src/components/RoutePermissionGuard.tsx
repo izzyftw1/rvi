@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDepartmentPermissions } from '@/hooks/useDepartmentPermissions';
+import { useAuditLog } from '@/hooks/useAuditLog';
 import { AlertTriangle, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
