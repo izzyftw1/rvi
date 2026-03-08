@@ -160,7 +160,7 @@ export function useSetterEfficiencyMetrics({
       const woIds = [...new Set((activityData || []).map(a => a.wo_id).filter(Boolean))];
       if (woIds.length > 0) {
         const { data: woData } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("id, display_id, item_code")
           .in("id", woIds);
         

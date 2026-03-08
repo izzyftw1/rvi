@@ -169,7 +169,7 @@ export default function QualityTraceability() {
 
           if (dateLogData?.wo_id) {
             const { data: woFromDate } = await supabase
-              .from("work_orders")
+              .from("work_orders_restricted")
               .select("*")
               .eq("id", dateLogData.wo_id)
               .maybeSingle();

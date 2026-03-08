@@ -323,7 +323,7 @@ const Packing = () => {
 
   const loadAwaitingCounts = async () => {
     const { data: activeWOs } = await supabase
-      .from("work_orders")
+      .from("work_orders_restricted")
       .select("id, quantity")
       .in("status", ["in_progress", "pending"]);
 
