@@ -102,7 +102,7 @@ export const GlobalSearch = () => {
       // Search Work Orders
       if (!hasFilter || filterType === 'wo' || filterType === 'work') {
         const { data: workOrders } = await supabase
-          .from('work_orders')
+          .from('work_orders_restricted')
           .select('id, wo_number, customer, item_code, status, current_stage')
           .or(`wo_number.ilike.%${filterQuery}%,customer.ilike.%${filterQuery}%,item_code.ilike.%${filterQuery}%`)
           .limit(5);

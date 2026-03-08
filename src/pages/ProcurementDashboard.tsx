@@ -339,7 +339,7 @@ export default function ProcurementDashboard() {
 
   const loadWorkOrderRequirements = async () => {
     const { data } = await supabase
-      .from('work_orders')
+      .from('work_orders_restricted')
       .select('id, wo_number, customer, item_code, quantity, material_size_mm, due_date, status, current_stage, gross_weight_per_pc, financial_snapshot')
       .in('current_stage', ['goods_in', 'cutting_queue', 'production_planning', 'production'])
       .in('status', ['pending', 'in_progress', 'qc', 'packing'])
