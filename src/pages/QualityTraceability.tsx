@@ -66,7 +66,7 @@ export default function QualityTraceability() {
       switch (searchType) {
         case "work_order":
           const { data: woData } = await supabase
-            .from("work_orders")
+            .from("work_orders_restricted")
             .select("*")
             .or(`display_id.ilike.%${searchTerm}%,wo_id.eq.${searchTerm}`)
             .maybeSingle();
