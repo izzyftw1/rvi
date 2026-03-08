@@ -88,7 +88,7 @@ export async function getBatchesRequiringQC(woId: string): Promise<BatchQCData[]
   
   // Get work order info
   const { data: wo } = await supabase
-    .from('work_orders')
+    .from('work_orders_restricted')
     .select('wo_number, customer, item_code')
     .eq('id', woId)
     .single();

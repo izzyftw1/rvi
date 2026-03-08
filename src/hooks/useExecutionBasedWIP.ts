@@ -94,7 +94,7 @@ export function useExecutionBasedWIP(): ExecutionBasedWIPData {
 
       // 1. Fetch active work orders with basic info
       const { data: workOrders } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, quantity, gross_weight_per_pc, due_date, updated_at, status')
         .in('status', ['in_progress', 'pending', 'packing', 'qc']);
 

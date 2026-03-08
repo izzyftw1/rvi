@@ -95,7 +95,7 @@ export function useBatchQuantities(woId: string | undefined): UseBatchQuantities
     try {
       // 1. Get ordered quantity from work order
       const { data: wo } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('quantity')
         .eq('id', woId)
         .single();

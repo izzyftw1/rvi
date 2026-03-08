@@ -61,7 +61,7 @@ export const QCAlertsWidget = () => {
 
       // QC holds (work orders blocked by QC)
       const { count: qcHolds } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('*', { count: 'exact', head: true })
         .eq('production_allowed', false)
         .neq('status', 'completed');

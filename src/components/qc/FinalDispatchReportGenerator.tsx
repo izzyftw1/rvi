@@ -93,7 +93,7 @@ export const FinalDispatchReportGenerator = ({
 
       // Load work order details - simplified query to avoid type recursion
       const { data: woData } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, wo_id, display_id, item_code, customer, quantity, revision, so_id, quality_released')
         .eq('id', woId)
         .single();

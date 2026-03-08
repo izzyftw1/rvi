@@ -32,6 +32,11 @@ interface PermissionResult {
 export const routeToPageKey: Record<string, string> = {
   // === HOME DASHBOARD (Management-level, Admin/Finance/Super Admin only) ===
   '/': 'home-dashboard',
+  '/customers/:id': 'customers',
+  '/finance/invoices/:id': 'invoices',
+  '/ncr/:id': 'ncr',
+  '/work-orders/:id': 'work-orders',
+  '/dispatch-qc/:woId': 'dispatch-qc',
   
   // === SALES & CUSTOMERS ===
   '/sales': 'sales-orders',

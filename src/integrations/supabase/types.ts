@@ -3093,6 +3093,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "invoice_items_dispatch_note_id_fkey"
+            columns: ["dispatch_note_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_notes_restricted"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "invoice_items_invoice_id_fkey"
             columns: ["invoice_id"]
             isOneToOne: false
@@ -9875,6 +9882,151 @@ export type Database = {
         }
         Relationships: []
       }
+      dispatch_notes_restricted: {
+        Row: {
+          carton_id: string | null
+          created_at: string | null
+          created_by: string | null
+          currency: string | null
+          dispatch_date: string | null
+          dispatch_id: string | null
+          dispatch_note_no: string | null
+          dispatched_qty: number | null
+          gross_weight_kg: number | null
+          id: string | null
+          invoice_id: string | null
+          invoiced: boolean | null
+          item_code: string | null
+          item_description: string | null
+          net_weight_kg: number | null
+          packed_qty: number | null
+          rejected_qty: number | null
+          remarks: string | null
+          sales_order_id: string | null
+          shipment_id: string | null
+          so_ordered_qty: number | null
+          unit_rate: number | null
+          updated_at: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          carton_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          currency?: never
+          dispatch_date?: string | null
+          dispatch_id?: string | null
+          dispatch_note_no?: string | null
+          dispatched_qty?: number | null
+          gross_weight_kg?: number | null
+          id?: string | null
+          invoice_id?: string | null
+          invoiced?: boolean | null
+          item_code?: string | null
+          item_description?: string | null
+          net_weight_kg?: number | null
+          packed_qty?: number | null
+          rejected_qty?: number | null
+          remarks?: string | null
+          sales_order_id?: string | null
+          shipment_id?: string | null
+          so_ordered_qty?: number | null
+          unit_rate?: never
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          carton_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          currency?: never
+          dispatch_date?: string | null
+          dispatch_id?: string | null
+          dispatch_note_no?: string | null
+          dispatched_qty?: number | null
+          gross_weight_kg?: number | null
+          id?: string | null
+          invoice_id?: string | null
+          invoiced?: boolean | null
+          item_code?: string | null
+          item_description?: string | null
+          net_weight_kg?: number | null
+          packed_qty?: number | null
+          rejected_qty?: number | null
+          remarks?: string | null
+          sales_order_id?: string | null
+          shipment_id?: string | null
+          so_ordered_qty?: number | null
+          unit_rate?: never
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_notes_carton_id_fkey"
+            columns: ["carton_id"]
+            isOneToOne: false
+            referencedRelation: "cartons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_dispatch_id_fkey"
+            columns: ["dispatch_id"]
+            isOneToOne: false
+            referencedRelation: "dispatches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_work_orders_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_processing_summary_vw: {
         Row: {
           active_moves: number | null
@@ -10820,6 +10972,10 @@ export type Database = {
       is_finance_role: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       is_supplier_user: { Args: { _user_id: string }; Returns: boolean }
+      log_audit_event: {
+        Args: { _action: string; _details?: Json; _event_type: string }
+        Returns: undefined
+      }
       manage_user_role: {
         Args: {
           _action: string

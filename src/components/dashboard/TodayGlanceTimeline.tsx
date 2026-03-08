@@ -65,7 +65,7 @@ export const TodayGlanceTimeline = ({ limit, showViewAll = false }: TodayGlanceT
 
       // Fetch data
       const [workOrders, qcRecords, externalMoves, invoices] = await Promise.all([
-        supabase.from('work_orders').select('*'),
+        supabase.from('work_orders_restricted').select('*'),
         supabase.from('qc_records').select('*'),
         supabase.from('wo_external_moves' as any).select('*'),
         supabase.from('invoices').select('*')

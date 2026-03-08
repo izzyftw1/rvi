@@ -105,7 +105,7 @@ export function NCRLinkedData({
       // Load work order
       if (workOrderId) {
         const { data } = await supabase
-          .from('work_orders')
+          .from('work_orders_restricted')
           .select('id, display_id, wo_number, customer, item_code, quantity')
           .eq('id', workOrderId)
           .single();

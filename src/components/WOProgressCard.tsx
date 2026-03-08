@@ -98,7 +98,7 @@ export function WOProgressCard({ woId, orderedQuantity }: WOProgressCardProps) {
 
       // Get cached progress from work_orders
       const { data: wo, error: woError } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('qty_completed, qty_rejected, qty_remaining, completion_pct, updated_at')
         .eq('id', woId)
         .single();

@@ -122,7 +122,7 @@ export const QualityLossSignals = () => {
 
         // Get work orders to check for blocking status
         const { data: workOrders } = await supabase
-          .from('work_orders')
+          .from('work_orders_restricted')
           .select('id, status, quantity')
           .in('status', ['in_progress', 'qc', 'packing', 'pending']);
 

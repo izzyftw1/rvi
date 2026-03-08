@@ -73,7 +73,7 @@ export const DeliveryRiskPanel = () => {
       try {
         // Fetch work orders due in the next 7 days that are not completed
         const { data: upcomingOrders } = await supabase
-          .from('work_orders')
+          .from('work_orders_restricted')
           .select('id, display_id, due_date, qc_material_passed, qc_first_piece_passed, status')
           .gte('due_date', todayStr)
           .lte('due_date', in7Days)

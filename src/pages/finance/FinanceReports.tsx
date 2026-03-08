@@ -448,7 +448,7 @@ export default function FinanceReports() {
       // Get work orders with financial snapshots
       // Simplified query to avoid type recursion - fetch work orders first
       const { data: workOrders } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, wo_id, display_id, customer, quantity, financial_snapshot, so_id')
         .not('financial_snapshot', 'is', null)
         .gte('created_at', filters.dateFrom)

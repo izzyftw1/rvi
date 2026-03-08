@@ -92,7 +92,7 @@ export const DispatchQCReportGenerator = ({
 
       // Load work order details - use simple select to avoid type recursion
       const { data: woData } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, wo_id, display_id, item_code, customer, quantity, revision, so_id, quality_released, final_qc_result, sampling_plan_reference')
         .eq('id', woId)
         .single();
