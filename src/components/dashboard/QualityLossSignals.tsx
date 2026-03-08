@@ -1,25 +1,14 @@
 /**
- * Quality Loss Signals Component
- * 
- * READ-ONLY dashboard widget showing quality metrics.
- * Production metrics (Rejection Rate) derived from useProductionLogMetrics.
- * NCR metrics still fetched directly as they require specialized grouping.
+ * QualityLossSignals - Clean quality metrics widget
+ * Production metrics from useProductionLogMetrics, NCR metrics from direct queries.
  */
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  AlertTriangle, 
-  TrendingDown, 
-  FileWarning, 
-  RefreshCw, 
-  Target,
-  ArrowRight,
-  Clock,
-  Ban,
-  Package,
-  ShieldAlert
+import {
+  AlertTriangle, TrendingDown, FileWarning, RefreshCw, Target,
+  ArrowRight, Clock, Ban, Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,368 +16,189 @@ import { differenceInDays, parseISO, format } from "date-fns";
 import { formatCount, formatDisplayValue, isEmpty } from "@/lib/displayUtils";
 import { useProductionLogMetrics } from "@/hooks/useProductionLogMetrics";
 
-interface QualitySignal {
+interface Signal {
   label: string;
   value: number | string;
   subtext?: string;
-  ageIndicator?: string;
-  impactedPcs?: number;
   icon: React.ElementType;
   color: string;
-  bgColor: string;
+  bg: string;
   severity: 'ok' | 'warning' | 'critical';
   link: string;
-  isNcrMetric?: boolean;
-}
-
-interface GoodsInQcHold {
-  count: number;
-  totalPcs: number;
 }
 
 export const QualityLossSignals = () => {
   const navigate = useNavigate();
-  const [ncrSignals, setNcrSignals] = useState<QualitySignal[]>([]);
+  const [ncrSignals, setNcrSignals] = useState<Signal[]>([]);
+  const [firstPieceFails, setFirstPieceFails] = useState(0);
   const [ncrLoading, setNcrLoading] = useState(true);
-  const [goodsInQcHold, setGoodsInQcHold] = useState<GoodsInQcHold>({ count: 0, totalPcs: 0 });
-  const [firstPieceFailCount, setFirstPieceFailCount] = useState(0);
 
   const today = format(new Date(), 'yyyy-MM-dd');
+  const { metrics, loading: metricsLoading } = useProductionLogMetrics({ startDate: today, endDate: today, period: 'today' });
 
-  // SINGLE SOURCE: Production metrics from hook
-  const { metrics, loading: metricsLoading } = useProductionLogMetrics({
-    startDate: today,
-    endDate: today,
-    period: 'today',
-  });
-
-  // Production quality signals - derived from hook
-  const productionSignals = useMemo((): QualitySignal[] => {
+  const productionSignals = useMemo((): Signal[] => {
     if (!metrics) return [];
-
-    const rejectionRate = metrics.rejectionRate || 0;
-    const totalRejected = metrics.totalRejections || 0;
-    const totalProduced = metrics.totalOutput + totalRejected;
-    const safeRejectionRate = Number.isFinite(rejectionRate) ? rejectionRate : 0;
-
+    const rate = Number.isFinite(metrics.rejectionRate) ? metrics.rejectionRate : 0;
+    const total = metrics.totalOutput + (metrics.totalRejections || 0);
     return [
       {
-        label: 'Rejection Rate',
-        value: `${safeRejectionRate.toFixed(1)}%`,
-        subtext: `${totalRejected} of ${totalProduced} pcs`,
+        label: 'Rejection Rate', value: `${rate.toFixed(1)}%`,
+        subtext: `${metrics.totalRejections || 0} of ${total} pcs`,
         icon: TrendingDown,
-        color: safeRejectionRate > 5 ? 'text-destructive' : safeRejectionRate > 2 ? 'text-amber-600' : 'text-emerald-600',
-        bgColor: safeRejectionRate > 5 ? 'bg-destructive/10' : safeRejectionRate > 2 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-        severity: safeRejectionRate > 5 ? 'critical' : safeRejectionRate > 2 ? 'warning' : 'ok',
+        color: rate > 5 ? 'text-destructive' : rate > 2 ? 'text-amber-600' : 'text-emerald-600',
+        bg: rate > 5 ? 'bg-destructive/10' : rate > 2 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+        severity: rate > 5 ? 'critical' : rate > 2 ? 'warning' : 'ok',
         link: '/quality-analytics'
       },
       {
-        label: 'First-Piece Fails',
-        value: firstPieceFailCount,
-        subtext: 'today',
-        icon: Target,
-        color: firstPieceFailCount > 3 ? 'text-destructive' : firstPieceFailCount > 0 ? 'text-amber-600' : 'text-emerald-600',
-        bgColor: firstPieceFailCount > 3 ? 'bg-destructive/10' : firstPieceFailCount > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-        severity: firstPieceFailCount > 3 ? 'critical' : firstPieceFailCount > 0 ? 'warning' : 'ok',
+        label: 'First-Piece Fails', value: firstPieceFails,
+        subtext: 'today', icon: Target,
+        color: firstPieceFails > 3 ? 'text-destructive' : firstPieceFails > 0 ? 'text-amber-600' : 'text-emerald-600',
+        bg: firstPieceFails > 3 ? 'bg-destructive/10' : firstPieceFails > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+        severity: firstPieceFails > 3 ? 'critical' : firstPieceFails > 0 ? 'warning' : 'ok',
         link: '/quality?tab=first-piece'
       }
     ];
-  }, [metrics, firstPieceFailCount]);
+  }, [metrics, firstPieceFails]);
 
-  // Load NCR metrics and first-piece fails (still needs direct queries)
   useEffect(() => {
-    const fetchNcrData = async () => {
+    const fetch = async () => {
       setNcrLoading(true);
       const todayDate = new Date();
-      const todayStr = todayDate.toISOString().split('T')[0];
-      const sevenDaysAgo = new Date(todayDate);
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
       try {
-        // First-piece failures today
-        const { data: fpFailures } = await supabase
-          .from('qc_records')
-          .select('id')
-          .eq('qc_type', 'first_piece')
-          .eq('result', 'fail')
-          .gte('created_at', todayStr);
+        const [fpRes, ncrRes, woRes] = await Promise.all([
+          supabase.from('qc_records').select('id').eq('qc_type', 'first_piece').eq('result', 'fail').gte('created_at', todayDate.toISOString().split('T')[0]),
+          supabase.from('ncrs').select('id, work_order_id, status, created_at, quantity_affected, operation_type'),
+          supabase.from('work_orders_restricted').select('id, status').in('status', ['in_progress', 'qc', 'packing', 'pending']),
+        ]);
 
-        setFirstPieceFailCount(fpFailures?.length || 0);
+        setFirstPieceFails(fpRes.data?.length || 0);
+        const activeWoIds = new Set((woRes.data || []).map(w => w.id));
+        const allNcrs = ncrRes.data || [];
 
-        // Fetch all NCR data
-        const { data: allNcrs } = await supabase
-          .from('ncrs')
-          .select('id, work_order_id, status, created_at, quantity_affected, operation_type');
-
-        // Get work orders to check for blocking status
-        const { data: workOrders } = await supabase
-          .from('work_orders_restricted')
-          .select('id, status, quantity')
-          .in('status', ['in_progress', 'qc', 'packing', 'pending']);
-
-        // Fetch material lots on QC hold
-        const { data: qcHoldLots } = await supabase
-          .from('material_lots')
-          .select('id, net_weight')
-          .eq('qc_status', 'hold');
-
-        const holdLotsCount = qcHoldLots?.length || 0;
-        const holdLotsTotalWeight = qcHoldLots?.reduce((sum, lot) => sum + (lot.net_weight || 0), 0) || 0;
-        setGoodsInQcHold({ count: holdLotsCount, totalPcs: Math.round(holdLotsTotalWeight) });
-
-        const activeWoIds = new Set((workOrders || []).map(wo => wo.id));
-
-        // NCRs Blocking Production
-        const ncrsBlockingProduction = (allNcrs || []).filter(ncr => 
-          ncr.work_order_id && 
-          activeWoIds.has(ncr.work_order_id) &&
-          ['OPEN', 'ACTION_IN_PROGRESS'].includes(ncr.status || '')
-        );
-        const blockingPcs = ncrsBlockingProduction.reduce((sum, ncr) => sum + (ncr.quantity_affected || 0), 0);
-        let blockingOldestAge = 0;
-        if (ncrsBlockingProduction.length > 0) {
-          const oldestBlocking = ncrsBlockingProduction.reduce((oldest, ncr) => 
-            new Date(ncr.created_at || 0) < new Date(oldest.created_at || 0) ? ncr : oldest
-          );
-          if (oldestBlocking.created_at) {
-            blockingOldestAge = differenceInDays(todayDate, parseISO(oldestBlocking.created_at));
-          }
+        // Blocking
+        const blocking = allNcrs.filter(n => n.work_order_id && activeWoIds.has(n.work_order_id) && ['OPEN', 'ACTION_IN_PROGRESS'].includes(n.status || ''));
+        const blockingPcs = blocking.reduce((s, n) => s + (n.quantity_affected || 0), 0);
+        let blockingAge = 0;
+        if (blocking.length > 0) {
+          const oldest = blocking.reduce((o, n) => new Date(n.created_at || 0) < new Date(o.created_at || 0) ? n : o);
+          blockingAge = oldest.created_at ? differenceInDays(todayDate, parseISO(oldest.created_at)) : 0;
         }
 
-        // NCRs Open > 7 Days
-        const ncrsOver7Days = (allNcrs || []).filter(ncr => 
-          ['OPEN', 'ACTION_IN_PROGRESS', 'EFFECTIVENESS_PENDING'].includes(ncr.status || '') &&
-          ncr.created_at && new Date(ncr.created_at) < sevenDaysAgo
-        );
-        const over7DaysPcs = ncrsOver7Days.reduce((sum, ncr) => sum + (ncr.quantity_affected || 0), 0);
-        let over7DaysOldestAge = 0;
-        if (ncrsOver7Days.length > 0) {
-          const oldestOver7 = ncrsOver7Days.reduce((oldest, ncr) => 
-            new Date(ncr.created_at || 0) < new Date(oldest.created_at || 0) ? ncr : oldest
-          );
-          if (oldestOver7.created_at) {
-            over7DaysOldestAge = differenceInDays(todayDate, parseISO(oldestOver7.created_at));
-          }
+        // Over 7 days
+        const over7 = allNcrs.filter(n => ['OPEN', 'ACTION_IN_PROGRESS', 'EFFECTIVENESS_PENDING'].includes(n.status || '') && n.created_at && new Date(n.created_at) < sevenDaysAgo);
+        const over7Pcs = over7.reduce((s, n) => s + (n.quantity_affected || 0), 0);
+        let over7Age = 0;
+        if (over7.length > 0) {
+          const oldest = over7.reduce((o, n) => new Date(n.created_at || 0) < new Date(o.created_at || 0) ? n : o);
+          over7Age = oldest.created_at ? differenceInDays(todayDate, parseISO(oldest.created_at)) : 0;
         }
 
-        // Repeat NCRs
-        const activeNcrs = (allNcrs || []).filter(ncr => 
-          ['OPEN', 'ACTION_IN_PROGRESS', 'EFFECTIVENESS_PENDING'].includes(ncr.status || '')
-        );
-        
-        const woNcrCount = new Map<string, { count: number; pcs: number }>();
-        activeNcrs.forEach(ncr => {
-          if (ncr.work_order_id) {
-            const current = woNcrCount.get(ncr.work_order_id) || { count: 0, pcs: 0 };
-            woNcrCount.set(ncr.work_order_id, { 
-              count: current.count + 1, 
-              pcs: current.pcs + (ncr.quantity_affected || 0) 
-            });
-          }
-        });
-        
-        const processNcrCount = new Map<string, { count: number; pcs: number }>();
-        activeNcrs.forEach(ncr => {
-          if (ncr.operation_type) {
-            const current = processNcrCount.get(ncr.operation_type) || { count: 0, pcs: 0 };
-            processNcrCount.set(ncr.operation_type, { 
-              count: current.count + 1, 
-              pcs: current.pcs + (ncr.quantity_affected || 0) 
-            });
-          }
-        });
+        // Repeats
+        const active = allNcrs.filter(n => ['OPEN', 'ACTION_IN_PROGRESS', 'EFFECTIVENESS_PENDING'].includes(n.status || ''));
+        const woCount = new Map<string, number>();
+        active.forEach(n => { if (n.work_order_id) woCount.set(n.work_order_id, (woCount.get(n.work_order_id) || 0) + 1); });
+        const repeats = Array.from(woCount.values()).filter(c => c >= 2).length;
 
-        const repeatWOs = Array.from(woNcrCount.entries()).filter(([_, v]) => v.count >= 2);
-        const repeatProcesses = Array.from(processNcrCount.entries()).filter(([_, v]) => v.count >= 2);
-        const repeatCount = repeatWOs.length + repeatProcesses.length;
-        const repeatPcs = [...repeatWOs, ...repeatProcesses].reduce((sum, [_, v]) => sum + v.pcs, 0);
-
-        // Build NCR signals
-        const ncrMetrics: QualitySignal[] = [
+        setNcrSignals([
           {
-            label: 'NCRs Blocking Production',
-            value: ncrsBlockingProduction.length,
-            ageIndicator: blockingOldestAge > 0 ? `${blockingOldestAge}d oldest` : undefined,
-            impactedPcs: blockingPcs,
+            label: 'NCRs Blocking Production', value: blocking.length,
+            subtext: blockingAge > 0 ? `${blockingAge}d oldest · ${formatCount(blockingPcs)} pcs` : undefined,
             icon: Ban,
-            color: ncrsBlockingProduction.length > 0 ? 'text-destructive' : 'text-emerald-600',
-            bgColor: ncrsBlockingProduction.length > 0 ? 'bg-destructive/10' : 'bg-emerald-500/10',
-            severity: ncrsBlockingProduction.length > 2 ? 'critical' : ncrsBlockingProduction.length > 0 ? 'warning' : 'ok',
-            link: '/ncr?filter=blocking',
-            isNcrMetric: true
+            color: blocking.length > 0 ? 'text-destructive' : 'text-emerald-600',
+            bg: blocking.length > 0 ? 'bg-destructive/10' : 'bg-emerald-500/10',
+            severity: blocking.length > 2 ? 'critical' : blocking.length > 0 ? 'warning' : 'ok',
+            link: '/ncr?filter=blocking'
           },
           {
-            label: 'NCRs Open >7 Days',
-            value: ncrsOver7Days.length,
-            ageIndicator: over7DaysOldestAge > 7 ? `${over7DaysOldestAge}d oldest` : undefined,
-            impactedPcs: over7DaysPcs,
+            label: 'NCRs Open >7 Days', value: over7.length,
+            subtext: over7Age > 7 ? `${over7Age}d oldest · ${formatCount(over7Pcs)} pcs` : undefined,
             icon: Clock,
-            color: ncrsOver7Days.length > 3 ? 'text-destructive' : ncrsOver7Days.length > 0 ? 'text-amber-600' : 'text-emerald-600',
-            bgColor: ncrsOver7Days.length > 3 ? 'bg-destructive/10' : ncrsOver7Days.length > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-            severity: ncrsOver7Days.length > 3 ? 'critical' : ncrsOver7Days.length > 0 ? 'warning' : 'ok',
-            link: '/ncr?filter=overdue',
-            isNcrMetric: true
+            color: over7.length > 3 ? 'text-destructive' : over7.length > 0 ? 'text-amber-600' : 'text-emerald-600',
+            bg: over7.length > 3 ? 'bg-destructive/10' : over7.length > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+            severity: over7.length > 3 ? 'critical' : over7.length > 0 ? 'warning' : 'ok',
+            link: '/ncr?filter=overdue'
           },
           {
-            label: 'Repeat NCRs',
-            value: repeatCount,
-            subtext: repeatWOs.length > 0 ? `${repeatWOs.length} WOs, ${repeatProcesses.length} processes` : undefined,
-            impactedPcs: repeatPcs,
-            icon: RefreshCw,
-            color: repeatCount > 2 ? 'text-destructive' : repeatCount > 0 ? 'text-amber-600' : 'text-emerald-600',
-            bgColor: repeatCount > 2 ? 'bg-destructive/10' : repeatCount > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-            severity: repeatCount > 2 ? 'critical' : repeatCount > 0 ? 'warning' : 'ok',
-            link: '/ncr?filter=repeat',
-            isNcrMetric: true
+            label: 'Repeat NCRs', value: repeats, icon: RefreshCw,
+            color: repeats > 2 ? 'text-destructive' : repeats > 0 ? 'text-amber-600' : 'text-emerald-600',
+            bg: repeats > 2 ? 'bg-destructive/10' : repeats > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
+            severity: repeats > 2 ? 'critical' : repeats > 0 ? 'warning' : 'ok',
+            link: '/ncr?filter=repeat'
           }
-        ];
-
-        setNcrSignals(ncrMetrics);
-      } catch (error) {
-        console.error('Error fetching NCR data:', error);
+        ]);
+      } catch (e) {
+        console.error('Error fetching NCR data:', e);
       } finally {
         setNcrLoading(false);
       }
     };
 
-    fetchNcrData();
-
-    const channel = supabase
-      .channel('quality-signals-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, () => fetchNcrData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, () => fetchNcrData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => fetchNcrData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => fetchNcrData())
+    fetch();
+    const ch = supabase.channel('quality-signals')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ncrs' }, () => fetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'qc_records' }, () => fetch())
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(ch); };
   }, []);
 
   const allSignals = [...productionSignals, ...ncrSignals];
   const criticalCount = allSignals.filter(s => s.severity === 'critical').length;
-  const warningCount = allSignals.filter(s => s.severity === 'warning').length;
-  const loading = metricsLoading || ncrLoading;
+  const isLoading = metricsLoading || ncrLoading;
 
-  const hasGoodsInQcHold = goodsInQcHold.count > 0;
-
-  const renderSignalCard = (signal: QualitySignal) => {
+  const renderCard = (signal: Signal) => {
     const Icon = signal.icon;
     return (
-      <div
+      <button
         key={signal.label}
-        className={cn(
-          "rounded-lg p-3 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md",
-          signal.bgColor,
-          signal.severity === 'critical' && "ring-1 ring-destructive/30"
-        )}
+        className={cn("rounded-lg p-3 text-left transition-all hover:shadow-sm", signal.bg)}
         onClick={() => navigate(signal.link)}
       >
-        <div className="flex items-center gap-2 mb-1.5">
-          <Icon className={cn("h-4 w-4", signal.color)} />
-          <span className="text-xs font-medium text-muted-foreground truncate">
-            {signal.label}
-          </span>
+        <div className="flex items-center gap-1.5 mb-1">
+          <Icon className={cn("h-3.5 w-3.5", signal.color)} />
+          <span className="text-[11px] font-medium text-muted-foreground">{signal.label}</span>
         </div>
-        <div className={cn("text-2xl font-bold", signal.color)}>
-          {typeof signal.value === 'number' 
-            ? formatDisplayValue(signal.value, { showZero: false }) 
-            : signal.value}
+        <div className={cn("text-xl font-bold leading-none", signal.color)}>
+          {typeof signal.value === 'number' ? formatDisplayValue(signal.value, { showZero: false }) : signal.value}
         </div>
-        
-        {signal.ageIndicator && (
-          <div className="flex items-center gap-1 mt-1">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">{signal.ageIndicator}</span>
-          </div>
+        {signal.subtext && (
+          <p className="text-[10px] text-muted-foreground mt-1">{signal.subtext}</p>
         )}
-        
-        {signal.impactedPcs !== undefined && !isEmpty(signal.impactedPcs) && (
-          <div className="flex items-center gap-1 mt-0.5">
-            <Package className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground">{formatCount(signal.impactedPcs)} pcs affected</span>
-          </div>
-        )}
-        
-        {signal.subtext && !signal.ageIndicator && !signal.impactedPcs && (
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            {signal.subtext}
-          </p>
-        )}
-      </div>
+      </button>
     );
   };
 
   return (
-    <Card className={cn(
-      "transition-all",
-      hasGoodsInQcHold && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/10"
-    )}>
+    <Card>
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-2">
-            <AlertTriangle className={cn(
-              "h-4 w-4",
-              hasGoodsInQcHold ? "text-amber-500" : 
-              criticalCount > 0 ? "text-destructive" : 
-              warningCount > 0 ? "text-amber-500" : "text-emerald-500"
-            )} />
+            <AlertTriangle className={cn("h-4 w-4", criticalCount > 0 ? "text-destructive" : "text-emerald-500")} />
             Quality & Loss Signals
-            {criticalCount > 0 && (
-              <Badge variant="destructive" className="text-[10px]">
-                {criticalCount} Critical
-              </Badge>
-            )}
-            {warningCount > 0 && criticalCount === 0 && (
-              <Badge className="bg-amber-500 hover:bg-amber-600 text-[10px]">
-                {warningCount} Warning
-              </Badge>
-            )}
+            {criticalCount > 0 && <Badge variant="destructive" className="text-[10px]">{criticalCount} Critical</Badge>}
           </CardTitle>
-          <div className="flex items-center gap-2">
-            {hasGoodsInQcHold && (
-              <Badge 
-                className="bg-amber-500 hover:bg-amber-600 text-white cursor-pointer flex items-center gap-1 text-[10px] animate-pulse"
-                onClick={() => navigate('/qc/incoming?filter=hold')}
-              >
-                <ShieldAlert className="h-3 w-3" />
-                {formatDisplayValue(goodsInQcHold.totalPcs, { suffix: ' kg', showZero: false })} blocked by QC
-              </Badge>
-            )}
-            <button
-              onClick={() => navigate('/quality/analytics')}
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-            >
-              Analytics <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
+          <button onClick={() => navigate('/quality/analytics')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+            Analytics <ArrowRight className="h-3 w-3" />
+          </button>
         </div>
       </CardHeader>
-      <CardContent className="px-4 pb-4 pt-0 space-y-4">
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />
-            ))}
-          </div>
+      <CardContent className="px-4 pb-4 pt-0 space-y-3">
+        {isLoading ? (
+          <div className="grid grid-cols-2 gap-2">{[1, 2, 3, 4].map(i => <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />)}</div>
         ) : (
           <>
-            {/* Production Quality Metrics */}
-            <div className="grid grid-cols-2 gap-3">
-              {productionSignals.map(renderSignalCard)}
+            <div className="grid grid-cols-2 gap-2">
+              {productionSignals.map(renderCard)}
             </div>
-
-            {/* NCR-Specific Metrics */}
             <div>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-1.5 mb-1.5 px-1">
                 <FileWarning className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-                  NCR Status
-                </span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">NCR Status</span>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                {ncrSignals.map(renderSignalCard)}
+              <div className="grid grid-cols-3 gap-2">
+                {ncrSignals.map(renderCard)}
               </div>
             </div>
           </>
