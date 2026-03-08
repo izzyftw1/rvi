@@ -83,13 +83,12 @@ interface QCRecordSummary {
 const DispatchQC = () => {
   const { woId } = useParams<{ woId: string }>();
   const navigate = useNavigate();
-  const { hasRole, isSuperAdmin, loading: roleLoading } = useUserRole();
+  const { canPerform, loading: actionLoading } = useActionPermission();
+  const { isBypassUser, userDepartmentType, loading: roleLoading } = useDepartmentPermissions();
   
   // Permission checks
-  const isQCRole = hasRole('quality');
-  const isAdmin = isSuperAdmin();
-  const canPerformDispatchQC = isQCRole || isAdmin;
-  const canWaive = isAdmin; // Only admin can waive
+  const canPerformDispatchQC = isBypassUser || userDepartmentType === 'quality';
+  const canWaive = canPerform('waive_qc');
   
   const [loading, setLoading] = useState(true);
   const [workOrder, setWorkOrder] = useState<WorkOrderData | null>(null);
