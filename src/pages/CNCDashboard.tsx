@@ -520,7 +520,7 @@ const CNCDashboard = () => {
 
       const woIds = assignments.map(a => a.wo_id);
       const { data: wos, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code, quantity, due_date, current_stage")
         .in("id", woIds);
 
