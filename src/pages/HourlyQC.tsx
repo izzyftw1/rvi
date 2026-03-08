@@ -148,7 +148,7 @@ const HourlyQC = () => {
       setLoading(true);
       
       const { data: workOrders, error: woError } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, wo_id, display_id, customer, item_code, status, quantity')
         .in('status', ['in_progress', 'pending', 'qc', 'packing'])
         .order('created_at', { ascending: false });

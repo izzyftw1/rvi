@@ -54,7 +54,7 @@ export const CriticalAlertsBar = () => {
       const [materialLots, qcRecords, workOrders, externalMoves, maintenanceLogs] = await Promise.all([
         supabase.from('material_lots').select('*'),
         supabase.from('qc_records').select('*'),
-        supabase.from('work_orders').select('*'),
+        supabase.from('work_orders_restricted').select('*'),
         supabase.from('wo_external_moves' as any).select('*'),
         supabase.from('maintenance_logs').select('machine_id, created_at')
       ]);

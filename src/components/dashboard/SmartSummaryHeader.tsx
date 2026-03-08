@@ -43,7 +43,7 @@ export const SmartSummaryHeader = () => {
   const loadMetrics = async () => {
     try {
       const [wos, machines, externalMoves, externalReceipts, maintenanceLogs] = await Promise.all([
-        supabase.from('work_orders').select('*'),
+        supabase.from('work_orders_restricted').select('*'),
         supabase.from('machines').select('*'),
         supabase.from('wo_external_moves' as any).select('*'),
         supabase.from('wo_external_receipts' as any).select('*'),

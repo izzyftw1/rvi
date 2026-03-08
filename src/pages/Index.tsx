@@ -163,31 +163,30 @@ const Index = () => {
           .eq('incoming_qc_status', 'pending'),
         supabase.from('machines').select('id', { count: 'exact', head: true })
           .lt('next_maintenance_date', today).eq('status', 'active'),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .in('status', ['pending', 'in_progress']).lt('due_date', today),
         supabase.from('hourly_qc_checks').select('id', { count: 'exact', head: true })
           .eq('status', 'pending'),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .eq('status', 'pending'),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .eq('status', 'in_progress'),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .eq('status', 'completed').lt('due_date', today),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .eq('due_date', today).in('status', ['pending', 'in_progress']),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .eq('status', 'completed').gte('updated_at', sevenDaysAgo).gte('due_date', sevenDaysAgo),
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .eq('status', 'completed').gte('updated_at', sevenDaysAgo),
         // Active orders (not completed/shipped)
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .not('status', 'in', '("completed","shipped","cancelled")'),
         // Today's rejection data
-        supabase.from('daily_production_logs')
-          .select('actual_quantity, total_rejection_quantity')
+        supabase.from('daily_production_logs').select('total_rejection_quantity')
           .eq('log_date', today),
         // Blocked orders (delayed + QC blocked)
-        supabase.from('work_orders').select('id', { count: 'exact', head: true })
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true })
           .in('status', ['pending', 'in_progress']).lt('due_date', today),
       ]);
 

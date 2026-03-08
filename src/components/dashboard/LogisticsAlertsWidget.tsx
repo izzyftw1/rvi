@@ -44,7 +44,7 @@ export const LogisticsAlertsWidget = () => {
       const [movesResult, receiptsResult, workOrdersResult] = await Promise.all([
         supabase.from('wo_external_moves' as any).select('*'),
         supabase.from('wo_external_receipts' as any).select('*'),
-        supabase.from('work_orders').select('id, display_id, wo_id')
+        supabase.from('work_orders_restricted').select('id, display_id, wo_id')
       ]);
 
       const moves: any[] = movesResult.data || [];

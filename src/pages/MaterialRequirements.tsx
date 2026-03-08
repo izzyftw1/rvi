@@ -178,7 +178,7 @@ export default function MaterialRequirements() {
   const loadWorkOrders = async () => {
     // Get WOs that need material (goods_in stage, not yet in production)
     const { data, error } = await supabase
-      .from('work_orders')
+      .from('work_orders_restricted')
       .select('id, display_id, item_code, customer, customer_id, quantity, due_date, material_size_mm, gross_weight_per_pc, net_weight_per_pc, current_stage, so_id, priority, financial_snapshot')
       .in('current_stage', ['goods_in', 'cutting'] as any)
       .order('due_date', { ascending: true });

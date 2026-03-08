@@ -178,7 +178,7 @@ export async function getRemainingUnQCdQuantity(woId: string): Promise<{
 }> {
   // Get ordered quantity
   const { data: wo } = await supabase
-    .from('work_orders')
+    .from('work_orders_restricted')
     .select('quantity')
     .eq('id', woId)
     .single();

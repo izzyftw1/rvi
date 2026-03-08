@@ -155,7 +155,7 @@ export default function ProcurementDashboard() {
   const loadMaterialSummaries = async () => {
     // Get work orders that need material (goods_in or cutting stage)
     const { data: workOrders } = await supabase
-      .from('work_orders')
+      .from('work_orders_restricted')
       .select('id, wo_number, customer, item_code, quantity, material_size_mm, due_date, status, current_stage, gross_weight_per_pc, financial_snapshot')
       .in('current_stage', ['goods_in', 'cutting_queue', 'production_planning'])
       .not('status', 'eq', 'completed');
