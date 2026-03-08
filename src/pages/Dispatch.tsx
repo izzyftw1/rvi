@@ -471,7 +471,7 @@ export default function Dispatch() {
 
         // Create dispatch note
         const { data: woData } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("item_code, so_id, quantity, gross_weight_per_pc, net_weight_per_pc, financial_snapshot, customer")
           .eq("id", batch.wo_id)
           .single();
