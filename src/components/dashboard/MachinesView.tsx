@@ -210,7 +210,7 @@ export const MachinesView = ({ productionLogs }: MachinesViewProps) => {
       let woDetails: Record<string, any> = {};
       if (allWoIds.length > 0) {
         const { data: woData } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("id, display_id, customer, item_code, quantity, current_stage, due_date, cycle_time_seconds, external_process_type, qc_material_passed, qc_first_piece_passed")
           .in("id", allWoIds);
         
