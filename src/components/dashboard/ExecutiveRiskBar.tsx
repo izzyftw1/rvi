@@ -45,7 +45,7 @@ export const ExecutiveRiskBar = () => {
         supabase.from('work_orders').select('id, status, due_date').neq('status', 'completed').neq('status', 'shipped'),
         supabase.from('qc_records').select('id, qc_type, result'),
         supabase.from('ncrs').select('id, status, created_at'),
-        supabase.from('machines').select('id, next_maintenance_date, status'),
+        supabase.from('machines').select('id, status'),
         supabase.from('material_lots').select('id, qc_status'),
         supabase.from('wo_external_moves').select('id, expected_return_date, returned_date, status')
       ]);
