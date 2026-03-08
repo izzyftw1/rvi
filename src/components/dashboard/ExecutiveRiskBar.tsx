@@ -54,7 +54,7 @@ export const ExecutiveRiskBar = () => {
       const qcBlocking = (qcRecords.data || []).filter(qc => qc.qc_type === 'final' && (qc.result === 'pending' || qc.result === 'fail')).length;
       const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const overdueNCRs = (ncrs.data || []).filter(ncr => ncr.status === 'OPEN' && new Date(ncr.created_at) < sevenDaysAgo).length;
-      const maintenanceOverdue = (machines.data || []).filter(m => m.status === 'active' && m.next_maintenance_date && m.next_maintenance_date < today).length;
+      const maintenanceOverdue = 0; // Maintenance tracking via maintenance_logs
       const materialWaiting = (materialLots.data || []).filter(lot => lot.qc_status === 'pending').length;
       const externalDelayed = (externalMoves.data || []).filter(move => move.expected_return_date && move.expected_return_date < today && !move.returned_date && move.status !== 'returned').length;
 
