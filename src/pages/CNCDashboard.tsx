@@ -451,7 +451,7 @@ const CNCDashboard = () => {
 
     try {
       const { data, error } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code, quantity, due_date, created_at")
         .in("status", ["pending", "in_progress"])
         .eq("current_stage", "production")
