@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      action_permissions: {
+        Row: {
+          action_key: string
+          allowed: boolean
+          created_at: string
+          department_type: string
+          id: string
+        }
+        Insert: {
+          action_key: string
+          allowed?: boolean
+          created_at?: string
+          department_type: string
+          id?: string
+        }
+        Update: {
+          action_key?: string
+          allowed?: boolean
+          created_at?: string
+          department_type?: string
+          id?: string
+        }
+        Relationships: []
+      }
       ar_followups: {
         Row: {
           channel: Database["public"]["Enums"]["followup_channel"] | null
@@ -72,7 +96,9 @@ export type Database = {
           action: string
           changed_at: string
           changed_by: string | null
+          event_type: string | null
           id: string
+          ip_address: string | null
           new_data: Json | null
           old_data: Json | null
           record_id: string
@@ -82,7 +108,9 @@ export type Database = {
           action: string
           changed_at?: string
           changed_by?: string | null
+          event_type?: string | null
           id?: string
+          ip_address?: string | null
           new_data?: Json | null
           old_data?: Json | null
           record_id: string
@@ -92,7 +120,9 @@ export type Database = {
           action?: string
           changed_at?: string
           changed_by?: string | null
+          event_type?: string | null
           id?: string
+          ip_address?: string | null
           new_data?: Json | null
           old_data?: Json | null
           record_id?: string
@@ -10440,8 +10470,8 @@ export type Database = {
           completion_pct?: number | null
           created_at?: string | null
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
-          customer?: string | null
-          customer_id?: string | null
+          customer?: never
+          customer_id?: never
           customer_po?: string | null
           cutting_required?: boolean | null
           cycle_time_seconds?: number | null
@@ -10451,11 +10481,11 @@ export type Database = {
           external_process_type?: string | null
           external_status?: string | null
           final_qc_result?: string | null
-          financial_snapshot?: Json | null
+          financial_snapshot?: never
           forging_required?: boolean | null
           forging_vendor?: string | null
           gross_weight_per_pc?: number | null
-          hidden_financial?: boolean | null
+          hidden_financial?: never
           id?: string | null
           item_code?: string | null
           material_location?: string | null
@@ -10524,8 +10554,8 @@ export type Database = {
           completion_pct?: number | null
           created_at?: string | null
           current_stage?: Database["public"]["Enums"]["wo_stage"] | null
-          customer?: string | null
-          customer_id?: string | null
+          customer?: never
+          customer_id?: never
           customer_po?: string | null
           cutting_required?: boolean | null
           cycle_time_seconds?: number | null
@@ -10535,11 +10565,11 @@ export type Database = {
           external_process_type?: string | null
           external_status?: string | null
           final_qc_result?: string | null
-          financial_snapshot?: Json | null
+          financial_snapshot?: never
           forging_required?: boolean | null
           forging_vendor?: string | null
           gross_weight_per_pc?: number | null
-          hidden_financial?: boolean | null
+          hidden_financial?: never
           id?: string | null
           item_code?: string | null
           material_location?: string | null
@@ -10604,20 +10634,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "work_orders_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer_last_order"
-            referencedColumns: ["customer_id"]
-          },
-          {
-            foreignKeyName: "work_orders_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer_master"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "work_orders_material_requirement_id_fkey"
             columns: ["material_requirement_id"]
             isOneToOne: false
@@ -10653,6 +10669,15 @@ export type Database = {
       }
       can_access_page: {
         Args: { _page_key: string; _user_id: string }
+        Returns: boolean
+      }
+      can_perform_action: {
+        Args: { _action_key: string; _user_id: string }
+        Returns: boolean
+      }
+      can_view_customer_name: { Args: { _user_id: string }; Returns: boolean }
+      can_view_financial_fields: {
+        Args: { _user_id: string }
         Returns: boolean
       }
       check_machine_availability: {
@@ -10757,6 +10782,7 @@ export type Database = {
         Args: { is_export?: boolean; pan: string }
         Returns: number
       }
+      get_user_department_type: { Args: { _user_id: string }; Returns: string }
       get_user_site_id: { Args: { _user_id: string }; Returns: string }
       get_wo_batch_status: { Args: { p_wo_id: string }; Returns: Json }
       get_wo_progress: {
