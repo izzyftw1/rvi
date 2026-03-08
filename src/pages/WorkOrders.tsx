@@ -994,7 +994,7 @@ const WorkOrders = () => {
     try {
       setCompletedLoading(true);
       const { data, error: queryError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .eq("status", "completed")
         .order("updated_at", { ascending: false })
