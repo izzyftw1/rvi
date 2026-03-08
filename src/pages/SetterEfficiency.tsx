@@ -190,7 +190,7 @@ const SetterEfficiency = () => {
           .or("role.ilike.%qc%,role.ilike.%quality%,role.ilike.%inspector%")
           .order("full_name"),
         supabase.from("machines").select("id, machine_id, name").order("machine_id"),
-        supabase.from("work_orders")
+        supabase.from("work_orders_restricted")
           .select("id, display_id, item_code, customer")
           .in("status", ["pending", "in_progress"])
           .order("created_at", { ascending: false })

@@ -22,7 +22,7 @@ export default function StageDetailView() {
     try {
       // Get all WOs in this stage
       const { data: wos } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .eq("current_stage", stage as any)
         .order("created_at", { ascending: false });

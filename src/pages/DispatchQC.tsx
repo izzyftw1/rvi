@@ -37,7 +37,8 @@ import { FinalDispatchReportGenerator } from "@/components/qc/FinalDispatchRepor
 import { DispatchQCInspectionForm } from "@/components/qc/DispatchQCInspectionForm";
 import { DispatchQCReportGenerator } from "@/components/qc/DispatchQCReportGenerator";
 import { QCQuantityInput } from "@/components/qc/QCQuantityInput";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useActionPermission } from "@/hooks/useActionPermission";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 interface WorkOrderData {
   id: string;

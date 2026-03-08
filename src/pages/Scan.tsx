@@ -26,7 +26,7 @@ const Scan = () => {
 
       // Check work orders
       const { data: wo } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .eq("wo_id", scanInput)
         .single();

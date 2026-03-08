@@ -110,7 +110,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       
       // Load work orders
       const { data: woData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code, net_weight_per_pc")
         .in("id", woIds.length > 0 ? woIds : ['00000000-0000-0000-0000-000000000000']);
 
