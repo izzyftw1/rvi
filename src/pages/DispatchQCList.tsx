@@ -42,7 +42,7 @@ const FinalQCList = () => {
     setLoading(true);
     try {
       const { data: woData, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select(
           "id, wo_number, display_id, customer, item_code, quantity, status, current_stage, quality_released, final_qc_result"
         )

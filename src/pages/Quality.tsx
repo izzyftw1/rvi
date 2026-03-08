@@ -325,7 +325,7 @@ const Quality = () => {
       // Parallel fetches
       const [woRes, ncrRes, extRes] = await Promise.all([
         supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("id, wo_number, display_id, customer, item_code, status, quantity, due_date, created_at, qc_material_status, qc_first_piece_status")
           .in("status", ["pending", "in_progress", "qc", "packing"])
           .order("created_at", { ascending: false })

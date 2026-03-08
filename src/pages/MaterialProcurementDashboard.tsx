@@ -289,7 +289,7 @@ export default function MaterialProcurementDashboard() {
   const loadMaterialSummaries = async () => {
     // Get work orders needing material
     const { data: workOrders } = await supabase
-      .from("work_orders")
+      .from("work_orders_restricted")
       .select("material_size_mm, gross_weight_per_pc, quantity, financial_snapshot")
       .in("current_stage", ["goods_in", "cutting", "cutting_queue"])
       .neq("status", "completed");

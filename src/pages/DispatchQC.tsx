@@ -37,7 +37,8 @@ import { FinalDispatchReportGenerator } from "@/components/qc/FinalDispatchRepor
 import { DispatchQCInspectionForm } from "@/components/qc/DispatchQCInspectionForm";
 import { DispatchQCReportGenerator } from "@/components/qc/DispatchQCReportGenerator";
 import { QCQuantityInput } from "@/components/qc/QCQuantityInput";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useActionPermission } from "@/hooks/useActionPermission";
+import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 
 interface WorkOrderData {
   id: string;
@@ -82,13 +83,12 @@ interface QCRecordSummary {
 const DispatchQC = () => {
   const { woId } = useParams<{ woId: string }>();
   const navigate = useNavigate();
-  const { hasRole, isSuperAdmin, loading: roleLoading } = useUserRole();
+  const { canPerform, loading: actionLoading } = useActionPermission();
+  const { isBypassUser, userDepartmentType, loading: roleLoading } = useDepartmentPermissions();
   
   // Permission checks
-  const isQCRole = hasRole('quality');
-  const isAdmin = isSuperAdmin();
-  const canPerformDispatchQC = isQCRole || isAdmin;
-  const canWaive = isAdmin; // Only admin can waive
+  const canPerformDispatchQC = isBypassUser || userDepartmentType === 'quality';
+  const canWaive = canPerform('waive_qc');
   
   const [loading, setLoading] = useState(true);
   const [workOrder, setWorkOrder] = useState<WorkOrderData | null>(null);
@@ -142,7 +142,7 @@ const DispatchQC = () => {
     try {
       // Load work order
       const { data: woData, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .eq("id", woId)
         .single();

@@ -254,7 +254,7 @@ export default function ProductionProgress() {
     try {
       // 1. Load work orders
       const { data: woData, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select(`
           id,
           display_id,

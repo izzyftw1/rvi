@@ -127,7 +127,7 @@ const FinanceReports = () => {
     try {
       // Get work orders with customer info
       const { data: workOrders, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, customer");
 
       if (woError) throw woError;

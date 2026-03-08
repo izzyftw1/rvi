@@ -152,7 +152,7 @@ const WorkOrderDetail = () => {
     try {
       // Load WO
       const { data: woData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .eq("id", id)
         .single();

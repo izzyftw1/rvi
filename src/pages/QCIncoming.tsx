@@ -60,7 +60,7 @@ export default function QCIncoming() {
     setLoading(true);
     try {
       const { data: wos, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select(`
           id, wo_number, customer, item_code, sales_order,
           qc_material_status, qc_material_passed, qc_first_piece_status,

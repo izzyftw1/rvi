@@ -210,7 +210,7 @@ export const MachinesView = ({ productionLogs }: MachinesViewProps) => {
       let woDetails: Record<string, any> = {};
       if (allWoIds.length > 0) {
         const { data: woData } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("id, display_id, customer, item_code, quantity, current_stage, due_date, cycle_time_seconds, external_process_type, qc_material_passed, qc_first_piece_passed")
           .in("id", allWoIds);
         
@@ -451,7 +451,7 @@ export const MachinesView = ({ productionLogs }: MachinesViewProps) => {
 
     try {
       const { data, error } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code, quantity, due_date, created_at")
         .in("status", ["pending", "in_progress"])
         .eq("current_stage", "production")
@@ -520,7 +520,7 @@ export const MachinesView = ({ productionLogs }: MachinesViewProps) => {
 
       const woIds = assignments.map(a => a.wo_id);
       const { data: wos, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code, quantity, due_date, current_stage")
         .in("id", woIds);
 

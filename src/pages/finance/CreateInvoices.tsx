@@ -12,7 +12,7 @@ import { Loader2, Package, Truck, FileText, AlertTriangle, CheckCircle2, Edit2, 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useActionPermission } from "@/hooks/useActionPermission";
 import { generateCommercialInvoicePDF, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
 import { format } from "date-fns";
 interface DispatchNoteItem {
@@ -75,10 +75,10 @@ export default function CreateInvoices() {
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState("ready");
   const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
-  const { hasAnyRole, loading: roleLoading } = useUserRole();
+  const { canPerform, loading: roleLoading } = useActionPermission();
   
   // Only finance_admin or admin can override invoice quantities
-  const canOverrideQty = hasAnyRole(['finance_admin', 'admin', 'super_admin']);
+  const canOverrideQty = canPerform('create_invoice');
 
   useEffect(() => {
     loadInvoiceableShipments();

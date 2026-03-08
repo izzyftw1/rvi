@@ -158,7 +158,7 @@ export function GateRegisterReports({ open, onOpenChange }: Props) {
       const woIds = [...new Set((entriesRes.data || []).map((e: any) => e.work_order_id).filter(Boolean))];
       if (woIds.length > 0) {
         const { data: wos } = await supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("id, wo_number")
           .in("id", woIds.slice(0, 200));
         const map: Record<string, string> = {};

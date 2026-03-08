@@ -75,7 +75,7 @@ export const GanttScheduler = () => {
           .in("status", ["scheduled", "running", "paused"])
           .order("scheduled_start", { ascending: true }),
         supabase
-          .from("work_orders")
+          .from("work_orders_restricted")
           .select("*")
           .in("status", ["pending", "in_progress"])
       ]);

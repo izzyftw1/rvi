@@ -66,7 +66,7 @@ export default function QualityTraceability() {
       switch (searchType) {
         case "work_order":
           const { data: woData } = await supabase
-            .from("work_orders")
+            .from("work_orders_restricted")
             .select("*")
             .or(`display_id.ilike.%${searchTerm}%,wo_id.eq.${searchTerm}`)
             .maybeSingle();
@@ -76,7 +76,7 @@ export default function QualityTraceability() {
 
         case "item_code":
           const { data: itemWo } = await supabase
-            .from("work_orders")
+            .from("work_orders_restricted")
             .select("*")
             .ilike("item_code", `%${searchTerm}%`)
             .order("created_at", { ascending: false })
@@ -106,7 +106,7 @@ export default function QualityTraceability() {
 
             if (issueData) {
               const { data: woFromLot } = await supabase
-                .from("work_orders")
+                .from("work_orders_restricted")
                 .select("*")
                 .eq("id", issueData.wo_id)
                 .maybeSingle();
@@ -143,7 +143,7 @@ export default function QualityTraceability() {
 
             if (logData?.wo_id) {
               const { data: woFromMachine } = await supabase
-                .from("work_orders")
+                .from("work_orders_restricted")
                 .select("*")
                 .eq("id", logData.wo_id)
                 .maybeSingle();
@@ -169,7 +169,7 @@ export default function QualityTraceability() {
 
           if (dateLogData?.wo_id) {
             const { data: woFromDate } = await supabase
-              .from("work_orders")
+              .from("work_orders_restricted")
               .select("*")
               .eq("id", dateLogData.wo_id)
               .maybeSingle();

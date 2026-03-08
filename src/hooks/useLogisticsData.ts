@@ -110,7 +110,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       
       // Load work orders
       const { data: woData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code, net_weight_per_pc")
         .in("id", woIds.length > 0 ? woIds : ['00000000-0000-0000-0000-000000000000']);
 
@@ -143,7 +143,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       // Get WO info for dispatches
       const dispatchWoIds = [...new Set((dispatchData || []).map(d => d.wo_id))];
       const { data: dispatchWoData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code")
         .in("id", dispatchWoIds.length > 0 ? dispatchWoIds : ['00000000-0000-0000-0000-000000000000']);
 
@@ -175,7 +175,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
 
       // Load work orders for filter
       const { data: woFilterData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id")
         .in("status", ["pending", "in_progress", "packing", "qc"])
         .order("created_at", { ascending: false })
