@@ -143,7 +143,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       // Get WO info for dispatches
       const dispatchWoIds = [...new Set((dispatchData || []).map(d => d.wo_id))];
       const { data: dispatchWoData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("id, display_id, customer, item_code")
         .in("id", dispatchWoIds.length > 0 ? dispatchWoIds : ['00000000-0000-0000-0000-000000000000']);
 
