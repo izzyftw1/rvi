@@ -33,7 +33,7 @@ export default function RPOInventoryReport() {
     try {
       // Get requirements from open WOs
       const { data: wos, error: woError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("material_size_mm, quantity, gross_weight_per_pc")
         .in("status", ["pending", "in_progress"]);
 

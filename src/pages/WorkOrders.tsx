@@ -842,7 +842,7 @@ const WorkOrders = () => {
       const to = from + pageSize;
 
       const { data: workOrders, error: queryError } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("*")
         .neq("status", "completed")
         .order("created_at", { ascending: false })

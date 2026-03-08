@@ -154,7 +154,7 @@ export default function CustomerDetail() {
       const { data: soData } = await supabase.from("sales_orders").select("id, so_id, status, total_amount, currency, created_at, order_date").eq("customer_id", id).order("created_at", { ascending: false }).limit(50);
       setSalesOrders(soData || []);
 
-      const { data: woData } = await supabase.from("work_orders").select("id, display_id, item_code, quantity, status, due_date, created_at").eq("customer_id", id).order("created_at", { ascending: false }).limit(50);
+      const { data: woData } = await supabase.from("work_orders_restricted").select("id, display_id, item_code, quantity, status, due_date, created_at").eq("customer_id", id).order("created_at", { ascending: false }).limit(50);
       setWorkOrders(woData || []);
 
       const { data: invData } = await supabase.from("invoices").select("id, invoice_no, invoice_date, total_amount, balance_amount, status, currency, due_date").eq("customer_id", id).order("invoice_date", { ascending: false }).limit(50);

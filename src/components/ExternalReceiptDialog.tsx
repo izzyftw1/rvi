@@ -212,7 +212,7 @@ export const ExternalReceiptDialog = ({ open, onOpenChange, move, onSuccess }: E
 
       // Get item name from work order for gate entry enrichment
       const { data: woItemData } = await supabase
-        .from("work_orders")
+        .from("work_orders_restricted")
         .select("item_code, customer")
         .eq("id", move.work_order_id)
         .single();
