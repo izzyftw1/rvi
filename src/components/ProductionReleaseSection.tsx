@@ -19,7 +19,7 @@ import {
   AlertTriangle 
 } from "lucide-react";
 import { toast } from "sonner";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useActionPermission } from "@/hooks/useActionPermission";
 
 interface ProductionReleaseSectionProps {
   workOrder: {
