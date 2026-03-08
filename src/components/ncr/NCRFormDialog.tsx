@@ -120,7 +120,7 @@ export function NCRFormDialog({ open, onOpenChange, onSuccess, prefillData }: NC
 
   const loadWorkOrders = async () => {
     const { data } = await supabase
-      .from('work_orders')
+      .from('work_orders_restricted')
       .select('id, wo_number, item_code, customer, quantity')
       .order('created_at', { ascending: false })
       .limit(100);

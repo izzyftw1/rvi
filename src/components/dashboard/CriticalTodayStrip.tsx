@@ -92,7 +92,7 @@ export const CriticalTodayStrip = () => {
         
         // Work orders in progress
         supabase
-          .from('work_orders')
+          .from('work_orders_restricted')
           .select('id, status')
           .eq('status', 'in_progress')
       ]);

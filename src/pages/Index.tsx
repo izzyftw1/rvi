@@ -197,8 +197,8 @@ const Index = () => {
 
       // Calculate rejection rate from today's logs
       const logs = todayLogsResult.data || [];
-      const totalProduced = logs.reduce((sum, l) => sum + (l.actual_quantity || 0), 0);
-      const totalRejected = logs.reduce((sum, l) => sum + (l.total_rejection_quantity || 0), 0);
+      const totalProduced = logs.reduce((sum: number, l: any) => sum + (l.actual_quantity || 0), 0);
+      const totalRejected = logs.reduce((sum: number, l: any) => sum + (l.total_rejection_quantity || 0), 0);
       const rejectionRate = totalProduced > 0 ? (totalRejected / (totalProduced + totalRejected)) * 100 : 0;
 
       setSummary({

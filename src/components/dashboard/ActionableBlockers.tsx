@@ -71,7 +71,7 @@ export const ActionableBlockers = () => {
 
       // Fetch work orders with potential blocks
       const { data: workOrders } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, display_id, due_date, qc_material_passed, qc_first_piece_passed, status, customer, quantity, net_weight_per_pc')
         .neq('status', 'completed')
         .neq('status', 'shipped')

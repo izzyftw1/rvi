@@ -59,7 +59,7 @@ export const LossImpactIndicator = () => {
 
       // Fetch delayed work orders (past due date, not completed)
       const { data: delayedOrders } = await supabase
-        .from('work_orders')
+        .from('work_orders_restricted')
         .select('id, quantity, due_date')
         .lt('due_date', todayStr)
         .not('status', 'in', '("Completed","Shipped","Cancelled")');
