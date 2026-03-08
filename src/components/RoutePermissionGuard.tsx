@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDepartmentPermissions } from '@/hooks/useDepartmentPermissions';
+import { useAuditLog } from '@/hooks/useAuditLog';
 import { AlertTriangle, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,14 +22,19 @@ export const RoutePermissionGuard = ({ children }: RoutePermissionGuardProps) =>
   const location = useLocation();
   const navigate = useNavigate();
   const { loading, canAccessRoute, isBypassUser } = useDepartmentPermissions();
+  const { logAccessDenied } = useAuditLog();
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!loading) {
       const access = canAccessRoute(location.pathname);
       setHasAccess(access);
+      // Log access denied attempts for security audit
+      if (!access) {
+        logAccessDenied(location.pathname);
+      }
     }
-  }, [loading, location.pathname, canAccessRoute]);
+  }, [loading, location.pathname, canAccessRoute, logAccessDenied]);
 
   // Show loading state
   if (loading || hasAccess === null) {

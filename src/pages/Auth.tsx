@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ import rvLogo from "@/assets/rv-logo.jpg";
 const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { log } = useAuditLog();
   const [loading, setLoading] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState("");
@@ -58,12 +60,14 @@ const Auth = () => {
 
       if (error) throw error;
 
-      // Update last login time
+      // Update last login time and log event
       if (data.user) {
         await supabase
           .from("profiles")
           .update({ last_login: new Date().toISOString() })
           .eq("id", data.user.id);
+        
+        log('login', 'User logged in', { email: loginEmail });
       }
 
       toast({
