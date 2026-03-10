@@ -692,8 +692,8 @@ const HourlyQC = () => {
               <QCSummaryStats
                 stats={[
                   { label: 'Active WOs', value: eligibleWorkOrders.length, type: 'total' },
-                  { label: 'With QC Checks', value: eligibleWorkOrders.filter(wo => wo.qc_check_count > 0).length, type: 'passed' },
-                  { label: 'Pending First Check', value: eligibleWorkOrders.filter(wo => wo.qc_check_count === 0).length, type: 'pending' },
+                  { label: 'Tolerance Ready', value: eligibleWorkOrders.filter(wo => wo.tolerances_defined).length, type: 'passed' },
+                  { label: 'Setup Needed', value: eligibleWorkOrders.filter(wo => !wo.tolerances_defined).length, type: 'pending' },
                   { label: 'Total Checks', value: eligibleWorkOrders.reduce((sum, wo) => sum + wo.qc_check_count, 0), type: 'neutral' },
                 ]}
               />
