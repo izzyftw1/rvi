@@ -37,6 +37,7 @@ interface EligibleWorkOrder {
   production_release_status?: string;
   has_active_production_batch: boolean;
   tolerance_count: number;
+}
 
 interface ProductionLogData {
   id: string;

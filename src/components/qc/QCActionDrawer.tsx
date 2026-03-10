@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle, Ban, Upload, FileText, Loader2, ShieldAlert } from "lucide-react";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
-import { useUserRole } from "@/hooks/useUserRole";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface QCActionDrawerProps {
   woId: string;
