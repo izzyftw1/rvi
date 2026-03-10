@@ -905,20 +905,23 @@ export default function GateRegister() {
           const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
           const { error: lotError } = await supabase
             .from("inventory_lots")
-            .insert({
-              lot_id: lotId,
-              material_size_mm: formData.rod_section_size || 'N/A',
-              alloy: formData.alloy || 'N/A',
-              qty_kg: receivedQtyKg,
-              supplier_id: formData.supplier_id || null,
-              rpo_id: formData.rpo_id,
-              heat_no: formData.heat_no || null,
-              received_date: new Date().toISOString().split('T')[0],
-              cost_rate: selectedRPO?.rate_per_kg || null,
-            });
+            .upsert(
+              {
+                lot_id: lotId,
+                material_size_mm: formData.rod_section_size || 'N/A',
+                alloy: formData.alloy || 'N/A',
+                qty_kg: receivedQtyKg,
+                supplier_id: formData.supplier_id || null,
+                rpo_id: formData.rpo_id,
+                heat_no: formData.heat_no || null,
+                received_date: new Date().toISOString().split('T')[0],
+                cost_rate: selectedRPO?.rate_per_kg || null,
+              },
+              { onConflict: 'lot_id' }
+            );
 
           if (lotError) {
-            console.error("Failed to create inventory_lots record:", lotError);
+            console.error("Failed to upsert inventory_lots record:", lotError);
             toast({ variant: "destructive", description: `Inventory lot failed: ${lotError.message}` });
           }
 
