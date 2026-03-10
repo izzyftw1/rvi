@@ -1308,17 +1308,20 @@ export default function GateRegister() {
               const lotId = `LOT-EXT-${data.gate_entry_no}`;
               await supabase
                 .from("inventory_lots")
-                .insert({
-                  lot_id: lotId,
-                  material_size_mm: formData.rod_section_size || linkedWO?.item_code || 'N/A',
-                  alloy: formData.alloy || 'N/A',
-                  qty_kg: effectiveNetWeight,
-                  supplier_id: null,
-                  rpo_id: null,
-                  heat_no: formData.heat_no || null,
-                  received_date: new Date().toISOString().split('T')[0],
-                  cost_rate: null,
-                });
+                .upsert(
+                  {
+                    lot_id: lotId,
+                    material_size_mm: formData.rod_section_size || linkedWO?.item_code || 'N/A',
+                    alloy: formData.alloy || 'N/A',
+                    qty_kg: effectiveNetWeight,
+                    supplier_id: null,
+                    rpo_id: null,
+                    heat_no: formData.heat_no || null,
+                    received_date: new Date().toISOString().split('T')[0],
+                    cost_rate: null,
+                  },
+                  { onConflict: 'lot_id' }
+                );
             }
 
             // Create execution record for traceability
