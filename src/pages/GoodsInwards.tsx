@@ -378,7 +378,6 @@ export default function GoodsInwards() {
         direction: 'IN',
         material_type: 'external_process',
         gross_weight_kg: grossWeightKg,
-        net_weight_kg: grossWeightKg,
         estimated_pcs: qtyReceived,
         item_name: itemName,
         partner_id: selectedMovement.partner_id || null,

@@ -9,7 +9,6 @@ export interface CreateGateEntryParams {
   direction: 'IN' | 'OUT';
   material_type: 'raw_material' | 'external_process' | 'finished_goods' | 'scrap' | 'other';
   gross_weight_kg: number;
-  net_weight_kg?: number | null;
   tare_weight_kg?: number;
   estimated_pcs?: number | null;
   item_name?: string | null;
