@@ -723,9 +723,9 @@ const HourlyQC = () => {
                       <TableHead>Item Code</TableHead>
                       <TableHead>Quantity</TableHead>
                       <TableHead>QC Checks</TableHead>
+                      <TableHead>Tolerance Setup</TableHead>
                       <TableHead>Last Check</TableHead>
                       <TableHead></TableHead>
-                    </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredWorkOrders.length === 0 ? (
