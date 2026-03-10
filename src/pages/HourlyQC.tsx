@@ -151,37 +151,66 @@ const HourlyQC = () => {
   const loadEligibleWorkOrders = async () => {
     try {
       setLoading(true);
-      
-      const { data: workOrders, error: woError } = await supabase
-        .from('work_orders_restricted')
-        .select('id, wo_id, display_id, customer, item_code, status, quantity')
-        .in('status', ['in_progress', 'pending', 'qc', 'packing'])
-        .order('created_at', { ascending: false });
+
+      const [
+        { data: workOrders, error: woError },
+        { data: toleranceData, error: tolError },
+        { data: activeBatches, error: batchError },
+      ] = await Promise.all([
+        supabase
+          .from('work_orders_restricted')
+          .select('id, wo_id, display_id, customer, item_code, status, quantity, qc_material_status, qc_first_piece_status, production_release_status')
+          .neq('status', 'completed')
+          .neq('status', 'shipped')
+          .order('created_at', { ascending: false }),
+        supabase.from('dimension_tolerances').select('item_code'),
+        supabase
+          .from('production_batches')
+          .select('wo_id')
+          .eq('stage_type', 'production')
+          .is('ended_at', null)
+          .in('batch_status', ['in_queue', 'in_progress']),
+      ]);
 
       if (woError) throw woError;
-      if (!workOrders || workOrders.length === 0) { setEligibleWorkOrders([]); return; }
-
-      const { data: toleranceData, error: tolError } = await supabase
-        .from('dimension_tolerances').select('item_code');
       if (tolError) throw tolError;
+      if (batchError) throw batchError;
+      if (!workOrders || workOrders.length === 0) {
+        setEligibleWorkOrders([]);
+        return;
+      }
 
-      const itemCodesWithTolerances = new Set(toleranceData?.map(t => t.item_code) || []);
+      const toleranceCountByItem = new Map<string, number>();
+      (toleranceData || []).forEach((t: any) => {
+        toleranceCountByItem.set(t.item_code, (toleranceCountByItem.get(t.item_code) || 0) + 1);
+      });
+
+      const activeBatchWoIds = new Set((activeBatches || []).map((b: any) => b.wo_id));
 
       const woIds = workOrders.map(wo => wo.id);
       const { data: qcChecks, error: qcError } = await supabase
-        .from('hourly_qc_checks').select('wo_id, check_datetime')
-        .in('wo_id', woIds).order('check_datetime', { ascending: false });
+        .from('hourly_qc_checks')
+        .select('wo_id, check_datetime')
+        .in('wo_id', woIds)
+        .order('check_datetime', { ascending: false });
       if (qcError) throw qcError;
 
       const qcChecksByWo = new Map<string, { count: number; lastCheck?: string }>();
       qcChecks?.forEach(check => {
         const existing = qcChecksByWo.get(check.wo_id);
-        if (existing) { existing.count++; }
-        else { qcChecksByWo.set(check.wo_id, { count: 1, lastCheck: check.check_datetime }); }
+        if (existing) {
+          existing.count++;
+        } else {
+          qcChecksByWo.set(check.wo_id, { count: 1, lastCheck: check.check_datetime });
+        }
       });
 
-      const enrichedWOs: EligibleWorkOrder[] = workOrders.map(wo => {
+      const enrichedWOs: EligibleWorkOrder[] = workOrders.map((wo: any) => {
         const qcInfo = qcChecksByWo.get(wo.id);
+        const materialPassed = ['passed', 'waived'].includes(wo.qc_material_status || 'pending');
+        const firstPiecePassed = ['passed', 'waived'].includes(wo.qc_first_piece_status || 'pending');
+        const released = wo.production_release_status === 'RELEASED';
+
         return {
           id: wo.id,
           wo_id: wo.wo_id,
@@ -190,13 +219,26 @@ const HourlyQC = () => {
           item_code: wo.item_code,
           status: wo.status,
           quantity: wo.quantity,
-          tolerances_defined: itemCodesWithTolerances.has(wo.item_code),
+          qc_material_status: wo.qc_material_status,
+          qc_first_piece_status: wo.qc_first_piece_status,
+          production_release_status: wo.production_release_status,
+          has_active_production_batch: activeBatchWoIds.has(wo.id),
+          tolerance_count: toleranceCountByItem.get(wo.item_code) || 0,
+          tolerances_defined: (toleranceCountByItem.get(wo.item_code) || 0) > 0,
           last_qc_check: qcInfo?.lastCheck,
-          qc_check_count: qcInfo?.count || 0
+          qc_check_count: qcInfo?.count || 0,
         };
       });
 
-      setEligibleWorkOrders(enrichedWOs.filter(wo => wo.tolerances_defined));
+      setEligibleWorkOrders(
+        enrichedWOs.filter(
+          wo =>
+            wo.has_active_production_batch &&
+            ['passed', 'waived'].includes(wo.qc_material_status || 'pending') &&
+            ['passed', 'waived'].includes(wo.qc_first_piece_status || 'pending') &&
+            wo.production_release_status === 'RELEASED'
+        )
+      );
     } catch (error: any) {
       console.error('Error loading work orders:', error);
       toast.error('Failed to load work orders');
