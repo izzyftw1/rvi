@@ -55,6 +55,7 @@ interface ProductionLogData {
 }
 
 const HourlyQC = () => {
+  const navigate = useNavigate();
   const [eligibleWorkOrders, setEligibleWorkOrders] = useState<EligibleWorkOrder[]>([]);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<EligibleWorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
