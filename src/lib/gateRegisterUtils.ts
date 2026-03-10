@@ -9,7 +9,6 @@ export interface CreateGateEntryParams {
   direction: 'IN' | 'OUT';
   material_type: 'raw_material' | 'external_process' | 'finished_goods' | 'scrap' | 'other';
   gross_weight_kg: number;
-  net_weight_kg?: number | null;
   tare_weight_kg?: number;
   estimated_pcs?: number | null;
   item_name?: string | null;
@@ -38,7 +37,7 @@ export interface CreateGateEntryParams {
 export async function createGateEntry(params: CreateGateEntryParams): Promise<{ id: string; gate_entry_no: string } | null> {
   try {
     const gateEntryNo = `G${params.direction === 'IN' ? 'IN' : 'OUT'}-${Date.now()}`;
-    const effectiveNetWeight = params.net_weight_kg ?? params.gross_weight_kg;
+    
 
     const insertPayload: Record<string, any> = {
       direction: params.direction,

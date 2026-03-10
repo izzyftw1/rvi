@@ -419,7 +419,6 @@ export default function MaterialInwards() {
         direction: 'IN',
         material_type: 'raw_material',
         gross_weight_kg: qtyReceived,
-        net_weight_kg: qtyReceived,
         alloy: selectedRPO.alloy || null,
         rod_section_size: selectedRPO.material_size_mm || null,
         heat_no: formData.heat_no || null,
