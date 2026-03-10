@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,8 +32,11 @@ interface EligibleWorkOrder {
   tolerances_defined: boolean;
   last_qc_check?: string;
   qc_check_count: number;
-  first_piece_approved?: boolean;
-  last_production_entry?: string;
+  qc_material_status?: string;
+  qc_first_piece_status?: string;
+  production_release_status?: string;
+  has_active_production_batch: boolean;
+  tolerance_count: number;
 }
 
 interface ProductionLogData {
@@ -52,6 +56,7 @@ interface ProductionLogData {
 }
 
 const HourlyQC = () => {
+  const navigate = useNavigate();
   const [eligibleWorkOrders, setEligibleWorkOrders] = useState<EligibleWorkOrder[]>([]);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<EligibleWorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,6 +97,7 @@ const HourlyQC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadEligibleWorkOrders)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hourly_qc_checks' }, loadEligibleWorkOrders)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dimension_tolerances' }, loadEligibleWorkOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, loadEligibleWorkOrders)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -146,37 +152,66 @@ const HourlyQC = () => {
   const loadEligibleWorkOrders = async () => {
     try {
       setLoading(true);
-      
-      const { data: workOrders, error: woError } = await supabase
-        .from('work_orders_restricted')
-        .select('id, wo_id, display_id, customer, item_code, status, quantity')
-        .in('status', ['in_progress', 'pending', 'qc', 'packing'])
-        .order('created_at', { ascending: false });
+
+      const [
+        { data: workOrders, error: woError },
+        { data: toleranceData, error: tolError },
+        { data: activeBatches, error: batchError },
+      ] = await Promise.all([
+        supabase
+          .from('work_orders_restricted')
+          .select('id, wo_id, display_id, customer, item_code, status, quantity, qc_material_status, qc_first_piece_status, production_release_status')
+          .neq('status', 'completed')
+          .neq('status', 'shipped')
+          .order('created_at', { ascending: false }),
+        supabase.from('dimension_tolerances').select('item_code'),
+        supabase
+          .from('production_batches')
+          .select('wo_id')
+          .eq('stage_type', 'production')
+          .is('ended_at', null)
+          .in('batch_status', ['in_queue', 'in_progress']),
+      ]);
 
       if (woError) throw woError;
-      if (!workOrders || workOrders.length === 0) { setEligibleWorkOrders([]); return; }
-
-      const { data: toleranceData, error: tolError } = await supabase
-        .from('dimension_tolerances').select('item_code');
       if (tolError) throw tolError;
+      if (batchError) throw batchError;
+      if (!workOrders || workOrders.length === 0) {
+        setEligibleWorkOrders([]);
+        return;
+      }
 
-      const itemCodesWithTolerances = new Set(toleranceData?.map(t => t.item_code) || []);
+      const toleranceCountByItem = new Map<string, number>();
+      (toleranceData || []).forEach((t: any) => {
+        toleranceCountByItem.set(t.item_code, (toleranceCountByItem.get(t.item_code) || 0) + 1);
+      });
+
+      const activeBatchWoIds = new Set((activeBatches || []).map((b: any) => b.wo_id));
 
       const woIds = workOrders.map(wo => wo.id);
       const { data: qcChecks, error: qcError } = await supabase
-        .from('hourly_qc_checks').select('wo_id, check_datetime')
-        .in('wo_id', woIds).order('check_datetime', { ascending: false });
+        .from('hourly_qc_checks')
+        .select('wo_id, check_datetime')
+        .in('wo_id', woIds)
+        .order('check_datetime', { ascending: false });
       if (qcError) throw qcError;
 
       const qcChecksByWo = new Map<string, { count: number; lastCheck?: string }>();
       qcChecks?.forEach(check => {
         const existing = qcChecksByWo.get(check.wo_id);
-        if (existing) { existing.count++; }
-        else { qcChecksByWo.set(check.wo_id, { count: 1, lastCheck: check.check_datetime }); }
+        if (existing) {
+          existing.count++;
+        } else {
+          qcChecksByWo.set(check.wo_id, { count: 1, lastCheck: check.check_datetime });
+        }
       });
 
-      const enrichedWOs: EligibleWorkOrder[] = workOrders.map(wo => {
+      const enrichedWOs: EligibleWorkOrder[] = workOrders.map((wo: any) => {
         const qcInfo = qcChecksByWo.get(wo.id);
+        const materialPassed = ['passed', 'waived'].includes(wo.qc_material_status || 'pending');
+        const firstPiecePassed = ['passed', 'waived'].includes(wo.qc_first_piece_status || 'pending');
+        const released = wo.production_release_status === 'RELEASED';
+
         return {
           id: wo.id,
           wo_id: wo.wo_id,
@@ -185,13 +220,26 @@ const HourlyQC = () => {
           item_code: wo.item_code,
           status: wo.status,
           quantity: wo.quantity,
-          tolerances_defined: itemCodesWithTolerances.has(wo.item_code),
+          qc_material_status: wo.qc_material_status,
+          qc_first_piece_status: wo.qc_first_piece_status,
+          production_release_status: wo.production_release_status,
+          has_active_production_batch: activeBatchWoIds.has(wo.id),
+          tolerance_count: toleranceCountByItem.get(wo.item_code) || 0,
+          tolerances_defined: (toleranceCountByItem.get(wo.item_code) || 0) > 0,
           last_qc_check: qcInfo?.lastCheck,
-          qc_check_count: qcInfo?.count || 0
+          qc_check_count: qcInfo?.count || 0,
         };
       });
 
-      setEligibleWorkOrders(enrichedWOs.filter(wo => wo.tolerances_defined));
+      setEligibleWorkOrders(
+        enrichedWOs.filter(
+          wo =>
+            wo.has_active_production_batch &&
+            ['passed', 'waived'].includes(wo.qc_material_status || 'pending') &&
+            ['passed', 'waived'].includes(wo.qc_first_piece_status || 'pending') &&
+            wo.production_release_status === 'RELEASED'
+        )
+      );
     } catch (error: any) {
       console.error('Error loading work orders:', error);
       toast.error('Failed to load work orders');
@@ -333,7 +381,12 @@ const HourlyQC = () => {
       loadEligibleWorkOrders();
     } catch (error: any) {
       console.error('Error submitting QC check:', error);
-      toast.error(error.message || 'Failed to submit QC check');
+      const isPermissionError = error?.code === '42501' || `${error?.message || ''}`.toLowerCase().includes('row-level security');
+      if (isPermissionError) {
+        toast.error('Permission denied: Hourly QC entry requires Quality or Admin access.');
+      } else {
+        toast.error(error.message || 'Failed to submit QC check');
+      }
     }
   };
 
@@ -348,8 +401,8 @@ const HourlyQC = () => {
 
   const filteredWorkOrders = eligibleWorkOrders.filter(wo => 
     wo.display_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    wo.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    wo.item_code.toLowerCase().includes(searchTerm.toLowerCase())
+    (wo.customer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (wo.item_code || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTimeSinceLastCheck = (lastCheck?: string) => {
@@ -630,7 +683,7 @@ const HourlyQC = () => {
                 <ClipboardCheck className="h-10 w-10 mx-auto text-muted-foreground mb-4 opacity-50" />
                 <p className="text-lg font-medium">No Work Orders Ready for In-Process QC</p>
                 <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
-                  Work orders must be active and have dimension tolerances defined.
+                  Work orders appear here only when material + first-piece QC are passed, production is released, and at least one active production batch exists.
                 </p>
               </CardContent>
             </Card>
@@ -640,8 +693,8 @@ const HourlyQC = () => {
               <QCSummaryStats
                 stats={[
                   { label: 'Active WOs', value: eligibleWorkOrders.length, type: 'total' },
-                  { label: 'With QC Checks', value: eligibleWorkOrders.filter(wo => wo.qc_check_count > 0).length, type: 'passed' },
-                  { label: 'Pending First Check', value: eligibleWorkOrders.filter(wo => wo.qc_check_count === 0).length, type: 'pending' },
+                  { label: 'Tolerance Ready', value: eligibleWorkOrders.filter(wo => wo.tolerances_defined).length, type: 'passed' },
+                  { label: 'Setup Needed', value: eligibleWorkOrders.filter(wo => !wo.tolerances_defined).length, type: 'pending' },
                   { label: 'Total Checks', value: eligibleWorkOrders.reduce((sum, wo) => sum + wo.qc_check_count, 0), type: 'neutral' },
                 ]}
               />
@@ -671,6 +724,7 @@ const HourlyQC = () => {
                       <TableHead>Item Code</TableHead>
                       <TableHead>Quantity</TableHead>
                       <TableHead>QC Checks</TableHead>
+                      <TableHead>Tolerance Setup</TableHead>
                       <TableHead>Last Check</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
@@ -678,7 +732,7 @@ const HourlyQC = () => {
                   <TableBody>
                     {filteredWorkOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                           No matching work orders found
                         </TableCell>
                       </TableRow>
@@ -698,16 +752,29 @@ const HourlyQC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {wo.last_qc_check ? (
-                              <span className="text-xs text-muted-foreground">{getTimeSinceLastCheck(wo.last_qc_check)}</span>
+                            {wo.tolerances_defined ? (
+                              <Badge variant="outline">Configured</Badge>
                             ) : (
-                              <span className="text-xs text-amber-600">No checks yet</span>
+                              <Badge variant="secondary">Missing</Badge>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button size="sm" onClick={() => setSelectedWorkOrder(wo)}>
-                              Record QC
-                            </Button>
+                            {wo.last_qc_check ? (
+                              <span className="text-xs text-muted-foreground">{getTimeSinceLastCheck(wo.last_qc_check)}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No checks yet</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {wo.tolerances_defined ? (
+                              <Button size="sm" onClick={() => setSelectedWorkOrder(wo)}>
+                                Record QC
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" onClick={() => navigate('/tolerance-setup')}>
+                                Setup Tolerance
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))

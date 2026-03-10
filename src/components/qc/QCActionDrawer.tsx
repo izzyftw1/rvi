@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle, Ban, Upload, FileText, Loader2, ShieldAlert } from "lucide-react";
 import { QCGateStatusBadge } from "@/components/QCGateStatusBadge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useUserRole } from "@/hooks/useUserRole";
 
 interface QCActionDrawerProps {
@@ -26,6 +27,7 @@ export const QCActionDrawer = ({
 }: QCActionDrawerProps) => {
   const { hasAnyRole } = useUserRole();
   const canWaive = hasAnyRole(['admin', 'super_admin', 'quality']);
+  const canManageQC = hasAnyRole(['admin', 'super_admin', 'quality']);
   const [loading, setLoading] = useState(false);
   const [remarks, setRemarks] = useState(currentRemarks || '');
   const [waiveReason, setWaiveReason] = useState('');
@@ -180,7 +182,12 @@ export const QCActionDrawer = ({
       toast.success(`${stageLabels[qcType]} marked as ${action}`);
       onUpdate();
     } catch (error: any) {
-      toast.error(`Failed to update QC status: ${error.message}`);
+      const isPermissionError = error?.code === '42501' || `${error?.message || ''}`.toLowerCase().includes('row-level security');
+      if (isPermissionError) {
+        toast.error('Permission denied: only Quality/Admin can update QC stage results.');
+      } else {
+        toast.error(`Failed to update QC status: ${error.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -244,11 +251,20 @@ export const QCActionDrawer = ({
           />
         </div>
 
+        {!canManageQC && (
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertDescription>
+              You can view this QC stage, but only Quality/Admin can submit Pass/Fail/Waive actions.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Action Buttons */}
         <div className="grid grid-cols-3 gap-3">
           <Button
             onClick={() => handleQCAction('passed')}
-            disabled={loading}
+            disabled={loading || !canManageQC}
             variant="default"
             className="bg-success hover:bg-success/90"
           >
@@ -257,7 +273,7 @@ export const QCActionDrawer = ({
           </Button>
           <Button
             onClick={() => handleQCAction('failed')}
-            disabled={loading}
+            disabled={loading || !canManageQC}
             variant="destructive"
           >
             <XCircle className="h-4 w-4 mr-2" />
