@@ -249,11 +249,20 @@ export const QCActionDrawer = ({
           />
         </div>
 
+        {!canManageQC && (
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertDescription>
+              You can view this QC stage, but only Quality/Admin can submit Pass/Fail/Waive actions.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Action Buttons */}
         <div className="grid grid-cols-3 gap-3">
           <Button
             onClick={() => handleQCAction('passed')}
-            disabled={loading}
+            disabled={loading || !canManageQC}
             variant="default"
             className="bg-success hover:bg-success/90"
           >
@@ -262,7 +271,7 @@ export const QCActionDrawer = ({
           </Button>
           <Button
             onClick={() => handleQCAction('failed')}
-            disabled={loading}
+            disabled={loading || !canManageQC}
             variant="destructive"
           >
             <XCircle className="h-4 w-4 mr-2" />

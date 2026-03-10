@@ -776,7 +776,6 @@ const HourlyQC = () => {
                               </Button>
                             )}
                           </TableCell>
-                          </TableCell>
                         </TableRow>
                       ))
                     )}
