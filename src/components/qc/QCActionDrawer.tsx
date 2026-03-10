@@ -28,6 +28,7 @@ export const QCActionDrawer = ({
   const { hasAnyRole } = useUserRole();
   const canWaive = hasAnyRole(['admin', 'super_admin', 'quality']);
   const canManageQC = hasAnyRole(['admin', 'super_admin', 'quality']);
+  const [loading, setLoading] = useState(false);
   const [remarks, setRemarks] = useState(currentRemarks || '');
   const [waiveReason, setWaiveReason] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
