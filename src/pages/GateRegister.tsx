@@ -1285,7 +1285,7 @@ export default function GateRegister() {
             // POINT 24: Create qc_records for post-external QC visibility
             if (formData.qc_required) {
               const qcId = `QC-EXT-${data.gate_entry_no}`;
-              await supabase
+              const { error: postExternalQcError } = await supabase
                 .from("qc_records")
                 .insert({
                   qc_id: qcId,
@@ -1296,6 +1296,10 @@ export default function GateRegister() {
                   remarks: `Post-external QC for ${formData.process_type}. Gate Entry: ${data.gate_entry_no}. Qty: ${receivedQty} pcs, Weight: ${effectiveNetWeight} kg`,
                   inspected_quantity: 0,
                 });
+
+              if (postExternalQcError && postExternalQcError.code !== '23505') {
+                console.error("Failed to create post_external qc_records record:", postExternalQcError);
+              }
             }
 
             // POINT 25: Create inventory record on external return for tracking
