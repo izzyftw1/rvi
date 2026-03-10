@@ -395,8 +395,8 @@ const HourlyQC = () => {
 
   const filteredWorkOrders = eligibleWorkOrders.filter(wo => 
     wo.display_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    wo.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    wo.item_code.toLowerCase().includes(searchTerm.toLowerCase())
+    (wo.customer || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (wo.item_code || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTimeSinceLastCheck = (lastCheck?: string) => {
