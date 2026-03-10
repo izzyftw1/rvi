@@ -905,20 +905,23 @@ export default function GateRegister() {
           const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
           const { error: lotError } = await supabase
             .from("inventory_lots")
-            .insert({
-              lot_id: lotId,
-              material_size_mm: formData.rod_section_size || 'N/A',
-              alloy: formData.alloy || 'N/A',
-              qty_kg: receivedQtyKg,
-              supplier_id: formData.supplier_id || null,
-              rpo_id: formData.rpo_id,
-              heat_no: formData.heat_no || null,
-              received_date: new Date().toISOString().split('T')[0],
-              cost_rate: selectedRPO?.rate_per_kg || null,
-            });
+            .upsert(
+              {
+                lot_id: lotId,
+                material_size_mm: formData.rod_section_size || 'N/A',
+                alloy: formData.alloy || 'N/A',
+                qty_kg: receivedQtyKg,
+                supplier_id: formData.supplier_id || null,
+                rpo_id: formData.rpo_id,
+                heat_no: formData.heat_no || null,
+                received_date: new Date().toISOString().split('T')[0],
+                cost_rate: selectedRPO?.rate_per_kg || null,
+              },
+              { onConflict: 'lot_id' }
+            );
 
           if (lotError) {
-            console.error("Failed to create inventory_lots record:", lotError);
+            console.error("Failed to upsert inventory_lots record:", lotError);
             toast({ variant: "destructive", description: `Inventory lot failed: ${lotError.message}` });
           }
 
@@ -979,20 +982,23 @@ export default function GateRegister() {
           const lotId = `LOT-${data.gate_entry_no}-${formData.heat_no || 'NH'}`;
           const { error: lotError } = await supabase
             .from("inventory_lots")
-            .insert({
-              lot_id: lotId,
-              material_size_mm: formData.rod_section_size || 'N/A',
-              alloy: formData.alloy || 'N/A',
-              qty_kg: receivedQtyKg,
-              supplier_id: formData.supplier_id || null,
-              rpo_id: null,
-              heat_no: formData.heat_no || null,
-              received_date: new Date().toISOString().split('T')[0],
-              cost_rate: null,
-            });
+            .upsert(
+              {
+                lot_id: lotId,
+                material_size_mm: formData.rod_section_size || 'N/A',
+                alloy: formData.alloy || 'N/A',
+                qty_kg: receivedQtyKg,
+                supplier_id: formData.supplier_id || null,
+                rpo_id: null,
+                heat_no: formData.heat_no || null,
+                received_date: new Date().toISOString().split('T')[0],
+                cost_rate: null,
+              },
+              { onConflict: 'lot_id' }
+            );
 
           if (lotError) {
-            console.error("Failed to create inventory_lots record:", lotError);
+            console.error("Failed to upsert inventory_lots record:", lotError);
             toast({ variant: "destructive", description: `Inventory lot failed: ${lotError.message}` });
           }
 
@@ -1013,20 +1019,51 @@ export default function GateRegister() {
 
         // POINT 9: Create qc_records entry for QC team visibility when QC is required
         if (formData.qc_required && formData.work_order_id) {
-          const qcId = `QC-INC-${data.gate_entry_no}`;
-          await supabase
+          const incomingRemark = `Auto-created from Gate Register ${data.gate_entry_no}. Qty: ${effectiveNetWeight} kg`;
+
+          const { data: existingIncomingQC } = await supabase
             .from("qc_records")
-            .insert({
-              qc_id: qcId,
-              wo_id: formData.work_order_id,
-              qc_type: 'incoming' as any,
-              result: 'pending' as any,
-              heat_no: formData.heat_no || null,
-              material_grade: formData.alloy || formData.material_grade || null,
-              material_lot_id: null, // Will be linked by QC team during inspection
-              remarks: `Auto-created from Gate Register ${data.gate_entry_no}. Qty: ${effectiveNetWeight} kg`,
-              inspected_quantity: 0,
-            });
+            .select("id")
+            .eq("wo_id", formData.work_order_id)
+            .eq("qc_type", 'incoming' as any)
+            .is("batch_id", null)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingIncomingQC?.id) {
+            const { error: qcUpdateError } = await supabase
+              .from("qc_records")
+              .update({
+                heat_no: formData.heat_no || null,
+                material_grade: formData.alloy || formData.material_grade || null,
+                remarks: incomingRemark,
+              })
+              .eq("id", existingIncomingQC.id);
+
+            if (qcUpdateError) {
+              console.error("Failed to update existing incoming qc_records:", qcUpdateError);
+            }
+          } else {
+            const qcId = `QC-INC-${data.gate_entry_no}`;
+            const { error: qcInsertError } = await supabase
+              .from("qc_records")
+              .insert({
+                qc_id: qcId,
+                wo_id: formData.work_order_id,
+                qc_type: 'incoming' as any,
+                result: 'pending' as any,
+                heat_no: formData.heat_no || null,
+                material_grade: formData.alloy || formData.material_grade || null,
+                material_lot_id: null,
+                remarks: incomingRemark,
+                inspected_quantity: 0,
+              });
+
+            if (qcInsertError && qcInsertError.code !== '23505') {
+              console.error("Failed to create incoming qc_records record:", qcInsertError);
+            }
+          }
         }
 
         // Reload RPOs to reflect updated quantities
@@ -1248,7 +1285,7 @@ export default function GateRegister() {
             // POINT 24: Create qc_records for post-external QC visibility
             if (formData.qc_required) {
               const qcId = `QC-EXT-${data.gate_entry_no}`;
-              await supabase
+              const { error: postExternalQcError } = await supabase
                 .from("qc_records")
                 .insert({
                   qc_id: qcId,
@@ -1259,6 +1296,10 @@ export default function GateRegister() {
                   remarks: `Post-external QC for ${formData.process_type}. Gate Entry: ${data.gate_entry_no}. Qty: ${receivedQty} pcs, Weight: ${effectiveNetWeight} kg`,
                   inspected_quantity: 0,
                 });
+
+              if (postExternalQcError && postExternalQcError.code !== '23505') {
+                console.error("Failed to create post_external qc_records record:", postExternalQcError);
+              }
             }
 
             // POINT 25: Create inventory record on external return for tracking
@@ -1267,17 +1308,20 @@ export default function GateRegister() {
               const lotId = `LOT-EXT-${data.gate_entry_no}`;
               await supabase
                 .from("inventory_lots")
-                .insert({
-                  lot_id: lotId,
-                  material_size_mm: formData.rod_section_size || linkedWO?.item_code || 'N/A',
-                  alloy: formData.alloy || 'N/A',
-                  qty_kg: effectiveNetWeight,
-                  supplier_id: null,
-                  rpo_id: null,
-                  heat_no: formData.heat_no || null,
-                  received_date: new Date().toISOString().split('T')[0],
-                  cost_rate: null,
-                });
+                .upsert(
+                  {
+                    lot_id: lotId,
+                    material_size_mm: formData.rod_section_size || linkedWO?.item_code || 'N/A',
+                    alloy: formData.alloy || 'N/A',
+                    qty_kg: effectiveNetWeight,
+                    supplier_id: null,
+                    rpo_id: null,
+                    heat_no: formData.heat_no || null,
+                    received_date: new Date().toISOString().split('T')[0],
+                    cost_rate: null,
+                  },
+                  { onConflict: 'lot_id' }
+                );
             }
 
             // Create execution record for traceability
