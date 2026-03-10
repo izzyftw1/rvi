@@ -765,7 +765,7 @@ export default function GateRegister() {
         gate_entry_no: string;
         gross_weight_kg: number;
         tare_weight_kg: number;
-        net_weight_kg?: number | null;
+        
         status: string;
         estimated_pcs?: number | null;
         avg_weight_per_pc?: number | null;
@@ -801,7 +801,6 @@ export default function GateRegister() {
         gate_entry_no: `GIN-${Date.now()}`,
         gross_weight_kg: grossWeight,
         tare_weight_kg: tareWeight,
-        net_weight_kg: effectiveNetWeight,
         status: 'completed',
         estimated_pcs: estimatedPcs,
         avg_weight_per_pc: formData.material_type === 'external_process' && pcsEstimation.avgWeightPerPc

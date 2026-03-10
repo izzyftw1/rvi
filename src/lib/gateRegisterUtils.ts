@@ -46,7 +46,7 @@ export async function createGateEntry(params: CreateGateEntryParams): Promise<{ 
       gate_entry_no: gateEntryNo,
       gross_weight_kg: params.gross_weight_kg,
       tare_weight_kg: params.tare_weight_kg ?? 0,
-      net_weight_kg: effectiveNetWeight,
+      
       status: 'completed',
       estimated_pcs: params.estimated_pcs ?? null,
       item_name: params.item_name ?? null,
