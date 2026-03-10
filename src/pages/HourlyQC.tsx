@@ -96,6 +96,7 @@ const HourlyQC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadEligibleWorkOrders)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hourly_qc_checks' }, loadEligibleWorkOrders)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dimension_tolerances' }, loadEligibleWorkOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, loadEligibleWorkOrders)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
