@@ -37,7 +37,7 @@ export interface CreateGateEntryParams {
 export async function createGateEntry(params: CreateGateEntryParams): Promise<{ id: string; gate_entry_no: string } | null> {
   try {
     const gateEntryNo = `G${params.direction === 'IN' ? 'IN' : 'OUT'}-${Date.now()}`;
-    const effectiveNetWeight = params.net_weight_kg ?? params.gross_weight_kg;
+    
 
     const insertPayload: Record<string, any> = {
       direction: params.direction,

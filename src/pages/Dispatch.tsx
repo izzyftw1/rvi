@@ -546,7 +546,6 @@ export default function Dispatch() {
           direction: 'OUT',
           material_type: 'finished_goods',
           gross_weight_kg: grossWeightKg,
-          net_weight_kg: grossWeightKg,
           estimated_pcs: dispatchQty,
           item_name: woWeight?.item_code || batch.work_orders?.item_code || null,
           party_code: woWeight?.customer || batch.work_orders?.customer || null,

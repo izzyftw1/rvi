@@ -478,7 +478,6 @@ export const SendToExternalDialog = ({ open, onOpenChange, workOrder, onSuccess 
         direction: 'OUT',
         material_type: 'external_process',
         gross_weight_kg: totalWeight,
-        net_weight_kg: totalWeight,
         estimated_pcs: qty,
         item_name: workOrder.item_code || null,
         partner_id: partnerId || null,
