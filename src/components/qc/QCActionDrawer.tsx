@@ -180,7 +180,12 @@ export const QCActionDrawer = ({
       toast.success(`${stageLabels[qcType]} marked as ${action}`);
       onUpdate();
     } catch (error: any) {
-      toast.error(`Failed to update QC status: ${error.message}`);
+      const isPermissionError = error?.code === '42501' || `${error?.message || ''}`.toLowerCase().includes('row-level security');
+      if (isPermissionError) {
+        toast.error('Permission denied: only Quality/Admin can update QC stage results.');
+      } else {
+        toast.error(`Failed to update QC status: ${error.message}`);
+      }
     } finally {
       setLoading(false);
     }
