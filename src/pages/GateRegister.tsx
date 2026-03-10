@@ -1019,20 +1019,51 @@ export default function GateRegister() {
 
         // POINT 9: Create qc_records entry for QC team visibility when QC is required
         if (formData.qc_required && formData.work_order_id) {
-          const qcId = `QC-INC-${data.gate_entry_no}`;
-          await supabase
+          const incomingRemark = `Auto-created from Gate Register ${data.gate_entry_no}. Qty: ${effectiveNetWeight} kg`;
+
+          const { data: existingIncomingQC } = await supabase
             .from("qc_records")
-            .insert({
-              qc_id: qcId,
-              wo_id: formData.work_order_id,
-              qc_type: 'incoming' as any,
-              result: 'pending' as any,
-              heat_no: formData.heat_no || null,
-              material_grade: formData.alloy || formData.material_grade || null,
-              material_lot_id: null, // Will be linked by QC team during inspection
-              remarks: `Auto-created from Gate Register ${data.gate_entry_no}. Qty: ${effectiveNetWeight} kg`,
-              inspected_quantity: 0,
-            });
+            .select("id")
+            .eq("wo_id", formData.work_order_id)
+            .eq("qc_type", 'incoming' as any)
+            .is("batch_id", null)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingIncomingQC?.id) {
+            const { error: qcUpdateError } = await supabase
+              .from("qc_records")
+              .update({
+                heat_no: formData.heat_no || null,
+                material_grade: formData.alloy || formData.material_grade || null,
+                remarks: incomingRemark,
+              })
+              .eq("id", existingIncomingQC.id);
+
+            if (qcUpdateError) {
+              console.error("Failed to update existing incoming qc_records:", qcUpdateError);
+            }
+          } else {
+            const qcId = `QC-INC-${data.gate_entry_no}`;
+            const { error: qcInsertError } = await supabase
+              .from("qc_records")
+              .insert({
+                qc_id: qcId,
+                wo_id: formData.work_order_id,
+                qc_type: 'incoming' as any,
+                result: 'pending' as any,
+                heat_no: formData.heat_no || null,
+                material_grade: formData.alloy || formData.material_grade || null,
+                material_lot_id: null,
+                remarks: incomingRemark,
+                inspected_quantity: 0,
+              });
+
+            if (qcInsertError && qcInsertError.code !== '23505') {
+              console.error("Failed to create incoming qc_records record:", qcInsertError);
+            }
+          }
         }
 
         // Reload RPOs to reflect updated quantities
