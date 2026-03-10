@@ -682,7 +682,7 @@ const HourlyQC = () => {
                 <ClipboardCheck className="h-10 w-10 mx-auto text-muted-foreground mb-4 opacity-50" />
                 <p className="text-lg font-medium">No Work Orders Ready for In-Process QC</p>
                 <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
-                  Work orders must be active and have dimension tolerances defined.
+                  Work orders appear here only when material + first-piece QC are passed, production is released, and at least one active production batch exists.
                 </p>
               </CardContent>
             </Card>
