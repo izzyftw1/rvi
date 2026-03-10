@@ -765,7 +765,7 @@ export default function GateRegister() {
         gate_entry_no: string;
         gross_weight_kg: number;
         tare_weight_kg: number;
-        net_weight_kg?: number | null;
+        
         status: string;
         estimated_pcs?: number | null;
         avg_weight_per_pc?: number | null;
