@@ -32,9 +32,11 @@ interface EligibleWorkOrder {
   tolerances_defined: boolean;
   last_qc_check?: string;
   qc_check_count: number;
-  first_piece_approved?: boolean;
-  last_production_entry?: string;
-}
+  qc_material_status?: string;
+  qc_first_piece_status?: string;
+  production_release_status?: string;
+  has_active_production_batch: boolean;
+  tolerance_count: number;
 
 interface ProductionLogData {
   id: string;
