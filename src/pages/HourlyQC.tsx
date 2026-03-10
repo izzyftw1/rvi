@@ -750,16 +750,30 @@ const HourlyQC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {wo.last_qc_check ? (
-                              <span className="text-xs text-muted-foreground">{getTimeSinceLastCheck(wo.last_qc_check)}</span>
+                            {wo.tolerances_defined ? (
+                              <Badge variant="outline">Configured</Badge>
                             ) : (
-                              <span className="text-xs text-amber-600">No checks yet</span>
+                              <Badge variant="secondary">Missing</Badge>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button size="sm" onClick={() => setSelectedWorkOrder(wo)}>
-                              Record QC
-                            </Button>
+                            {wo.last_qc_check ? (
+                              <span className="text-xs text-muted-foreground">{getTimeSinceLastCheck(wo.last_qc_check)}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No checks yet</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {wo.tolerances_defined ? (
+                              <Button size="sm" onClick={() => setSelectedWorkOrder(wo)}>
+                                Record QC
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" onClick={() => navigate('/tolerance-setup')}>
+                                Setup Tolerance
+                              </Button>
+                            )}
+                          </TableCell>
                           </TableCell>
                         </TableRow>
                       ))
