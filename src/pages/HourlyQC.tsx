@@ -380,7 +380,12 @@ const HourlyQC = () => {
       loadEligibleWorkOrders();
     } catch (error: any) {
       console.error('Error submitting QC check:', error);
-      toast.error(error.message || 'Failed to submit QC check');
+      const isPermissionError = error?.code === '42501' || `${error?.message || ''}`.toLowerCase().includes('row-level security');
+      if (isPermissionError) {
+        toast.error('Permission denied: Hourly QC entry requires Quality or Admin access.');
+      } else {
+        toast.error(error.message || 'Failed to submit QC check');
+      }
     }
   };
 
