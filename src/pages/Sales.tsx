@@ -321,11 +321,17 @@ export default function Sales() {
       const selectedCustomer = customers.find(c => c.id === formData.customer_id);
       if (!selectedCustomer) throw new Error("Selected customer not found");
 
-      // Create sales order - NO manufacturing data
-      const { data: newOrder, error: orderError } = await supabase
-        .from("sales_orders")
-        .insert([{ 
-          so_id: '',
+      const commercialItems = lineItems.map(item => ({
+        item_code: String(item.item_code || ''),
+        quantity: Number(item.quantity) || 0,
+        due_date: item.due_date || null,
+        price_per_pc: item.price_per_pc != null ? Number(item.price_per_pc) : null,
+        line_amount: item.price_per_pc != null ? Number(item.price_per_pc) * Number(item.quantity) : null,
+        drawing_number: item.drawing_number || null,
+        priority: 3,
+      }));
+      const { data: result, error } = await supabase.rpc("create_sales_order", {
+        p_header: {
           customer: selectedCustomer.customer_name,
           customer_id: formData.customer_id,
           party_code: selectedCustomer.party_code || "",
@@ -337,81 +343,20 @@ export default function Sales() {
           expected_delivery_date: formData.expected_delivery_date || null,
           drawing_number: formData.drawing_number || null,
           advance_payment: advancePaymentData,
-          // Line items with ONLY commercial data
-          items: lineItems.map(item => ({
-            item_code: String(item.item_code || ''),
-            quantity: Number(item.quantity) || 0,
-            due_date: item.due_date || null,
-            price_per_pc: item.price_per_pc != null ? Number(item.price_per_pc) : null,
-            line_amount: item.price_per_pc != null && item.quantity != null ? Number(item.price_per_pc) * Number(item.quantity) : null,
-            drawing_number: item.drawing_number ? String(item.drawing_number) : null,
-            priority: 3
-            // NO alloy, material_size, weights, cycle_time - these are defined in Material Requirements
-          })),
+          items: commercialItems,
           total_amount: total,
-          status: "pending",
-          created_by: user?.id,
-          // Clear all manufacturing fields
-          material_rod_forging_size_mm: null,
-          gross_weight_per_pc_grams: null,
-          net_weight_per_pc_grams: null,
-          cycle_time_seconds: null
-        }])
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Insert line items (must match DB schema)
-      // Manufacturing specs (alloy, size, weights, cycle_time) are now defined in Material Requirements
-      // Sales only provides commercial data
-      const lineItemsToInsert = lineItems.map(item => {
-        const master = items.find(i => i.item_code === item.item_code);
-        return {
-          sales_order_id: newOrder.id,
+        },
+        p_lines: lineItems.map((item, index) => ({
+          ...commercialItems[index],
           line_number: item.line_number,
-          item_code: item.item_code,
-          quantity: item.quantity,
-          due_date: item.due_date,
-          drawing_number: item.drawing_number || null,
-          // Manufacturing specs are NULL - will be defined by Production in Material Requirements
-          alloy: null,
-          material_size_mm: null,
-          cycle_time_seconds: null,
-          gross_weight_per_pc_grams: null,
-          net_weight_per_pc_grams: null,
-          item_id: master?.id || null
-        };
+          item_id: items.find(i => i.item_code === item.item_code)?.id || null,
+          currency: formData.currency,
+        })),
       });
+      if (error) throw error;
+      const created = result as { so_id: string; wo_numbers: string[] };
+      toast({ description: `Sales order ${created.so_id} created. Work orders: ${created.wo_numbers.join(", ")}` });
 
-      const { data: insertedLineItems, error: lineItemsError } = await supabase
-        .from("sales_order_line_items" as any)
-        .insert(lineItemsToInsert)
-        .select('id');
-
-      if (lineItemsError) throw lineItemsError;
-
-      if (insertedLineItems && insertedLineItems.length > 0) {
-        const lineItemIds = insertedLineItems.map((li: any) => li.id);
-        const { error: approveError } = await supabase
-          .from("sales_order_line_items" as any)
-          .update({ status: 'approved' })
-          .in('id', lineItemIds);
-
-        if (approveError) {
-          toast({ variant: "destructive", description: `Sales order created but work order generation failed: ${approveError.message}` });
-        } else {
-          await supabase
-            .from("sales_orders")
-            .update({ status: 'approved' })
-            .eq('id', newOrder.id);
-          
-          toast({ description: `Sales order ${newOrder.so_id} created. Material Requirements must be defined by Production before procurement/manufacturing.` });
-        }
-      } else {
-        toast({ description: `Sales order ${newOrder.so_id} created with ${lineItems.length} line items` });
-      }
-      
       // Reset form
       setFormData({
         customer_id: "",

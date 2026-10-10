@@ -15,6 +15,13 @@
       "when": 1791616392075,
       "tag": "0001_deduplicate_triggers_and_archive_test_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791616583611,
+      "tag": "0002_atomic_sales_order_creation_and_wo_pricing",
+      "breakpoints": true
     }
   ]
 }

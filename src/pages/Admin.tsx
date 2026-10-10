@@ -12,6 +12,7 @@ import { PeopleManagement } from "@/components/admin/PeopleManagement";
 import { SupplierAccountsManagement } from "@/components/admin/SupplierAccountsManagement";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon } from "lucide-react";
+import { OrdersWithoutWorkOrders } from "@/components/admin/OrdersWithoutWorkOrders";
 
 export default function Admin() {
   const [departments, setDepartments] = useState<any[]>([]);
@@ -63,6 +64,8 @@ export default function Admin() {
               Individual user permissions can be overridden in the user edit panel.
             </AlertDescription>
           </Alert>
+
+          <OrdersWithoutWorkOrders />
 
           <Tabs defaultValue="users" className="space-y-6">
             <TabsList>

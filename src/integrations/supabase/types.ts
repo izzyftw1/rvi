@@ -7797,6 +7797,7 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           created_at: string
+          currency: string | null
           cycle_time_seconds: number | null
           drawing_number: string | null
           due_date: string
@@ -7804,10 +7805,12 @@ export type Database = {
           id: string
           item_code: string
           item_id: string | null
+          line_amount: number | null
           line_number: number
           material_size_mm: string | null
           net_weight_per_pc_grams: number | null
           notes: string | null
+          price_per_pc: number | null
           quantity: number
           rejected_at: string | null
           rejected_by: string | null
@@ -7822,6 +7825,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
+          currency?: string | null
           cycle_time_seconds?: number | null
           drawing_number?: string | null
           due_date: string
@@ -7829,10 +7833,12 @@ export type Database = {
           id?: string
           item_code: string
           item_id?: string | null
+          line_amount?: number | null
           line_number: number
           material_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           notes?: string | null
+          price_per_pc?: number | null
           quantity: number
           rejected_at?: string | null
           rejected_by?: string | null
@@ -7847,6 +7853,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
+          currency?: string | null
           cycle_time_seconds?: number | null
           drawing_number?: string | null
           due_date?: string
@@ -7854,10 +7861,12 @@ export type Database = {
           id?: string
           item_code?: string
           item_id?: string | null
+          line_amount?: number | null
           line_number?: number
           material_size_mm?: string | null
           net_weight_per_pc_grams?: number | null
           notes?: string | null
+          price_per_pc?: number | null
           quantity?: number
           rejected_at?: string | null
           rejected_by?: string | null
@@ -9623,9 +9632,11 @@ export type Database = {
           ready_for_dispatch: boolean | null
           revision: string | null
           sales_order: string | null
+          sales_order_line_id: string | null
           sampling_plan_reference: string | null
           site_id: string | null
           so_id: string | null
+          split_reason: string | null
           status: Database["public"]["Enums"]["wo_status"]
           traceability_frozen: boolean
           updated_at: string
@@ -9706,9 +9717,11 @@ export type Database = {
           ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
+          sales_order_line_id?: string | null
           sampling_plan_reference?: string | null
           site_id?: string | null
           so_id?: string | null
+          split_reason?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           traceability_frozen?: boolean
           updated_at?: string
@@ -9789,9 +9802,11 @@ export type Database = {
           ready_for_dispatch?: boolean | null
           revision?: string | null
           sales_order?: string | null
+          sales_order_line_id?: string | null
           sampling_plan_reference?: string | null
           site_id?: string | null
           so_id?: string | null
+          split_reason?: string | null
           status?: Database["public"]["Enums"]["wo_status"]
           traceability_frozen?: boolean
           updated_at?: string
@@ -9818,6 +9833,13 @@ export type Database = {
             columns: ["material_requirement_id"]
             isOneToOne: false
             referencedRelation: "material_requirements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_sales_order_line_id_fkey"
+            columns: ["sales_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "sales_order_line_items"
             referencedColumns: ["id"]
           },
           {
@@ -10868,6 +10890,10 @@ export type Database = {
           total_produced: number
         }[]
       }
+      create_sales_order: {
+        Args: { p_header: Json; p_lines: Json }
+        Returns: Json
+      }
       department_type_to_app_role: {
         Args: { _dept: Database["public"]["Enums"]["department_type"] }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -11003,6 +11029,10 @@ export type Database = {
           _user_ids: string[]
         }
         Returns: undefined
+      }
+      recover_missing_work_orders: {
+        Args: { p_line_ids: string[] }
+        Returns: Json
       }
       supplier_can_access_wo: {
         Args: { _user_id: string; _wo_id: string }
