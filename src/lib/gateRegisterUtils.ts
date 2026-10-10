@@ -10,6 +10,7 @@ export interface CreateGateEntryParams {
   material_type: 'raw_material' | 'external_process' | 'finished_goods' | 'scrap' | 'other';
   gross_weight_kg: number;
   tare_weight_kg?: number;
+  net_weight_kg?: number;
   estimated_pcs?: number | null;
   item_name?: string | null;
   rod_section_size?: string | null;
@@ -45,6 +46,8 @@ export async function createGateEntry(params: CreateGateEntryParams): Promise<{ 
       gate_entry_no: gateEntryNo,
       gross_weight_kg: params.gross_weight_kg,
       tare_weight_kg: params.tare_weight_kg ?? 0,
+      net_weight_kg: params.net_weight_kg ?? (params.gross_weight_kg - (params.tare_weight_kg ?? 0)),
+
       
       status: 'completed',
       estimated_pcs: params.estimated_pcs ?? null,
