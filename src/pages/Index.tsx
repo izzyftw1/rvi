@@ -22,6 +22,7 @@ import { CriticalTodayStrip } from "@/components/dashboard/CriticalTodayStrip";
 import { LossImpactIndicator } from "@/components/dashboard/LossImpactIndicator";
 import { ExternalProcessingDetailDrawer } from "@/components/dashboard/ExternalProcessingDetailDrawer";
 import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface DashboardSummary {
   active_orders: number;
@@ -41,6 +42,7 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [metricErrors, setMetricErrors] = useState<Record<string, string>>({});
   const [externalData, setExternalData] = useState<Record<string, ExternalProcessData>>({});
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -93,6 +95,15 @@ const Index = () => {
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).in('status', ['pending', 'in_progress']).lt('due_date', today),
       ]);
 
+      const errors: Record<string, string> = {};
+      if (activeResult.error) errors["Active Orders"] = activeResult.error.message;
+      if (completedOnTimeResult.error || totalCompletedResult.error) {
+        errors["On-Time Delivery"] = [completedOnTimeResult.error?.message, totalCompletedResult.error?.message].filter(Boolean).join("; ");
+      }
+      if (todayLogsResult.error) errors["Quality Yield"] = todayLogsResult.error.message;
+      if (blockedResult.error) errors["Blocked"] = blockedResult.error.message;
+      setMetricErrors(errors);
+
       const completedOnTime = completedOnTimeResult.count ?? 0;
       const totalCompleted = totalCompletedResult.count ?? 0;
       const onTimeRate = totalCompleted > 0 ? Math.round((completedOnTime / totalCompleted) * 100) : 100;
@@ -111,7 +122,9 @@ const Index = () => {
       });
 
       // External data
-      const { data: extSummary } = await supabase.from('external_processing_summary_vw').select('*');
+      const { data: extSummary, error: externalError } = await supabase.from('external_processing_summary_vw').select('*');
+      if (externalError) errors["External SLA"] = externalError.message;
+      setMetricErrors({ ...errors });
       if (extSummary) {
         const extData: Record<string, ExternalProcessData> = {};
         const keyMap: Record<string, string> = {
@@ -133,6 +146,8 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setMetricErrors(Object.fromEntries(["Active Orders", "On-Time Delivery", "Quality Yield", "Blocked", "External SLA"].map(metric => [metric, message])));
     }
   };
 
@@ -167,6 +182,16 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {Object.keys(metricErrors).length > 0 && (
+        <Alert variant="destructive" className="container mx-auto my-3">
+          <AlertTitle>Metrics failed to load</AlertTitle>
+          <AlertDescription className="text-xs space-y-1">
+            {Object.entries(metricErrors).map(([metric, message]) => (
+              <p key={metric}>{metric}: {message}</p>
+            ))}
+          </AlertDescription>
+        </Alert>
+      )}
       <CriticalTodayStrip />
       <ExecutiveRiskBar />
 
@@ -185,6 +210,7 @@ const Index = () => {
           externalOverdue={externalOverdueTotal}
           externalTotal={externalActiveTotal}
           blockedOrders={summary?.blocked_count ?? 0}
+          failedMetrics={Object.keys(metricErrors)}
         />
 
         {/* Actions */}
