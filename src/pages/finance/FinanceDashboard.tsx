@@ -90,31 +90,38 @@ export default function FinanceDashboard() {
     return () => { supabase.removeChannel(channel); };
   }, [filters]);
 
+  const reportQueryError = (section: string, error: { message: string } | null) => {
+    if (error) toast({ title: `${section} failed to load`, description: error.message, variant: "destructive" });
+  };
+
   const loadLockedPeriods = async () => {
-    const { data } = await supabase
+    const { data, error: dataError } = await supabase
       .from('finance_period_locks')
       .select('*')
       .eq('locked', true)
       .order('period_start', { ascending: false })
       .limit(12);
+      reportQueryError("loadLockedPeriods", dataError);
     setLockedPeriods(data || []);
   };
 
   const loadFilterOptions = async () => {
     try {
-      const { data: customersData } = await supabase
+      const { data: customersData, error: customersDataError } = await supabase
         .from("customer_master")
         .select("id, customer_name, city, state")
         .order("customer_name");
+      reportQueryError("loadFilterOptions", customersDataError);
       
       setCustomers(customersData || []);
       const uniqueRegions = [...new Set(customersData?.map(c => c.city).filter(Boolean))];
       setRegions(uniqueRegions as string[]);
 
-      const { data: itemsData } = await supabase
+      const { data: itemsData, error: itemsDataError } = await supabase
         .from("item_master")
         .select("id, item_code")
         .order("item_code");
+      reportQueryError("loadFilterOptions", itemsDataError);
       
       setItems(itemsData || []);
     } catch (error) {
@@ -154,19 +161,20 @@ export default function FinanceDashboard() {
       const quarterStart = startOfQuarter(today);
       const yearStart = startOfYear(today);
 
-      // FIX #5: Load ALL non-cancelled invoices for billed revenue
+      // FIX #5: Load ALL non-void invoices for billed revenue
       let query = supabase
         .from("invoices")
         .select("total_amount, currency, invoice_date, customer_id, status, customer_master!inner(city)")
         .not("status", "eq", "draft")
-        .not("status", "eq", "cancelled")
+        .not("status", "eq", "void")
         .gte("invoice_date", filters.dateFrom)
         .lte("invoice_date", filters.dateTo);
 
       if (filters.customerId !== 'all') query = query.eq("customer_id", filters.customerId);
       if (filters.region !== 'all') query = query.eq("customer_master.city", filters.region);
 
-      const { data } = await query;
+      const { data, error: dataError } = await query;
+      reportQueryError("loadRevenueStats", dataError);
 
       const calculateRevenue = (startDate: Date, statusFilter?: string) => {
         return data?.reduce((sum, inv) => {
@@ -184,7 +192,7 @@ export default function FinanceDashboard() {
         }, 0) || 0;
       };
 
-      // Billed = all non-draft/non-cancelled invoices
+      // Billed = all non-draft/non-void invoices
       setBilledStats({
         mtd: calculateRevenue(monthStart),
         qtd: calculateRevenue(quarterStart),
@@ -208,7 +216,7 @@ export default function FinanceDashboard() {
       let query = supabase
         .from("invoices")
         .select(`customer_id, total_amount, currency, customer_master!inner(customer_name, city)`)
-        .not("status", "eq", "cancelled")
+        .not("status", "eq", "void")
         .not("status", "eq", "draft")
         .gte("invoice_date", filters.dateFrom)
         .lte("invoice_date", filters.dateTo);
@@ -216,7 +224,8 @@ export default function FinanceDashboard() {
       if (filters.customerId !== 'all') query = query.eq("customer_id", filters.customerId);
       if (filters.region !== 'all') query = query.eq("customer_master.city", filters.region);
 
-      const { data } = await query;
+      const { data, error: dataError } = await query;
+      reportQueryError("loadTopCustomers", dataError);
 
       const customerMap = new Map();
       data?.forEach((inv: any) => {
@@ -257,7 +266,8 @@ export default function FinanceDashboard() {
       if (filters.region !== 'all') query = query.eq("sales_orders.customer_master.city", filters.region);
       if (filters.itemCode !== 'all') query = query.eq("item_code", filters.itemCode);
 
-      const { data } = await query;
+      const { data, error: dataError } = await query;
+      reportQueryError("loadTopItems", dataError);
 
       const itemMap = new Map();
       data?.forEach((item: any) => {
@@ -287,7 +297,8 @@ export default function FinanceDashboard() {
       if (filters.customerId !== 'all') query = query.eq("customer_id", filters.customerId);
       if (filters.region !== 'all') query = query.eq("customer_master.city", filters.region);
 
-      const { data } = await query;
+      const { data, error: dataError } = await query;
+      reportQueryError("loadAgingData", dataError);
 
       const today = new Date();
       const aging = { current: 0, days15: 0, days30: 0, days45: 0, days60: 0, over60: 0 };
@@ -335,7 +346,8 @@ export default function FinanceDashboard() {
       if (filters.customerId !== 'all') query = query.eq("customer_id", filters.customerId);
       if (filters.region !== 'all') query = query.eq("customer_master.city", filters.region);
 
-      const { data } = await query;
+      const { data, error: dataError } = await query;
+      reportQueryError("loadAdvanceStats", dataError);
 
       let totalAdvance = 0;
       let totalSales = 0;
@@ -362,19 +374,21 @@ export default function FinanceDashboard() {
 
   const loadCashflowData = async () => {
     try {
-      const { data: invoices } = await supabase
+      const { data: invoices, error: invoicesError } = await supabase
         .from("invoices")
         .select("expected_payment_date, balance_amount, currency")
         .in("status", ["issued", "part_paid"])
         .not("expected_payment_date", "is", null)
         .gte("expected_payment_date", filters.dateFrom)
         .lte("expected_payment_date", filters.dateTo);
+      reportQueryError("loadCashflowData", invoicesError);
 
-      const { data: payments } = await supabase
+      const { data: payments, error: paymentsError } = await supabase
         .from("payments")
         .select("payment_date, amount, invoices!inner(currency)")
         .gte("payment_date", filters.dateFrom)
         .lte("payment_date", filters.dateTo);
+      reportQueryError("loadCashflowData", paymentsError);
 
       const monthlyMap = new Map();
 
@@ -414,14 +428,15 @@ export default function FinanceDashboard() {
       let query = supabase
         .from("invoices")
         .select(`total_amount, currency, customer_master!inner(city, state)`)
-        .not("status", "eq", "cancelled")
+        .not("status", "eq", "void")
         .not("status", "eq", "draft")
         .gte("invoice_date", filters.dateFrom)
         .lte("invoice_date", filters.dateTo);
 
       if (filters.customerId !== 'all') query = query.eq("customer_id", filters.customerId);
 
-      const { data } = await query;
+      const { data, error: dataError } = await query;
+      reportQueryError("loadRegionData", dataError);
 
       const regionMap = new Map();
       data?.forEach((inv: any) => {
@@ -444,12 +459,13 @@ export default function FinanceDashboard() {
   // FIX #75: Batch profitability query instead of 36 sequential calls
   const loadProfitabilityData = async () => {
     try {
-      const { data: workOrders } = await supabase
+      const { data: workOrders, error: workOrdersError } = await supabase
         .from("work_orders")
         .select(`id, created_at, quantity, financial_snapshot`)
         .not("financial_snapshot", "is", null)
         .gte("created_at", filters.dateFrom)
         .lte("created_at", filters.dateTo);
+      reportQueryError("loadProfitabilityData", workOrdersError);
 
       const monthlyMap = new Map();
 
@@ -490,12 +506,13 @@ export default function FinanceDashboard() {
   // Drill-down handlers
   const handleRevenueDrillDown = async (period: 'mtd' | 'qtd' | 'ytd') => {
     try {
-      const { data: invoices } = await supabase
+      const { data: invoices, error: invoicesError } = await supabase
         .from("invoices")
         .select(`invoice_no, invoice_date, total_amount, status, currency, customer_master!inner(customer_name)`)
-        .not("status", "eq", "cancelled")
+        .not("status", "eq", "void")
         .not("status", "eq", "draft")
         .order("invoice_date", { ascending: false });
+      reportQueryError("handleRevenueDrillDown", invoicesError);
 
       const drillData = invoices?.map(inv => ({
         date: format(new Date(inv.invoice_date), 'yyyy-MM-dd'),
@@ -517,11 +534,12 @@ export default function FinanceDashboard() {
 
   const handleCustomerDrillDown = async (customerName: string, customerId: string) => {
     try {
-      const { data: salesOrders } = await supabase
+      const { data: salesOrders, error: salesOrdersError } = await supabase
         .from("sales_orders")
         .select(`items, created_at, total_amount`)
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false });
+      reportQueryError("handleCustomerDrillDown", salesOrdersError);
 
       const drillData: any[] = [];
       let totalOrders = 0;
@@ -552,10 +570,11 @@ export default function FinanceDashboard() {
 
   const handleItemDrillDown = async (itemCode: string) => {
     try {
-      const { data: salesOrders } = await supabase
+      const { data: salesOrders, error: salesOrdersError } = await supabase
         .from("sales_orders")
         .select(`items, created_at, customer_master!inner(customer_name)`)
         .order("created_at", { ascending: false });
+      reportQueryError("handleItemDrillDown", salesOrdersError);
 
       const drillData: any[] = [];
       let totalQuantity = 0;
@@ -589,13 +608,14 @@ export default function FinanceDashboard() {
   const handleScrapDrillDown = async () => {
     // FIX #51: Use actual rejection data instead of hardcoded 5%
     try {
-      const { data: logs } = await supabase
+      const { data: logs, error: logsError } = await supabase
         .from("daily_production_logs")
         .select("log_date, total_rejection_quantity, actual_quantity, wo_id")
         .gte("log_date", filters.dateFrom)
         .lte("log_date", filters.dateTo)
         .gt("total_rejection_quantity", 0)
         .limit(200);
+      reportQueryError("handleScrapDrillDown", logsError);
 
       const drillData = (logs || []).map(log => ({
         date: log.log_date,
@@ -625,11 +645,12 @@ export default function FinanceDashboard() {
 
   const handleRegionDrillDown = async (regionName: string) => {
     try {
-      const { data: salesOrders } = await supabase
+      const { data: salesOrders, error: salesOrdersError } = await supabase
         .from("sales_orders")
         .select(`total_amount, customer_master!inner(customer_name, city, state)`)
         .eq("customer_master.city", regionName)
         .order("created_at", { ascending: false });
+      reportQueryError("handleRegionDrillDown", salesOrdersError);
 
       const customerMap = new Map<string, any>();
       salesOrders?.forEach(order => {

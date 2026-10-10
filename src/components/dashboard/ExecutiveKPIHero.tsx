@@ -12,10 +12,11 @@ interface ExecutiveKPIHeroProps {
   externalOverdue: number;
   externalTotal: number;
   blockedOrders: number;
+  failedMetrics?: string[];
 }
 
 export const ExecutiveKPIHero = ({
-  activeOrders, onTimeRate, rejectionRate, externalOverdue, externalTotal, blockedOrders,
+  activeOrders, onTimeRate, rejectionRate, externalOverdue, externalTotal, blockedOrders, failedMetrics = [],
 }: ExecutiveKPIHeroProps) => {
   const navigate = useNavigate();
   const qualityYield = Math.max(0, 100 - rejectionRate);
@@ -61,7 +62,8 @@ export const ExecutiveKPIHero = ({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {kpis.map((kpi) => {
-        const s = statusStyles[kpi.status];
+        const failed = failedMetrics.includes(kpi.label);
+        const s = statusStyles[failed ? "neutral" : kpi.status];
         const Icon = kpi.icon;
         return (
           <button
@@ -75,12 +77,12 @@ export const ExecutiveKPIHero = ({
           >
             <Icon className={cn("h-4 w-4 mb-2", s.icon)} />
             <div className={cn("text-2xl font-bold tracking-tight leading-none", s.text)}>
-              {kpi.value}
+              {failed ? "—" : kpi.value}
             </div>
             <div className="text-[11px] text-muted-foreground mt-1.5 font-medium leading-none">
               {kpi.label}
             </div>
-            {kpi.subtext && (
+            {!failed && kpi.subtext && (
               <div className={cn(
                 "text-[10px] mt-1 leading-none",
                 kpi.status === "critical" ? "text-destructive" : "text-muted-foreground"
