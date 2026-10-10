@@ -15,6 +15,10 @@ export default function Genealogy() {
   const [loading, setLoading] = useState(false);
   const [genealogy, setGenealogy] = useState<any>(null);
 
+  const reportQueryError = (section: string, error: { message: string } | null) => {
+    if (error) toast({ title: `${section} failed to load`, description: error.message, variant: "destructive" });
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -41,27 +45,30 @@ export default function Genealogy() {
 
         // Get materials issued - simplified query
         const woId = woData.id as string;
-        const { data: materials } = await supabase
+        const { data: materials, error: materialsError } = await supabase
           .from("wo_material_issues")
-          .select("id, wo_id, lot_id, quantity_issued, issued_at")
+          .select("id, wo_id, lot_id, quantity_kg, quantity_pcs, issued_at, material_lots(lot_id, heat_no, alloy, supplier)")
           .eq("wo_id", woId);
+        reportQueryError("Material issues", materialsError);
 
         // Get QC records - note: qc_records doesn't have wo_id column, skip for now
         const qc: any[] = [];
 
         // Get cartons - simplified query to avoid type recursion
-        const { data: cartons } = await supabase
+        const { data: cartons, error: cartonsError } = await supabase
           .from("cartons")
-          .select("id, carton_id, wo_id, quantity, status, built_at")
+          .select("id, carton_id, wo_id, quantity, status, built_at, heat_nos")
           .eq("wo_id", woId);
+        reportQueryError("Cartons", cartonsError);
 
         // Get scan events
-        const { data: scans } = await supabase
+        const { data: scans, error: scansError } = await supabase
           .from("scan_events")
           .select("*")
           .eq("entity_type", "work_order")
           .eq("entity_id", searchTerm)
           .order("scan_date_time", { ascending: true });
+        reportQueryError("Scan events", scansError);
 
         setGenealogy({
           type: entityType,
@@ -75,11 +82,12 @@ export default function Genealogy() {
 
       // Try carton
       if (!entityData) {
-        const { data: cartonData } = await supabase
+        const { data: cartonData, error: cartonError } = await supabase
           .from("cartons")
           .select("*, work_orders(wo_id, customer, item_code), pallets:pallet_cartons(pallet_id, pallets(pallet_id))")
           .eq("carton_id", searchTerm)
           .maybeSingle();
+        reportQueryError("Carton search", cartonError);
         
         if (cartonData) {
           entityData = cartonData;
@@ -87,10 +95,11 @@ export default function Genealogy() {
 
           // Get work order details
           const cartonWOId = cartonData.wo_id;
-          const { data: materials } = await supabase
+          const { data: materials, error: materialsError } = await supabase
             .from("wo_material_issues")
-            .select("*, material_lots(lot_id, heat_no, alloy)")
+            .select("id, wo_id, lot_id, quantity_kg, quantity_pcs, issued_at, material_lots(lot_id, heat_no, alloy, supplier)")
             .eq("wo_id", cartonWOId);
+          reportQueryError("Material issues", materialsError);
 
           setGenealogy({
             type: entityType,
@@ -103,11 +112,12 @@ export default function Genealogy() {
 
       // Try pallet
       if (!entityData) {
-        const { data: palletData } = await supabase
+        const { data: palletData, error: palletError } = await supabase
           .from("pallets")
           .select("*, cartons:pallet_cartons(cartons(carton_id, work_orders(wo_id, customer))), shipments:shipment_pallets(shipments(*))")
           .eq("pallet_id", searchTerm)
           .maybeSingle();
+        reportQueryError("Pallet search", palletError);
         
         if (palletData) {
           entityData = palletData;
@@ -120,7 +130,7 @@ export default function Genealogy() {
         toast({ variant: "destructive", description: "No data found for this ID" });
       }
     } catch (error) {
-      toast({ variant: "destructive", description: "Search failed" });
+      toast({ variant: "destructive", description: error instanceof Error ? error.message : String(error) });
     } finally {
       setLoading(false);
     }
@@ -156,7 +166,7 @@ export default function Genealogy() {
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle>Work Order: {genealogy.entity.wo_id}</CardTitle>
+                  <CardTitle>Work Order: {genealogy.entity.wo_number}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <p><strong>Customer:</strong> {genealogy.entity.customer}</p>
@@ -178,14 +188,14 @@ export default function Genealogy() {
                     <div className="space-y-2">
                       {genealogy.materials.map((mat: any) => (
                         <div key={mat.id} className="border-l-4 border-primary pl-4">
-                          <p><strong>Lot:</strong> {mat.material_lots.lot_id}</p>
-                          <p><strong>Heat No:</strong> {mat.material_lots.heat_no}</p>
-                          <p><strong>Alloy:</strong> {mat.material_lots.alloy}</p>
-                          <p><strong>Supplier:</strong> {mat.material_lots.supplier}</p>
+                          <p><strong>Lot:</strong> {mat.material_lots?.lot_id}</p>
+                          <p><strong>Heat No:</strong> {mat.material_lots?.heat_no}</p>
+                          <p><strong>Alloy:</strong> {mat.material_lots?.alloy}</p>
+                          <p><strong>Supplier:</strong> {mat.material_lots?.supplier}</p>
                           <p><strong>Quantity:</strong> {mat.quantity_kg} kg / {mat.quantity_pcs} pcs</p>
-                          {mat.material_lots.purchase_orders?.sales_orders && (
+                          {mat.material_lots?.purchase_orders?.sales_orders && (
                             <p className="text-sm text-muted-foreground">
-                              From PO: {mat.material_lots.purchase_orders.po_id} → SO: {mat.material_lots.purchase_orders.sales_orders.so_id}
+                              From PO: {mat.material_lots?.purchase_orders?.po_id} → SO: {mat.material_lots?.purchase_orders?.sales_orders?.so_id}
                             </p>
                           )}
                         </div>
@@ -249,7 +259,7 @@ export default function Genealogy() {
                         <div key={carton.id} className="border-l-4 border-blue-500 pl-4">
                           <p><strong>Carton:</strong> {carton.carton_id}</p>
                           <p><strong>Qty:</strong> {carton.quantity} pcs / {carton.net_weight} kg</p>
-                          <p><strong>Heat Numbers:</strong> {carton.heat_nos.join(", ")}</p>
+                          <p><strong>Heat Numbers:</strong> {(carton.heat_nos || []).join(", ")}</p>
                           {carton.pallets && carton.pallets.length > 0 && (
                             <p className="text-sm">On Pallet: {carton.pallets[0].pallets.pallet_id}</p>
                           )}
@@ -273,7 +283,7 @@ export default function Genealogy() {
                   <p><strong>Customer:</strong> {genealogy.entity.work_orders.customer}</p>
                   <p><strong>Item:</strong> {genealogy.entity.work_orders.item_code}</p>
                   <p><strong>Quantity:</strong> {genealogy.entity.quantity} pcs</p>
-                  <p><strong>Heat Numbers:</strong> {genealogy.heat_numbers.join(", ")}</p>
+                  <p><strong>Heat Numbers:</strong> {(genealogy.heat_numbers || []).join(", ")}</p>
                 </CardContent>
               </Card>
 
@@ -285,9 +295,9 @@ export default function Genealogy() {
                   <CardContent>
                     {genealogy.materials.map((mat: any) => (
                       <div key={mat.id} className="mb-2">
-                        <p><strong>Lot:</strong> {mat.material_lots.lot_id}</p>
-                        <p><strong>Heat:</strong> {mat.material_lots.heat_no}</p>
-                        <p><strong>Alloy:</strong> {mat.material_lots.alloy}</p>
+                        <p><strong>Lot:</strong> {mat.material_lots?.lot_id}</p>
+                        <p><strong>Heat:</strong> {mat.material_lots?.heat_no}</p>
+                        <p><strong>Alloy:</strong> {mat.material_lots?.alloy}</p>
                       </div>
                     ))}
                   </CardContent>

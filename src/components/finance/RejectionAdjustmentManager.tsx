@@ -619,7 +619,7 @@ export function RejectionAdjustmentManager() {
                   <SelectItem value="">No NCR Link</SelectItem>
                   {ncrs.map((ncr) => (
                     <SelectItem key={ncr.id} value={ncr.id}>
-                      {ncr.ncr_number} - {ncr.item_code} ({ncr.rejected_quantity} pcs)
+                      {ncr.ncr_number} - ({ncr.quantity_affected} pcs)
                     </SelectItem>
                   ))}
                 </SelectContent>
