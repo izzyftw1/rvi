@@ -74,11 +74,14 @@ export default function SupplierPayments() {
     setLoading(true);
     try {
       // FIX #33: Load suppliers - cast to break deep type chain
-      const suppliersResult: { data: any[] | null } = await (supabase as any)
+      const suppliersResult: { data: any[] | null, error: any } = await (supabase as any)
         .from('suppliers')
-        .select('id, name')
-        .eq('is_active', true)
+        .select('id, name, pan_number, tds_rate')
         .order('name');
+
+      if (suppliersResult.error) {
+        toast.error(`Failed to load suppliers: ${suppliersResult.error.message}`);
+      }
 
       const rawSuppliers: any[] = suppliersResult.data || [];
       const typedSuppliers: Supplier[] = rawSuppliers.map((s: any) => ({

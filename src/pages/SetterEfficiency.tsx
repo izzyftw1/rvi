@@ -187,7 +187,7 @@ const SetterEfficiency = () => {
       const [programmersRes, qcRes, machinesRes, workOrdersRes] = await Promise.all([
         supabase.from("people").select("id, full_name, role").order("full_name"),
         supabase.from("people").select("id, full_name, role")
-          .or("role.ilike.%qc%,role.ilike.%quality%,role.ilike.%inspector%")
+          .eq("role", "qc_inspector")
           .order("full_name"),
         supabase.from("machines").select("id, machine_id, name").order("machine_id"),
         supabase.from("work_orders_restricted")

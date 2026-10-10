@@ -88,16 +88,18 @@ export default function CustomerReports() {
       setSalesByLocation(cityData);
 
       // Get sales by item from invoice items
-      const { data: invoiceItems } = await supabase
+      const { data: invoiceItems, error: itemsError } = await supabase
         .from("invoice_items")
         .select(`
           description,
           amount,
-          invoice_items!inner(
-            invoices!inner(invoice_date)
-          )
+          invoices!inner(invoice_date)
         `)
         .gte("invoices.invoice_date", dateFilter);
+
+      if (itemsError) {
+        console.error("Error loading invoice items:", itemsError);
+      }
 
       const itemMap = new Map<string, number>();
       invoiceItems?.forEach((item: any) => {

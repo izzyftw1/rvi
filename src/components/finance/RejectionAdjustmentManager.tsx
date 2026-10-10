@@ -128,13 +128,14 @@ export function RejectionAdjustmentManager() {
       // Load open NCRs for linking
       const { data: ncrData, error: ncrError } = await supabase
         .from("ncrs")
-        .select("id, ncr_number, rejected_quantity, item_code, disposition")
+        .select("id, ncr_number, quantity_affected, disposition, work_order_id")
         .in("status", ["OPEN", "ACTION_IN_PROGRESS"])
         .order("created_at", { ascending: false })
         .limit(50);
 
       if (ncrError) {
         console.error("Error loading NCRs:", ncrError);
+        setLoadError(prev => prev ? `${prev}; Failed to load NCRs: ${ncrError.message}` : `Failed to load NCRs: ${ncrError.message}`);
       }
 
       setNcrs(ncrData || []);
