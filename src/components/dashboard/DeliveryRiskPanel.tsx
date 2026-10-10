@@ -82,19 +82,15 @@ export const DeliveryRiskPanel = () => {
 
         const woIds = upcomingOrders?.map(o => o.id) || [];
 
-        // Fetch active batches for these work orders to determine stage
-        const { data: batchData } = await supabase
-          .from('production_batches')
-          .select('wo_id, stage_type')
-          .in('wo_id', woIds.length > 0 ? woIds : ['__none__'])
-          .is('ended_at', null);
-
-        // Fetch external movements that are pending for these work orders
-        const { data: externalMoves } = await supabase
-          .from('external_movements')
-          .select('work_order_id')
-          .in('work_order_id', woIds.length > 0 ? woIds : ['__none__'])
-          .eq('status', 'sent');
+        // Empty order lists require no dependent requests.
+        const [batchResult, externalResult] = woIds.length > 0
+          ? await Promise.all([
+              supabase.from('production_batches').select('wo_id, stage_type').in('wo_id', woIds).is('ended_at', null),
+              supabase.from('external_movements').select('work_order_id').in('work_order_id', woIds).eq('status', 'sent'),
+            ])
+          : [{ data: [] }, { data: [] }];
+        const batchData = batchResult.data;
+        const externalMoves = externalResult.data;
 
         // Build batch lookup by WO
         const batchesByWO = new Map<string, BatchRecord[]>();
