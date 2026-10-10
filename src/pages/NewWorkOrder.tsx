@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useCustomerDisplayText } from "@/components/CustomerName";
+import { WORK_ORDER_SPLIT_REASONS, isValidWorkOrderSplit, workOrderWeightGrams } from "@/lib/workOrderSplitRules";
 
 interface Customer {
   id: string;
@@ -73,6 +74,8 @@ const NewWorkOrder = () => {
     due_date: "",
     priority: "3",
     so_id: "",
+    sales_order_line_id: "",
+    split_reason: "",
     cutting_required: false,
     forging_required: false,
     // Material specs auto-populated from item master
@@ -121,7 +124,8 @@ const NewWorkOrder = () => {
       let query = supabase
         .from("sales_orders")
         .select("id, so_id, customer_id, customer, po_number, status")
-        .in("status", ["approved", "pending"])
+        .eq("status", "approved")
+        .eq("is_archived", false)
         .order("created_at", { ascending: false });
       
       if (formData.customer_id) {
@@ -134,6 +138,35 @@ const NewWorkOrder = () => {
     },
     enabled: true,
   });
+
+  const { data: soLines = [], isLoading: linesLoading, error: linesError } = useQuery({
+    queryKey: ["new-wo-so-lines", formData.so_id],
+    enabled: !!formData.so_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("sales_order_line_items")
+        .select("id, line_number, item_code, item_id, quantity, due_date, work_order_id, price_per_pc, line_amount, currency")
+        .eq("sales_order_id", formData.so_id).eq("status", "approved").order("line_number");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const selectedLine = soLines.find(line => line.id === formData.sales_order_line_id);
+  const { data: lineWOs = [], isLoading: lineWOsLoading, error: lineWOsError } = useQuery({
+    queryKey: ["new-wo-existing-line", formData.so_id, selectedLine?.id],
+    enabled: !!selectedLine,
+    queryFn: async () => {
+      if (!selectedLine) return [];
+      const { data, error } = await supabase.from("work_orders_restricted").select("id")
+        .eq("so_id", formData.so_id);
+      if (error) throw error;
+      // All sibling WOs carry a canonical line link on the base table.
+      const { data: linked, error: linkedError } = await supabase.from("work_orders")
+        .select("id").eq("sales_order_line_id", selectedLine.id);
+      if (linkedError) throw linkedError;
+      return [...(linked || []), ...(data || []).filter(wo => wo.id === selectedLine.work_order_id)];
+    },
+  });
+  const hasExistingWO = lineWOs.length > 0;
 
   // Get selected customer name
   const selectedCustomer = useMemo(() => {
@@ -218,6 +251,13 @@ const NewWorkOrder = () => {
     setLoading(true);
 
     try {
+      if (formData.so_id && (!selectedLine || linesLoading || lineWOsLoading)) {
+        throw new Error("Select an approved SO line and wait for its work orders to load");
+      }
+      if (linesError || lineWOsError) throw linesError || lineWOsError;
+      if (!isValidWorkOrderSplit(hasExistingWO, formData.split_reason)) {
+        throw new Error("Select a reason for the distinct manufacturing requirement");
+      }
       // Build material_size_mm
       let materialSizeMm = formData.material_size_mm;
       if (!materialSizeMm && formData.nominal_size_mm) {
@@ -240,14 +280,24 @@ const NewWorkOrder = () => {
         priority: parseInt(formData.priority),
         sales_order: selectedSO?.so_id || null,
         so_id: formData.so_id || null,
+        sales_order_line_id: selectedLine?.id || null,
+        split_reason: hasExistingWO ? formData.split_reason : null,
         cutting_required: formData.cutting_required,
         forging_required: formData.forging_required,
         material_size_mm: materialSizeMm || null,
-        gross_weight_per_pc: formData.gross_weight_grams ? parseFloat(formData.gross_weight_grams) / 1000 : null,
+        gross_weight_per_pc: workOrderWeightGrams(formData.gross_weight_grams),
         net_weight_per_pc: formData.net_weight_grams ? parseFloat(formData.net_weight_grams) / 1000 : null,
         cycle_time_seconds: formData.cycle_time_seconds ? parseFloat(formData.cycle_time_seconds) : null,
         financial_snapshot: {
-          alloy: formData.alloy || null,
+          currency: selectedLine?.currency || null,
+          line_item: {
+            item_code: formData.item_code,
+            quantity: parseInt(formData.quantity),
+            alloy: formData.alloy || null,
+            price_per_pc: selectedLine?.price_per_pc ?? null,
+            line_amount: selectedLine?.price_per_pc != null ? selectedLine.price_per_pc * parseInt(formData.quantity) : null,
+            currency: selectedLine?.currency || null,
+          },
           material_grade: formData.material_grade || null,
           material_form: formData.material_form || null,
           cross_section_shape: formData.cross_section_shape || null,
@@ -351,6 +401,7 @@ const NewWorkOrder = () => {
                                       ...prev, 
                                       customer_id: customer.id,
                                       so_id: "", // Reset SO when customer changes
+                                      sales_order_line_id: "", split_reason: "",
                                     }));
                                     setCustomerOpen(false);
                                   }}
@@ -430,7 +481,7 @@ const NewWorkOrder = () => {
                             <CommandItem
                               value="none"
                               onSelect={() => {
-                                setFormData(prev => ({ ...prev, so_id: "" }));
+                                setFormData(prev => ({ ...prev, so_id: "", sales_order_line_id: "", split_reason: "" }));
                                 setSOOpen(false);
                               }}
                             >
@@ -450,6 +501,7 @@ const NewWorkOrder = () => {
                                   setFormData(prev => ({ 
                                     ...prev, 
                                     so_id: so.id,
+                                    sales_order_line_id: "", split_reason: "",
                                     customer_po: so.po_number || prev.customer_po,
                                   }));
                                   setSOOpen(false);
@@ -476,6 +528,27 @@ const NewWorkOrder = () => {
                     </PopoverContent>
                   </Popover>
                 </div>
+                {formData.so_id && <div className="space-y-2">
+                  <Label>Sales order line</Label>
+                  <Select value={formData.sales_order_line_id} onValueChange={value => {
+                    const line = soLines.find(entry => entry.id === value);
+                    const item = items.find(entry => entry.id === line?.item_id || entry.item_code === line?.item_code);
+                    setFormData(prev => ({ ...prev, sales_order_line_id: value, split_reason: "", item_id: item?.id || prev.item_id, item_code: line?.item_code || prev.item_code, quantity: line?.quantity.toString() || prev.quantity, due_date: line?.due_date || prev.due_date }));
+                  }}>
+                    <SelectTrigger><SelectValue placeholder={linesLoading ? "Loading…" : "Select SO line"} /></SelectTrigger>
+                    <SelectContent>{soLines.map(line => <SelectItem key={line.id} value={line.id}>Line {line.line_number} · {line.item_code}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {linesError && <p className="text-sm text-destructive">{linesError.message}</p>}
+                </div>}
+                {selectedLine && <p className="text-sm text-muted-foreground">Same part made in several runs = Production Batches, not a new WO</p>}
+                {lineWOsError && <p className="text-sm text-destructive">{lineWOsError.message}</p>}
+                {hasExistingWO && <div className="space-y-2">
+                  <Label>Reason for another manufacturing requirement <span className="text-destructive">*</span></Label>
+                  <Select value={formData.split_reason} onValueChange={value => setFormData(prev => ({ ...prev, split_reason: value }))}>
+                    <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
+                    <SelectContent>{WORK_ORDER_SPLIT_REASONS.map(reason => <SelectItem key={reason} value={reason}>{reason}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>}
               </div>
 
               {/* Item Selection Section */}
