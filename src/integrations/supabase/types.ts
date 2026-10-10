@@ -7957,6 +7957,7 @@ export type Database = {
           gross_weight_per_pc_grams: number | null
           id: string
           incoterm: string | null
+          is_archived: boolean
           items: Json
           line_level_pricing: boolean | null
           material_rod_forging_size_mm: string | null
@@ -7988,6 +7989,7 @@ export type Database = {
           gross_weight_per_pc_grams?: number | null
           id?: string
           incoterm?: string | null
+          is_archived?: boolean
           items: Json
           line_level_pricing?: boolean | null
           material_rod_forging_size_mm?: string | null
@@ -8019,6 +8021,7 @@ export type Database = {
           gross_weight_per_pc_grams?: number | null
           id?: string
           incoterm?: string | null
+          is_archived?: boolean
           items?: Json
           line_level_pricing?: boolean | null
           material_rod_forging_size_mm?: string | null
@@ -9569,6 +9572,7 @@ export type Database = {
           gross_weight_per_pc: number | null
           hidden_financial: boolean | null
           id: string
+          is_archived: boolean
           item_code: string
           material_location: string | null
           material_requirement_id: string | null
@@ -9651,6 +9655,7 @@ export type Database = {
           gross_weight_per_pc?: number | null
           hidden_financial?: boolean | null
           id?: string
+          is_archived?: boolean
           item_code: string
           material_location?: string | null
           material_requirement_id?: string | null
@@ -9733,6 +9738,7 @@ export type Database = {
           gross_weight_per_pc?: number | null
           hidden_financial?: boolean | null
           id?: string
+          is_archived?: boolean
           item_code?: string
           material_location?: string | null
           material_requirement_id?: string | null
@@ -11204,6 +11210,7 @@ export type Database = {
         | "packing"
         | "completed"
         | "shipped"
+        | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -11528,6 +11535,7 @@ export const Constants = {
         "packing",
         "completed",
         "shipped",
+        "cancelled",
       ],
     },
   },
