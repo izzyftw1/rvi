@@ -86,7 +86,7 @@ const Index = () => {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       const [activeResult, completedOnTimeResult, totalCompletedResult, todayLogsResult, blockedResult] = await Promise.all([
-        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).not('status', 'in', '("completed","shipped","cancelled")'),
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).not('status', 'in', '("completed","shipped")'),
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sevenDaysAgo).gte('due_date', sevenDaysAgo),
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sevenDaysAgo),
         supabase.from('daily_production_logs').select('total_rejection_quantity, actual_quantity').eq('log_date', today),

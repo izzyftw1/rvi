@@ -25,11 +25,15 @@ export default function Genealogy() {
       let entityType = "";
 
       // Try work order - use simple select to avoid type recursion
-      const { data: woData } = await supabase
+      const { data: woData, error: woError } = await supabase
         .from("work_orders")
-        .select("id, wo_id, display_id, item_code, customer, quantity, so_id")
-        .eq("wo_id", searchTerm)
+        .select("id, wo_number, item_code, customer, quantity, so_id")
+        .eq("wo_number", searchTerm)
         .maybeSingle();
+
+      if (woError) {
+        toast({ title: "Work order search failed", description: woError.message, variant: "destructive" });
+      }
       
       if (woData) {
         entityData = woData;
