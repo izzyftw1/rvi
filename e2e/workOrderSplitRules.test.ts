@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isValidWorkOrderSplit, workOrderWeightGrams } from "./workOrderSplitRules";
+import { isValidWorkOrderSplit, workOrderWeightGrams } from "../src/lib/workOrderSplitRules";
 
 describe("distinct manufacturing requirements", () => {
   test("a second WO requires a reason rather than another production run", () => {
