@@ -148,50 +148,59 @@ const WorkOrderDetail = () => {
     }
   }, [wo]);
 
+  const reportLoadError = (section: string, error: { message: string } | null) => {
+    if (error) toast({ title: `${section} failed to load`, description: error.message, variant: "destructive" });
+  };
+
   const loadWorkOrderData = async () => {
     try {
       // Load WO
-      const { data: woData } = await supabase
+      const { data: woData, error: woDataError } = await supabase
         .from("work_orders_restricted")
         .select("*")
         .eq("id", id)
         .single();
+      reportLoadError("work orders restricted", woDataError);
 
       setWo(woData);
 
       // Load sales order if linked
       if (woData?.sales_order) {
-        const { data: soData } = await supabase
+        const { data: soData, error: soDataError } = await supabase
           .from("sales_orders")
           .select("*")
-          .eq("id", woData.sales_order)
-          .single();
+          .eq("so_id", woData.sales_order)
+          .maybeSingle();
+      reportLoadError("sales orders", soDataError);
         setSalesOrder(soData || null);
       }
 
       // Load routing steps
-      const { data: stepsData } = await supabase
+      const { data: stepsData, error: stepsDataError } = await supabase
         .from("routing_steps")
         .select("*, departments(name)")
         .eq("wo_id", id)
         .order("step_number");
+      reportLoadError("routing steps", stepsDataError);
 
       setRoutingSteps(stepsData || []);
 
       // Load material issues
-      const { data: issuesData } = await supabase
+      const { data: issuesData, error: issuesDataError } = await supabase
         .from("wo_material_issues")
         .select("*, material_lots(lot_id, heat_no, alloy)")
         .eq("wo_id", id);
+      reportLoadError("wo material issues", issuesDataError);
 
       setMaterialIssues(issuesData || []);
 
       // Load QC records
-      const { data: qcData } = await supabase
+      const { data: qcData, error: qcDataError } = await supabase
         .from("qc_records")
         .select("*")
         .eq("wo_id", id)
         .order("created_at", { ascending: false });
+      reportLoadError("qc records", qcDataError);
 
       setQcRecords(qcData || []);
 
@@ -202,13 +211,15 @@ const WorkOrderDetail = () => {
         .eq("wo_id", id)
         .order("check_datetime", { ascending: false });
 
+      reportLoadError("Hourly QC", hourlyErr);
       if (hourlyErr || !hourlyChecks) {
         setHourlyQcRecords([]);
       } else {
         // Enrich with machine and operator names without relying on FKs
-        const { data: allMachines } = await supabase
+        const { data: allMachines, error: allMachinesError } = await supabase
           .from("machines")
           .select("id, machine_id, name");
+      reportLoadError("machines", allMachinesError);
         const machinesMap: Record<string, { machine_id: string; name: string }> = {};
         (allMachines || []).forEach((m: any) => {
           machinesMap[m.id] = { machine_id: m.machine_id, name: m.name };
@@ -219,10 +230,11 @@ const WorkOrderDetail = () => {
         );
         let profilesMap: Record<string, { full_name: string }> = {};
         if (operatorIds.length > 0) {
-          const { data: profileRows } = await supabase
+          const { data: profileRows, error: profileRowsError } = await supabase
             .from("profiles")
             .select("id, full_name")
             .in("id", operatorIds as string[]);
+      reportLoadError("profiles", profileRowsError);
           (profileRows || []).forEach((p: any) => {
             profilesMap[p.id] = { full_name: p.full_name };
           });
@@ -238,38 +250,60 @@ const WorkOrderDetail = () => {
       }
 
       // Load scan events
-      const { data: eventsData } = await supabase
+      const { data: eventsData, error: eventsDataError } = await supabase
         .from("scan_events")
-        .select("*, profiles(full_name)")
+        .select("*")
         .eq("entity_id", woData?.wo_id)
         .order("scan_date_time", { ascending: false });
-
-      setScanEvents(eventsData || []);
+      reportLoadError("scan events", eventsDataError);
 
       // Load stage history
-      const { data: historyData } = await supabase
+      const { data: historyData, error: historyDataError } = await supabase
         .from("wo_stage_history")
-        .select("*, profiles(full_name)")
+        .select("*")
         .eq("wo_id", id)
         .order("changed_at", { ascending: false });
+      reportLoadError("wo stage history", historyDataError);
 
-      setStageHistory(historyData || []);
+      const historyUserIds = Array.from(new Set([
+        ...(eventsData || []).map(event => event.owner_id),
+        ...(historyData || []).map(event => event.changed_by),
+      ].filter((userId): userId is string => Boolean(userId))));
+      const historyNames: Record<string, { full_name: string }> = {};
+      if (historyUserIds.length > 0) {
+        const { data: historyProfiles, error: historyProfilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", historyUserIds);
+      reportLoadError("profiles", historyProfilesError);
+        (historyProfiles || []).forEach(profile => {
+          historyNames[profile.id] = { full_name: profile.full_name };
+        });
+      }
+      setScanEvents((eventsData || []).map(event => ({
+        ...event, profiles: event.owner_id ? historyNames[event.owner_id] : undefined,
+      })));
+      setStageHistory((historyData || []).map(event => ({
+        ...event, profiles: event.changed_by ? historyNames[event.changed_by] : undefined,
+      })));
 
       // Load design files
-      const { data: designData } = await supabase
+      const { data: designData, error: designDataError } = await supabase
         .from("design_files")
         .select("*")
         .eq("wo_id", id)
         .order("uploaded_at", { ascending: false });
+      reportLoadError("design files", designDataError);
 
       setDesignFiles(designData || []);
 
       // Load genealogy log (comprehensive action log)
-      const { data: genealogyData } = await supabase
+      const { data: genealogyData, error: genealogyDataError } = await supabase
         .from("wo_actions_log")
         .select("*")
         .eq("wo_id", id)
         .order("created_at", { ascending: true });
+      reportLoadError("wo actions log", genealogyDataError);
 
       // Enrich with user names
       const userIds = Array.from(
@@ -278,10 +312,11 @@ const WorkOrderDetail = () => {
       
       let usersMap: Record<string, string> = {};
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profilesError } = await supabase
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds as string[]);
+      reportLoadError("profiles", profilesError);
         
         profiles?.forEach(p => {
           usersMap[p.id] = p.full_name;
@@ -296,7 +331,7 @@ const WorkOrderDetail = () => {
       setGenealogyLog(enrichedGenealogy);
 
       // Load machine assignments
-      const { data: assignmentsData } = await supabase
+      const { data: assignmentsData, error: assignmentsDataError } = await supabase
         .from("wo_machine_assignments")
         .select(`
           *,
@@ -304,6 +339,7 @@ const WorkOrderDetail = () => {
         `)
         .eq("wo_id", id)
         .order("scheduled_start", { ascending: true });
+      reportLoadError("wo machine assignments", assignmentsDataError);
 
       setMachineAssignments(assignmentsData || []);
 
@@ -316,29 +352,32 @@ const WorkOrderDetail = () => {
       }
 
       // Load cutting records
-      const { data: cuttingData } = await supabase
+      const { data: cuttingData, error: cuttingDataError } = await supabase
         .from("cutting_records")
         .select("*")
         .eq("work_order_id", id)
         .order("created_at", { ascending: false });
+      reportLoadError("cutting records", cuttingDataError);
       
       setCuttingRecords(cuttingData || []);
 
       // Load forging records
-      const { data: forgingData } = await supabase
+      const { data: forgingData, error: forgingDataError } = await supabase
         .from("forging_records")
         .select("*")
         .eq("work_order_id", id)
         .order("created_at", { ascending: false });
+      reportLoadError("forging records", forgingDataError);
       
       setForgingRecords(forgingData || []);
 
       // Load external moves
-      const { data: movesData } = await supabase
+      const { data: movesData, error: movesDataError } = await supabase
         .from("wo_external_moves" as any)
-        .select("id, work_order_id, process, qty_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
+        .select("id, work_order_id, process, quantity_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
         .eq("work_order_id", id)
         .order("dispatch_date", { ascending: false });
+      reportLoadError("wo external moves", movesDataError);
       
       setExternalMoves(movesData || []);
 
@@ -353,10 +392,11 @@ const WorkOrderDetail = () => {
         ].filter(Boolean);
 
         if (approverIds.length > 0) {
-          const { data: profiles } = await supabase
+          const { data: profiles, error: profilesError } = await supabase
             .from('profiles')
             .select('id, full_name')
             .in('id', approverIds);
+      reportLoadError("profiles", profilesError);
 
           const approversMap: Record<string, string> = {};
           profiles?.forEach(p => {
@@ -377,6 +417,7 @@ const WorkOrderDetail = () => {
       }
     } catch (error) {
       console.error("Error loading WO data:", error);
+      toast({ title: "Work order load failed", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
     } finally {
       setLoading(false);
     }
