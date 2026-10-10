@@ -1,0 +1,9 @@
+DROP POLICY "Authenticated users can manage gate register" ON public.gate_register;
+DROP POLICY "Packing and admin can manage gate register" ON public.gate_register;
+ALTER POLICY "Authenticated users can view gate register" ON public.gate_register TO authenticated USING (public.has_any_department_type(auth.uid(), ARRAY['admin','super_admin','finance','packing','production']::text[]));
+CREATE POLICY "Gate register departments can insert" ON public.gate_register FOR INSERT TO authenticated WITH CHECK (public.has_any_department_type(auth.uid(), ARRAY['admin','super_admin','finance','packing','production']::text[]));
+CREATE POLICY "Gate register departments can update" ON public.gate_register FOR UPDATE TO authenticated USING (public.has_any_department_type(auth.uid(), ARRAY['admin','super_admin','finance','packing','production']::text[])) WITH CHECK (public.has_any_department_type(auth.uid(), ARRAY['admin','super_admin','finance','packing','production']::text[]));
+CREATE POLICY "Only admin departments can delete gate register" ON public.gate_register FOR DELETE TO authenticated USING (public.has_any_department_type(auth.uid(), ARRAY['admin','super_admin']::text[]));
+ALTER POLICY "Authorized departments can view customers" ON public.customer_master USING (public.is_admin_user(auth.uid()) OR public.has_any_department_type(auth.uid(), ARRAY['sales','packing','quality']::text[]));
+ALTER POLICY "Authorized departments can view suppliers" ON public.suppliers USING (public.is_admin_user(auth.uid()) OR public.has_any_department_type(auth.uid(), ARRAY['production','packing']::text[]));
+ALTER POLICY "Authorized ops can create receipts" ON public.raw_po_receipts WITH CHECK (public.has_any_department_type(auth.uid(), ARRAY['admin','super_admin','finance','production','packing']::text[]));
