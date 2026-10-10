@@ -156,14 +156,13 @@ const NewWorkOrder = () => {
     enabled: !!selectedLine,
     queryFn: async () => {
       if (!selectedLine) return [];
-      const { data, error } = await supabase.from("work_orders_restricted").select("id")
-        .eq("so_id", formData.so_id);
+      let query = supabase.from("work_orders").select("id").eq("is_archived", false);
+      query = selectedLine.work_order_id
+        ? query.or(`sales_order_line_id.eq.${selectedLine.id},id.eq.${selectedLine.work_order_id}`)
+        : query.eq("sales_order_line_id", selectedLine.id);
+      const { data, error } = await query;
       if (error) throw error;
-      // All sibling WOs carry a canonical line link on the base table.
-      const { data: linked, error: linkedError } = await supabase.from("work_orders")
-        .select("id").eq("sales_order_line_id", selectedLine.id);
-      if (linkedError) throw linkedError;
-      return [...(linked || []), ...(data || []).filter(wo => wo.id === selectedLine.work_order_id)];
+      return data || [];
     },
   });
   const hasExistingWO = lineWOs.length > 0;
