@@ -10860,6 +10860,10 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      cancel_raw_purchase_order: {
+        Args: { p_action?: string; p_reason: string; p_rpo_id: string }
+        Returns: Json
+      }
       check_machine_availability: {
         Args: { _end_time: string; _machine_id: string; _start_time: string }
         Returns: boolean
@@ -11030,6 +11034,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      receive_raw_material: { Args: { p_entry: Json }; Returns: Json }
       recover_missing_work_orders: {
         Args: { p_line_ids: string[] }
         Returns: Json

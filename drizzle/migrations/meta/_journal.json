@@ -22,6 +22,13 @@
       "when": 1791616583611,
       "tag": "0002_atomic_sales_order_creation_and_wo_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791617041226,
+      "tag": "0003_atomic_material_goods_in_and_purchase_actions",
+      "breakpoints": true
     }
   ]
 }

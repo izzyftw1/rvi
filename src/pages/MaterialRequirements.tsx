@@ -137,6 +137,7 @@ export default function MaterialRequirements() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadAllData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, loadAllData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, loadAllData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_po_receipts' }, loadAllData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_material_issues' }, loadAllData)
       .subscribe();
 
@@ -185,6 +186,13 @@ export default function MaterialRequirements() {
 
     if (error) throw error;
 
+    const soIds = [...new Set((data || []).flatMap(wo => wo.so_id ? [wo.so_id] : []))];
+    const soNumbers = new Map<string, string>();
+    if (soIds.length) {
+      const { data: orders, error: soError } = await supabase.from('sales_orders').select('id, so_id').in('id', soIds);
+      if (soError) throw soError;
+      orders?.forEach(order => soNumbers.set(order.id, order.so_id));
+    }
     const processed = (data || []).map(wo => {
       // Extract material info from various sources
       const financialSnapshot = wo.financial_snapshot as any;
@@ -216,7 +224,7 @@ export default function MaterialRequirements() {
         total_net_kg: ((wo.quantity || 0) * (wo.net_weight_per_pc || 0)) / 1000,
         current_stage: wo.current_stage || 'goods_in',
         so_id: wo.so_id,
-        so_display_id: null, // Will be fetched separately if needed
+        so_display_id: wo.so_id ? soNumbers.get(wo.so_id) || null : null
         priority: wo.priority || 3
       };
     });
@@ -293,7 +301,7 @@ export default function MaterialRequirements() {
   const loadRPOs = async () => {
     const { data, error } = await supabase
       .from('raw_purchase_orders')
-      .select('*')
+      .select('*, raw_po_receipts(qty_received_kg)')
       .in('status', ['pending_approval', 'approved', 'part_received']);
 
     if (error) throw error;
@@ -326,10 +334,13 @@ export default function MaterialRequirements() {
         const inventoryKg = inventoryData.get(invKey) || 0;
         
         // Find related RPO
-        const relatedRPO = rpoData.find(rpo => {
+        const relatedRPOs = rpoData.filter(rpo => {
           const rpoKey = normalizeKey(rpo.material_size_mm, rpo.alloy);
           return rpoKey === invKey;
         });
+
+        const relatedRPO = relatedRPOs[0];
+        const onOrderKg = relatedRPOs.filter(rpo => ['approved', 'part_received'].includes(rpo.status)).reduce((sum, rpo) => sum + Math.max(0, Number(rpo.qty_ordered_kg || 0) - (rpo.raw_po_receipts || []).reduce((received: number, receipt: { qty_received_kg: number }) => received + Number(receipt.qty_received_kg || 0), 0)), 0);
 
         groups.set(key, {
           key,
@@ -342,7 +353,7 @@ export default function MaterialRequirements() {
           inventory_kg: inventoryKg,
           issued_kg: 0,
           surplus_deficit_kg: inventoryKg,
-          on_order_kg: relatedRPO ? parseFloat(relatedRPO.qty_ordered_kg || 0) : 0,
+          on_order_kg: onOrderKg,
           pending_receipt_kg: 0,
           work_orders: [],
           rpo_status: relatedRPO?.status || 'none',
@@ -351,7 +362,8 @@ export default function MaterialRequirements() {
         });
       }
 
-      const group = groups.get(key)!;
+      const group = groups.get(key);
+      if (!group) return;
       group.total_required_kg += wo.total_gross_kg;
       group.total_required_pcs += wo.quantity;
       group.issued_kg += issuedData.get(wo.wo_id) || 0;
@@ -800,7 +812,7 @@ export default function MaterialRequirements() {
                           </TableBody>
                         </Table>
                         <div className="p-4 flex justify-end border-t">
-                          {group.surplus_deficit_kg < 0 && group.rpo_status === 'none' && (
+                          {group.surplus_deficit_kg < 0 && (
                             <Button onClick={() => handlePlaceOrder(group)}>
                               <ShoppingCart className="w-4 h-4 mr-2" />
                               Create RPO ({Math.abs(group.surplus_deficit_kg).toFixed(1)} kg deficit)
@@ -852,7 +864,7 @@ export default function MaterialRequirements() {
                       <TableCell>{getUrgencyBadge(group.urgency)}</TableCell>
                       <TableCell>{getStatusBadge(group.rpo_status, group.rpo_no)}</TableCell>
                       <TableCell>
-                        {group.surplus_deficit_kg < 0 && group.rpo_status === 'none' && (
+                        {group.surplus_deficit_kg < 0 && (
                           <Button size="sm" onClick={() => handlePlaceOrder(group)}>
                             <ShoppingCart className="w-3 h-3 mr-1" />Order
                           </Button>
@@ -886,13 +898,12 @@ export default function MaterialRequirements() {
             quantity: wo.quantity
           }))}
           linkedSalesOrders={selectedGroup.work_orders
-            .filter(wo => wo.so_display_id)
-            .map(wo => ({
-              so_id: wo.so_display_id!,
+            .flatMap(wo => wo.so_display_id && wo.so_id ? [{
+              so_id: wo.so_display_id,
               customer: wo.customer,
               pcs: wo.quantity,
-              id: wo.so_id!
-            }))}
+              id: wo.so_id
+            }] : [])}
           onSuccess={() => {
             loadAllData();
             toast({ title: "Success", description: "RPO created successfully" });

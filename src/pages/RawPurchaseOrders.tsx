@@ -41,7 +41,8 @@ interface RPO {
   created_at: string;
   updated_at: string;
   suppliers?: { name: string };
-  work_orders?: { wo_id: string };
+  work_orders?: { wo_number: string };
+  raw_po_receipts?: { qty_received_kg: number }[];
   sales_orders?: { so_id: string };
 }
 
@@ -93,6 +94,9 @@ export default function RawPurchaseOrders() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [detailTab, setDetailTab] = useState("overview");
   const [overstockModalOpen, setOverstockModalOpen] = useState(false);
+  const [cancelRequest, setCancelRequest] = useState<{ rpo: RPO; action: "Reject" | "Cancel" } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   // Master data for dropdowns
   const [materialGrades, setMaterialGrades] = useState<{id: string; name: string; category: string | null}[]>([]);
   const [nominalSizes, setNominalSizes] = useState<{id: string; size_value: number; display_label: string | null}[]>([]);
@@ -143,8 +147,9 @@ export default function RawPurchaseOrders() {
         .select(`
           *,
           suppliers(name),
-          work_orders(wo_id),
-          sales_orders(so_id)
+          work_orders(wo_number),
+          sales_orders(so_id),
+          raw_po_receipts(qty_received_kg)
         `)
         .order("created_at", { ascending: false });
 
@@ -269,7 +274,7 @@ export default function RawPurchaseOrders() {
   };
 
   const handleSaveEdit = async () => {
-    if (!selectedRPO) return;
+    if (!selectedRPO || selectedRPO.status !== "pending_approval") return;
 
     // Validation
     if (!editForm.supplier_id) {
@@ -302,7 +307,8 @@ export default function RawPurchaseOrders() {
           expected_delivery_date: editForm.expected_delivery_date || null,
           remarks: editForm.remarks
         })
-        .eq("id", selectedRPO.id);
+        .eq("id", selectedRPO.id)
+        .eq("status", "pending_approval");
 
       if (error) throw error;
 
@@ -312,7 +318,7 @@ export default function RawPurchaseOrders() {
       // Refresh detail view
       const { data: updated } = await supabase
         .from("raw_purchase_orders")
-        .select(`*, suppliers(name), work_orders(wo_id), sales_orders(so_id)`)
+        .select(`*, suppliers(name), work_orders(wo_number), sales_orders(so_id), raw_po_receipts(qty_received_kg)`)
         .eq("id", selectedRPO.id)
         .single();
       
@@ -325,6 +331,57 @@ export default function RawPurchaseOrders() {
       toast({ variant: "destructive", description: error.message });
     }
   };
+
+  const canCancel = (rpo: RPO) => rpo.status === "pending_approval" ||
+    (rpo.status === "approved" && !(rpo.raw_po_receipts || []).some(receipt => Number(receipt.qty_received_kg) > 0));
+
+  const requestCancellation = (rpo: RPO, action: "Reject" | "Cancel") => {
+    setCancelReason("");
+    setCancelRequest({ rpo, action });
+  };
+
+  const confirmCancellation = async () => {
+    if (!cancelRequest || !cancelReason.trim()) return;
+    setCancelling(true);
+    try {
+      const { data, error } = await supabase.rpc("cancel_raw_purchase_order" as never, {
+        p_rpo_id: cancelRequest.rpo.id,
+        p_reason: cancelReason.trim(),
+        p_action: cancelRequest.action.toLowerCase(),
+      } as never);
+      if (error) throw error;
+      if (!data) throw new Error("The purchase order was not cancelled");
+      toast({ title: `${cancelRequest.rpo.rpo_no} ${cancelRequest.action === "Reject" ? "rejected" : "cancelled"}` });
+      setCancelRequest(null);
+      setDetailView(false);
+      setSelectedRPO(null);
+      setEditMode(false);
+      loadData();
+    } catch (error: any) {
+      toast({ variant: "destructive", description: error.message });
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const cancellationDialog = (
+    <Dialog open={!!cancelRequest} onOpenChange={open => { if (!open && !cancelling) setCancelRequest(null); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{cancelRequest?.action} {cancelRequest?.rpo.rpo_no}</DialogTitle>
+          <DialogDescription>A reason is required. The order will be marked cancelled.</DialogDescription>
+        </DialogHeader>
+        <Label htmlFor="rpo-cancel-reason">Reason</Label>
+        <Textarea id="rpo-cancel-reason" value={cancelReason} onChange={event => setCancelReason(event.target.value)} disabled={cancelling} />
+        <DialogFooter>
+          <Button variant="outline" disabled={cancelling} onClick={() => setCancelRequest(null)}>Back</Button>
+          <Button variant="destructive" disabled={cancelling || !cancelReason.trim()} onClick={confirmCancellation}>
+            {cancelling ? "Saving…" : `Confirm ${cancelRequest?.action || "Cancel"}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 
   const handleReceiveMaterial = (rpo: RPO) => {
     // Navigate to Gate Register with pre-filled RPO data for raw material IN
@@ -471,6 +528,7 @@ export default function RawPurchaseOrders() {
   if (detailView && selectedRPO) {
     return (
       <div className="min-h-screen bg-background">
+        {cancellationDialog}
         <NavigationHeader 
           title={`RPO: ${selectedRPO.rpo_no}`} 
           subtitle={`Status: ${selectedRPO.status}`}
@@ -513,15 +571,21 @@ export default function RawPurchaseOrders() {
                   <CardTitle className="text-2xl">{selectedRPO.rpo_no}</CardTitle>
                   <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
                     {selectedRPO.work_orders && (
-                      <div>WO: <Badge variant="secondary">{selectedRPO.work_orders.wo_id}</Badge></div>
+                      <div>WO: <Badge variant="secondary">{selectedRPO.work_orders.wo_number}</Badge></div>
                     )}
                     {selectedRPO.sales_orders && (
                       <div>SO: <Badge variant="outline">{selectedRPO.sales_orders.so_id}</Badge></div>
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  {selectedRPO.status === "draft" && !editMode && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedRPO.status === "pending_approval" && (
+                    <Button variant="destructive" onClick={() => requestCancellation(selectedRPO, "Reject")}>Reject</Button>
+                  )}
+                  {canCancel(selectedRPO) && (
+                    <Button variant="outline" onClick={() => requestCancellation(selectedRPO, "Cancel")}>Cancel Order</Button>
+                  )}
+                  {selectedRPO.status === "pending_approval" && !editMode && (
                     <Button variant="outline" onClick={() => setEditMode(true)}>
                       <Edit className="mr-2 h-4 w-4" />
                       Edit
@@ -533,7 +597,7 @@ export default function RawPurchaseOrders() {
                       Approve
                     </Button>
                   )}
-                  {selectedRPO.status === "approved" && (
+                  {["approved", "part_received"].includes(selectedRPO.status) && (
                     <Button onClick={() => handleReceiveMaterial(selectedRPO)}>
                       <PackagePlus className="mr-2 h-4 w-4" />
                       Receive Material
@@ -617,12 +681,12 @@ export default function RawPurchaseOrders() {
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Rate per kg</Label>
-                  {editMode && selectedRPO.status === "draft" ? (
+                  {editMode && selectedRPO.status === "pending_approval" ? (
                     <Input type="number" step="0.01" value={editForm.rate_per_kg} onChange={(e) => setEditForm({...editForm, rate_per_kg: e.target.value})} />
                   ) : (
                     <>
                       <p className="font-medium">₹{selectedRPO.rate_per_kg.toFixed(2)}</p>
-                      {selectedRPO.status !== "draft" && <p className="text-xs text-muted-foreground">🔒 Frozen on approval</p>}
+                      {selectedRPO.status !== "pending_approval" && <p className="text-xs text-muted-foreground">🔒 Frozen on approval</p>}
                     </>
                   )}
                 </div>
@@ -691,7 +755,7 @@ export default function RawPurchaseOrders() {
                   </div>
                 </div>
 
-                {selectedRPO.status !== "draft" && (
+                {selectedRPO.status !== "pending_approval" && (
                   <div className="flex gap-4">
                     <div className="flex flex-col items-center">
                       <div className="w-3 h-3 rounded-full bg-amber-600"></div>
@@ -805,6 +869,7 @@ export default function RawPurchaseOrders() {
 
   return (
     <div className="min-h-screen bg-background">
+      {cancellationDialog}
       <NavigationHeader title="Raw Purchase Orders" subtitle="Manage raw material procurement" />
       
       <div className="p-6 pb-0 flex justify-between items-start">
@@ -875,7 +940,7 @@ export default function RawPurchaseOrders() {
                           <TableCell className="font-medium">{rpo.rpo_no}</TableCell>
                           <TableCell>
                             {rpo.work_orders ? (
-                              <Badge variant="secondary">{rpo.work_orders.wo_id}</Badge>
+                              <Badge variant="secondary">{rpo.work_orders.wo_number}</Badge>
                             ) : (
                               <span className="text-muted-foreground">-</span>
                             )}
@@ -894,16 +959,27 @@ export default function RawPurchaseOrders() {
                             }
                           </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-wrap gap-2">
+                            {rpo.status === "pending_approval" && (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => { setSelectedRPO(rpo); populateEditForm(rpo); setEditMode(true); setDetailView(true); }}>Edit</Button>
+                                <Button size="sm" variant="destructive" onClick={() => requestCancellation(rpo, "Reject")}>Reject</Button>
+                              </>
+                            )}
+                            {canCancel(rpo) && (
+                              <Button size="sm" variant="outline" onClick={() => requestCancellation(rpo, "Cancel")}>Cancel</Button>
+                            )}
                             {selectedTab === "pending_approval" && (
                               <Button size="sm" onClick={() => handleApprove(rpo)}>
                                 Approve
                               </Button>
                             )}
-                            {selectedTab === "approved" && (
+                            {["approved", "part_received"].includes(selectedTab) && (
                               <Button size="sm" variant="outline" onClick={() => handleReceiveMaterial(rpo)}>
                                 Receive
                               </Button>
                             )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))

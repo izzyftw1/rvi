@@ -44,7 +44,6 @@ import ItemMaster from "./pages/ItemMaster";
 import NotFound from "./pages/NotFound";
 import DepartmentDetail from "./pages/DepartmentDetail";
 import MaterialRequirements from "./pages/MaterialRequirements";
-import MaterialRequirementsDashboard from "./pages/MaterialRequirementsDashboard";
 import StageDetailView from "./pages/StageDetailView";
 import ExternalProcessingDetail from "./pages/ExternalProcessingDetail";
 import Admin from "./pages/Admin";
@@ -155,7 +154,6 @@ const App = () => (
           <Route path="/dispatch-qc-report/:woId" element={<DispatchQCReport />} />
           <Route path="/department/:departmentName" element={<DepartmentDetail />} />
           <Route path="/material-requirements" element={<MaterialRequirements />} />
-          <Route path="/material-requirements-v2" element={<MaterialRequirementsDashboard />} />
           <Route path="/stage/:stage" element={<StageDetailView />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/factory-calendar" element={<FactoryCalendar />} />
