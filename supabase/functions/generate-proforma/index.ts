@@ -2,12 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
 import autoTable from "https://esm.sh/jspdf-autotable@3.8.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 
 interface ProformaGenerateRequest {
   salesOrderId: string;
@@ -638,35 +633,44 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     
     // Create service role client for privileged operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Get authorization header to verify user
     const authHeader = req.headers.get('Authorization');
-    console.log('Auth header present:', !!authHeader);
-    
-    let userId: string | null = null;
-    
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      
-      if (authError) {
-        console.log('Auth error:', authError.message);
-      }
-      
-      if (user) {
-        userId = user.id;
-        console.log('User authenticated:', userId);
-      }
+    if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized: No authorization header' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-    
-    if (!userId) {
-      console.log('No authenticated user, proceeding with service role only');
+
+    const authClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized: Invalid or expired token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles').select('department_id').eq('id', user.id).single();
+    if (profileError || !profile?.department_id) {
+      return new Response(JSON.stringify({ success: false, error: 'Forbidden: No department assigned' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: department, error: departmentError } = await supabase
+      .from('departments').select('type').eq('id', profile.department_id).single();
+    if (departmentError || !department || !['sales', 'admin', 'super_admin', 'finance'].includes(department.type)) {
+      return new Response(JSON.stringify({ success: false, error: 'Forbidden: Insufficient permissions to generate proformas' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const userId = user.id;
     
     const { salesOrderId }: ProformaGenerateRequest = await req.json();
     
