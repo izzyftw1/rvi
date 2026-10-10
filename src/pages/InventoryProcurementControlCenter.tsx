@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Package, ShoppingCart, TrendingUp, TrendingDown, DollarSign, Download, Calendar } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MaterialDetailModal } from "@/components/inventory/MaterialDetailModal";
-import { RawMaterialPOModal } from "@/components/procurement/RawMaterialPOModal";
+import { RPOModal } from "@/components/RPOModal";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface InventoryStatus {
@@ -538,17 +538,17 @@ export default function InventoryProcurementControlCenter() {
 
       {/* PO Creation Modal */}
       {selectedMaterial && (
-        <RawMaterialPOModal
+        <RPOModal
           open={poModalOpen}
           onClose={() => {
             setPoModalOpen(false);
             setSelectedMaterial(null);
           }}
-          materialGrade={selectedMaterial.material_name}
-          alloy={selectedMaterial.alloy}
+          materialSize={`${selectedMaterial.size_mm} ${selectedMaterial.shape_type}`}
+          suggestedAlloy={selectedMaterial.alloy}
           deficitKg={selectedMaterial.deficit_kg}
-          linkedWOIds={[]}
-          linkedRequirementIds={[]}
+          linkedWorkOrders={[]}
+          linkedSalesOrders={[]}
           onSuccess={() => {
             loadInventoryStatus();
             toast({

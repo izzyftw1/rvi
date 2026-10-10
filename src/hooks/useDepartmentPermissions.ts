@@ -51,7 +51,6 @@ export const routeToPageKey: Record<string, string> = {
   '/purchase/dashboard': 'purchase-dashboard',
   '/procurement': 'purchase-dashboard',
   '/material-requirements': 'material-requirements',
-  '/material-requirements-v2': 'material-requirements',
   '/inventory-procurement': 'material-requirements',
   '/reports/rpo-inventory': 'material-requirements',
   

@@ -248,26 +248,6 @@ export function RPOModal({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      // Check for existing pending RPO for same WO/Size/Alloy
-      const { data: existingRPO } = await supabase
-        .from("raw_purchase_orders")
-        .select("rpo_no, status")
-        .eq("wo_id", selectedWO)
-        .eq("material_size_mm", materialSizeMM)
-        .eq("alloy", alloy)
-        .eq("status", "pending_approval")
-        .maybeSingle();
-
-      if (existingRPO) {
-        const proceed = window.confirm(
-          `An RPO (${existingRPO.rpo_no}) already exists for this WO/Size/Alloy with status "${existingRPO.status}". Do you want to create another one?`
-        );
-        if (!proceed) {
-          setLoading(false);
-          return;
-        }
-      }
-
       // Generate RPO number
       const { data: rpoNumber, error: rpoError } = await supabase.rpc("generate_rpo_number");
       if (rpoError) throw rpoError;
