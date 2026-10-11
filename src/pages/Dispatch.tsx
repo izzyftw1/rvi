@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Package, Send, CheckCircle2, History, AlertTriangle, Info, Layers, FileCheck, FileDown, ExternalLink, Search, Filter, X, ChevronDown, ChevronUp, Users, Box, Calendar, Building2 } from "lucide-react";
+import { Truck, Package, Send, CheckCircle2, History, AlertTriangle, Info, Layers, FileCheck, FileDown, ExternalLink, Search, Filter, X, ChevronDown, ChevronUp, Users, Box, Calendar, Building2, Pencil } from "lucide-react";
 import { PageHeader, PageContainer } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +21,10 @@ import { loadItemMeta, loadPackaging } from "@/lib/exportDocData";
 import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib/packingListGenerator";
 import { ExportDocumentDialog, ExportDocumentFields } from "@/components/dispatch/ExportDocumentDialog";
 import { createGateEntry } from "@/lib/gateRegisterUtils";
+import {
+  ShipmentDetailsDialog, ShipmentDetails, EMPTY_SHIPMENT_DETAILS, SHIPMENT_DETAIL_COLUMNS,
+  paymentTermsFromSO, detailsFromRow, detailsToPayload,
+} from "@/components/dispatch/ShipmentDetailsDialog";
 
 /**
  * CANONICAL DISPATCH WORKFLOW
@@ -63,7 +67,7 @@ interface CustomerGroup {
   totalCartons: number;
 }
 
-interface Shipment {
+interface Shipment extends Partial<Record<keyof ShipmentDetails, string | null>> {
   id: string;
   ship_id: string;
   customer: string | null;
@@ -98,6 +102,12 @@ export default function Dispatch() {
   // Shipment form
   const [shipmentId, setShipmentId] = useState("");
   const [remarks, setRemarks] = useState("");
+
+  // Shipping details dialog (create + edit)
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsMode, setDetailsMode] = useState<"create" | "edit">("create");
+  const [detailsInitial, setDetailsInitial] = useState<ShipmentDetails>(EMPTY_SHIPMENT_DETAILS);
+  const [editingShipment, setEditingShipment] = useState<Shipment | null>(null);
   
   // Recent shipments
   const [recentShipments, setRecentShipments] = useState<Shipment[]>([]);
@@ -195,7 +205,7 @@ export default function Dispatch() {
     const { data } = await supabase
       .from("shipments")
       .select(`
-        id, ship_id, customer, status, created_at,
+        id, ship_id, customer, status, created_at, ${SHIPMENT_DETAIL_COLUMNS},
         dispatches(id, quantity, remarks, carton_id, cartons(carton_id, quantity), work_orders(display_id))
       `)
       .order("created_at", { ascending: false })
@@ -413,12 +423,39 @@ export default function Dispatch() {
       return;
     }
 
+    // Pre-fill shipping details from the sales order + finance settings, then ask for the rest
+    try {
+      const woIds = [...new Set(selectedBatches.map(b => b.wo_id).filter(Boolean))];
+      const [{ data: wos }, { data: fs }] = await Promise.all([
+        (supabase.from("work_orders") as any).select("so_id, sales_orders:so_id(advance_percent, payment_terms_days, customer_master:customer_id(country, city))").in("id", woIds),
+        (supabase.from("finance_settings") as any).select("*").limit(1).maybeSingle(),
+      ]);
+      const so = (wos || []).map((w: any) => w.sales_orders).find(Boolean) as any;
+      const cust = so?.customer_master;
+      setDetailsInitial({
+        ...EMPTY_SHIPMENT_DETAILS,
+        port_of_loading: (fs as any)?.default_port_of_loading || "NHAVA SHEVA (JNPT)",
+        final_destination: [cust?.city, cust?.country].filter(Boolean).join(", "),
+        payment_terms: paymentTermsFromSO(so),
+      });
+    } catch {
+      setDetailsInitial(EMPTY_SHIPMENT_DETAILS);
+    }
+    setDetailsMode("create");
+    setEditingShipment(null);
+    setDetailsOpen(true);
+  };
+
+  const confirmCreateShipment = async (details: ShipmentDetails) => {
+    const summary = getSelectedSummary();
+    const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
     setLoading(true);
     try {
-      // One transaction: shipment + dispatches + dispatch notes + carton status (DB numbering, SO/customer link, unit rate)
+      // One transaction: shipment + shipping details + dispatches + dispatch notes + carton status + gate OUT
       const { data: rpcData, error: rpcError } = await supabase.rpc("create_dispatch_shipment" as any, {
         p_items: selectedBatches.map(b => ({ carton_id: b.id, quantity: getDispatchQty(b) })),
         p_remarks: remarks || null,
+        p_shipping: detailsToPayload(details),
       } as any);
       if (rpcError) throw rpcError;
       const result = rpcData as any;
@@ -440,6 +477,7 @@ export default function Dispatch() {
       });
 
       // Reset form
+      setDetailsOpen(false);
       setSelectedBatchIds(new Set());
       setDispatchQuantities({});
       setShipmentId("");
@@ -448,6 +486,34 @@ export default function Dispatch() {
       loadRecentShipments();
     } catch (error: any) {
       toast({ variant: "destructive", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditDetails = (shipment: Shipment) => {
+    setEditingShipment(shipment);
+    setDetailsInitial(detailsFromRow(shipment));
+    setDetailsMode("edit");
+    setDetailsOpen(true);
+  };
+
+  const saveShipmentDetails = async (shipment: Shipment, details: Partial<ShipmentDetails>) => {
+    const payload = detailsToPayload({ ...detailsFromRow(shipment), ...details } as ShipmentDetails);
+    const { error } = await supabase.from("shipments").update(payload as any).eq("id", shipment.id);
+    if (error) throw error;
+  };
+
+  const confirmEditDetails = async (details: ShipmentDetails) => {
+    if (!editingShipment) return;
+    setLoading(true);
+    try {
+      await saveShipmentDetails(editingShipment, details);
+      toast({ title: "Shipping details saved", description: `${editingShipment.ship_id} updated. Linked invoices and gate pass updated too.` });
+      setDetailsOpen(false);
+      loadRecentShipments();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Could not save shipping details", description: error.message });
     } finally {
       setLoading(false);
     }
@@ -705,6 +771,17 @@ export default function Dispatch() {
     if (!pendingShipment || !pendingExportData) return;
 
     const { dispatchNotes, customer, totalCartons, totalGrossWeight, totalNetWeight } = pendingExportData;
+    // Keep the shipment as the single record of shipping details
+    try {
+      await saveShipmentDetails(pendingShipment, {
+        port_of_loading: fields.portOfLoading, port_of_discharge: fields.portOfDischarge, vessel_flight: fields.vesselFlightNo,
+        payment_terms: fields.termsOfPayment, bl_no: fields.blNumber, bl_date: fields.blDate, kind_of_packages: fields.kindOfPackages,
+        pre_carriage_by: fields.preCarriageBy, place_of_receipt: fields.placeOfReceipt,
+      });
+      loadRecentShipments();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Shipping details not saved", description: e.message });
+    }
     const currency = (dispatchNotes[0] as any)?.currency || pendingExportData.currency;
     await prepareLetterhead();
 
@@ -741,7 +818,7 @@ export default function Dispatch() {
           city: customer?.city || '',
           state: customer?.state || '',
           postalCode: customer?.pincode || '',
-          country: customer?.country || 'USA',
+          country: customer?.country || '',
           contact: customer?.primary_contact_name || '',
           email: customer?.primary_contact_email || '',
           gst: customer?.gst_number || '',
@@ -754,7 +831,7 @@ export default function Dispatch() {
         preCarriageBy: fields.preCarriageBy || 'N.A.',
         placeOfReceipt: fields.placeOfReceipt || 'N.A.',
         countryOfOrigin: 'INDIA',
-        finalDestination: customer?.country || 'USA',
+        finalDestination: pendingShipment.final_destination || customer?.country || '',
         portOfLoading: fields.portOfLoading,
         vesselFlightNo: fields.vesselFlightNo,
         portOfDischarge: fields.portOfDischarge,
@@ -794,13 +871,13 @@ export default function Dispatch() {
           city: customer?.city || '',
           state: customer?.state || '',
           postalCode: customer?.pincode || '',
-          country: customer?.country || 'USA',
+          country: customer?.country || '',
         },
         notifyPartySameAsConsignee: true,
         portOfLoading: fields.portOfLoading,
         vesselFlightNo: fields.vesselFlightNo,
         portOfDischarge: fields.portOfDischarge,
-        finalDestination: customer?.country || 'USA',
+        finalDestination: pendingShipment.final_destination || customer?.country || '',
         termsOfPayment: fields.termsOfPayment,
         blNumber: fields.blNumber || undefined,
         blDate: fields.blDate ? new Date(fields.blDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
@@ -1095,7 +1172,7 @@ export default function Dispatch() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground w-40">Shipment no. assigned on dispatch</span>
+                    <span className="text-xs text-muted-foreground w-40">Shipment no. assigned on dispatch. Vehicle, LR and port details asked next.</span>
                     <Input
                       placeholder="Remarks"
                       value={remarks}
@@ -1173,6 +1250,16 @@ export default function Dispatch() {
                                 <TooltipContent>Download Packing List</TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" onClick={() => openEditDetails(shipment)}>
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Shipping details (vehicle, LR, BL, ports)</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <Link to={`/logistics?shipment=${shipment.id}`}>
                               <Button variant="ghost" size="sm">
                                 <ExternalLink className="h-4 w-4" />
@@ -1201,7 +1288,30 @@ export default function Dispatch() {
           totalNetWeight: pendingExportData.totalNetWeight,
           totalQuantity: pendingExportData.dispatchNotes?.reduce((sum, dn) => sum + (dn.dispatched_qty || 0), 0),
         } : undefined}
+        existingData={pendingShipment ? {
+          portOfLoading: pendingShipment.port_of_loading || '',
+          portOfDischarge: pendingShipment.port_of_discharge || '',
+          vesselFlightNo: pendingShipment.vessel_flight || '',
+          termsOfPayment: pendingShipment.payment_terms || '',
+          blNumber: pendingShipment.bl_no || '',
+          blDate: pendingShipment.bl_date || '',
+          kindOfPackages: pendingShipment.kind_of_packages || '',
+          preCarriageBy: pendingShipment.pre_carriage_by || '',
+          placeOfReceipt: pendingShipment.place_of_receipt || '',
+        } : undefined}
         onConfirm={handleExportDialogConfirm}
+      />
+
+      <ShipmentDetailsDialog
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        mode={detailsMode}
+        initial={detailsInitial}
+        saving={loading}
+        summary={detailsMode === "create"
+          ? `${summary.count} carton(s), ${summary.totalQty.toLocaleString()} pcs${summary.customers[0] ? ` for ${summary.customers[0]}` : ""}`
+          : editingShipment?.ship_id}
+        onConfirm={detailsMode === "create" ? confirmCreateShipment : confirmEditDetails}
       />
     </PageContainer>
   );
