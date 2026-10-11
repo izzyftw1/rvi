@@ -9,6 +9,8 @@ import { Eye, Trash2, Plus, X, UserPlus, PackagePlus, Download, AlertCircle, Inf
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { SOAdvancePanel, ChaseAdvanceBadge, useAdvanceStatuses } from "@/components/finance/SOAdvancePanel";
+import { formatMoney } from "@/lib/currencyTotals";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AddCustomerDialog } from "@/components/sales/AddCustomerDialog";
 import { AddItemDialog } from "@/components/sales/AddItemDialog";
@@ -891,20 +893,23 @@ export default function Sales() {
                   <TableHead>Customer</TableHead>
                   <TableHead className="text-center">Items</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Advance due</TableHead>
+                  <TableHead className="text-right">Received</TableHead>
+                  <TableHead className="text-right">Outstanding</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       Loading...
                     </TableCell>
                   </TableRow>
                 )}
                 {!loading && salesOrders.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       No sales orders found
                     </TableCell>
                   </TableRow>
@@ -1075,6 +1080,7 @@ export default function Sales() {
                     </div>
                   </div>
                 </div>
+                <SOAdvancePanel soId={selectedOrder.id} onChanged={reloadAdvances} />
               </div>
             )}
           </DialogContent>
