@@ -9,12 +9,14 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { format, differenceInDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { addToTotals, formatTotals, formatMoney, CurrencyTotals } from "@/lib/currencyTotals";
 
 interface AgingBucket {
   label: string;
   min: number;
   max: number;
   amount: number;
+  totals: CurrencyTotals;
   count: number;
   invoices: any[];
 }
@@ -24,7 +26,7 @@ export default function Aging() {
   const [loading, setLoading] = useState(true);
   const [buckets, setBuckets] = useState<AgingBucket[]>([]);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
-  const [totalOutstanding, setTotalOutstanding] = useState(0);
+  const [totalOutstanding, setTotalOutstanding] = useState<CurrencyTotals>({});
 
   useEffect(() => {
     loadAgingData();
@@ -50,26 +52,27 @@ export default function Aging() {
       
       // Define aging buckets
       const agingBuckets: AgingBucket[] = [
-        { label: "Current", min: -999999, max: 0, amount: 0, count: 0, invoices: [] },
-        { label: "1-15 days", min: 1, max: 15, amount: 0, count: 0, invoices: [] },
-        { label: "16-30 days", min: 16, max: 30, amount: 0, count: 0, invoices: [] },
-        { label: "31-45 days", min: 31, max: 45, amount: 0, count: 0, invoices: [] },
-        { label: "46-60 days", min: 46, max: 60, amount: 0, count: 0, invoices: [] },
-        { label: ">60 days", min: 61, max: 999999, amount: 0, count: 0, invoices: [] }
+        { label: "Current", min: -999999, max: 0, amount: 0, totals: {}, count: 0, invoices: [] },
+        { label: "1-15 days", min: 1, max: 15, amount: 0, totals: {}, count: 0, invoices: [] },
+        { label: "16-30 days", min: 16, max: 30, amount: 0, totals: {}, count: 0, invoices: [] },
+        { label: "31-45 days", min: 31, max: 45, amount: 0, totals: {}, count: 0, invoices: [] },
+        { label: "46-60 days", min: 46, max: 60, amount: 0, totals: {}, count: 0, invoices: [] },
+        { label: ">60 days", min: 61, max: 999999, amount: 0, totals: {}, count: 0, invoices: [] }
       ];
 
-      let total = 0;
+      const total: CurrencyTotals = {};
 
       (data || []).forEach((invoice: any) => {
         const dueDate = new Date(invoice.due_date);
         const daysOverdue = differenceInDays(today, dueDate);
         const balance = Number(invoice.balance_amount) || 0;
-        total += balance;
+        addToTotals(total, invoice.currency, balance);
 
         // Find the appropriate bucket
         for (const bucket of agingBuckets) {
           if (daysOverdue >= bucket.min && daysOverdue <= bucket.max) {
             bucket.amount += balance;
+            addToTotals(bucket.totals, invoice.currency, balance);
             bucket.count += 1;
             bucket.invoices.push({
               ...invoice,
@@ -141,7 +144,7 @@ export default function Aging() {
               </CardTitle>
               <div className="text-right">
                 <div className="text-sm text-muted-foreground">Total Outstanding</div>
-                <div className="text-2xl font-bold">₹{totalOutstanding.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{formatTotals(totalOutstanding)}</div>
               </div>
             </div>
           </CardHeader>
@@ -161,8 +164,8 @@ export default function Aging() {
                       } hover:opacity-80`}
                     >
                       <div className="text-sm font-medium">{bucket.label}</div>
-                      <div className="text-2xl font-bold mt-1">
-                        ₹{bucket.amount.toLocaleString()}
+                      <div className="text-lg font-bold mt-1">
+                        {formatTotals(bucket.totals)}
                       </div>
                       <div className="text-xs mt-1 opacity-70">
                         {bucket.count} invoice{bucket.count !== 1 ? "s" : ""}
@@ -176,8 +179,8 @@ export default function Aging() {
                   <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg mb-6">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <span className="text-sm text-amber-700">
-                      {buckets.filter(b => b.label !== "Current").reduce((sum, b) => sum + b.count, 0)} invoices are overdue totaling ₹
-                      {buckets.filter(b => b.label !== "Current").reduce((sum, b) => sum + b.amount, 0).toLocaleString()}
+                      {buckets.filter(b => b.label !== "Current").reduce((sum, b) => sum + b.count, 0)} invoices are overdue totaling{" "}
+                      {formatTotals(buckets.filter(b => b.label !== "Current").reduce((acc, b) => { Object.entries(b.totals).forEach(([c, v]) => addToTotals(acc, c, v)); return acc; }, {} as CurrencyTotals))}
                     </span>
                   </div>
                 )}
@@ -217,7 +220,7 @@ export default function Aging() {
                                   )}
                                 </TableCell>
                                 <TableCell className="text-right font-medium">
-                                  {inv.currency} {Number(inv.balance_amount).toLocaleString()}
+                                  {formatMoney(Number(inv.balance_amount), inv.currency)}
                                 </TableCell>
                                 <TableCell>
                                   <Button variant="ghost" size="sm" asChild>
@@ -245,16 +248,17 @@ export default function Aging() {
                     <CardContent>
                       {(() => {
                         // Aggregate by customer
-                        const customerMap = new Map<string, { name: string; total: number; overdue: number; count: number }>();
+                        const customerMap = new Map<string, { name: string; total: number; totals: CurrencyTotals; overdue: CurrencyTotals; count: number }>();
                         
                         buckets.forEach(bucket => {
                           bucket.invoices.forEach((inv: any) => {
                             const customerName = inv.customer_master?.customer_name || "Unknown";
-                            const existing = customerMap.get(customerName) || { name: customerName, total: 0, overdue: 0, count: 0 };
+                            const existing = customerMap.get(customerName) || { name: customerName, total: 0, totals: {}, overdue: {}, count: 0 };
                             existing.total += Number(inv.balance_amount) || 0;
+                            addToTotals(existing.totals, inv.currency, Number(inv.balance_amount) || 0);
                             existing.count += 1;
                             if (inv.days_overdue > 0) {
-                              existing.overdue += Number(inv.balance_amount) || 0;
+                              addToTotals(existing.overdue, inv.currency, Number(inv.balance_amount) || 0);
                             }
                             customerMap.set(customerName, existing);
                           });
@@ -286,11 +290,11 @@ export default function Aging() {
                                   <TableRow key={customer.name}>
                                     <TableCell className="font-medium">{customer.name}</TableCell>
                                     <TableCell className="text-right">{customer.count}</TableCell>
-                                    <TableCell className="text-right">₹{customer.total.toLocaleString()}</TableCell>
+                                    <TableCell className="text-right">{formatTotals(customer.totals)}</TableCell>
                                     <TableCell className="text-right">
-                                      {customer.overdue > 0 ? (
+                                      {Object.keys(customer.overdue).length > 0 ? (
                                         <span className="text-destructive font-medium">
-                                          ₹{customer.overdue.toLocaleString()}
+                                          {formatTotals(customer.overdue)}
                                         </span>
                                       ) : (
                                         <span className="text-muted-foreground">—</span>
