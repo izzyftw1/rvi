@@ -260,7 +260,7 @@ const addLetterhead = (_doc: jsPDF): number => contentTop();
   doc.text('SIGNATURE & DATE:', 15, yPos);
   yPos += 10;
   
-  doc.text('For, R V INDUSTRIES', 15, yPos);
+  doc.text(`For ${getCompany().name}`, 15, yPos);
   yPos += 12;
   
   doc.setFont('helvetica', 'normal');
