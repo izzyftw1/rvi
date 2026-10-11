@@ -50,6 +50,13 @@
       "when": 1791702752350,
       "tag": "0006_dispatch_qc_after_packing_and_atomic_dispatch",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791703237352,
+      "tag": "0007_finance_invoicing_gst_advances",
+      "breakpoints": true
     }
   ]
 }

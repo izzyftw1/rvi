@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
-import { formatINR } from "@/lib/currencyConverter";
+import { sumByCurrency, formatTotals, formatMoney } from "@/lib/currencyTotals";
+const catTotals = (items: any[]) => sumByCurrency(items, (i: any) => i.currency, (i: any) => Number(i.amount || 0));
 
 interface OutstandingCategory {
   key: string;
@@ -237,7 +238,7 @@ export function OutstandingBreakdownWidget({ dateFrom, dateTo }: OutstandingBrea
   }, [invoices, disputedInvoices, pendingAdjustments, pendingTds]);
 
   const totalOutstanding = useMemo(() => {
-    return categories.reduce((sum, cat) => sum + cat.amount, 0);
+    return catTotals(categories.flatMap(cat => cat.items));
   }, [categories]);
 
   const handleCategoryClick = (category: OutstandingCategory) => {
@@ -276,7 +277,7 @@ export function OutstandingBreakdownWidget({ dateFrom, dateTo }: OutstandingBrea
             </div>
             <div className="text-right">
               <p className="text-xs text-muted-foreground">Total Outstanding</p>
-              <p className="text-2xl font-bold">{formatINR(totalOutstanding)}</p>
+              <p className="text-2xl font-bold">{formatTotals(totalOutstanding)}</p>
             </div>
           </div>
         </CardHeader>
@@ -300,7 +301,7 @@ export function OutstandingBreakdownWidget({ dateFrom, dateTo }: OutstandingBrea
                   )}
                 </div>
                 <p className="text-sm font-medium">{category.label}</p>
-                <p className="text-xl font-bold mt-1">{formatINR(category.amount)}</p>
+                <p className="text-xl font-bold mt-1">{formatTotals(catTotals(category.items))}</p>
                 <p className="text-xs opacity-70 mt-1">
                   {category.count} {category.count === 1 ? "item" : "items"}
                 </p>
@@ -340,7 +341,7 @@ export function OutstandingBreakdownWidget({ dateFrom, dateTo }: OutstandingBrea
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <span className="text-sm text-muted-foreground">{selectedCategory.description}</span>
-                  <span className="font-bold">{formatINR(selectedCategory.amount)}</span>
+                  <span className="font-bold">{formatTotals(catTotals(selectedCategory.items))}</span>
                 </div>
 
                 <Table>
@@ -373,7 +374,7 @@ export function OutstandingBreakdownWidget({ dateFrom, dateTo }: OutstandingBrea
                           <Badge variant="secondary">{item.status}</Badge>
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {item.currency} {item.amount.toLocaleString()}
+                          {formatMoney(item.amount, item.currency)}
                         </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" asChild>

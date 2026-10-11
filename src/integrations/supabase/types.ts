@@ -679,6 +679,8 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           receipt_date: string
           receipt_no: string
+          receipt_type: string
+          sales_order_id: string | null
           status: string
           total_amount: number
           unallocated_amount: number | null
@@ -698,6 +700,8 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           receipt_date?: string
           receipt_no: string
+          receipt_type?: string
+          sales_order_id?: string | null
           status?: string
           total_amount: number
           unallocated_amount?: number | null
@@ -717,6 +721,8 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           receipt_date?: string
           receipt_no?: string
+          receipt_type?: string
+          sales_order_id?: string | null
           status?: string
           total_amount?: number
           unallocated_amount?: number | null
@@ -736,6 +742,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "customer_master"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_receipts_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_receipts_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
           },
         ]
       }
@@ -1362,6 +1382,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_notes_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
           },
           {
             foreignKeyName: "dispatch_notes_shipment_id_fkey"
@@ -2213,6 +2240,36 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_settings: {
+        Row: {
+          company_state: string
+          default_gst_percent: number
+          domestic_invoice_prefix: string
+          export_invoice_prefix: string
+          id: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          company_state?: string
+          default_gst_percent?: number
+          domestic_invoice_prefix?: string
+          export_invoice_prefix?: string
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          company_state?: string
+          default_gst_percent?: number
+          domestic_invoice_prefix?: string
+          export_invoice_prefix?: string
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       finished_goods_inventory: {
         Row: {
           created_at: string
@@ -3059,6 +3116,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "inventory_reservations_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
+          {
             foreignKeyName: "inventory_reservations_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
@@ -3320,6 +3384,7 @@ export type Database = {
       invoices: {
         Row: {
           adjustment_amount: number
+          advance_applied: number
           balance_amount: number
           cgst_amount: number | null
           closed_adjusted_at: string | null
@@ -3382,6 +3447,7 @@ export type Database = {
         }
         Insert: {
           adjustment_amount?: number
+          advance_applied?: number
           balance_amount?: number
           cgst_amount?: number | null
           closed_adjusted_at?: string | null
@@ -3444,6 +3510,7 @@ export type Database = {
         }
         Update: {
           adjustment_amount?: number
+          advance_applied?: number
           balance_amount?: number
           cgst_amount?: number | null
           closed_adjusted_at?: string | null
@@ -3539,6 +3606,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
           },
           {
             foreignKeyName: "invoices_wo_id_fkey"
@@ -4905,6 +4979,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "material_requirements_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
+          {
             foreignKeyName: "material_requirements_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
@@ -5013,6 +5094,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_requirements_v2_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
           },
           {
             foreignKeyName: "material_requirements_v2_wo_id_fkey"
@@ -6748,6 +6836,13 @@ export type Database = {
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "proforma_invoices_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
         ]
       }
       purchase_orders: {
@@ -6815,6 +6910,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
           },
         ]
       }
@@ -7562,6 +7664,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "raw_purchase_orders_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
+          {
             foreignKeyName: "raw_purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
@@ -7870,6 +7979,13 @@ export type Database = {
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sales_bookings_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
         ]
       }
       sales_order_items: {
@@ -7936,6 +8052,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sales_order_items_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
+          {
             foreignKeyName: "sales_order_items_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
@@ -7976,6 +8099,7 @@ export type Database = {
           drawing_number: string | null
           due_date: string
           gross_weight_per_pc_grams: number | null
+          gst_percent: number | null
           id: string
           item_code: string
           item_id: string | null
@@ -8004,6 +8128,7 @@ export type Database = {
           drawing_number?: string | null
           due_date: string
           gross_weight_per_pc_grams?: number | null
+          gst_percent?: number | null
           id?: string
           item_code: string
           item_id?: string | null
@@ -8032,6 +8157,7 @@ export type Database = {
           drawing_number?: string | null
           due_date?: string
           gross_weight_per_pc_grams?: number | null
+          gst_percent?: number | null
           id?: string
           item_code?: string
           item_id?: string | null
@@ -8094,6 +8220,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sales_order_line_items_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
+          {
             foreignKeyName: "sales_order_line_items_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
@@ -8125,8 +8258,10 @@ export type Database = {
       }
       sales_orders: {
         Row: {
+          advance_due_amount: number | null
           advance_payment: Json | null
           advance_payment_received: boolean | null
+          advance_percent: number | null
           approved_at: string | null
           approved_by: string | null
           created_at: string | null
@@ -8138,6 +8273,7 @@ export type Database = {
           drawing_number: string | null
           expected_delivery_date: string | null
           gross_weight_per_pc_grams: number | null
+          gst_percent: number | null
           id: string
           incoterm: string | null
           is_archived: boolean
@@ -8157,8 +8293,10 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          advance_due_amount?: number | null
           advance_payment?: Json | null
           advance_payment_received?: boolean | null
+          advance_percent?: number | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
@@ -8170,6 +8308,7 @@ export type Database = {
           drawing_number?: string | null
           expected_delivery_date?: string | null
           gross_weight_per_pc_grams?: number | null
+          gst_percent?: number | null
           id?: string
           incoterm?: string | null
           is_archived?: boolean
@@ -8189,8 +8328,10 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          advance_due_amount?: number | null
           advance_payment?: Json | null
           advance_payment_received?: boolean | null
+          advance_percent?: number | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
@@ -8202,6 +8343,7 @@ export type Database = {
           drawing_number?: string | null
           expected_delivery_date?: string | null
           gross_weight_per_pc_grams?: number | null
+          gst_percent?: number | null
           id?: string
           incoterm?: string | null
           is_archived?: boolean
@@ -8649,6 +8791,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sales_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipments_so_id_fkey"
+            columns: ["so_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
           },
           {
             foreignKeyName: "shipments_wo_id_fkey"
@@ -10210,6 +10359,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "dispatch_notes_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "so_advance_status"
+            referencedColumns: ["sales_order_id"]
+          },
+          {
             foreignKeyName: "dispatch_notes_shipment_id_fkey"
             columns: ["shipment_id"]
             isOneToOne: false
@@ -10640,6 +10796,36 @@ export type Database = {
             columns: ["wo_id"]
             isOneToOne: false
             referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      so_advance_status: {
+        Row: {
+          advance_applied: number | null
+          advance_due: number | null
+          advance_outstanding: number | null
+          advance_percent: number | null
+          advance_received: number | null
+          advance_unapplied: number | null
+          currency: string | null
+          customer_id: string | null
+          sales_order_id: string | null
+          so_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "sales_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
             referencedColumns: ["id"]
           },
         ]
@@ -11089,6 +11275,14 @@ export type Database = {
         Args: { p_items: Json; p_remarks?: string }
         Returns: Json
       }
+      create_invoice_from_shipment: {
+        Args: {
+          p_advances?: Json
+          p_qty_overrides?: Json
+          p_shipment_id: string
+        }
+        Returns: Json
+      }
       create_sales_order: {
         Args: { p_header: Json; p_lines: Json }
         Returns: Json
@@ -11222,6 +11416,7 @@ export type Database = {
         Args: { p_doc_type: string; p_prefix: string }
         Returns: string
       }
+      next_invoice_number: { Args: { p_export: boolean }; Returns: string }
       notify_users: {
         Args: {
           _entity_id?: string
@@ -11234,6 +11429,17 @@ export type Database = {
         Returns: undefined
       }
       receive_raw_material: { Args: { p_entry: Json }; Returns: Json }
+      record_advance_receipt: {
+        Args: {
+          p_amount: number
+          p_currency: string
+          p_date: string
+          p_method?: Database["public"]["Enums"]["payment_method"]
+          p_reference: string
+          p_so_id: string
+        }
+        Returns: Json
+      }
       record_dispatch_qc: {
         Args: {
           p_carton_ids: string[]

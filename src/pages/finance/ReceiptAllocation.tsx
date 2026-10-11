@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
+import { sumByCurrency, formatTotals } from "@/lib/currencyTotals";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -235,6 +236,7 @@ export default function ReceiptAllocation() {
       .from("invoices")
       .select("id, invoice_no, customer_id, invoice_date, due_date, total_amount, paid_amount, balance_amount, currency, status")
       .eq("customer_id", receipt.customer_id)
+      .eq("currency", receipt.currency || "INR")
       .gt("balance_amount", 0)
       .order("due_date", { ascending: true });
 
@@ -263,8 +265,8 @@ export default function ReceiptAllocation() {
   const updateAllocationAmount = (invoiceId: string, amount: number) => {
     setCustomerInvoices(prev => prev.map(inv => {
       if (inv.id === invoiceId) {
-        const maxAmount = inv.balance_amount;
-        return { ...inv, allocate_amount: Math.min(amount, maxAmount) };
+        const maxAmount = Math.max(0, inv.balance_amount);
+        return { ...inv, allocate_amount: Math.max(0, Math.min(amount, maxAmount)) };
       }
       return inv;
     }));
@@ -355,8 +357,8 @@ export default function ReceiptAllocation() {
   const pendingReceipts = receipts.filter(r => r.status === "pending" || r.status === "partially_allocated");
   const completedReceipts = receipts.filter(r => r.status === "fully_allocated");
 
-  const totalUnallocated = pendingReceipts.reduce((sum, r) => sum + r.unallocated_amount, 0);
-  const totalOutstanding = invoices.reduce((sum, inv) => sum + inv.balance_amount, 0);
+  const totalUnallocated = sumByCurrency(pendingReceipts, r => r.currency, r => r.unallocated_amount);
+  const totalOutstanding = sumByCurrency(invoices, inv => inv.currency, inv => Math.max(0, inv.balance_amount));
 
   return (
     <div className="min-h-screen bg-background">
@@ -389,7 +391,7 @@ export default function ReceiptAllocation() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">${totalUnallocated.toLocaleString()}</div>
+              <div className="text-3xl font-bold">{formatTotals(totalUnallocated)}</div>
               <p className="text-sm text-muted-foreground">Ready to allocate</p>
             </CardContent>
           </Card>
@@ -403,7 +405,7 @@ export default function ReceiptAllocation() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{invoices.length}</div>
-              <p className="text-sm text-muted-foreground">${totalOutstanding.toLocaleString()} pending</p>
+              <p className="text-sm text-muted-foreground">{formatTotals(totalOutstanding)} pending</p>
             </CardContent>
           </Card>
 
