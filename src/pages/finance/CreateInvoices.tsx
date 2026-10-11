@@ -8,34 +8,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Package, Truck, FileText, AlertTriangle, CheckCircle2, Edit2, ShieldAlert } from "lucide-react";
+import { Loader2, Truck, FileText, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useActionPermission } from "@/hooks/useActionPermission";
-import { generateCommercialInvoicePDF, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
-import { format } from "date-fns";
+
 interface DispatchNoteItem {
   id: string;
   dispatch_note_no: string;
   work_order_id: string;
   sales_order_id: string | null;
-  shipment_id: string | null;
-  dispatch_id: string | null;
   item_code: string;
-  item_description: string | null;
-  so_ordered_qty: number | null;
+  wo_number: string | null;
   packed_qty: number;
   dispatched_qty: number;
-  rejected_qty: number | null;
-  dispatch_date: string;
   unit_rate: number | null;
   currency: string | null;
-  invoiced: boolean;
-  invoice_id: string | null;
-  // Override fields
-  override_qty?: number;
-  override_reason?: string;
+  gst_percent: number;
+}
+
+interface AdvanceInfo {
+  so_id: string;
+  so_number: string;
+  received: number;
+  unapplied: number;
 }
 
 interface InvoiceableShipment {
@@ -43,30 +39,22 @@ interface InvoiceableShipment {
   ship_id: string;
   customer: string;
   customer_id: string | null;
-  so_id: string | null;
-  so_number: string | null;
+  so_numbers: string[];
   ship_date: string;
   status: string;
   total_dispatched_qty: number;
   total_packed_qty: number;
-  total_so_qty: number;
-  qty_mismatch: boolean;
   dispatch_notes: DispatchNoteItem[];
   currency: string;
-  payment_terms_days: number;
-  already_invoiced: boolean;
-  // Export fields
   is_export: boolean;
-  customer_address?: string;
-  customer_contact?: string;
-  customer_email?: string;
-  customer_gst?: string;
-  incoterm?: string;
-  po_number?: string;
-  po_date?: string;
-  total_gross_weight?: number;
-  total_net_weight?: number;
+  gst_label: string;
+  already_invoiced: boolean;
+  invoice_nos: string[];
+  blocker: string | null;
+  advances: AdvanceInfo[];
 }
+
+const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 
 export default function CreateInvoices() {
   const [shipments, setShipments] = useState<InvoiceableShipment[]>([]);
@@ -75,545 +63,298 @@ export default function CreateInvoices() {
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState("ready");
   const [qtyOverrides, setQtyOverrides] = useState<Record<string, number>>({});
-  const { canPerform, loading: roleLoading } = useActionPermission();
-  
-  // Only finance_admin or admin can override invoice quantities
-  const canOverrideQty = canPerform('create_invoice');
+  const [advanceDeductions, setAdvanceDeductions] = useState<Record<string, number>>({});
+  const { canPerform } = useActionPermission();
+  const canOverrideQty = canPerform("create_invoice");
 
-  useEffect(() => {
-    loadInvoiceableShipments();
-  }, []);
+  useEffect(() => { loadInvoiceableShipments(); }, []);
 
   const loadInvoiceableShipments = async () => {
+    setLoading(true);
     try {
-      // Get all shipments with dispatch_notes (source of truth for invoicing)
-      const { data: shipmentsData, error: shipError } = await supabase
-        .from("shipments")
-        .select("id, ship_id, customer, so_id, ship_date, status")
-        .in("status", ["delivered", "in_transit", "shipped", "dispatched"])
-        .order("ship_date", { ascending: false });
-
+      const [{ data: shipmentsData, error: shipError }, { data: settings }] = await Promise.all([
+        supabase.from("shipments").select("id, ship_id, customer, ship_date, status")
+          .in("status", ["delivered", "in_transit", "shipped", "dispatched"])
+          .order("ship_date", { ascending: false }),
+        supabase.from("finance_settings").select("company_state, default_gst_percent").maybeSingle(),
+      ]);
       if (shipError) throw shipError;
+      const companyState = (settings?.company_state || "Gujarat").trim().toLowerCase();
+      const defaultGst = Number(settings?.default_gst_percent ?? 18);
 
-      // Get sales orders for customer info including export fields
-      const soIds = (shipmentsData || []).map(s => s.so_id).filter(Boolean);
-      const { data: salesOrdersData } = soIds.length > 0 
-        ? await supabase
-            .from("sales_orders")
-            .select("id, so_id, customer_id, currency, payment_terms_days, incoterm, po_number, po_date, items")
-            .in("id", soIds)
-        : { data: [] };
+      const shipIds = (shipmentsData || []).map(s => s.id);
+      const { data: notes, error: nErr } = await supabase
+        .from("dispatch_notes")
+        .select("id, dispatch_note_no, work_order_id, sales_order_id, shipment_id, item_code, packed_qty, dispatched_qty, unit_rate, currency, invoiced, invoice_id")
+        .in("shipment_id", shipIds.length ? shipIds : [EMPTY_UUID]);
+      if (nErr) throw nErr;
 
-      // Get customer info including export details
-      const customerIds = (salesOrdersData || []).map(so => so.customer_id).filter(Boolean);
-      const { data: customersData } = customerIds.length > 0
-        ? await supabase
-            .from("customer_master")
-            .select("id, customer_name, payment_terms_days, is_export_customer, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, primary_contact_phone, gst_number")
-            .in("id", customerIds)
-        : { data: [] };
+      const woIds = [...new Set((notes || []).map(n => n.work_order_id))];
+      const { data: wos } = await supabase.from("work_orders_restricted")
+        .select("id, wo_number, so_id, customer_id, sales_order_line_id")
+        .in("id", woIds.length ? woIds : [EMPTY_UUID]);
+      const woMap = new Map<string, any>((wos || []).map((w: any) => [w.id, w]));
 
-      const salesOrderMap: Record<string, any> = {};
-      (salesOrdersData || []).forEach((so: any) => {
-        salesOrderMap[so.id] = so;
-      });
+      const soIds = [...new Set((notes || []).map(n => n.sales_order_id || woMap.get(n.work_order_id)?.so_id).filter(Boolean))] as string[];
+      const lineIds = [...new Set((wos || []).map((w: any) => w.sales_order_line_id).filter(Boolean))] as string[];
+      const invIds = [...new Set((notes || []).map(n => n.invoice_id).filter(Boolean))] as string[];
+      const [{ data: sos }, { data: lines }, { data: advs }, { data: invs }] = await Promise.all([
+        supabase.from("sales_orders").select("id, so_id, customer_id, currency, gst_percent").in("id", soIds.length ? soIds : [EMPTY_UUID]),
+        supabase.from("sales_order_line_items").select("id, gst_percent").in("id", lineIds.length ? lineIds : [EMPTY_UUID]),
+        supabase.from("so_advance_status").select("sales_order_id, so_id, advance_received, advance_unapplied").in("sales_order_id", soIds.length ? soIds : [EMPTY_UUID]),
+        supabase.from("invoices").select("id, invoice_no").in("id", invIds.length ? invIds : [EMPTY_UUID]),
+      ]);
+      const soMap = new Map<string, any>((sos || []).map((s: any) => [s.id, s]));
+      const lineMap = new Map<string, any>((lines || []).map((l: any) => [l.id, l]));
+      const advMap = new Map<string, any>((advs || []).map((a: any) => [a.sales_order_id, a]));
+      const invMap = new Map<string, string>((invs || []).map((i: any) => [i.id, i.invoice_no]));
 
-      const customerMap: Record<string, any> = {};
-      (customersData || []).forEach((c: any) => {
-        customerMap[c.id] = c;
-      });
+      const custIds = [...new Set([
+        ...(sos || []).map((s: any) => s.customer_id),
+        ...(wos || []).map((w: any) => w.customer_id),
+      ].filter(Boolean))] as string[];
+      const { data: customers } = await supabase.from("customer_master")
+        .select("id, customer_name, is_export_customer, state, country")
+        .in("id", custIds.length ? custIds : [EMPTY_UUID]);
+      const custMap = new Map<string, any>((customers || []).map((c: any) => [c.id, c]));
 
-      // Get existing invoices to check which shipments are already invoiced
-      const { data: existingInvoices } = await supabase
-        .from("invoices")
-        .select("shipment_id, so_id");
+      const result: InvoiceableShipment[] = [];
+      for (const s of shipmentsData || []) {
+        const all = (notes || []).filter(n => n.shipment_id === s.id);
+        if (all.length === 0) continue;
+        const open = all.filter(n => !n.invoiced);
+        const invoiced = open.length === 0;
+        const useNotes = invoiced ? all : open;
 
-      const invoicedShipmentIds = new Set(existingInvoices?.filter(i => i.shipment_id).map(i => i.shipment_id));
+        const custSet = new Set<string>();
+        const soSet = new Set<string>();
+        let missingCustomer = false;
+        const items: DispatchNoteItem[] = useNotes.map(n => {
+          const wo = woMap.get(n.work_order_id);
+          const soId = n.sales_order_id || wo?.so_id || null;
+          const so = soId ? soMap.get(soId) : null;
+          const custId = so?.customer_id || wo?.customer_id || null;
+          if (custId && custMap.has(custId)) custSet.add(custId); else missingCustomer = true;
+          if (soId) soSet.add(soId);
+          const line = wo?.sales_order_line_id ? lineMap.get(wo.sales_order_line_id) : null;
+          return {
+            id: n.id, dispatch_note_no: n.dispatch_note_no, work_order_id: n.work_order_id, sales_order_id: soId,
+            item_code: n.item_code, wo_number: wo?.wo_number || null,
+            packed_qty: n.packed_qty || 0, dispatched_qty: n.dispatched_qty || 0,
+            unit_rate: n.unit_rate, currency: n.currency || so?.currency || null,
+            gst_percent: Number(line?.gst_percent ?? so?.gst_percent ?? defaultGst),
+          };
+        });
+        const customer = custSet.size === 1 ? custMap.get([...custSet][0]) : null;
+        const isExport = !!customer && (customer.is_export_customer === true ||
+          (!!customer.country && customer.country.trim().toLowerCase() !== "india"));
+        const sameState = !!customer && (customer.state || "").trim().toLowerCase() === companyState;
+        const currencies = new Set(items.map(i => i.currency || "INR"));
 
-      // Process each shipment using dispatch_notes as source of truth
-      const processedShipments: InvoiceableShipment[] = [];
-
-      for (const shipment of shipmentsData || []) {
-        // Get dispatch_notes for this shipment (SOURCE OF TRUTH FOR INVOICING)
-        const { data: dispatchNotesData } = await supabase
-          .from("dispatch_notes")
-          .select("*")
-          .eq("shipment_id", shipment.id)
-          .eq("invoiced", false);
-
-        if (!dispatchNotesData || dispatchNotesData.length === 0) continue;
-
-        // Calculate totals from dispatch notes
-        let totalDispatchedQty = 0;
-        let totalPackedQty = 0;
-        let totalSoQty = 0;
-        let totalGrossWeight = 0;
-        let totalNetWeight = 0;
-        const dispatchNotes: DispatchNoteItem[] = [];
-
-        for (const note of dispatchNotesData) {
-          totalDispatchedQty += note.dispatched_qty || 0;
-          totalPackedQty += note.packed_qty || 0;
-          totalSoQty += note.so_ordered_qty || 0;
-          totalGrossWeight += note.gross_weight_kg || 0;
-          totalNetWeight += note.net_weight_kg || 0;
-
-          dispatchNotes.push({
-            id: note.id,
-            dispatch_note_no: note.dispatch_note_no,
-            work_order_id: note.work_order_id,
-            sales_order_id: note.sales_order_id,
-            shipment_id: note.shipment_id,
-            dispatch_id: note.dispatch_id,
-            item_code: note.item_code,
-            item_description: note.item_description,
-            so_ordered_qty: note.so_ordered_qty,
-            packed_qty: note.packed_qty,
-            dispatched_qty: note.dispatched_qty,
-            rejected_qty: note.rejected_qty,
-            dispatch_date: note.dispatch_date,
-            unit_rate: note.unit_rate,
-            currency: note.currency,
-            invoiced: note.invoiced,
-            invoice_id: note.invoice_id,
-          });
+        let blocker: string | null = null;
+        if (!invoiced) {
+          if (missingCustomer || !customer) blocker = custSet.size > 1 ? "Shipment spans more than one customer" : "Missing customer: link the work order to a sales order with a customer";
+          else if (currencies.size > 1) blocker = "Mixed currencies on one shipment";
+          else {
+            const noPrice = items.filter(i => !i.unit_rate || Number(i.unit_rate) <= 0);
+            if (noPrice.length) blocker = `Missing price on ${[...new Set(noPrice.map(i => i.wo_number || i.item_code))].join(", ")}`;
+          }
         }
 
-        const salesOrder = shipment.so_id ? salesOrderMap[shipment.so_id] : null;
-        const customer = salesOrder?.customer_id ? customerMap[salesOrder.customer_id] : null;
-        
-        // Determine if export customer
-        const isExport = customer?.is_export_customer === true || customer?.country !== 'India';
-        
-        // Build customer address
-        const customerAddress = [
-          customer?.address_line_1,
-          customer?.city,
-          customer?.state,
-          customer?.pincode,
-          customer?.country
-        ].filter(Boolean).join(', ');
-
-        processedShipments.push({
-          id: shipment.id,
-          ship_id: shipment.ship_id,
-          customer: customer?.customer_name || shipment.customer,
-          customer_id: salesOrder?.customer_id || null,
-          so_id: shipment.so_id,
-          so_number: salesOrder?.so_id || null,
-          ship_date: shipment.ship_date,
-          status: shipment.status || "unknown",
-          total_dispatched_qty: totalDispatchedQty,
-          total_packed_qty: totalPackedQty,
-          total_so_qty: totalSoQty,
-          qty_mismatch: totalDispatchedQty !== totalPackedQty,
-          dispatch_notes: dispatchNotes,
-          currency: dispatchNotes[0]?.currency || salesOrder?.currency || "USD",
-          payment_terms_days: customer?.payment_terms_days || salesOrder?.payment_terms_days || 30,
-          already_invoiced: invoicedShipmentIds.has(shipment.id),
-          // Export fields
+        result.push({
+          id: s.id, ship_id: s.ship_id,
+          customer: customer?.customer_name || s.customer,
+          customer_id: customer?.id || null,
+          so_numbers: [...soSet].map(id => soMap.get(id)?.so_id).filter(Boolean),
+          ship_date: s.ship_date, status: s.status || "unknown",
+          total_dispatched_qty: items.reduce((a, i) => a + i.dispatched_qty, 0),
+          total_packed_qty: items.reduce((a, i) => a + i.packed_qty, 0),
+          dispatch_notes: items,
+          currency: [...currencies][0] || "INR",
           is_export: isExport,
-          customer_address: customerAddress,
-          customer_contact: customer?.primary_contact_name,
-          customer_email: customer?.primary_contact_email,
-          customer_gst: customer?.gst_number,
-          incoterm: salesOrder?.incoterm,
-          po_number: salesOrder?.po_number,
-          po_date: salesOrder?.po_date,
-          total_gross_weight: totalGrossWeight,
-          total_net_weight: totalNetWeight,
+          gst_label: !customer ? "—" : isExport ? "Export (0%)" : sameState ? "CGST+SGST" : "IGST",
+          already_invoiced: invoiced,
+          invoice_nos: [...new Set(all.map(n => n.invoice_id && invMap.get(n.invoice_id)).filter(Boolean))] as string[],
+          blocker,
+          advances: [...soSet].map(id => advMap.get(id)).filter((a: any) => a && Number(a.advance_received) > 0).map((a: any) => ({
+            so_id: a.sales_order_id, so_number: a.so_id, received: Number(a.advance_received), unapplied: Number(a.advance_unapplied),
+          })),
         });
       }
-
-      setShipments(processedShipments);
+      setShipments(result);
     } catch (error: any) {
-      toast.error("Failed to load shipments");
-      console.error(error);
+      toast.error("Failed to load shipments: " + (error.message || error));
     } finally {
       setLoading(false);
     }
   };
 
-  const readyShipments = shipments.filter(s => !s.already_invoiced && !s.qty_mismatch);
-  const mismatchShipments = shipments.filter(s => !s.already_invoiced && s.qty_mismatch);
+  const readyShipments = shipments.filter(s => !s.already_invoiced && !s.blocker);
+  const blockedShipments = shipments.filter(s => !s.already_invoiced && s.blocker);
   const invoicedShipments = shipments.filter(s => s.already_invoiced);
 
   const toggleSelection = (id: string) => {
-    const shipment = shipments.find(s => s.id === id);
-    if (shipment?.qty_mismatch) {
-      toast.error("Cannot invoice: Dispatched qty ≠ Packed qty");
-      return;
-    }
-    if (shipment?.already_invoiced) {
-      toast.error("This shipment has already been invoiced");
-      return;
-    }
-
-    const newSelected = new Set(selected);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelected(newSelected);
+    const s = shipments.find(x => x.id === id);
+    if (s?.blocker) { toast.error(s.blocker); return; }
+    if (s?.already_invoiced) { toast.error("This shipment has already been invoiced"); return; }
+    const next = new Set(selected);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setSelected(next);
   };
 
   const toggleAll = () => {
-    if (selected.size === readyShipments.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(readyShipments.map(s => s.id)));
-    }
+    setSelected(selected.size === readyShipments.length ? new Set() : new Set(readyShipments.map(s => s.id)));
   };
 
-  const calculateShipmentTotal = (shipment: InvoiceableShipment) => {
-    return shipment.dispatch_notes.reduce((sum, note) => {
-      const qty = qtyOverrides[note.id] ?? note.dispatched_qty;
-      return sum + (qty * (note.unit_rate || 0));
+  const calculateSubtotal = (s: InvoiceableShipment) =>
+    s.dispatch_notes.reduce((sum, n) => sum + (qtyOverrides[n.id] ?? n.dispatched_qty) * (Number(n.unit_rate) || 0), 0);
+
+  const calculateTotal = (s: InvoiceableShipment) =>
+    s.dispatch_notes.reduce((sum, n) => {
+      const amt = (qtyOverrides[n.id] ?? n.dispatched_qty) * (Number(n.unit_rate) || 0);
+      return sum + amt + (s.is_export ? 0 : (amt * n.gst_percent) / 100);
     }, 0);
-  };
 
   const createInvoices = async () => {
-    if (selected.size === 0) {
-      toast.error("Please select at least one shipment");
-      return;
-    }
-
+    if (selected.size === 0) { toast.error("Please select at least one shipment"); return; }
     setCreating(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const selectedShipments = shipments.filter(s => selected.has(s.id));
-
-      for (const shipment of selectedShipments) {
-        // Validate: dispatched qty must equal packed qty
-        if (shipment.qty_mismatch) {
-          toast.error(`Shipment ${shipment.ship_id}: Dispatch qty ≠ Packed qty. Cannot invoice.`);
-          continue;
-        }
-
-        // Generate invoice number
-        const { data: existingInvoices } = await supabase
-          .from("invoices")
-          .select("invoice_no")
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        let invoiceNo = "INV-001";
-        if (existingInvoices && existingInvoices.length > 0) {
-          const lastNo = existingInvoices[0].invoice_no;
-          const numMatch = lastNo.match(/INV-(\d+)/);
-          if (numMatch) {
-            const lastNum = parseInt(numMatch[1]);
-            invoiceNo = `INV-${String(lastNum + 1).padStart(3, "0")}`;
-          }
-        }
-
-        const invoiceDate = new Date();
-        // Due date calculated from DISPATCH date (not invoice date) per payment terms
-        const dispatchDate = new Date(shipment.ship_date);
-        const dueDate = new Date(dispatchDate);
-        dueDate.setDate(dueDate.getDate() + shipment.payment_terms_days);
-
-        // Calculate totals from dispatched quantities
-        const subtotal = calculateShipmentTotal(shipment);
-        // FIX #12: GST split - IGST for inter-state/export, CGST+SGST for intra-state
-        const isExport = shipment.is_export;
-        const gstPercent = isExport ? 0 : 18;
-        const gstAmount = (subtotal * gstPercent) / 100;
-        // Determine GST type based on customer state vs company state (Maharashtra)
-        const companyState = 'Maharashtra';
-        const customerState = (shipment as any).customer_state || '';
-        const isIntraState = !isExport && customerState.toLowerCase() === companyState.toLowerCase();
-        const gstType = isExport ? 'export' : isIntraState ? 'cgst_sgst' : 'igst';
-        const cgstAmount = gstType === 'cgst_sgst' ? gstAmount / 2 : 0;
-        const sgstAmount = gstType === 'cgst_sgst' ? gstAmount / 2 : 0;
-        const igstAmount = gstType === 'igst' ? gstAmount : 0;
-        const totalAmount = subtotal + gstAmount;
-
-        // Check for open customer adjustments to auto-apply (INTERNAL ONLY - not on PDF)
-        let internalAdjustmentTotal = 0;
-        let internalAdjustmentNotes = '';
-        const appliedAdjustmentIds: string[] = [];
-
-        if (shipment.customer_id) {
-          const { data: openAdjustments } = await supabase
-            .from("customer_credit_adjustments")
-            .select("*")
-            .eq("customer_id", shipment.customer_id)
-            .eq("status", "pending")
-            .gt("remaining_amount", 0)
-            .order("created_at", { ascending: true });
-
-          if (openAdjustments && openAdjustments.length > 0) {
-            let remainingToApply = totalAmount;
-            
-            for (const adj of openAdjustments) {
-              if (remainingToApply <= 0) break;
-              
-              const applyAmount = Math.min(adj.remaining_amount, remainingToApply);
-              internalAdjustmentTotal += applyAmount;
-              remainingToApply -= applyAmount;
-              
-              internalAdjustmentNotes += `${adj.adjustment_type}: ${adj.currency} ${applyAmount.toLocaleString()} (from ${adj.reason}); `;
-              appliedAdjustmentIds.push(adj.id);
-            }
-          }
-        }
-
-        // Create invoice linked to shipment with export fields
-        const { data: invoice, error: invoiceError } = await supabase
-          .from("invoices")
-          .insert({
-            invoice_no: invoiceNo,
-            shipment_id: shipment.id,
-            so_id: shipment.so_id,
-            customer_id: shipment.customer_id,
-            invoice_date: invoiceDate.toISOString().split('T')[0],
-            due_date: dueDate.toISOString().split('T')[0],
-            dispatch_date: shipment.ship_date,
-            subtotal,
-            gst_percent: gstPercent,
-            gst_amount: gstAmount,
-            total_amount: totalAmount,
-            balance_amount: totalAmount - internalAdjustmentTotal,
-            paid_amount: internalAdjustmentTotal,
-            status: 'issued',
-            currency: shipment.currency,
-            payment_terms_days: shipment.payment_terms_days,
-            created_by: user?.id,
-            internal_adjustment_total: internalAdjustmentTotal > 0 ? internalAdjustmentTotal : null,
-            internal_adjustment_notes: internalAdjustmentNotes || null,
-            is_locked: true, // FIX #11: Lock invoice immediately on creation
-            // FIX #12: GST split
-            cgst_amount: cgstAmount,
-            sgst_amount: sgstAmount,
-            igst_amount: igstAmount,
-            gst_type: gstType,
-            // Export fields
-            is_export: isExport,
-            customer_address: shipment.customer_address,
-            customer_contact: shipment.customer_contact,
-            customer_email: shipment.customer_email,
-            customer_gst: shipment.customer_gst,
-            incoterm: isExport ? shipment.incoterm : null,
-            po_number: shipment.po_number,
-            po_date: shipment.po_date,
-            country_of_origin: 'India',
-            total_gross_weight: shipment.total_gross_weight,
-            total_net_weight: shipment.total_net_weight,
-          })
-          .select()
-          .single();
-
-        if (invoiceError) throw invoiceError;
-
-        // Mark adjustments as applied
-        if (appliedAdjustmentIds.length > 0 && invoice) {
-          for (const adjId of appliedAdjustmentIds) {
-            await supabase
-              .from("customer_credit_adjustments")
-              .update({
-                status: 'applied',
-                applied_to_invoice_id: invoice.id,
-                applied_at: new Date().toISOString(),
-                remaining_amount: 0
-              })
-              .eq("id", adjId);
-          }
-        }
-
-        // Create invoice items from dispatch_notes (SOURCE OF TRUTH - not SO items)
-        const dispatchNoteIds: string[] = [];
-        for (const note of shipment.dispatch_notes) {
-          const invoiceQty = qtyOverrides[note.id] ?? note.dispatched_qty;
-          const itemSubtotal = invoiceQty * (note.unit_rate || 0);
-          const itemGst = (itemSubtotal * gstPercent) / 100;
-
-          await supabase
-            .from("invoice_items")
-            .insert({
-              invoice_id: invoice.id,
-              dispatch_id: note.dispatch_id,
-              dispatch_note_id: note.id,
-              wo_id: note.work_order_id,
-              item_code: note.item_code,
-              description: note.item_description || note.item_code,
-              quantity: invoiceQty, // DISPATCHED qty from dispatch_notes (or override)
-              so_ordered_qty: note.so_ordered_qty, // Original SO qty for reference
-              rate: note.unit_rate || 0,
-              amount: itemSubtotal,
-              gst_percent: gstPercent,
-              gst_amount: itemGst,
-              total_line: itemSubtotal + itemGst,
-              qty_override_by: qtyOverrides[note.id] ? user?.id : null,
-              qty_override_at: qtyOverrides[note.id] ? new Date().toISOString() : null,
-            });
-
-          dispatchNoteIds.push(note.id);
-        }
-
-        // Mark dispatch notes as invoiced
-        await supabase
-          .from("dispatch_notes")
-          .update({ invoiced: true, invoice_id: invoice.id })
-          .in("id", dispatchNoteIds);
-
-        // Show info if adjustments were applied
-        if (internalAdjustmentTotal > 0) {
-          toast.info(`Applied ${shipment.currency} ${internalAdjustmentTotal.toLocaleString()} customer adjustment to ${invoiceNo}`);
-        }
-      }
-
-      toast.success(`Created ${selected.size} invoice(s) from dispatched quantities`);
-      setSelected(new Set());
-      loadInvoiceableShipments();
-    } catch (error: any) {
-      toast.error("Failed to create invoices: " + error.message);
-      console.error(error);
-    } finally {
-      setCreating(false);
+    let ok = 0;
+    for (const s of shipments.filter(x => selected.has(x.id))) {
+      const overrides: Record<string, number> = {};
+      if (canOverrideQty) s.dispatch_notes.forEach(n => { if (qtyOverrides[n.id] != null) overrides[n.id] = qtyOverrides[n.id]; });
+      const advances: Record<string, number> = {};
+      s.advances.forEach(a => { const v = advanceDeductions[`${s.id}:${a.so_id}`]; if (v && v > 0) advances[a.so_id] = Math.min(v, a.unapplied); });
+      const { data, error } = await supabase.rpc("create_invoice_from_shipment", {
+        p_shipment_id: s.id, p_qty_overrides: overrides, p_advances: advances,
+      } as any);
+      if (error) { toast.error(`${s.ship_id}: ${error.message}`); continue; }
+      const r = data as any;
+      ok++;
+      toast.success(`${r.invoice_no} created for ${s.ship_id} (${r.currency} ${Number(r.total).toLocaleString(undefined, { minimumFractionDigits: 2 })})${Number(r.advance_applied) > 0 ? ` · less advance ${r.currency} ${Number(r.advance_applied).toLocaleString()}` : ""}`);
     }
+    if (ok > 0) { setSelected(new Set()); setQtyOverrides({}); setAdvanceDeductions({}); loadInvoiceableShipments(); }
+    setCreating(false);
   };
 
-  const ShipmentTable = ({ data, showCheckboxes = false }: { data: InvoiceableShipment[], showCheckboxes?: boolean }) => (
+  const fmt = (cur: string, v: number) => `${cur} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const ShipmentTable = ({ data, showCheckboxes = false, mode }: { data: InvoiceableShipment[]; showCheckboxes?: boolean; mode: "ready" | "blocked" | "invoiced" }) => (
     <Table>
       <TableHeader>
         <TableRow>
           {showCheckboxes && (
             <TableHead className="w-12">
-              <Checkbox
-                checked={selected.size === readyShipments.length && readyShipments.length > 0}
-                onCheckedChange={toggleAll}
-              />
+              <Checkbox checked={selected.size === readyShipments.length && readyShipments.length > 0} onCheckedChange={toggleAll} />
             </TableHead>
           )}
           <TableHead>Shipment</TableHead>
           <TableHead>Customer</TableHead>
           <TableHead>SO</TableHead>
           <TableHead>Ship Date</TableHead>
-          <TableHead className="text-right">Packed Qty</TableHead>
           <TableHead className="text-right">Dispatched Qty</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="text-right">Amount</TableHead>
+          <TableHead>GST</TableHead>
+          <TableHead className="text-right">Amount (incl. GST)</TableHead>
+          <TableHead>{mode === "invoiced" ? "Invoice" : mode === "blocked" ? "Blocked because" : "Advance"}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {data.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={showCheckboxes ? 9 : 8} className="text-center text-muted-foreground py-8">
-              No shipments found
+          <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No shipments found</TableCell></TableRow>
+        ) : data.map(s => (
+          <TableRow key={s.id} className={s.blocker ? "bg-destructive/5" : s.already_invoiced ? "bg-muted/50" : ""}>
+            {showCheckboxes && (
+              <TableCell><Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggleSelection(s.id)} /></TableCell>
+            )}
+            <TableCell className="font-medium">
+              <div className="flex items-center gap-2"><Truck className="h-4 w-4 text-muted-foreground" />{s.ship_id}</div>
+            </TableCell>
+            <TableCell>{s.customer}</TableCell>
+            <TableCell>{s.so_numbers.join(", ") || "-"}</TableCell>
+            <TableCell>{s.ship_date ? new Date(s.ship_date).toLocaleDateString() : "-"}</TableCell>
+            <TableCell className="text-right font-medium">
+              {mode === "ready" && canOverrideQty ? (
+                <div className="space-y-1">
+                  {s.dispatch_notes.map(n => (
+                    <div key={n.id} className="flex items-center justify-end gap-2 text-xs">
+                      <span className="text-muted-foreground">{n.wo_number || n.item_code}</span>
+                      <Input type="number" min={1} className="h-7 w-24 text-right"
+                        value={qtyOverrides[n.id] ?? n.dispatched_qty}
+                        onChange={e => {
+                          const v = parseInt(e.target.value);
+                          setQtyOverrides(prev => {
+                            const next = { ...prev };
+                            if (!v || v === n.dispatched_qty) delete next[n.id]; else next[n.id] = v;
+                            return next;
+                          });
+                        }} />
+                    </div>
+                  ))}
+                </div>
+              ) : s.total_dispatched_qty.toLocaleString()}
+            </TableCell>
+            <TableCell><Badge variant="outline">{s.gst_label}</Badge></TableCell>
+            <TableCell className="text-right font-medium">{fmt(s.currency, calculateTotal(s))}</TableCell>
+            <TableCell>
+              {mode === "invoiced" ? (s.invoice_nos.join(", ") || "-")
+                : mode === "blocked" ? <span className="text-sm text-destructive">{s.blocker}</span>
+                : s.advances.length === 0 ? <span className="text-xs text-muted-foreground">No advance</span>
+                : (
+                  <div className="space-y-1">
+                    {s.advances.map(a => (
+                      <div key={a.so_id} className="text-xs">
+                        <div className="text-muted-foreground">{a.so_number}: received {fmt(s.currency, a.received)}, unapplied {fmt(s.currency, a.unapplied)}</div>
+                        {a.unapplied > 0 && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span>Less advance</span>
+                            <Input type="number" min={0} max={a.unapplied} className="h-7 w-28"
+                              value={advanceDeductions[`${s.id}:${a.so_id}`] ?? ""}
+                              placeholder="0"
+                              onChange={e => {
+                                const v = Math.max(0, Math.min(Number(e.target.value) || 0, a.unapplied, calculateTotal(s)));
+                                setAdvanceDeductions(prev => ({ ...prev, [`${s.id}:${a.so_id}`]: v }));
+                              }} />
+                            <Button type="button" variant="ghost" size="sm" className="h-7"
+                              onClick={() => setAdvanceDeductions(prev => ({ ...prev, [`${s.id}:${a.so_id}`]: Math.min(a.unapplied, calculateTotal(s)) }))}>
+                              Max
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
             </TableCell>
           </TableRow>
-        ) : (
-          data.map((shipment) => {
-            const total = calculateShipmentTotal(shipment);
-            return (
-              <TableRow 
-                key={shipment.id} 
-                className={shipment.qty_mismatch ? "bg-destructive/10" : shipment.already_invoiced ? "bg-muted/50" : ""}
-              >
-                {showCheckboxes && (
-                  <TableCell>
-                    <Checkbox
-                      checked={selected.has(shipment.id)}
-                      onCheckedChange={() => toggleSelection(shipment.id)}
-                      disabled={shipment.qty_mismatch || shipment.already_invoiced}
-                    />
-                  </TableCell>
-                )}
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <Truck className="h-4 w-4 text-muted-foreground" />
-                    {shipment.ship_id}
-                  </div>
-                </TableCell>
-                <TableCell>{shipment.customer}</TableCell>
-                <TableCell>{shipment.so_number || "-"}</TableCell>
-                <TableCell>{new Date(shipment.ship_date).toLocaleDateString()}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Package className="h-3 w-3 text-muted-foreground" />
-                    {shipment.total_packed_qty.toLocaleString()}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-medium">
-                  {shipment.total_dispatched_qty.toLocaleString()}
-                  {shipment.qty_mismatch && (
-                    <Badge variant="destructive" className="ml-2">Mismatch</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={shipment.status === "delivered" ? "default" : "secondary"}>
-                    {shipment.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right font-medium">
-                  {shipment.currency} {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </TableCell>
-              </TableRow>
-            );
-          })
-        )}
+        ))}
       </TableBody>
     </Table>
   );
 
   return (
     <PageContainer maxWidth="2xl">
-      <PageHeader 
-        title="Create Invoices" 
-        description="Generate invoices from dispatched shipments (not sales orders)"
-        icon={<FileText className="h-5 w-5" />}
-      />
-      
+      <PageHeader title="Create Invoices" description="Generate tax invoices from dispatched shipments" icon={<FileText className="h-5 w-5" />} />
       <div className="space-y-6 mt-6">
         <Alert>
           <FileText className="h-4 w-4" />
-          <AlertTitle>Quantity-Based Invoicing</AlertTitle>
+          <AlertTitle>Invoiced by dispatched quantity</AlertTitle>
           <AlertDescription>
-            Invoices are now created from <strong>dispatched quantities</strong>, not sales order quantities. 
-            The dispatched quantity must equal the packed quantity before an invoice can be generated.
+            Partial shipments can be invoiced. Customer, sales order, currency and GST come from each dispatch note's own sales order.
+            Invoice numbers are assigned on creation.
           </AlertDescription>
         </Alert>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                Ready to Invoice
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{readyShipments.length}</div>
-              <p className="text-sm text-muted-foreground">Shipments with matching quantities</p>
-            </CardContent>
+            <CardHeader className="pb-2"><CardTitle className="text-lg flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-green-600" />Ready to Invoice</CardTitle></CardHeader>
+            <CardContent><div className="text-3xl font-bold">{readyShipments.length}</div></CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
-                Quantity Mismatch
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{mismatchShipments.length}</div>
-              <p className="text-sm text-muted-foreground">Dispatch ≠ Packed qty</p>
-            </CardContent>
+            <CardHeader className="pb-2"><CardTitle className="text-lg flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" />Blocked</CardTitle></CardHeader>
+            <CardContent><div className="text-3xl font-bold">{blockedShipments.length}</div><p className="text-sm text-muted-foreground">Missing customer, price or mixed currency</p></CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-600" />
-                Already Invoiced
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{invoicedShipments.length}</div>
-              <p className="text-sm text-muted-foreground">Shipments with invoices</p>
-            </CardContent>
+            <CardHeader className="pb-2"><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5 text-blue-600" />Already Invoiced</CardTitle></CardHeader>
+            <CardContent><div className="text-3xl font-bold">{invoicedShipments.length}</div></CardContent>
           </Card>
         </div>
 
@@ -624,55 +365,25 @@ export default function CreateInvoices() {
                 <CardTitle>Shipments</CardTitle>
                 <CardDescription>Select dispatched shipments to generate invoices</CardDescription>
               </div>
-              <Button 
-                onClick={createInvoices} 
-                disabled={selected.size === 0 || creating}
-              >
+              <Button onClick={createInvoices} disabled={selected.size === 0 || creating}>
                 {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create {selected.size > 0 ? `${selected.size} ` : ''}Invoice{selected.size !== 1 ? 's' : ''}
+                Create {selected.size > 0 ? `${selected.size} ` : ""}Invoice{selected.size !== 1 ? "s" : ""}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
+              <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
             ) : (
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
-                  <TabsTrigger value="ready">
-                    Ready ({readyShipments.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="mismatch">
-                    Mismatch ({mismatchShipments.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="invoiced">
-                    Invoiced ({invoicedShipments.length})
-                  </TabsTrigger>
+                  <TabsTrigger value="ready">Ready ({readyShipments.length})</TabsTrigger>
+                  <TabsTrigger value="blocked">Blocked ({blockedShipments.length})</TabsTrigger>
+                  <TabsTrigger value="invoiced">Invoiced ({invoicedShipments.length})</TabsTrigger>
                 </TabsList>
-
-                <TabsContent value="ready">
-                  <ShipmentTable data={readyShipments} showCheckboxes />
-                </TabsContent>
-
-                <TabsContent value="mismatch">
-                  {mismatchShipments.length > 0 && (
-                    <Alert variant="destructive" className="mb-4">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Quantity Mismatch Detected</AlertTitle>
-                      <AlertDescription>
-                        These shipments cannot be invoiced because the dispatched quantity doesn't match the packed quantity.
-                        Please reconcile before invoicing.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  <ShipmentTable data={mismatchShipments} />
-                </TabsContent>
-
-                <TabsContent value="invoiced">
-                  <ShipmentTable data={invoicedShipments} />
-                </TabsContent>
+                <TabsContent value="ready"><ShipmentTable data={readyShipments} showCheckboxes mode="ready" /></TabsContent>
+                <TabsContent value="blocked"><ShipmentTable data={blockedShipments} mode="blocked" /></TabsContent>
+                <TabsContent value="invoiced"><ShipmentTable data={invoicedShipments} mode="invoiced" /></TabsContent>
               </Tabs>
             )}
           </CardContent>
