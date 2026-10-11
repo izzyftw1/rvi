@@ -6,3 +6,4 @@
 - Save raw-material gate receipts through the SECURITY INVOKER receipt RPC with an RPO row lock; linked inventory, receipt, reconciliation and QC writes share one transaction to prevent partial goods-in.
 - Reuse the gate-generated material lot for inventory and receipt links, and synchronize lot QC to its exact gate entry, to preserve receipt-level traceability.
 - Cancel or reject RPOs through an invoker RPC locking the same RPO row as receipts, so approval and received-quantity conditions cannot be bypassed by concurrent goods-in.
+- Record Final QC per production batch through the record_final_qc RPC and gate cartons with a BEFORE INSERT trigger on Final-QC-approved minus packed batch quantity, so packing can't bypass batch-level QC.
