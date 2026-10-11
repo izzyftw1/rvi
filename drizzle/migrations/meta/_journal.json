@@ -57,6 +57,13 @@
       "when": 1791703237352,
       "tag": "0007_finance_invoicing_gst_advances",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791703891644,
+      "tag": "0008_material_issue_heat_traceability_stock_take",
+      "breakpoints": true
     }
   ]
 }

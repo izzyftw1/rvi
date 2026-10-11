@@ -2973,42 +2973,77 @@ export type Database = {
       }
       inventory_movements: {
         Row: {
+          batch_id: string | null
           created_at: string
           created_by: string | null
           dispatch_id: string | null
+          heat_no: string | null
           id: string
-          inventory_id: string
+          inventory_id: string | null
+          location: string | null
+          material_lot_id: string | null
           movement_type: string
           notes: string | null
           quantity: number
+          quantity_kg: number | null
+          scrap_type: string | null
           shipment_id: string | null
+          stock_take_id: string | null
           work_order_id: string | null
         }
         Insert: {
+          batch_id?: string | null
           created_at?: string
           created_by?: string | null
           dispatch_id?: string | null
+          heat_no?: string | null
           id?: string
-          inventory_id: string
+          inventory_id?: string | null
+          location?: string | null
+          material_lot_id?: string | null
           movement_type: string
           notes?: string | null
           quantity: number
+          quantity_kg?: number | null
+          scrap_type?: string | null
           shipment_id?: string | null
+          stock_take_id?: string | null
           work_order_id?: string | null
         }
         Update: {
+          batch_id?: string | null
           created_at?: string
           created_by?: string | null
           dispatch_id?: string | null
+          heat_no?: string | null
           id?: string
-          inventory_id?: string
+          inventory_id?: string | null
+          location?: string | null
+          material_lot_id?: string | null
           movement_type?: string
           notes?: string | null
           quantity?: number
+          quantity_kg?: number | null
+          scrap_type?: string | null
           shipment_id?: string | null
+          stock_take_id?: string | null
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "inventory_movements_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "inventory_movements_dispatch_id_fkey"
             columns: ["dispatch_id"]
@@ -3021,6 +3056,13 @@ export type Database = {
             columns: ["inventory_id"]
             isOneToOne: false
             referencedRelation: "finished_goods_inventory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_material_lot_id_fkey"
+            columns: ["material_lot_id"]
+            isOneToOne: false
+            referencedRelation: "material_lots"
             referencedColumns: ["id"]
           },
           {
@@ -4466,6 +4508,7 @@ export type Database = {
       material_lots: {
         Row: {
           alloy: string
+          available_kg: number | null
           bin_location: string | null
           created_at: string
           gross_weight: number
@@ -4485,6 +4528,7 @@ export type Database = {
         }
         Insert: {
           alloy: string
+          available_kg?: number | null
           bin_location?: string | null
           created_at?: string
           gross_weight: number
@@ -4504,6 +4548,7 @@ export type Database = {
         }
         Update: {
           alloy?: string
+          available_kg?: number | null
           bin_location?: string | null
           created_at?: string
           gross_weight?: number
@@ -8853,6 +8898,81 @@ export type Database = {
         }
         Relationships: []
       }
+      stock_take_lines: {
+        Row: {
+          id: string
+          material_lot_id: string
+          physical_kg: number | null
+          stock_take_id: string
+          system_kg: number
+          variance_kg: number | null
+        }
+        Insert: {
+          id?: string
+          material_lot_id: string
+          physical_kg?: number | null
+          stock_take_id: string
+          system_kg: number
+          variance_kg?: number | null
+        }
+        Update: {
+          id?: string
+          material_lot_id?: string
+          physical_kg?: number | null
+          stock_take_id?: string
+          system_kg?: number
+          variance_kg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_take_lines_material_lot_id_fkey"
+            columns: ["material_lot_id"]
+            isOneToOne: false
+            referencedRelation: "material_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_take_lines_stock_take_id_fkey"
+            columns: ["stock_take_id"]
+            isOneToOne: false
+            referencedRelation: "stock_takes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_takes: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          status: string
+          take_date: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          take_date?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          take_date?: string
+        }
+        Relationships: []
+      }
       supplier_accounts: {
         Row: {
           can_view_dispatches: boolean
@@ -9693,6 +9813,8 @@ export type Database = {
       }
       wo_material_issues: {
         Row: {
+          batch_id: string | null
+          heat_no: string | null
           id: string
           issued_at: string
           issued_by: string | null
@@ -9703,6 +9825,8 @@ export type Database = {
           wo_id: string
         }
         Insert: {
+          batch_id?: string | null
+          heat_no?: string | null
           id?: string
           issued_at?: string
           issued_by?: string | null
@@ -9713,6 +9837,8 @@ export type Database = {
           wo_id: string
         }
         Update: {
+          batch_id?: string | null
+          heat_no?: string | null
           id?: string
           issued_at?: string
           issued_by?: string | null
@@ -9723,6 +9849,20 @@ export type Database = {
           wo_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "wo_material_issues_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wo_material_issues_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "wo_material_issues_lot_id_fkey"
             columns: ["lot_id"]
@@ -11208,6 +11348,7 @@ export type Database = {
       }
     }
     Functions: {
+      approve_stock_take: { Args: { p_stock_take_id: string }; Returns: number }
       assign_initial_role: {
         Args: { _requested_role: string; _user_id: string }
         Returns: undefined
@@ -11397,6 +11538,16 @@ export type Database = {
       is_finance_role: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       is_supplier_user: { Args: { _user_id: string }; Returns: boolean }
+      issue_material_to_wo: {
+        Args: {
+          p_batch_id: string
+          p_kg: number
+          p_lot_id: string
+          p_pcs?: number
+          p_wo_id: string
+        }
+        Returns: Json
+      }
       log_audit_event: {
         Args: { _action: string; _details?: Json; _event_type: string }
         Returns: undefined
@@ -11461,10 +11612,33 @@ export type Database = {
         }
         Returns: Json
       }
+      record_material_scrap: {
+        Args: {
+          p_batch_id: string
+          p_kg: number
+          p_location?: string
+          p_lot_id: string
+          p_notes?: string
+          p_scrap_type: string
+          p_wo_id: string
+        }
+        Returns: Json
+      }
       recover_missing_work_orders: {
         Args: { p_line_ids: string[] }
         Returns: Json
       }
+      return_material_to_lot: {
+        Args: {
+          p_batch_id: string
+          p_kg: number
+          p_lot_id: string
+          p_notes?: string
+          p_wo_id: string
+        }
+        Returns: Json
+      }
+      start_stock_take: { Args: { p_notes?: string }; Returns: string }
       supplier_can_access_wo: {
         Args: { _user_id: string; _wo_id: string }
         Returns: boolean
