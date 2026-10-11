@@ -119,7 +119,8 @@ export const MachineHealthTab = () => {
   const runningCount = machines.filter(m => m.current_state === 'running').length;
   const idleCount = machines.filter(m => m.current_state === 'idle').length;
   const maintenanceCount = machines.filter(m => m.current_state === 'maintenance').length;
-  const downCount = machines.filter(m => m.current_state === 'down').length;
+  const downCount = machines.filter(m => ['down', 'breakdown'].includes(m.current_state)).length;
+  const qcHoldCount = machines.filter(m => m.current_state === 'qc_hold').length;
   
   // Use actual production log data for utilization when available
   const machinesWithLogs = machines.filter(m => (m.today_run_minutes ?? 0) > 0);
@@ -133,7 +134,7 @@ export const MachineHealthTab = () => {
   const totalDowntimeFromLogs = machines.reduce((sum, m) => sum + (m.today_downtime_minutes ?? 0), 0);
   
   const totalDowntimeToday = machines.reduce((sum, m) => {
-    if (m.current_state === 'maintenance' || m.current_state === 'down') {
+    if (['maintenance', 'down', 'breakdown', 'qc_hold'].includes(m.current_state)) {
       return sum + m.downtime_hours;
     }
     return sum;
@@ -167,7 +168,7 @@ export const MachineHealthTab = () => {
   return (
     <div className="space-y-6">
       {/* Summary Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
@@ -230,7 +231,7 @@ export const MachineHealthTab = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-1">
               <AlertTriangle className="h-4 w-4 text-red-600" />
-              Down / Fault
+              Down / Breakdown
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -241,6 +242,13 @@ export const MachineHealthTab = () => {
           </CardContent>
         </Card>
       </div>
+
+      {qcHoldCount > 0 && (
+        <div className="flex items-center gap-2 text-warning text-sm">
+          <AlertTriangle className="h-4 w-4" />
+          <span>{qcHoldCount} machines on QC hold</span>
+        </div>
+      )}
 
       {/* Alert for maintenance overdue */}
       {maintenanceCount > 3 && (

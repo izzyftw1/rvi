@@ -24,7 +24,7 @@ import { format, differenceInMinutes } from "date-fns";
 import { useSiteContext } from "@/hooks/useSiteContext";
 import { cn } from "@/lib/utils";
 
-type OperationalState = "running" | "idle" | "blocked" | "maintenance" | "down" | "waiting_qc" | "paused";
+type OperationalState = "running" | "idle" | "blocked" | "maintenance" | "down" | "waiting_qc" | "paused" | "breakdown" | "qc_hold";
 
 const MachineStatus = () => {
   const navigate = useNavigate();
@@ -121,6 +121,14 @@ const MachineStatus = () => {
             operationalState = "blocked";
             stateReason = maintenance.downtime_reason;
           }
+        } else if (machine.status === "breakdown") {
+          operationalState = "breakdown";
+          stateReason = "Machine breakdown reported";
+        } else if (machine.status === "qc_hold") {
+          operationalState = "qc_hold";
+          stateReason = "Production held for QC approval";
+        } else if (machine.status === "idle") {
+          operationalState = "idle";
         } else if (machine.status === "down" || machine.status === "fault") {
           operationalState = "down";
           stateReason = "Machine fault reported";
@@ -152,7 +160,9 @@ const MachineStatus = () => {
   const getStateConfig = (state: OperationalState) => {
     const configs: Record<OperationalState, { label: string; color: string; bgColor: string; icon: React.ElementType }> = {
       running: { label: "Running", color: "text-green-600", bgColor: "bg-green-500", icon: Activity },
-      idle: { label: "Idle", color: "text-gray-500", bgColor: "bg-gray-400", icon: Pause },
+      idle: { label: "Idle", color: "text-muted-foreground", bgColor: "bg-secondary text-secondary-foreground", icon: Pause },
+      breakdown: { label: "Breakdown", color: "text-destructive", bgColor: "bg-destructive text-destructive-foreground", icon: AlertTriangle },
+      qc_hold: { label: "QC Hold", color: "text-warning", bgColor: "bg-warning text-warning-foreground", icon: Clock },
       blocked: { label: "Blocked", color: "text-red-600", bgColor: "bg-red-500", icon: AlertTriangle },
       maintenance: { label: "Maintenance", color: "text-orange-600", bgColor: "bg-orange-500", icon: Wrench },
       down: { label: "Down", color: "text-red-600", bgColor: "bg-red-600", icon: AlertTriangle },
@@ -182,9 +192,9 @@ const MachineStatus = () => {
   const stateCounts = {
     running: machines.filter(m => m.operationalState === "running").length,
     idle: machines.filter(m => m.operationalState === "idle").length,
-    blocked: machines.filter(m => m.operationalState === "blocked" || m.operationalState === "down").length,
+    blocked: machines.filter(m => ["blocked", "down", "breakdown"].includes(m.operationalState)).length,
     maintenance: machines.filter(m => m.operationalState === "maintenance").length,
-    waiting_qc: machines.filter(m => m.operationalState === "waiting_qc").length,
+    waiting_qc: machines.filter(m => ["waiting_qc", "qc_hold"].includes(m.operationalState)).length,
     paused: machines.filter(m => m.operationalState === "paused").length,
   };
 
@@ -223,6 +233,8 @@ const MachineStatus = () => {
                     <SelectItem value="all">All Machines</SelectItem>
                     <SelectItem value="running">Running</SelectItem>
                     <SelectItem value="idle">Idle</SelectItem>
+                    <SelectItem value="breakdown">Breakdown</SelectItem>
+                    <SelectItem value="qc_hold">QC Hold</SelectItem>
                     <SelectItem value="blocked">Blocked</SelectItem>
                     <SelectItem value="maintenance">Maintenance</SelectItem>
                     <SelectItem value="waiting_qc">Waiting QC</SelectItem>
@@ -255,7 +267,7 @@ const MachineStatus = () => {
           <Card>
             <CardContent className="pt-6 text-center">
               <p className="text-3xl font-bold text-red-600">{stateCounts.blocked}</p>
-              <p className="text-sm text-muted-foreground">Blocked/Down</p>
+              <p className="text-sm text-muted-foreground">Blocked / Breakdown</p>
             </CardContent>
           </Card>
           <Card>
@@ -267,7 +279,7 @@ const MachineStatus = () => {
           <Card>
             <CardContent className="pt-6 text-center">
               <p className="text-3xl font-bold text-yellow-600">{stateCounts.waiting_qc}</p>
-              <p className="text-sm text-muted-foreground">Waiting QC</p>
+              <p className="text-sm text-muted-foreground">Waiting QC / Hold</p>
             </CardContent>
           </Card>
           <Card>
@@ -300,7 +312,7 @@ const MachineStatus = () => {
                   className="cursor-pointer hover:shadow-lg transition-shadow"
                   onClick={() => viewDetail(machine)}
                 >
-                  <CardHeader className={cn(config.bgColor, "text-white")}>
+                  <CardHeader className={config.bgColor}>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg font-bold">
                         {machine.machine_id}
@@ -349,7 +361,7 @@ const MachineStatus = () => {
                     )}
 
                     {/* Blocked/Down reason */}
-                    {(machine.operationalState === "blocked" || machine.operationalState === "down") && machine.stateReason && (
+                    {["blocked", "down", "breakdown", "qc_hold"].includes(machine.operationalState) && machine.stateReason && (
                       <div className="flex items-start gap-2 text-red-600 text-xs pt-2">
                         <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
                         <span>{machine.stateReason}</span>
