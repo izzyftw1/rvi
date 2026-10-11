@@ -64,75 +64,6 @@ const BRAND_COLORS = {
   tableBorder: '#1E4A8D',
 };
 
-// deno-lint-ignore no-explicit-any
-async function fetchLogoFromStorage(supabaseClient: any): Promise<{ base64: string | null; bytes: number; status: string }> {
-  const LOGO_PATH = 'rv-logo.png';
-  const BUCKET = 'company-assets';
-  
-  console.log(`[LOGO] Fetching logo from bucket: ${BUCKET}, path: ${LOGO_PATH}`);
-  
-  try {
-    // Use service role client to download the file
-    const { data, error } = await supabaseClient.storage
-      .from(BUCKET)
-      .download(LOGO_PATH);
-    
-    if (error) {
-      console.log(`[LOGO] Storage error: ${error.message}`);
-      return { base64: null, bytes: 0, status: `storage_error: ${error.message}` };
-    }
-    
-    if (!data) {
-      console.log('[LOGO] No data returned from storage');
-      return { base64: null, bytes: 0, status: 'no_data_returned' };
-    }
-    
-    // Convert blob to ArrayBuffer
-    const arrayBuffer = await data.arrayBuffer();
-    const bytes = arrayBuffer.byteLength;
-    
-    console.log(`[LOGO] Downloaded ${bytes} bytes, type: ${data.type}`);
-    
-    if (bytes === 0) {
-      console.log('[LOGO] File is empty (0 bytes)');
-      return { base64: null, bytes: 0, status: 'empty_file' };
-    }
-    
-    // Validate it's a PNG by checking magic bytes
-    const uint8 = new Uint8Array(arrayBuffer);
-    const isPng = uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47;
-    const isJpeg = uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF;
-    
-    if (!isPng && !isJpeg) {
-      console.log(`[LOGO] Invalid image format. First 4 bytes: ${uint8[0]}, ${uint8[1]}, ${uint8[2]}, ${uint8[3]}`);
-      return { base64: null, bytes, status: 'invalid_format' };
-    }
-    
-    const imageType = isPng ? 'PNG' : 'JPEG';
-    console.log(`[LOGO] Valid ${imageType} image detected`);
-    
-    // Convert to base64
-    let binary = '';
-    for (let i = 0; i < uint8.length; i++) {
-      binary += String.fromCharCode(uint8[i]);
-    }
-    const base64 = btoa(binary);
-    const mimeType = isPng ? 'image/png' : 'image/jpeg';
-    
-    console.log(`[LOGO] Successfully converted to base64, length: ${base64.length} chars`);
-    
-    return { 
-      base64: `data:${mimeType};base64,${base64}`, 
-      bytes, 
-      status: `success_${imageType.toLowerCase()}` 
-    };
-    
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[LOGO] Exception during fetch: ${errMsg}`);
-    return { base64: null, bytes: 0, status: `exception: ${errMsg}` };
-  }
-}
 
 interface LetterheadImg { data: string; w: number; h: number }
 interface Letterhead {
@@ -584,7 +515,7 @@ async function generateProfessionalPdf(data: ProformaData, lh: Letterhead): Prom
   
   // Bank details with bold labels and proper spacing
   const bankDetails = [
-    { label: 'Account Name: ', value: 'R.V. INDUSTRIES' },
+    { label: 'Account Name: ', value: lh.company.name.toUpperCase() },
     { label: 'Bank Name: ', value: 'BANK OF BARODA' },
     { label: 'Account No: ', value: '25970500001613' },
     { label: 'Branch: ', value: 'S.S.I. Jamnagar' },
@@ -835,7 +766,7 @@ const handler = async (req: Request): Promise<Response> => {
       incoterm: order.incoterm,
       countryOfOrigin: 'India',
       validityDays: 30
-    }, logoBase64);
+    }, letterhead);
     
     // Upload to storage using service role (bypasses RLS)
     const fileName = `${proformaNo}.pdf`;
