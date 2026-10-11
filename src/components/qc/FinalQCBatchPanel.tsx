@@ -81,7 +81,7 @@ export const FinalQCBatchPanel = ({ woId }: Props) => {
         rejected: b.qc_rejected_qty || 0,
         inspected: inspected[b.id] || 0,
         // Inspectable = produced − already rejected (incl. production-log rejects) − already approved
-        inspectable: Math.max(0, Math.max(b.produced_qty || 0, b.production_complete_qty || 0) - (b.qc_approved_qty || 0) - (b.qc_rejected_qty || 0)),
+        inspectable: Math.max(0, (b.produced_qty || 0) - (b.qc_approved_qty || 0) - (b.qc_rejected_qty || 0)),
         final_status: b.qc_final_status || "pending",
         wo_number: woMap.get(b.wo_id)?.wo_number || "",
         item_code: woMap.get(b.wo_id)?.item_code || "",
