@@ -507,7 +507,7 @@ export default function Dispatch() {
         .from("dispatch_notes")
         .select(`*, 
           work_orders:work_order_id!dispatch_notes_work_order_id_fkey(so_id, financial_snapshot, customer, customer_po),
-          sales_orders:sales_order_id!dispatch_notes_sales_order_id_fkey(customer_id, po_number, po_date, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
+          sales_orders:sales_order_id!dispatch_notes_sales_order_id_fkey(customer_id, po_number, po_date, incoterm, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number, eori_number, default_marks_numbers))
         `)
         .eq("shipment_id", shipment.id);
 
@@ -536,7 +536,7 @@ export default function Dispatch() {
         if (soId) {
           const { data: soData } = await supabase
             .from("sales_orders")
-            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number)")
+            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number, eori_number, default_marks_numbers)")
             .eq("id", soId)
             .single();
           customer = (soData as any)?.customer_master;
@@ -656,7 +656,7 @@ export default function Dispatch() {
         if (soId) {
           const { data: soData } = await supabase
             .from("sales_orders")
-            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number)")
+            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number, eori_number, default_marks_numbers)")
             .eq("id", soId)
             .single();
           customer = (soData as any)?.customer_master;
