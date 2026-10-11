@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useUserRole } from "@/hooks/useUserRole";
+import { CompanyDetailsCard, LetterheadCard } from "@/components/finance/CompanyLetterheadSettings";
 
 interface PeriodLock {
   id: string;
@@ -29,6 +30,7 @@ interface PeriodLock {
 
 export default function FinanceSettings() {
   const { hasAnyRole } = useUserRole();
+  const isAdmin = hasAnyRole(['admin', 'super_admin']);
   const canManagePeriods = hasAnyRole(['admin', 'super_admin', 'finance_admin']);
   
   const [periodLocks, setPeriodLocks] = useState<PeriodLock[]>([]);
@@ -150,6 +152,8 @@ export default function FinanceSettings() {
             <TabsTrigger value="periods">Period Controls</TabsTrigger>
             <TabsTrigger value="tax">Tax Profiles</TabsTrigger>
             <TabsTrigger value="numbering">Numbering</TabsTrigger>
+            <TabsTrigger value="company">Company</TabsTrigger>
+            {isAdmin && <TabsTrigger value="letterhead">Letterhead</TabsTrigger>}
           </TabsList>
 
           {/* FIX #62/#65/#93/#94: Period locking - functional implementation */}
@@ -276,6 +280,15 @@ export default function FinanceSettings() {
               </CardContent>
             </Card>
           </TabsContent>
+          <TabsContent value="company">
+            <CompanyDetailsCard canEdit={canEditFinance} />
+          </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="letterhead">
+              <LetterheadCard />
+            </TabsContent>
+          )}
         </Tabs>
 
         {/* Lock Period Dialog */}
