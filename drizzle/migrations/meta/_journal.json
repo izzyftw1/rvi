@@ -71,6 +71,13 @@
       "when": 1791704263809,
       "tag": "0009_company_profile_letterhead_export_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791707451962,
+      "tag": "0010_fix_generated_cols_gate_out_lot_qc",
+      "breakpoints": true
     }
   ]
 }

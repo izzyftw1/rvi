@@ -22,6 +22,7 @@ interface BatchRow {
   approved: number;
   rejected: number;
   inspected: number;
+  inspectable: number;
   final_status: string;
   wo_number: string;
   item_code: string;
@@ -79,11 +80,13 @@ export const FinalQCBatchPanel = ({ woId }: Props) => {
         approved: b.qc_approved_qty || 0,
         rejected: b.qc_rejected_qty || 0,
         inspected: inspected[b.id] || 0,
+        // Inspectable = produced − already rejected (incl. production-log rejects) − already approved
+        inspectable: Math.max(0, (b.produced_qty || 0) - (b.qc_approved_qty || 0) - (b.qc_rejected_qty || 0)),
         final_status: b.qc_final_status || "pending",
         wo_number: woMap.get(b.wo_id)?.wo_number || "",
         item_code: woMap.get(b.wo_id)?.item_code || "",
       }))
-      .filter(r => woId || r.produced - r.inspected > 0);
+      .filter(r => woId || r.inspectable > 0);
     setRows(mapped);
     setLoading(false);
   }, [woId]);
@@ -120,7 +123,7 @@ export const FinalQCBatchPanel = ({ woId }: Props) => {
             </TableHeader>
             <TableBody>
               {rows.map(r => {
-                const remaining = r.produced - r.inspected;
+                const remaining = r.inspectable;
                 return (
                   <TableRow key={r.id}>
                     {!woId && (
@@ -159,7 +162,7 @@ export const FinalQCBatchPanel = ({ woId }: Props) => {
 };
 
 const FinalQCDialog = ({ batch, onClose, onSaved }: { batch: BatchRow; onClose: () => void; onSaved: () => void }) => {
-  const remaining = Math.max(0, batch.produced - batch.inspected);
+  const remaining = batch.inspectable;
   const [result, setResult] = useState<"pass" | "fail" | "hold">("pass");
   const [inspected, setInspected] = useState(String(remaining));
   const [accepted, setAccepted] = useState(String(remaining));
@@ -173,9 +176,10 @@ const FinalQCDialog = ({ batch, onClose, onSaved }: { batch: BatchRow; onClose: 
   const rej = result === "hold" ? 0 : parseInt(rejected) || 0;
   const sumOk = result === "hold" || acc + rej === insp;
   const needsDisposition = rej > 0 && !disposition;
-  const valid = insp > 0 && (result === "hold" || insp <= remaining) && sumOk && !needsDisposition && !(result === "fail" && rej === 0);
+  const valid = insp > 0 && (result === "hold" || insp <= remaining) && sumOk && !(result === "fail" && rej === 0);
 
   const submit = async () => {
+    if (needsDisposition) { toast.error("Choose a disposition for the rejected pieces"); return; }
     setSaving(true);
     const { data, error } = await supabase.rpc("record_final_qc", {
       p_batch_id: batch.id,
@@ -198,7 +202,7 @@ const FinalQCDialog = ({ batch, onClose, onSaved }: { batch: BatchRow; onClose: 
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Final QC — {batch.wo_number} batch #{batch.batch_number}</DialogTitle>
-          <DialogDescription>{remaining.toLocaleString()} pcs produced and not yet inspected.</DialogDescription>
+          <DialogDescription>{remaining.toLocaleString()} pcs available to inspect ({batch.produced.toLocaleString()} produced − {batch.rejected.toLocaleString()} rejected − {batch.approved.toLocaleString()} approved).</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -230,6 +234,7 @@ const FinalQCDialog = ({ batch, onClose, onSaved }: { batch: BatchRow; onClose: 
                   <SelectItem value="ncr">Raise NCR</SelectItem>
                 </SelectContent>
               </Select>
+              {needsDisposition && <p className="text-xs text-destructive">Choose a disposition for the {rej} rejected pcs.</p>}
             </div>
           )}
           <div className="space-y-2"><Label>Remarks</Label><Textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3} /></div>

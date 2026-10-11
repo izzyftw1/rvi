@@ -424,38 +424,7 @@ export default function Dispatch() {
       const result = rpcData as any;
       const generatedShipId: string = result?.ship_id;
 
-      // Gate register OUT entries (after the shipment is committed)
-      for (const batch of selectedBatches) {
-        const dispatchQty = getDispatchQty(batch);
-        const { data: woWeight } = await supabase
-          .from("work_orders_restricted")
-          .select("gross_weight_per_pc, item_code, customer")
-          .eq("id", batch.wo_id)
-          .single();
-
-        const grossWeightKg = woWeight?.gross_weight_per_pc
-          ? (dispatchQty * woWeight.gross_weight_per_pc / 1000)
-          : 0;
-
-        const gateResult: any = await createGateEntry({
-          direction: 'OUT',
-          material_type: 'finished_goods',
-          gross_weight_kg: grossWeightKg,
-          estimated_pcs: dispatchQty,
-          item_name: woWeight?.item_code || batch.work_orders?.item_code || null,
-          party_code: woWeight?.customer || batch.work_orders?.customer || null,
-          customer_id: result?.customer_id || null,
-          work_order_id: batch.wo_id,
-          challan_no: generatedShipId,
-          dc_number: generatedShipId,
-          qc_required: false,
-          remarks: `Auto: Dispatch ${generatedShipId} - ${dispatchQty} pcs`,
-          created_by: user?.id || null,
-        });
-        if (!gateResult) {
-          toast({ variant: "destructive", title: "Gate register entry failed", description: `${generatedShipId}: OUT entry for ${batch.carton_id} was not created` });
-        }
-      }
+      // Gate register OUT entries are created inside create_dispatch_shipment (same transaction)
 
       const warnings: any[] = result?.warnings || [];
       if (warnings.length > 0) {
