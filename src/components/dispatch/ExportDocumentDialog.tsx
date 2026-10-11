@@ -45,7 +45,8 @@ interface ExportDocumentDialogProps {
   onConfirm: (fields: ExportDocumentFields) => void;
 }
 
-const COMMON_PORTS = [
+export const COMMON_PORTS = [
+  'NHAVA SHEVA (JNPT)',
   'AHMEDABAD AIR PORT',
   'MUMBAI AIR PORT',
   'DELHI AIR PORT',
@@ -54,8 +55,9 @@ const COMMON_PORTS = [
   'CHENNAI SEA PORT',
 ];
 
-const COMMON_PAYMENT_TERMS = [
+export const COMMON_PAYMENT_TERMS = [
   '100% ADVANCE',
+  '30% ADVANCE & BALANCE AGAINST COPY OF BL',
   '100% BALANCE AGAINST BL COPY',
   '50% ADVANCE, 50% AGAINST BL',
   'NET 30 DAYS',
@@ -79,11 +81,11 @@ export function ExportDocumentDialog({
   packingData,
   onConfirm,
 }: ExportDocumentDialogProps) {
-  const [fields, setFields] = useState<ExportDocumentFields>({
+  const build = (): ExportDocumentFields => ({
     portOfLoading: existingData?.portOfLoading || '',
     portOfDischarge: existingData?.portOfDischarge || '',
-    vesselFlightNo: existingData?.vesselFlightNo || 'BY AIR',
-    termsOfPayment: existingData?.termsOfPayment || '100% BALANCE AGAINST BL COPY',
+    vesselFlightNo: existingData?.vesselFlightNo || 'BY SEA',
+    termsOfPayment: existingData?.termsOfPayment || '',
     blNumber: existingData?.blNumber || '',
     blDate: existingData?.blDate || '',
     numberOfPackages: packingData?.totalCartons || existingData?.numberOfPackages || 0,
@@ -92,6 +94,13 @@ export function ExportDocumentDialog({
     placeOfReceipt: existingData?.placeOfReceipt || 'N.A.',
     documentNo: existingData?.documentNo || '',
   });
+  const [fields, setFields] = useState<ExportDocumentFields>(build);
+
+  // Re-fill from the saved shipment every time the dialog opens
+  useEffect(() => {
+    if (open) setFields(build());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existingData]);
 
   // Update fields when packingData changes
   useEffect(() => {
@@ -110,7 +119,7 @@ export function ExportDocumentDialog({
   };
 
   const title = documentType === 'invoice' ? 'Commercial Invoice Details' : 'Packing List Details';
-  const description = 'Enter shipping details for this export document. Packing details are auto-populated from the ERP.';
+  const description = 'Shipping details are pre-filled from the shipment. Any change you make here is saved back to the shipment.';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -173,19 +182,16 @@ export function ExportDocumentDialog({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="portOfLoading">Port of Loading *</Label>
-                <Select 
-                  value={fields.portOfLoading} 
-                  onValueChange={(v) => handleChange('portOfLoading', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select port" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMON_PORTS.map(port => (
-                      <SelectItem key={port} value={port}>{port}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  id="portOfLoading"
+                  list="export-ports"
+                  value={fields.portOfLoading}
+                  onChange={(e) => handleChange('portOfLoading', e.target.value)}
+                  placeholder="e.g., NHAVA SHEVA (JNPT)"
+                />
+                <datalist id="export-ports">
+                  {COMMON_PORTS.map(port => <option key={port} value={port} />)}
+                </datalist>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="vesselFlightNo">Vessel / Flight No. *</Label>
@@ -193,7 +199,7 @@ export function ExportDocumentDialog({
                   id="vesselFlightNo"
                   value={fields.vesselFlightNo}
                   onChange={(e) => handleChange('vesselFlightNo', e.target.value)}
-                  placeholder="BY AIR / Flight No."
+                  placeholder="BY SEA / vessel or flight no."
                 />
               </div>
               <div className="space-y-2">
@@ -238,19 +244,16 @@ export function ExportDocumentDialog({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="termsOfPayment">Terms of Payment *</Label>
-                <Select 
-                  value={fields.termsOfPayment} 
-                  onValueChange={(v) => handleChange('termsOfPayment', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select terms" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMON_PAYMENT_TERMS.map(term => (
-                      <SelectItem key={term} value={term}>{term}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  id="termsOfPayment"
+                  list="export-payment-terms"
+                  value={fields.termsOfPayment}
+                  onChange={(e) => handleChange('termsOfPayment', e.target.value)}
+                  placeholder="e.g., 30% ADVANCE & BALANCE AGAINST COPY OF BL"
+                />
+                <datalist id="export-payment-terms">
+                  {COMMON_PAYMENT_TERMS.map(term => <option key={term} value={term} />)}
+                </datalist>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="blNumber">BL Number (optional)</Label>
