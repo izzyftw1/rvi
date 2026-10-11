@@ -26,8 +26,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface DashboardSummary {
   active_orders: number;
-  on_time_rate_7d: number;
-  rejection_rate: number;
+  on_time_rate_7d: number | null;
+  rejection_rate: number | null;
   external_wip_pcs: number;
   blocked_count: number;
 }
@@ -92,7 +92,7 @@ const Index = () => {
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sevenDaysAgo).gte('due_date', sevenDaysAgo),
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sevenDaysAgo),
         supabase.from('production_batches').select('produced_qty, qc_approved_qty, qc_rejected_qty').gte('created_at', sevenDaysAgo),
-        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).in('status', ['pending', 'in_progress']).eq('is_archived', false).lt('due_date', today),
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).in('status', ['pending', 'in_progress']).lt('due_date', today),
       ]);
 
       const errors: Record<string, string> = {};
