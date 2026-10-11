@@ -107,7 +107,7 @@ export default function QCIncoming() {
               const num = (x?: string | null) => { const m = String(x || '').match(/[\d.]+/); return m ? Number(m[0]) : null; };
               const { data: availableLots, error: lotsErr } = await supabase
                 .from("material_lots")
-                .select("qc_status, alloy, material_size_mm, available_kg");
+                .select("qc_status, alloy, material_size_mm, available_kg").eq("is_archived", false);
               if (lotsErr) console.error("Error fetching lots:", lotsErr);
               const wsz = num(wo.material_size_mm);
               const matchingLots = (availableLots || []).filter(lot =>

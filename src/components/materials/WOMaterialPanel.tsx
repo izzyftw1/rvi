@@ -27,7 +27,7 @@ export const WOMaterialPanel = ({ woId, alloy, sizeMm }: { woId: string; alloy?:
 
   const load = useCallback(async () => {
     const [l, b, m] = await Promise.all([
-      supabase.from("material_lots").select("id, lot_id, heat_no, alloy, material_size_mm, qc_status, available_kg").order("created_at"),
+      supabase.from("material_lots").select("id, lot_id, heat_no, alloy, material_size_mm, qc_status, available_kg, is_archived").order("created_at"),
       supabase.from("production_batches").select("id, batch_number").eq("wo_id", woId).order("batch_number"),
       supabase.from("inventory_movements").select("id, movement_type, quantity_kg, quantity, heat_no, scrap_type, location, notes, created_at, material_lot_id, batch_id")
         .eq("work_order_id", woId).not("material_lot_id", "is", null).order("created_at", { ascending: false }),
@@ -78,7 +78,7 @@ export const WOMaterialPanel = ({ woId, alloy, sizeMm }: { woId: string; alloy?:
     setMode(null); load();
   };
 
-  const lotOptions = mode === "issue" ? matchingLots : lots.filter(l => issuedLotIds.includes(l.id));
+  const lotOptions = mode === "issue" ? matchingLots.filter(l => !l.is_archived) : lots.filter(l => issuedLotIds.includes(l.id));
   const typeLabel: Record<string, string> = { issue: "Issue", return: "Return", scrap: "Scrap", adjustment: "Adjustment" };
 
   return (

@@ -268,7 +268,7 @@ export default function MaterialRequirements() {
   const loadInventory = async () => {
     const { data, error } = await supabase
       .from('material_lots')
-      .select('material_size_mm, alloy, available_kg');
+      .select('material_size_mm, alloy, available_kg').eq('is_archived', false);
 
     if (error) throw error;
 
