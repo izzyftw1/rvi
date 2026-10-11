@@ -23,6 +23,7 @@ export const WOMaterialPanel = ({ woId, alloy, sizeMm }: { woId: string; alloy?:
   const [moves, setMoves] = useState<any[]>([]);
   const [mode, setMode] = useState<Mode>(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [f, setF] = useState({ lot: "", batch: "", kg: "", pcs: "", scrapType: "chips", location: "", notes: "" });
 
   const load = useCallback(async () => {
@@ -58,22 +59,30 @@ export const WOMaterialPanel = ({ woId, alloy, sizeMm }: { woId: string; alloy?:
   }, [moves]);
   const issuedLotIds = Object.keys(withWO);
 
-  const open = (m: Mode) => { setF({ lot: "", batch: batches.length === 1 ? batches[0].id : "", kg: "", pcs: "", scrapType: "chips", location: "", notes: "" }); setMode(m); };
+  const open = (m: Mode) => { setFormError(null); setF({ lot: "", batch: batches.length === 1 ? batches[0].id : "", kg: "", pcs: "", scrapType: "chips", location: "", notes: "" }); setMode(m); };
+
+  const fail = (msg: string) => { setFormError(msg); toast.error(msg); };
 
   const submit = async () => {
+    setFormError(null);
     const kg = Number(f.kg);
-    if (!f.lot && mode !== "scrap") return toast.error("Pick a lot");
-    if (!f.batch && mode === "issue") return toast.error("Pick a production batch");
-    if (!kg || kg <= 0) return toast.error("Enter kg");
+    if (!f.lot && mode !== "scrap") return fail("Pick a lot");
+    if (!f.batch && mode === "issue") return fail("Pick a production batch");
+    if (!f.kg || !Number.isFinite(kg) || kg <= 0) return fail("Enter the weight in kg (more than 0)");
     setSaving(true);
-    const args: any = { p_wo_id: woId, p_lot_id: f.lot || null, p_batch_id: f.batch || null, p_kg: kg };
-    const res = mode === "issue"
-      ? await supabase.rpc("issue_material_to_wo", { ...args, p_pcs: f.pcs ? Number(f.pcs) : null })
-      : mode === "return"
-        ? await supabase.rpc("return_material_to_lot", { ...args, p_notes: f.notes || null })
-        : await supabase.rpc("record_material_scrap", { ...args, p_scrap_type: f.scrapType, p_location: f.location || null, p_notes: f.notes || null });
+    let res: { error: { message: string } | null };
+    try {
+      const args: any = { p_wo_id: woId, p_lot_id: f.lot || null, p_batch_id: f.batch || null, p_kg: kg };
+      res = mode === "issue"
+        ? await supabase.rpc("issue_material_to_wo", { ...args, p_pcs: f.pcs ? Number(f.pcs) : null })
+        : mode === "return"
+          ? await supabase.rpc("return_material_to_lot", { ...args, p_notes: f.notes || null })
+          : await supabase.rpc("record_material_scrap", { ...args, p_scrap_type: f.scrapType, p_location: f.location || null, p_notes: f.notes || null });
+    } catch (e: any) {
+      res = { error: { message: e?.message || "Could not save" } };
+    }
     setSaving(false);
-    if (res.error) return toast.error(res.error.message);
+    if (res.error) return fail(res.error.message);
     toast.success(mode === "issue" ? "Material issued" : mode === "return" ? "Returned to stock" : "Scrap recorded");
     setMode(null); load();
   };
@@ -161,6 +170,7 @@ export const WOMaterialPanel = ({ woId, alloy, sizeMm }: { woId: string; alloy?:
             {mode === "scrap" && <div className="space-y-1"><Label>Bag / location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} /></div>}
             {mode !== "issue" && <div className="space-y-1"><Label>Notes</Label><Input value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} /></div>}
           </div>
+          {formError && <p className="text-sm text-destructive" role="alert">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setMode(null)}>Cancel</Button>
             <Button onClick={submit} disabled={saving}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Save</Button>
