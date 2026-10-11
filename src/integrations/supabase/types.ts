@@ -599,6 +599,8 @@ export type Database = {
           credit_limit_amount: number | null
           credit_limit_currency: string | null
           customer_name: string
+          default_marks_numbers: string | null
+          eori_number: string | null
           gst_number: string | null
           gst_type: Database["public"]["Enums"]["gst_type"] | null
           id: string
@@ -623,6 +625,8 @@ export type Database = {
           credit_limit_amount?: number | null
           credit_limit_currency?: string | null
           customer_name: string
+          default_marks_numbers?: string | null
+          eori_number?: string | null
           gst_number?: string | null
           gst_type?: Database["public"]["Enums"]["gst_type"] | null
           id?: string
@@ -647,6 +651,8 @@ export type Database = {
           credit_limit_amount?: number | null
           credit_limit_currency?: string | null
           customer_name?: string
+          default_marks_numbers?: string | null
+          eori_number?: string | null
           gst_number?: string | null
           gst_type?: Database["public"]["Enums"]["gst_type"] | null
           id?: string
@@ -2242,29 +2248,59 @@ export type Database = {
       }
       finance_settings: {
         Row: {
+          company_address: string
+          company_email: string
+          company_gstin: string
+          company_iec: string
+          company_name: string
+          company_phones: string
           company_state: string
+          company_udyam: string
+          company_website: string
           default_gst_percent: number
           domestic_invoice_prefix: string
           export_invoice_prefix: string
           id: boolean
+          lut_arn: string | null
+          signatory_designation: string
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          company_address?: string
+          company_email?: string
+          company_gstin?: string
+          company_iec?: string
+          company_name?: string
+          company_phones?: string
           company_state?: string
+          company_udyam?: string
+          company_website?: string
           default_gst_percent?: number
           domestic_invoice_prefix?: string
           export_invoice_prefix?: string
           id?: boolean
+          lut_arn?: string | null
+          signatory_designation?: string
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          company_address?: string
+          company_email?: string
+          company_gstin?: string
+          company_iec?: string
+          company_name?: string
+          company_phones?: string
           company_state?: string
+          company_udyam?: string
+          company_website?: string
           default_gst_percent?: number
           domestic_invoice_prefix?: string
           export_invoice_prefix?: string
           id?: boolean
+          lut_arn?: string | null
+          signatory_designation?: string
           updated_at?: string
           updated_by?: string | null
         }
@@ -3870,7 +3906,9 @@ export type Database = {
           estimated_cycle_time_s: number | null
           estimated_gross_weight_g: number | null
           estimated_net_weight_g: number | null
+          goods_heading: string | null
           gross_weight_grams: number | null
+          hs_code: string | null
           id: string
           item_code: string
           item_name: string | null
@@ -3893,7 +3931,9 @@ export type Database = {
           estimated_cycle_time_s?: number | null
           estimated_gross_weight_g?: number | null
           estimated_net_weight_g?: number | null
+          goods_heading?: string | null
           gross_weight_grams?: number | null
+          hs_code?: string | null
           id?: string
           item_code: string
           item_name?: string | null
@@ -3916,7 +3956,9 @@ export type Database = {
           estimated_cycle_time_s?: number | null
           estimated_gross_weight_g?: number | null
           estimated_net_weight_g?: number | null
+          goods_heading?: string | null
           gross_weight_grams?: number | null
+          hs_code?: string | null
           id?: string
           item_code?: string
           item_name?: string | null
@@ -4514,6 +4556,7 @@ export type Database = {
           gross_weight: number
           heat_no: string
           id: string
+          is_archived: boolean
           lot_id: string
           material_size_mm: string | null
           mtc_file: string | null
@@ -4534,6 +4577,7 @@ export type Database = {
           gross_weight: number
           heat_no: string
           id?: string
+          is_archived?: boolean
           lot_id: string
           material_size_mm?: string | null
           mtc_file?: string | null
@@ -4554,6 +4598,7 @@ export type Database = {
           gross_weight?: number
           heat_no?: string
           id?: string
+          is_archived?: boolean
           lot_id?: string
           material_size_mm?: string | null
           mtc_file?: string | null
