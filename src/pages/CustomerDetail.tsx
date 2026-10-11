@@ -42,6 +42,7 @@ export default function CustomerDetail() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalAR: 0, overdueAR: 0, avgDaysToPay: 0, openSOs: 0, openWOs: 0, activeShipments: 0 });
+  const [arTotals, setArTotals] = useState<{ total: CurrencyTotals; overdue: CurrencyTotals }>({ total: {}, overdue: {} });
   const [activities, setActivities] = useState<any[]>([]);
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
@@ -279,6 +280,8 @@ export default function CustomerDetail() {
         </div>
         <Button onClick={handleNewSalesOrder}><Plus className="h-4 w-4 mr-2" />New Sales Order</Button>
       </div>
+
+      {id && <SOAdvanceSummary customerId={id} />}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
