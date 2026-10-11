@@ -89,7 +89,11 @@ export interface PackingListData {
 
 const addLetterhead = (_doc: jsPDF): number => contentTop();
 
-// Document title
+export const generatePackingListPDF = (data: PackingListData): jsPDF => {
+  const doc = new jsPDF({ format: "a4", unit: "mm" });
+  let yPos = addLetterhead(doc);
+
+  // Document title
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...BRAND_COLORS.primary);
