@@ -1236,7 +1236,7 @@ const WorkOrders = () => {
       const { error } = await supabase.from("work_orders").delete().eq("id", woId);
       if (error) throw error;
       toast({ description: `Deleted ${displayId}` });
-      loadWorkOrders();
+      loadWorkOrders(0, currentPage * pageSize - 1, false);
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
     }
