@@ -22,6 +22,8 @@ export interface WorkOrderOption {
   item_code: string | null;
   customer: string | null;
   quantity: number | null;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 interface WorkOrderSelectProps {
@@ -161,7 +163,9 @@ export function WorkOrderSelect({
                 <CommandItem
                   key={wo.id}
                   value={wo.id}
+                  disabled={wo.disabled}
                   onSelect={() => {
+                    if (wo.disabled) return;
                     onValueChange(wo.id);
                     setOpen(false);
                     setSearchQuery("");
@@ -177,6 +181,9 @@ export function WorkOrderSelect({
                     />
                     <div className="flex flex-col">
                       <span className="font-medium">{wo.wo_number}</span>
+                      {wo.disabled && wo.disabledReason && (
+                        <span className="text-xs text-destructive">{wo.disabledReason}</span>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {formatSecondaryLine(wo)}
                       </span>
