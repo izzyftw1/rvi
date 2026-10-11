@@ -1115,12 +1115,7 @@ export default function Dispatch() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Input
-                      placeholder="Shipment ID (auto)"
-                      value={shipmentId}
-                      onChange={(e) => setShipmentId(e.target.value)}
-                      className="w-40"
-                    />
+                    <span className="text-xs text-muted-foreground w-40">Shipment no. assigned on dispatch</span>
                     <Input
                       placeholder="Remarks"
                       value={remarks}
