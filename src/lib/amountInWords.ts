@@ -51,7 +51,7 @@ export const amountInWords = (amount: number, currency: string): string => {
 };
 
 export const currencySymbol = (c: string): string =>
-  ({ USD: '$', EUR: '€', GBP: '£', INR: '₹' } as Record<string, string>)[c] || `${c} `;
+  ({ USD: '$', EUR: '€', GBP: '£', INR: 'Rs. ' } as Record<string, string>)[c] || `${c} `;
 
 /** Name used in "Rate DDP-Pound per pcs". */
 export const currencyRateName = (c: string): string =>
