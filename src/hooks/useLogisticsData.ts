@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { differenceInDays, startOfMonth, format, startOfDay, endOfDay } from "date-fns";
 
+
+// Weight in kg for the not-yet-dispatched part of a carton.
+// Prefer actual carton weight (kg, prorated); else pcs × grams-per-pc / 1000.
+const remainingKg = (c: any): number => {
+  const qty = c.quantity || 0;
+  const remaining = Math.max(0, qty - (c.dispatched_qty || 0));
+  if ((c.net_weight || 0) > 0 && qty > 0) return (c.net_weight * remaining) / qty;
+  return (remaining * (c.work_order?.net_weight_per_pc || 0)) / 1000;
+};
+
 export interface CartonData {
   id: string;
   carton_id: string;
@@ -261,11 +271,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
     // Packed cartons from filtered data
     const packedCartons = filteredCartons.filter(c => c.status === "packed" || (c.status !== "dispatched" && c.dispatched_qty < c.quantity));
     const packedQty = packedCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
-    const packedValue = packedCartons.reduce((sum, c) => {
-      const remainingQty = c.quantity - (c.dispatched_qty || 0);
-      const weightPerPc = c.work_order?.net_weight_per_pc || 0;
-      return sum + (remainingQty * weightPerPc);
-    }, 0);
+    const packedValue = packedCartons.reduce((sum, c) => sum + remainingKg(c), 0);
 
     // Dispatched today from filtered data
     const todayDispatches = filteredDispatches.filter(d => 
@@ -276,11 +282,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
 
     // Ageing exposure (>15 days old packed goods) from filtered data
     const ageingCartons = packedCartons.filter(c => differenceInDays(today, new Date(c.built_at)) > 15);
-    const ageingValue = ageingCartons.reduce((sum, c) => {
-      const remainingQty = c.quantity - (c.dispatched_qty || 0);
-      const weightPerPc = c.work_order?.net_weight_per_pc || 0;
-      return sum + (remainingQty * weightPerPc);
-    }, 0);
+    const ageingValue = ageingCartons.reduce((sum, c) => sum + remainingKg(c), 0);
     const ageingQty = ageingCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
 
     // Inventory by state from filtered data
@@ -339,8 +341,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
     packedCartons.forEach(c => {
       const age = differenceInDays(today, new Date(c.built_at));
       const remainingQty = c.quantity - (c.dispatched_qty || 0);
-      const weightPerPc = c.work_order?.net_weight_per_pc || 0;
-      const value = remainingQty * weightPerPc;
+      const value = remainingKg(c);
 
       const bucket = buckets.find(b => age >= b.minDays && age <= b.maxDays);
       if (bucket) {
@@ -365,7 +366,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
         quantity: c.quantity,
         dispatched_qty: c.dispatched_qty || 0,
         built_at: c.built_at,
-        net_weight: c.net_weight,
+        net_weight: remainingKg(c),
       }));
   }, [filteredCartons]);
 
