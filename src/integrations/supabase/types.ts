@@ -2003,6 +2003,104 @@ export type Database = {
         }
         Relationships: []
       }
+      final_qc_inspections: {
+        Row: {
+          accepted_qty: number
+          batch_id: string
+          created_at: string
+          disposition: string | null
+          id: string
+          inspected_qty: number
+          inspector_id: string | null
+          ncr_id: string | null
+          rejected_qty: number
+          remarks: string | null
+          result: string
+          system_backfill: boolean
+          wo_id: string
+        }
+        Insert: {
+          accepted_qty?: number
+          batch_id: string
+          created_at?: string
+          disposition?: string | null
+          id?: string
+          inspected_qty?: number
+          inspector_id?: string | null
+          ncr_id?: string | null
+          rejected_qty?: number
+          remarks?: string | null
+          result: string
+          system_backfill?: boolean
+          wo_id: string
+        }
+        Update: {
+          accepted_qty?: number
+          batch_id?: string
+          created_at?: string
+          disposition?: string | null
+          id?: string
+          inspected_qty?: number
+          inspector_id?: string | null
+          ncr_id?: string | null
+          rejected_qty?: number
+          remarks?: string | null
+          result?: string
+          system_backfill?: boolean
+          wo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "final_qc_inspections_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "packable_batches_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "final_qc_inspections_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "final_qc_inspections_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: false
+            referencedRelation: "ncrs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "final_qc_inspections_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_work_orders_vw"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "final_qc_inspections_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "wo_dispatch_summary_vw"
+            referencedColumns: ["wo_id"]
+          },
+          {
+            foreignKeyName: "final_qc_inspections_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "final_qc_inspections_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders_restricted"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       finance_period_locks: {
         Row: {
           created_at: string
@@ -11035,6 +11133,18 @@ export type Database = {
         Returns: undefined
       }
       receive_raw_material: { Args: { p_entry: Json }; Returns: Json }
+      record_final_qc: {
+        Args: {
+          p_accepted_qty: number
+          p_batch_id: string
+          p_disposition: string
+          p_inspected_qty: number
+          p_rejected_qty: number
+          p_remarks: string
+          p_result: string
+        }
+        Returns: Json
+      }
       recover_missing_work_orders: {
         Args: { p_line_ids: string[] }
         Returns: Json
