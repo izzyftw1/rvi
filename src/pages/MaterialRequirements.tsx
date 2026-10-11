@@ -224,7 +224,7 @@ export default function MaterialRequirements() {
         total_net_kg: ((wo.quantity || 0) * (wo.net_weight_per_pc || 0)) / 1000,
         current_stage: wo.current_stage || 'goods_in',
         so_id: wo.so_id,
-        so_display_id: wo.so_id ? soNumbers.get(wo.so_id) || null : null
+        so_display_id: wo.so_id ? soNumbers.get(wo.so_id) || null : null,
         priority: wo.priority || 3
       };
     });
