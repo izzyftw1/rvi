@@ -77,7 +77,7 @@ const Index = () => {
     const channel = supabase.channel('control-tower-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => loadDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves' }, () => loadDashboardData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs' }, () => loadDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => loadDashboardData())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user]);
@@ -91,8 +91,8 @@ const Index = () => {
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).not('status', 'in', '("completed","shipped","cancelled")'),
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sevenDaysAgo).gte('due_date', sevenDaysAgo),
         supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sevenDaysAgo),
-        supabase.from('daily_production_logs').select('total_rejection_quantity, actual_quantity').eq('log_date', today),
-        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).in('status', ['pending', 'in_progress']).lt('due_date', today),
+        supabase.from('production_batches').select('produced_qty, qc_approved_qty, qc_rejected_qty').gte('created_at', sevenDaysAgo),
+        supabase.from('work_orders_restricted').select('id', { count: 'exact', head: true }).in('status', ['pending', 'in_progress']).eq('is_archived', false).lt('due_date', today),
       ]);
 
       const errors: Record<string, string> = {};
@@ -106,12 +106,13 @@ const Index = () => {
 
       const completedOnTime = completedOnTimeResult.count ?? 0;
       const totalCompleted = totalCompletedResult.count ?? 0;
-      const onTimeRate = totalCompleted > 0 ? Math.round((completedOnTime / totalCompleted) * 100) : 100;
+      const onTimeRate = totalCompleted > 0 ? Math.round((completedOnTime / totalCompleted) * 100) : null;
 
       const logs = todayLogsResult.data || [];
-      const totalProduced = logs.reduce((s: number, l: any) => s + (l.actual_quantity || 0), 0);
-      const totalRejected = logs.reduce((s: number, l: any) => s + (l.total_rejection_quantity || 0), 0);
-      const rejectionRate = totalProduced > 0 ? (totalRejected / (totalProduced + totalRejected)) * 100 : 0;
+      // Quality yield from production batches (quantity source of truth): QC-approved vs QC-rejected
+      const totalApproved = logs.reduce((s: number, l: any) => s + (l.qc_approved_qty || 0), 0);
+      const totalRejected = logs.reduce((s: number, l: any) => s + (l.qc_rejected_qty || 0), 0);
+      const rejectionRate = totalApproved + totalRejected > 0 ? (totalRejected / (totalApproved + totalRejected)) * 100 : null;
 
       setSummary({
         active_orders: activeResult.count ?? 0,
@@ -205,8 +206,8 @@ const Index = () => {
         {/* KPIs */}
         <ExecutiveKPIHero
           activeOrders={summary?.active_orders ?? 0}
-          onTimeRate={summary?.on_time_rate_7d ?? 100}
-          rejectionRate={summary?.rejection_rate ?? 0}
+          onTimeRate={summary?.on_time_rate_7d ?? null}
+          rejectionRate={summary?.rejection_rate ?? null}
           externalOverdue={externalOverdueTotal}
           externalTotal={externalActiveTotal}
           blockedOrders={summary?.blocked_count ?? 0}
