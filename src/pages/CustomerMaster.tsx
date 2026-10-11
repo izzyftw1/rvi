@@ -46,6 +46,8 @@ export default function CustomerMaster() {
     state: "",
     country: "",
     gst_number: "",
+    eori_number: "",
+    default_marks_numbers: "",
     gst_type: "not_applicable" as "domestic" | "export" | "not_applicable",
     pan_number: "",
     is_export_customer: false,
@@ -162,6 +164,8 @@ export default function CustomerMaster() {
       state: "",
       country: "",
       gst_number: "",
+      eori_number: "",
+      default_marks_numbers: "",
       gst_type: "not_applicable",
       pan_number: "",
       is_export_customer: false,
@@ -187,6 +191,8 @@ export default function CustomerMaster() {
       state: customer.state || "",
       country: customer.country || "",
       gst_number: customer.gst_number || "",
+      eori_number: customer.eori_number || "",
+      default_marks_numbers: customer.default_marks_numbers || "",
       gst_type: customer.gst_type || "not_applicable",
       pan_number: customer.pan_number || "",
       is_export_customer: customer.is_export_customer || false,
@@ -224,6 +230,8 @@ export default function CustomerMaster() {
         state: formData.state || null,
         country: formData.country || null,
         gst_number: formData.gst_number || null,
+        eori_number: formData.eori_number || null,
+        default_marks_numbers: formData.default_marks_numbers || null,
         gst_type: formData.gst_type,
         pan_number: formData.pan_number || null,
         is_export_customer: formData.is_export_customer,
@@ -526,6 +534,22 @@ export default function CustomerMaster() {
                   value={formData.gst_number}
                   onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
                   placeholder="GST number (if applicable)"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>EORI Number</Label>
+                <Input
+                  value={formData.eori_number}
+                  onChange={(e) => setFormData({ ...formData, eori_number: e.target.value })}
+                  placeholder="For UK/EU export buyers"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Marks & Nos.</Label>
+                <Input
+                  value={formData.default_marks_numbers}
+                  onChange={(e) => setFormData({ ...formData, default_marks_numbers: e.target.value })}
+                  placeholder="Printed on export invoices"
                 />
               </div>
               {(formData.gst_type === "domestic" || formData.country === "India") && (
