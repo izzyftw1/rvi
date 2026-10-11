@@ -43,6 +43,13 @@
       "when": 1791702225694,
       "tag": "0005_final_qc_packing_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791702752350,
+      "tag": "0006_dispatch_qc_after_packing_and_atomic_dispatch",
+      "breakpoints": true
     }
   ]
 }
