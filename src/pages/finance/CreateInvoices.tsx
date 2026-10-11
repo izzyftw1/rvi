@@ -91,21 +91,20 @@ export default function CreateInvoices() {
 
       const woIds = [...new Set((notes || []).map(n => n.work_order_id))];
       const { data: wos } = await supabase.from("work_orders_restricted")
-        .select("id, wo_number, so_id, customer_id, sales_order_line_id")
+        .select("id, wo_number, so_id, customer_id")
         .in("id", woIds.length ? woIds : [EMPTY_UUID]);
       const woMap = new Map<string, any>((wos || []).map((w: any) => [w.id, w]));
 
       const soIds = [...new Set((notes || []).map(n => n.sales_order_id || woMap.get(n.work_order_id)?.so_id).filter(Boolean))] as string[];
-      const lineIds = [...new Set((wos || []).map((w: any) => w.sales_order_line_id).filter(Boolean))] as string[];
       const invIds = [...new Set((notes || []).map(n => n.invoice_id).filter(Boolean))] as string[];
       const [{ data: sos }, { data: lines }, { data: advs }, { data: invs }] = await Promise.all([
         supabase.from("sales_orders").select("id, so_id, customer_id, currency, gst_percent").in("id", soIds.length ? soIds : [EMPTY_UUID]),
-        supabase.from("sales_order_line_items").select("id, gst_percent").in("id", lineIds.length ? lineIds : [EMPTY_UUID]),
+        supabase.from("sales_order_line_items").select("work_order_id, gst_percent").in("work_order_id", woIds.length ? woIds : [EMPTY_UUID]),
         supabase.from("so_advance_status").select("sales_order_id, so_id, advance_received, advance_unapplied").in("sales_order_id", soIds.length ? soIds : [EMPTY_UUID]),
         supabase.from("invoices").select("id, invoice_no").in("id", invIds.length ? invIds : [EMPTY_UUID]),
       ]);
       const soMap = new Map<string, any>((sos || []).map((s: any) => [s.id, s]));
-      const lineMap = new Map<string, any>((lines || []).map((l: any) => [l.id, l]));
+      const lineMap = new Map<string, any>((lines || []).map((l: any) => [l.work_order_id, l]));
       const advMap = new Map<string, any>((advs || []).map((a: any) => [a.sales_order_id, a]));
       const invMap = new Map<string, string>((invs || []).map((i: any) => [i.id, i.invoice_no]));
 
@@ -136,7 +135,7 @@ export default function CreateInvoices() {
           const custId = so?.customer_id || wo?.customer_id || null;
           if (custId && custMap.has(custId)) custSet.add(custId); else missingCustomer = true;
           if (soId) soSet.add(soId);
-          const line = wo?.sales_order_line_id ? lineMap.get(wo.sales_order_line_id) : null;
+          const line = lineMap.get(n.work_order_id) || null;
           return {
             id: n.id, dispatch_note_no: n.dispatch_note_no, work_order_id: n.work_order_id, sales_order_id: soId,
             item_code: n.item_code, wo_number: wo?.wo_number || null,
@@ -205,9 +204,6 @@ export default function CreateInvoices() {
   const toggleAll = () => {
     setSelected(selected.size === readyShipments.length ? new Set() : new Set(readyShipments.map(s => s.id)));
   };
-
-  const calculateSubtotal = (s: InvoiceableShipment) =>
-    s.dispatch_notes.reduce((sum, n) => sum + (qtyOverrides[n.id] ?? n.dispatched_qty) * (Number(n.unit_rate) || 0), 0);
 
   const calculateTotal = (s: InvoiceableShipment) =>
     s.dispatch_notes.reduce((sum, n) => {
