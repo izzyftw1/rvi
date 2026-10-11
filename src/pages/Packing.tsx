@@ -47,6 +47,7 @@ interface DispatchQCBatchItem {
   item_code: string;
   customer: string;
   wo_quantity: number;
+  wo_packed_qty: number;
   batch_number: number | null;
 }
 
@@ -122,7 +123,7 @@ const Packing = () => {
 
     const channel = supabase
       .channel('packing-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatch_qc_batches' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches' }, () => {
         loadDispatchQCBatches();
         loadPackingWorkOrders();
         loadAwaitingCounts();
@@ -190,129 +191,90 @@ const Packing = () => {
     return { readyCount: readyWOs.length, totalAvailable, totalPacked, todayPacked };
   }, [packingWorkOrders, packingHistory]);
 
-  const loadDispatchQCBatches = async () => {
-    const { data, error } = await supabase
-      .from("dispatch_qc_batches")
-      .select(`
-        id, work_order_id, production_batch_id, qc_batch_id,
-        qc_approved_quantity, consumed_quantity, qc_date, approved_by, status, remarks,
-        work_orders!inner(display_id, item_code, customer, quantity),
-        production_batches(batch_number)
-      `)
-      .neq("status", "consumed")
-      .order("qc_date", { ascending: false });
-
+  // Packing gate (D14): packable qty per batch = Final-QC approved qty − qty already packed into cartons.
+  const fetchPackableBatches = async (): Promise<DispatchQCBatchItem[]> => {
+    const { data: batches, error } = await supabase
+      .from("production_batches")
+      .select("id, wo_id, batch_number, qc_approved_qty, qc_final_approved_at, qc_final_approved_by, qc_final_status")
+      .gt("qc_approved_qty", 0);
     if (error) {
-      console.error("Error loading dispatch QC batches:", error);
-      return;
+      toast({ variant: "destructive", title: "Could not load Final QC batches", description: error.message });
+      return [];
     }
-
-    const enriched: DispatchQCBatchItem[] = (data || [])
+    const woIds = [...new Set((batches || []).map(b => b.wo_id))];
+    if (woIds.length === 0) return [];
+    const [{ data: wos, error: woErr }, { data: cartons, error: cErr }] = await Promise.all([
+      supabase.from("work_orders_restricted").select("id, wo_number, item_code, customer, quantity").in("id", woIds),
+      supabase.from("cartons").select("wo_id, production_batch_id, quantity").in("wo_id", woIds),
+    ]);
+    if (woErr || cErr) {
+      toast({ variant: "destructive", title: "Could not load packing data", description: (woErr || cErr)!.message });
+    }
+    const woMap = new Map<string, any>((wos || []).map((w: any) => [w.id, w]));
+    const packedByBatch: Record<string, number> = {};
+    const packedByWO: Record<string, number> = {};
+    (cartons || []).forEach(c => {
+      if (c.production_batch_id) packedByBatch[c.production_batch_id] = (packedByBatch[c.production_batch_id] || 0) + c.quantity;
+      packedByWO[c.wo_id] = (packedByWO[c.wo_id] || 0) + c.quantity;
+    });
+    return (batches || [])
+      .filter(b => woMap.has(b.wo_id))
       .map(b => {
-        const wo = b.work_orders as any;
-        const prodBatch = b.production_batches as any;
-        const availableForPacking = Math.max(0, b.qc_approved_quantity - b.consumed_quantity);
-      
+        const wo = woMap.get(b.wo_id);
+        const packed = packedByBatch[b.id] || 0;
         return {
           id: b.id,
-          work_order_id: b.work_order_id,
-          production_batch_id: b.production_batch_id,
-          qc_batch_id: b.qc_batch_id,
-          qc_approved_quantity: b.qc_approved_quantity,
-          consumed_quantity: b.consumed_quantity,
-          available_for_packing: availableForPacking,
-          qc_date: b.qc_date,
-          approved_by: b.approved_by,
-          status: b.status,
-          remarks: b.remarks,
-          wo_number: wo?.display_id || "",
+          work_order_id: b.wo_id,
+          production_batch_id: b.id,
+          qc_batch_id: `Batch #${b.batch_number}`,
+          qc_approved_quantity: b.qc_approved_qty || 0,
+          consumed_quantity: packed,
+          available_for_packing: Math.max(0, (b.qc_approved_qty || 0) - packed),
+          qc_date: b.qc_final_approved_at || "",
+          approved_by: b.qc_final_approved_by,
+          status: b.qc_final_status || "",
+          remarks: null,
+          wo_number: wo?.wo_number || "",
           item_code: wo?.item_code || "",
           customer: wo?.customer || "",
           wo_quantity: wo?.quantity || 0,
-          batch_number: prodBatch?.batch_number || null,
+          wo_packed_qty: packedByWO[b.wo_id] || 0,
+          batch_number: b.batch_number,
         };
-      }).filter(b => b.available_for_packing > 0);
+      });
+  };
 
-    setDispatchQCBatches(enriched);
+  const loadDispatchQCBatches = async () => {
+    const all = await fetchPackableBatches();
+    setDispatchQCBatches(all.filter(b => b.available_for_packing > 0));
   };
 
   const loadPackingWorkOrders = async () => {
-    const { data: qcBatchData, error: qcError } = await supabase
-      .from("dispatch_qc_batches")
-      .select(`
-        id, work_order_id, qc_approved_quantity, consumed_quantity, status,
-        work_orders!inner(id, display_id, item_code, customer, quantity)
-      `)
-      .neq("status", "consumed");
-
-    if (qcError) {
-      console.error("Error loading dispatch QC batches for packing overview:", qcError);
-      return;
-    }
-
-    const woMap = new Map<string, { wo: any; qcApproved: number; consumed: number }>();
-    (qcBatchData || []).forEach(b => {
-      const wo = b.work_orders as any;
-      if (!wo) return;
-      
-      const existing = woMap.get(wo.id);
-      if (existing) {
-        existing.qcApproved += b.qc_approved_quantity || 0;
-        existing.consumed += b.consumed_quantity || 0;
-      } else {
-        woMap.set(wo.id, {
-          wo,
-          qcApproved: b.qc_approved_quantity || 0,
-          consumed: b.consumed_quantity || 0,
-        });
-      }
+    const all = await fetchPackableBatches();
+    const woMap = new Map<string, { b: DispatchQCBatchItem; qcApproved: number; available: number }>();
+    all.forEach(b => {
+      const e = woMap.get(b.work_order_id);
+      if (e) { e.qcApproved += b.qc_approved_quantity; e.available += b.available_for_packing; }
+      else woMap.set(b.work_order_id, { b, qcApproved: b.qc_approved_quantity, available: b.available_for_packing });
     });
 
-    const woIds = Array.from(woMap.keys());
-    if (woIds.length === 0) {
-      setPackingWorkOrders([]);
-      return;
-    }
-
-    const { data: cartonData } = await supabase
-      .from("cartons")
-      .select("wo_id, quantity")
-      .in("wo_id", woIds);
-
-    const packedQtyMap: Record<string, number> = {};
-    (cartonData || []).forEach(c => {
-      packedQtyMap[c.wo_id] = (packedQtyMap[c.wo_id] || 0) + c.quantity;
-    });
-
-    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ wo, qcApproved, consumed }) => {
-      const packedQty = packedQtyMap[wo.id] || 0;
-      const usedQty = Math.max(consumed, packedQty);
-      const availableForPacking = Math.max(0, qcApproved - usedQty);
-      const remainingQty = wo.quantity - packedQty;
-
-      let status: 'ready' | 'blocked' = 'ready';
-      let blockingReason: string | null = null;
-
-      if (availableForPacking === 0) {
-        status = 'blocked';
-        blockingReason = 'Fully packed';
-      }
-
+    const workOrders: PackingWorkOrder[] = Array.from(woMap.values()).map(({ b, qcApproved, available }) => {
+      const packedQty = b.wo_packed_qty;
       return {
-        id: wo.id,
-        wo_number: wo.display_id || '',
-        item_code: wo.item_code || '',
-        customer: wo.customer || '',
-        wo_quantity: wo.quantity || 0,
+        id: b.work_order_id,
+        wo_number: b.wo_number,
+        item_code: b.item_code,
+        customer: b.customer,
+        wo_quantity: b.wo_quantity,
         production_complete: true,
         production_complete_qty: qcApproved,
         qc_approved_qty: qcApproved,
         packed_qty: packedQty,
-        available_for_packing: availableForPacking,
-        remaining_qty: remainingQty,
-        status,
-        blocking_reason: blockingReason,
-      };
+        available_for_packing: available,
+        remaining_qty: b.wo_quantity - packedQty,
+        status: available > 0 ? 'ready' : 'blocked',
+        blocking_reason: available > 0 ? null : 'Fully packed',
+      } as PackingWorkOrder;
     }).sort((a, b) => {
       if (a.status !== b.status) return a.status === 'ready' ? -1 : 1;
       return b.available_for_packing - a.available_for_packing;
@@ -328,47 +290,32 @@ const Packing = () => {
       .in("status", ["in_progress", "pending"]);
 
     const activeWOIds = (activeWOs || []).map(w => w.id);
-    
     if (activeWOIds.length === 0) {
       setAwaitingProductionCount(0);
       setAwaitingDispatchQCCount(0);
       return;
     }
 
-    const { data: qcBatches } = await supabase
-      .from("dispatch_qc_batches")
-      .select("work_order_id, qc_approved_quantity")
-      .in("work_order_id", activeWOIds);
-
-    const qcByWO: Record<string, number> = {};
-    (qcBatches || []).forEach(b => {
-      qcByWO[b.work_order_id] = (qcByWO[b.work_order_id] || 0) + b.qc_approved_quantity;
-    });
-
     const { data: prodBatches } = await supabase
       .from("production_batches")
-      .select("wo_id, produced_qty, production_complete")
+      .select("wo_id, produced_qty, qc_approved_qty, qc_rejected_qty")
       .in("wo_id", activeWOIds);
 
-    const prodByWO: Record<string, { produced: number; complete: boolean }> = {};
+    const byWO: Record<string, { produced: number; inspected: number; approved: number }> = {};
     (prodBatches || []).forEach(b => {
-      const existing = prodByWO[b.wo_id] || { produced: 0, complete: false };
-      prodByWO[b.wo_id] = {
-        produced: existing.produced + (b.produced_qty || 0),
-        complete: existing.complete || b.production_complete || false,
-      };
+      const e = byWO[b.wo_id] || { produced: 0, inspected: 0, approved: 0 };
+      e.produced += b.produced_qty || 0;
+      e.approved += b.qc_approved_qty || 0;
+      e.inspected += (b.qc_approved_qty || 0) + (b.qc_rejected_qty || 0);
+      byWO[b.wo_id] = e;
     });
 
     let awaitingProd = 0;
     let awaitingQC = 0;
-
     (activeWOs || []).forEach(wo => {
-      const qcApproved = qcByWO[wo.id] || 0;
-      const prod = prodByWO[wo.id] || { produced: 0, complete: false };
-      
-      if (prod.produced === 0 && qcApproved === 0) awaitingProd++;
-      else if (prod.produced > 0 && qcApproved === 0) awaitingQC++;
-      else if (prod.complete && prod.produced > qcApproved) awaitingQC++;
+      const e = byWO[wo.id] || { produced: 0, inspected: 0, approved: 0 };
+      if (e.produced === 0) awaitingProd++;
+      else if (e.produced > e.inspected) awaitingQC++;
     });
 
     setAwaitingProductionCount(awaitingProd);
@@ -453,7 +400,7 @@ const Packing = () => {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const batchId = `PKB-${selectedBatch.wo_number}-${selectedBatch.qc_batch_id.slice(-6)}-${Date.now().toString().slice(-6)}`;
+      const batchId = `PKB-${selectedBatch.wo_number}-B${selectedBatch.batch_number}-${Date.now().toString().slice(-6)}`;
 
       const { data: issues } = await supabase
         .from("wo_material_issues")
@@ -467,7 +414,6 @@ const Packing = () => {
       const { error: cartonError } = await supabase.from("cartons").insert({
         carton_id: batchId,
         wo_id: selectedBatch.work_order_id,
-        dispatch_qc_batch_id: selectedBatch.id,
         production_batch_id: selectedBatch.production_batch_id,
         quantity: qty,
         pieces_per_carton: piecesPerCarton,
@@ -481,16 +427,6 @@ const Packing = () => {
       });
 
       if (cartonError) throw cartonError;
-
-      const newConsumedQty = selectedBatch.consumed_quantity + qty;
-      const newStatus = newConsumedQty >= selectedBatch.qc_approved_quantity ? "consumed" : "active";
-      
-      const { error: updateError } = await supabase
-        .from("dispatch_qc_batches")
-        .update({ consumed_quantity: newConsumedQty, status: newStatus })
-        .eq("id", selectedBatch.id);
-
-      if (updateError) throw updateError;
 
       toast({
         title: "Packing Complete",
@@ -758,7 +694,7 @@ const Packing = () => {
                     <AlertTriangle className="h-12 w-12 mx-auto text-amber-500 mb-4" />
                     <h3 className="text-lg font-semibold mb-2">No Batches Ready for Packing</h3>
                     <p className="text-muted-foreground max-w-md mx-auto">
-                      Batches need Dispatch QC approval with available quantity before packing.
+                      Batches need a Final QC pass with approved quantity not yet packed.
                     </p>
                   </CardContent>
                 </Card>
@@ -771,7 +707,7 @@ const Packing = () => {
                         <Layers className="h-5 w-5" />
                         Select & Pack
                       </CardTitle>
-                      <CardDescription>Choose a Dispatch QC batch and enter packing details</CardDescription>
+                      <CardDescription>Choose a Final-QC approved batch and enter packing details</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
@@ -785,6 +721,7 @@ const Packing = () => {
                                 <span className="font-mono font-medium">{batch.wo_number}</span>
                                 <span className="text-muted-foreground">|</span>
                                 <span className="text-sm">{batch.item_code}</span>
+                                <span className="text-xs text-muted-foreground">B#{batch.batch_number}</span>
                                 <Badge variant="outline" className="ml-auto">
                                   {batch.available_for_packing} pcs
                                 </Badge>
@@ -798,7 +735,7 @@ const Packing = () => {
                         <form onSubmit={handleCreatePackingBatch} className="space-y-4 pt-4 border-t">
                           <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/50 text-center">
                             <div>
-                              <p className="text-xs text-muted-foreground">QC Approved</p>
+                              <p className="text-xs text-muted-foreground">Final QC Approved</p>
                               <p className="text-lg font-bold">{selectedBatch.qc_approved_quantity}</p>
                             </div>
                             <div>
@@ -810,6 +747,19 @@ const Packing = () => {
                               <p className="text-lg font-bold text-green-600">{selectedBatch.available_for_packing}</p>
                             </div>
                           </div>
+
+                          {(() => {
+                            const after = selectedBatch.wo_packed_qty + (parseInt(form.quantity) || 0);
+                            const over = selectedBatch.wo_quantity > 0 ? after - selectedBatch.wo_quantity : 0;
+                            if (over <= 0) return null;
+                            const pct = ((over / selectedBatch.wo_quantity) * 100).toFixed(1);
+                            return (
+                              <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-sm text-amber-800 dark:text-amber-300">
+                                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                                <span>Over-packing: {after.toLocaleString()} of {selectedBatch.wo_quantity.toLocaleString()} ordered pcs — {pct}% over the WO order quantity. Allowed, but please confirm.</span>
+                              </div>
+                            );
+                          })()}
 
                           <div className="space-y-2">
                             <Label>Quantity to Pack *</Label>
@@ -899,7 +849,7 @@ const Packing = () => {
                               <p className="font-mono font-semibold">{selectedBatch.wo_number}</p>
                             </div>
                             <div className="p-3 rounded-lg bg-muted/50">
-                              <p className="text-xs text-muted-foreground uppercase">QC Batch</p>
+                              <p className="text-xs text-muted-foreground uppercase">Production Batch</p>
                               <p className="font-mono text-sm">{selectedBatch.qc_batch_id}</p>
                             </div>
                             <div className="p-3 rounded-lg bg-muted/50">
@@ -915,10 +865,10 @@ const Packing = () => {
                           <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
                             <div className="flex items-center gap-2 text-green-700 dark:text-green-400 mb-2">
                               <CheckCircle2 className="h-4 w-4" />
-                              <span className="text-sm font-medium">Dispatch QC Approved</span>
+                              <span className="text-sm font-medium">Final QC Approved</span>
                             </div>
                             <p className="text-xs text-green-600 dark:text-green-500">
-                              Approved on {format(new Date(selectedBatch.qc_date), "MMM dd, yyyy 'at' HH:mm")}
+                              {selectedBatch.qc_date ? `Approved on ${format(new Date(selectedBatch.qc_date), "MMM dd, yyyy 'at' HH:mm")}` : "Approved"}
                             </p>
                           </div>
 

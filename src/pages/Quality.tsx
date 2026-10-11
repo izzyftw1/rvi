@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { differenceInDays, differenceInHours, parseISO, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { FinalQCBatchPanel } from "@/components/qc/FinalQCBatchPanel";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -584,6 +585,9 @@ const Quality = () => {
               onClick={() => setSegment("dispatch")}
             />
           </div>
+
+          <FinalQCBatchPanel />
+
 
           {/* ═══ SEGMENT TOGGLE ═══ */}
           <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg overflow-x-auto">
