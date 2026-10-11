@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { differenceInDays, differenceInHours, parseISO, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { FinalQCBatchPanel } from "@/components/qc/FinalQCBatchPanel";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
