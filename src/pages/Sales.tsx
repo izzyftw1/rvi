@@ -38,6 +38,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const { map: advanceMap, reload: reloadAdvances } = useAdvanceStatuses(salesOrders.map(o => o.id));
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [customerItemHistory, setCustomerItemHistory] = useState<Record<string, string[]>>({});
@@ -946,6 +947,25 @@ export default function Sales() {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
+                      {(() => {
+                        const adv = advanceMap[order.id];
+                        const cur = order.currency || 'INR';
+                        if (!adv || (adv.advance_due <= 0 && adv.advance_received <= 0)) {
+                          return <><TableCell className="text-right text-muted-foreground">—</TableCell><TableCell className="text-right text-muted-foreground">—</TableCell><TableCell className="text-right text-muted-foreground">—</TableCell></>;
+                        }
+                        return (
+                          <>
+                            <TableCell className="text-right">{formatMoney(adv.advance_due, cur)}</TableCell>
+                            <TableCell className="text-right">{formatMoney(adv.advance_received, cur)}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                {formatMoney(adv.advance_outstanding, cur)}
+                                <ChaseAdvanceBadge status={adv} />
+                              </div>
+                            </TableCell>
+                          </>
+                        );
+                      })()}
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button 
