@@ -233,7 +233,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       // Item code filter
       if (filters.itemCode && !c.work_order?.item_code?.toLowerCase().includes(filters.itemCode.toLowerCase())) return false;
       // Dispatch status filter
-      if (filters.dispatchStatus === "packed" && c.status !== "packed") return false;
+      if (filters.dispatchStatus === "packed" && !(c.status !== "dispatched" && (c.dispatched_qty || 0) < c.quantity)) return false;
       if (filters.dispatchStatus === "dispatched" && c.status !== "dispatched") return false;
       if (filters.dispatchStatus === "partial" && !(c.dispatched_qty > 0 && c.dispatched_qty < c.quantity)) return false;
       return true;
@@ -262,6 +262,10 @@ export function useLogisticsData(filters: LogisticsFilters) {
     });
   }, [dispatches, filters]);
 
+  // A carton is "in stock" while it still has undispatched pieces (status ready_for_dispatch / packed)
+  const isInStock = (c: CartonData) => c.status !== "dispatched" && (c.dispatched_qty || 0) < c.quantity;
+  const qcPassed = (c: CartonData) => (c as any).dispatch_qc_status === 'passed';
+
   // Calculate metrics FROM FILTERED DATA
   const metrics = useMemo<LogisticsMetrics>(() => {
     const today = new Date();
@@ -269,7 +273,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
     const todayStr = format(today, 'yyyy-MM-dd');
     
     // Packed cartons from filtered data
-    const packedCartons = filteredCartons.filter(c => c.status === "packed" || (c.status !== "dispatched" && c.dispatched_qty < c.quantity));
+    const packedCartons = filteredCartons.filter(isInStock);
     const packedQty = packedCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
     const packedValue = packedCartons.reduce((sum, c) => sum + remainingKg(c), 0);
 
@@ -286,8 +290,9 @@ export function useLogisticsData(filters: LogisticsFilters) {
     const ageingQty = ageingCartons.reduce((sum, c) => sum + (c.quantity - (c.dispatched_qty || 0)), 0);
 
     // Inventory by state from filtered data
-    const packedTotal = filteredCartons.filter(c => c.status === "packed").reduce((sum, c) => sum + c.quantity, 0);
-    const dispatchedTotal = filteredCartons.filter(c => c.status === "dispatched").reduce((sum, c) => sum + c.quantity, 0);
+    // Reconciles with cartons: packed (remaining) + dispatched = total carton quantity
+    const packedTotal = filteredCartons.reduce((sum, c) => sum + Math.max(0, c.quantity - (c.dispatched_qty || 0)), 0);
+    const dispatchedTotal = filteredCartons.reduce((sum, c) => sum + Math.min(c.quantity, c.dispatched_qty || 0), 0);
 
     return {
       packedNotDispatched: { qty: packedQty, cartons: packedCartons.length, value: packedValue },
@@ -300,22 +305,11 @@ export function useLogisticsData(filters: LogisticsFilters) {
 
   // Pipeline counts FROM FILTERED DATA
   const pipeline = useMemo<PipelineCount>(() => {
-    const awaitingQC = filteredCartons.filter(c => 
-      c.status === "packed" && 
-      (c as any).dispatch_qc_status !== 'passed'
-    ).length;
-
-    const ready = filteredCartons.filter(c => 
-      c.status === "packed" && 
-      (c as any).dispatch_qc_status === 'passed' &&
-      c.dispatched_qty < c.quantity
-    ).length;
-
-    const partial = filteredCartons.filter(c => 
-      c.dispatched_qty > 0 && c.dispatched_qty < c.quantity
-    ).length;
-
-    const full = filteredCartons.filter(c => c.status === "dispatched" || c.dispatched_qty >= c.quantity).length;
+    // Same rule as /dispatch-qc: in-stock cartons whose Dispatch QC is not yet passed
+    const awaitingQC = filteredCartons.filter(c => isInStock(c) && !qcPassed(c)).length;
+    const ready = filteredCartons.filter(c => isInStock(c) && qcPassed(c) && (c.dispatched_qty || 0) === 0).length;
+    const partial = filteredCartons.filter(c => isInStock(c) && (c.dispatched_qty || 0) > 0).length;
+    const full = filteredCartons.filter(c => !isInStock(c)).length;
 
     return {
       awaitingDispatchQC: awaitingQC,
@@ -328,7 +322,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
   // Ageing buckets FROM FILTERED DATA
   const ageingBuckets = useMemo<AgeingBucket[]>(() => {
     const today = new Date();
-    const packedCartons = filteredCartons.filter(c => c.status === "packed" || (c.dispatched_qty < c.quantity));
+    const packedCartons = filteredCartons.filter(isInStock);
 
     const buckets: AgeingBucket[] = [
       { range: "0-7 days", minDays: 0, maxDays: 7, quantity: 0, cartonCount: 0, value: 0 },
@@ -356,7 +350,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
   // Finished goods from filtered cartons
   const finishedGoods = useMemo<FinishedGoodsItem[]>(() => {
     return filteredCartons
-      .filter(c => c.status === "packed" || (c.dispatched_qty < c.quantity))
+      .filter(isInStock)
       .map(c => ({
         id: c.id,
         carton_id: c.carton_id,
