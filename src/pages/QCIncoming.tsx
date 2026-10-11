@@ -64,7 +64,7 @@ export default function QCIncoming() {
         .select(`
           id, wo_number, customer, item_code, sales_order,
           qc_material_status, qc_material_passed, qc_first_piece_status,
-          material_size_mm, bom
+          material_size_mm, bom, financial_snapshot
         `)
         .in('status', ['pending', 'in_progress', 'qc', 'packing'])
         .order("created_at", { ascending: false })
@@ -98,25 +98,27 @@ export default function QCIncoming() {
               material_alloy = lots[0]?.alloy || "";
             }
           } else {
+            // Not issued yet: has matching material arrived (same alloy + size)?
             const bom = wo.bom as any;
-            const requiredAlloy = bom?.material_alloy || bom?.alloy;
+            const snap = (wo as any).financial_snapshot?.line_item;
+            const requiredAlloy = snap?.alloy || bom?.material_alloy || bom?.alloy;
             if (requiredAlloy && typeof requiredAlloy === 'string') {
-              try {
-                const { data: availableLots } = await supabase
-                  .from("material_lots")
-                  .select("qc_status, alloy");
-                
-                const matchingLots = availableLots?.filter(
-                  lot => lot.alloy === requiredAlloy
-                ) || [];
-
-                if (matchingLots.length > 0) {
-                  total_material_lots = matchingLots.length;
-                  pending_material_lots = matchingLots.filter(l => l.qc_status === "pending").length;
-                  material_alloy = requiredAlloy;
-                }
-              } catch (err) {
-                console.error("Error fetching lots:", err);
+              const norm = (x?: string | null) => (x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const num = (x?: string | null) => { const m = String(x || '').match(/[\d.]+/); return m ? Number(m[0]) : null; };
+              const { data: availableLots, error: lotsErr } = await supabase
+                .from("material_lots")
+                .select("qc_status, alloy, material_size_mm, available_kg");
+              if (lotsErr) console.error("Error fetching lots:", lotsErr);
+              const wsz = num(wo.material_size_mm);
+              const matchingLots = (availableLots || []).filter(lot =>
+                norm(lot.alloy) === norm(requiredAlloy) &&
+                Number(lot.available_kg || 0) > 0 &&
+                (wsz == null || num(lot.material_size_mm) == null || num(lot.material_size_mm) === wsz)
+              );
+              if (matchingLots.length > 0) {
+                total_material_lots = matchingLots.length;
+                pending_material_lots = matchingLots.filter(l => (l.qc_status || 'pending') === "pending").length;
+                material_alloy = requiredAlloy;
               }
             }
           }

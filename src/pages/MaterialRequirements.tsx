@@ -135,7 +135,7 @@ export default function MaterialRequirements() {
     const channel = supabase
       .channel('material-requirements-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadAllData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_lots' }, loadAllData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, loadAllData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_purchase_orders' }, loadAllData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'raw_po_receipts' }, loadAllData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_material_issues' }, loadAllData)
@@ -267,15 +267,15 @@ export default function MaterialRequirements() {
 
   const loadInventory = async () => {
     const { data, error } = await supabase
-      .from('inventory_lots')
-      .select('material_size_mm, alloy, qty_kg');
+      .from('material_lots')
+      .select('material_size_mm, alloy, available_kg');
 
     if (error) throw error;
 
     const inventoryMap = new Map<string, number>();
     (data || []).forEach(lot => {
       const key = normalizeKey(lot.material_size_mm || '', lot.alloy || '');
-      const qtyValue = lot.qty_kg ? parseFloat(String(lot.qty_kg)) : 0;
+      const qtyValue = lot.available_kg ? parseFloat(String(lot.available_kg)) : 0;
       inventoryMap.set(key, (inventoryMap.get(key) || 0) + qtyValue);
     });
 

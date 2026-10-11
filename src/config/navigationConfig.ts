@@ -148,6 +148,7 @@ export const navigationGroups: NavGroup[] = [
     allowedRoles: ['admin', 'production', 'procurement', 'logistics', 'stores', 'packing'],
     items: [
       { label: "Gate Register", path: "/gate-register", icon: ArrowDownToLine, pageKey: "gate-register" },
+      { label: "Stock Take", path: "/stock-take", icon: ArrowDownToLine, pageKey: "gate-register" },
       { label: "Logistics Dashboard", path: "/logistics", icon: PackageCheck, pageKey: "logistics-dashboard" },
       { label: "Finished Goods", path: "/finished-goods", icon: Package, pageKey: "finished-goods" },
       { label: "Packing", path: "/packing", icon: Package, pageKey: "packing" },
