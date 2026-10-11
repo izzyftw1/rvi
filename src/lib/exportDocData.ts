@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { prepareLetterhead } from '@/lib/pdfLetterhead';
 import { downloadCommercialInvoice, CommercialInvoiceData } from '@/lib/commercialInvoiceGenerator';
 import { downloadTaxInvoice } from '@/lib/taxInvoiceGenerator';
+import { paymentTermsFromSO } from '@/components/dispatch/ShipmentDetailsDialog';
 
 export interface Packaging { boxes: number; pallets: number; grossKg: number; netKg: number }
 
@@ -71,7 +72,7 @@ export const downloadInvoicePdf = async (invoice: any, items: any[]) => {
   const dnIds = items.map(i => i.dispatch_note_id).filter(Boolean);
   const [{ data: dns }, { data: so }] = await Promise.all([
     dnIds.length ? supabase.from('dispatch_notes').select('carton_id').in('id', dnIds) : Promise.resolve({ data: [] as { carton_id: string | null }[] }),
-    invoice.so_id ? supabase.from('sales_orders').select('incoterm, payment_terms_days, po_number, po_date').eq('id', invoice.so_id).maybeSingle() : Promise.resolve({ data: null }),
+    invoice.so_id ? supabase.from('sales_orders').select('incoterm, payment_terms_days, advance_percent, po_number, po_date').eq('id', invoice.so_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const pkg = await loadPackaging((dns || []).map(d => d.carton_id as string));
 
@@ -96,7 +97,11 @@ export const downloadInvoicePdf = async (invoice: any, items: any[]) => {
     portOfDischarge: invoice.port_of_discharge || undefined,
     vesselFlightNo: invoice.vessel_flight || undefined,
     incoterm: invoice.incoterm || so?.incoterm || undefined,
-    termsOfPayment: so?.payment_terms_days != null ? `${so.payment_terms_days} days` : (invoice.payment_terms_days ? `${invoice.payment_terms_days} days` : undefined),
+    termsOfPayment: invoice.payment_terms_text || paymentTermsFromSO(so as any) || (invoice.payment_terms_days ? `NET ${invoice.payment_terms_days} DAYS` : undefined),
+    preCarriageBy: invoice.pre_carriage_by || 'N.A.',
+    placeOfReceipt: invoice.place_of_receipt || 'N.A.',
+    blNumber: invoice.bl_no || undefined,
+    blDate: fmt(invoice.bl_date),
     marksAndNumbers: invoice.marks_nos || customer.default_marks_numbers || undefined,
     kindOfPackages: invoice.kind_of_packages || 'boxes',
     numberOfPackages: pkg.boxes || undefined,
