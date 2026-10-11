@@ -268,7 +268,7 @@ export default function MaterialRequirements() {
   const loadInventory = async () => {
     const { data, error } = await supabase
       .from('material_lots')
-      .select('material_size_mm, alloy, available_kg').eq('is_archived', false);
+      .select('material_size_mm, alloy, available_kg, qc_status').eq('is_archived', false).in('qc_status', ['pass', 'passed', 'approved', 'waived']);
 
     if (error) throw error;
 
@@ -283,16 +283,21 @@ export default function MaterialRequirements() {
   };
 
   const loadIssuedMaterials = async () => {
-    const { data, error } = await supabase
-      .from('wo_material_issues')
-      .select('wo_id, quantity_kg');
+    const [issues, returns] = await Promise.all([
+      supabase.from('wo_material_issues').select('wo_id, quantity_kg'),
+      supabase.from('inventory_movements').select('work_order_id, quantity_kg').eq('movement_type', 'return').not('material_lot_id', 'is', null),
+    ]);
+    if (issues.error) throw issues.error;
+    if (returns.error) throw returns.error;
 
-    if (error) throw error;
-
+    // Net issued per WO = issued - returned to stock
     const issuedMap = new Map<string, number>();
-    (data || []).forEach(issue => {
-      const qtyValue = issue.quantity_kg ? parseFloat(String(issue.quantity_kg)) : 0;
-      issuedMap.set(issue.wo_id, (issuedMap.get(issue.wo_id) || 0) + qtyValue);
+    (issues.data || []).forEach(issue => {
+      issuedMap.set(issue.wo_id, (issuedMap.get(issue.wo_id) || 0) + Number(issue.quantity_kg || 0));
+    });
+    (returns.data || []).forEach(r => {
+      if (!r.work_order_id) return;
+      issuedMap.set(r.work_order_id, (issuedMap.get(r.work_order_id) || 0) - Number(r.quantity_kg || 0));
     });
 
     setIssuedData(issuedMap);
