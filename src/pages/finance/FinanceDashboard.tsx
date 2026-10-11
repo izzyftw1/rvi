@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend, ComposedChart } from "recharts";
-import { convertToINR, formatINR } from "@/lib/currencyConverter";
+import { addToTotals, formatTotals, formatMoney, CurrencyTotals } from "@/lib/currencyTotals";
 import { Home, Download, FileSpreadsheet, FileText, TrendingUp, DollarSign, Users, Package, Clock, AlertCircle, Lock } from "lucide-react";
 import { downloadExcel, downloadDashboardPDF } from "@/lib/exportHelpers";
 import { useToast } from "@/hooks/use-toast";
@@ -46,14 +46,16 @@ export default function FinanceDashboard() {
   const [items, setItems] = useState<any[]>([]);
 
   // Dashboard data — FIX #5: separate billed vs collected
-  const [billedStats, setBilledStats] = useState({ mtd: 0, qtd: 0, ytd: 0 });
-  const [collectedStats, setCollectedStats] = useState({ mtd: 0, qtd: 0, ytd: 0 });
+  const [billedStats, setBilledStats] = useState<{ mtd: CurrencyTotals; qtd: CurrencyTotals; ytd: CurrencyTotals }>({ mtd: {}, qtd: {}, ytd: {} });
+  const [collectedStats, setCollectedStats] = useState<{ mtd: CurrencyTotals; qtd: CurrencyTotals; ytd: CurrencyTotals }>({ mtd: {}, qtd: {}, ytd: {} });
+  // Charts plot a single currency; never mix currencies on one axis
+  const chartCurrency = filters.currency === 'all' ? 'INR' : filters.currency;
   const [topCustomers, setTopCustomers] = useState<any[]>([]);
   const [topItems, setTopItems] = useState<any[]>([]);
   // FIX #7: Use same aging buckets as Aging.tsx page
   const [agingData, setAgingData] = useState<any[]>([]);
-  const [advanceStats, setAdvanceStats] = useState({
-    totalAdvance: 0,
+  const [advanceStats, setAdvanceStats] = useState<{ totals: CurrencyTotals; percentOfSales: number }>({
+    totals: {},
     percentOfSales: 0
   });
   const [cashflowData, setCashflowData] = useState<any[]>([]);
@@ -176,20 +178,16 @@ export default function FinanceDashboard() {
       const { data, error: dataError } = await query;
       reportQueryError("loadRevenueStats", dataError);
 
-      const calculateRevenue = (startDate: Date, statusFilter?: string) => {
-        return data?.reduce((sum, inv) => {
-          const invDate = new Date(inv.invoice_date);
-          if (invDate >= startDate) {
-            if (statusFilter && inv.status !== statusFilter) return sum;
-            const amount = filters.currency === 'all' 
-              ? convertToINR(Number(inv.total_amount), inv.currency)
-              : inv.currency === filters.currency 
-                ? Number(inv.total_amount) 
-                : 0;
-            return sum + amount;
-          }
-          return sum;
-        }, 0) || 0;
+      const calculateRevenue = (startDate: Date, statusFilter?: string): CurrencyTotals => {
+        const totals: CurrencyTotals = {};
+        data?.forEach(inv => {
+          if (new Date(inv.invoice_date) < startDate) return;
+          if (statusFilter && inv.status !== statusFilter) return;
+          const cur = inv.currency || 'INR';
+          if (filters.currency !== 'all' && cur !== filters.currency) return;
+          addToTotals(totals, cur, Number(inv.total_amount));
+        });
+        return totals;
       };
 
       // Billed = all non-draft/non-void invoices
@@ -229,9 +227,7 @@ export default function FinanceDashboard() {
 
       const customerMap = new Map();
       data?.forEach((inv: any) => {
-        const amount = filters.currency === 'all'
-          ? convertToINR(Number(inv.total_amount), inv.currency)
-          : inv.currency === filters.currency ? Number(inv.total_amount) : 0;
+        const amount = ((inv.currency) || 'INR') === chartCurrency ? Number(inv.total_amount) : 0;
 
         if (amount > 0) {
           const existing = customerMap.get(inv.customer_id);
@@ -304,9 +300,7 @@ export default function FinanceDashboard() {
       const aging = { current: 0, days15: 0, days30: 0, days45: 0, days60: 0, over60: 0 };
 
       data?.forEach((inv: any) => {
-        const amount = filters.currency === 'all'
-          ? convertToINR(Number(inv.balance_amount), inv.currency)
-          : inv.currency === filters.currency ? Number(inv.balance_amount) : 0;
+        const amount = ((inv.currency) || 'INR') === chartCurrency ? Number(inv.balance_amount) : 0;
 
         if (amount > 0) {
           const dueDate = new Date(inv.due_date);
@@ -337,36 +331,22 @@ export default function FinanceDashboard() {
   const loadAdvanceStats = async () => {
     try {
       let query = supabase
-        .from("sales_orders")
-        .select(`advance_payment, items, customer_id, customer_master!inner(city)`)
-        .eq("status", "approved")
-        .gte("created_at", filters.dateFrom)
-        .lte("created_at", filters.dateTo);
-
+        .from("customer_receipts")
+        .select("total_amount, currency, customer_id, receipt_date")
+        .eq("receipt_type", "advance")
+        .gte("receipt_date", filters.dateFrom)
+        .lte("receipt_date", filters.dateTo);
       if (filters.customerId !== 'all') query = query.eq("customer_id", filters.customerId);
-      if (filters.region !== 'all') query = query.eq("customer_master.city", filters.region);
-
       const { data, error: dataError } = await query;
       reportQueryError("loadAdvanceStats", dataError);
-
-      let totalAdvance = 0;
-      let totalSales = 0;
-
-      data?.forEach((so: any) => {
-        const soTotal = so.items?.reduce((sum: number, item: any) => {
-          return sum + (Number(item.quantity) * Number(item.rate));
-        }, 0) || 0;
-        totalSales += soTotal;
-
-        if (so.advance_payment?.calculated_amount) {
-          totalAdvance += Number(so.advance_payment.calculated_amount);
-        }
+      const totals: CurrencyTotals = {};
+      (data || []).forEach((r: any) => {
+        const cur = r.currency || 'INR';
+        if (filters.currency !== 'all' && cur !== filters.currency) return;
+        addToTotals(totals, cur, Number(r.total_amount));
       });
-
-      setAdvanceStats({
-        totalAdvance,
-        percentOfSales: totalSales > 0 ? (totalAdvance / totalSales) * 100 : 0
-      });
+      const billed = billedStats.ytd[chartCurrency] || 0;
+      setAdvanceStats({ totals, percentOfSales: billed > 0 ? ((totals[chartCurrency] || 0) / billed) * 100 : 0 });
     } catch (error) {
       console.error("Error loading advance stats:", error);
     }
@@ -394,9 +374,7 @@ export default function FinanceDashboard() {
 
       invoices?.forEach((inv: any) => {
         const month = format(new Date(inv.expected_payment_date), 'MMM yyyy');
-        const amount = filters.currency === 'all'
-          ? convertToINR(Number(inv.balance_amount), inv.currency)
-          : inv.currency === filters.currency ? Number(inv.balance_amount) : 0;
+        const amount = ((inv.currency) || 'INR') === chartCurrency ? Number(inv.balance_amount) : 0;
 
         const existing = monthlyMap.get(month);
         if (existing) existing.expected += amount;
@@ -406,9 +384,7 @@ export default function FinanceDashboard() {
       payments?.forEach((pay: any) => {
         const month = format(new Date(pay.payment_date), 'MMM yyyy');
         const currency = pay.invoices?.currency || 'INR';
-        const amount = filters.currency === 'all'
-          ? convertToINR(Number(pay.amount), currency)
-          : currency === filters.currency ? Number(pay.amount) : 0;
+        const amount = ((currency) || 'INR') === chartCurrency ? Number(pay.amount) : 0;
 
         const existing = monthlyMap.get(month);
         if (existing) existing.actual += amount;
@@ -441,9 +417,7 @@ export default function FinanceDashboard() {
       const regionMap = new Map();
       data?.forEach((inv: any) => {
         const region = inv.customer_master?.city || "Unknown";
-        const amount = filters.currency === 'all'
-          ? convertToINR(Number(inv.total_amount), inv.currency)
-          : inv.currency === filters.currency ? Number(inv.total_amount) : 0;
+        const amount = ((inv.currency) || 'INR') === chartCurrency ? Number(inv.total_amount) : 0;
 
         const existing = regionMap.get(region);
         if (existing) existing.revenue += amount;
@@ -698,12 +672,12 @@ export default function FinanceDashboard() {
 
   const handleExportExcel = () => {
     const exportData = [
-      { section: "Billed Revenue", mtd: billedStats.mtd, qtd: billedStats.qtd, ytd: billedStats.ytd },
-      { section: "Collected Revenue", mtd: collectedStats.mtd, qtd: collectedStats.qtd, ytd: collectedStats.ytd },
+      { section: "Billed Revenue", mtd: formatTotals(billedStats.mtd), qtd: formatTotals(billedStats.qtd), ytd: formatTotals(billedStats.ytd) },
+      { section: "Collected Revenue", mtd: formatTotals(collectedStats.mtd), qtd: formatTotals(collectedStats.qtd), ytd: formatTotals(collectedStats.ytd) },
       ...topCustomers.map(c => ({ section: "Top Customers", ...c })),
       ...topItems.map(i => ({ section: "Top Items", ...i })),
       ...agingData.map(a => ({ section: "Aging", ...a })),
-      { section: "Advance", total: advanceStats.totalAdvance, percent: advanceStats.percentOfSales }
+      { section: "Advance", total: formatTotals(advanceStats.totals), percent: advanceStats.percentOfSales }
     ];
 
     downloadExcel(exportData, 'Finance_Dashboard', 'Analytics');
@@ -712,11 +686,11 @@ export default function FinanceDashboard() {
 
   const handleExportPDF = () => {
     const stats = {
-      'Billed MTD': formatINR(billedStats.mtd),
-      'Collected MTD': formatINR(collectedStats.mtd),
-      'Billed YTD': formatINR(billedStats.ytd),
-      'Collected YTD': formatINR(collectedStats.ytd),
-      'Advance Collected': formatINR(advanceStats.totalAdvance),
+      'Billed MTD': formatTotals(billedStats.mtd),
+      'Collected MTD': formatTotals(collectedStats.mtd),
+      'Billed YTD': formatTotals(billedStats.ytd),
+      'Collected YTD': formatTotals(collectedStats.ytd),
+      'Advance Collected': formatTotals(advanceStats.totals),
     };
 
     const charts = [
@@ -797,10 +771,11 @@ export default function FinanceDashboard() {
                 <Select value={filters.currency} onValueChange={(v) => setFilters({...filters, currency: v})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All (INR)</SelectItem>
+                    <SelectItem value="all">All (totals per currency; charts in INR)</SelectItem>
                     <SelectItem value="USD">USD</SelectItem>
                     <SelectItem value="EUR">EUR</SelectItem>
                     <SelectItem value="INR">INR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -834,7 +809,7 @@ export default function FinanceDashboard() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{loading ? "—" : formatINR(billedStats.ytd)}</div>
+              <div className="text-2xl font-bold">{loading ? "—" : formatTotals(billedStats.ytd)}</div>
               <p className="text-xs text-muted-foreground">All issued invoices</p>
             </CardContent>
           </Card>
@@ -844,7 +819,7 @@ export default function FinanceDashboard() {
               <DollarSign className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{loading ? "—" : formatINR(collectedStats.ytd)}</div>
+              <div className="text-2xl font-bold text-green-600">{loading ? "—" : formatTotals(collectedStats.ytd)}</div>
               <p className="text-xs text-muted-foreground">Paid invoices only</p>
             </CardContent>
           </Card>
@@ -854,8 +829,8 @@ export default function FinanceDashboard() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{loading ? "—" : formatINR(billedStats.mtd)}</div>
-              <p className="text-xs text-muted-foreground">QTD: {formatINR(billedStats.qtd)}</p>
+              <div className="text-2xl font-bold">{loading ? "—" : formatTotals(billedStats.mtd)}</div>
+              <p className="text-xs text-muted-foreground">QTD: {formatTotals(billedStats.qtd)}</p>
             </CardContent>
           </Card>
           <Card>
@@ -865,8 +840,8 @@ export default function FinanceDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {loading ? "—" : billedStats.ytd > 0 
-                  ? `${((collectedStats.ytd / billedStats.ytd) * 100).toFixed(1)}%`
+                {loading ? "—" : (billedStats.ytd[chartCurrency] || 0) > 0 
+                  ? `${(((collectedStats.ytd[chartCurrency] || 0) / billedStats.ytd[chartCurrency]) * 100).toFixed(1)}%`
                   : "N/A"
                 }
               </div>
@@ -886,7 +861,7 @@ export default function FinanceDashboard() {
               <DollarSign className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{loading ? "—" : formatINR(advanceStats.totalAdvance)}</div>
+              <div className="text-2xl font-bold text-green-600">{loading ? "—" : formatTotals(advanceStats.totals)}</div>
               <p className="text-xs text-muted-foreground">{advanceStats.percentOfSales.toFixed(1)}% of total sales</p>
             </CardContent>
           </Card>
@@ -906,7 +881,7 @@ export default function FinanceDashboard() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis type="number" className="text-xs" />
                   <YAxis dataKey="customer_name" type="category" width={100} className="text-xs" />
-                  <Tooltip formatter={(value: number) => formatINR(value)} contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
+                  <Tooltip formatter={(value: number) => formatMoney(value, chartCurrency)} contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
                   <Bar dataKey="revenue" fill="hsl(var(--primary))" onClick={(data) => handleCustomerDrillDown(data.customer_name, data.customer_id)} cursor="pointer" />
                 </BarChart>
               </ResponsiveContainer>
@@ -943,13 +918,13 @@ export default function FinanceDashboard() {
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie data={agingData} cx="50%" cy="50%" labelLine={false}
-                    label={({ name, value }) => value > 0 ? `${name}: ${formatINR(value)}` : ''}
+                    label={({ name, value }) => value > 0 ? `${name}: ${formatMoney(value, chartCurrency)}` : ''}
                     outerRadius={100} fill="#8884d8" dataKey="value">
                     {agingData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => formatINR(value)} />
+                  <Tooltip formatter={(value: number) => formatMoney(value, chartCurrency)} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -967,7 +942,7 @@ export default function FinanceDashboard() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="month" className="text-xs" />
                   <YAxis className="text-xs" />
-                  <Tooltip formatter={(value: number) => formatINR(value)} contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
+                  <Tooltip formatter={(value: number) => formatMoney(value, chartCurrency)} contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
                   <Bar dataKey="expected" fill="hsl(var(--muted-foreground))" name="Expected" />
                   <Line type="monotone" dataKey="actual" stroke="hsl(var(--primary))" name="Actual" strokeWidth={2} />
                 </ComposedChart>
@@ -989,7 +964,7 @@ export default function FinanceDashboard() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="region" className="text-xs" />
                   <YAxis className="text-xs" />
-                  <Tooltip formatter={(value: number) => formatINR(value)} contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
+                  <Tooltip formatter={(value: number) => formatMoney(value, chartCurrency)} contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }} />
                   <Bar dataKey="revenue" fill="hsl(var(--chart-4))" onClick={(data) => handleRegionDrillDown(data.region)} cursor="pointer" />
                 </BarChart>
               </ResponsiveContainer>
