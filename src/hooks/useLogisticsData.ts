@@ -111,7 +111,7 @@ export function useLogisticsData(filters: LogisticsFilters) {
       const { data: cartonsData } = await supabase
         .from("cartons")
         .select(`
-          id, carton_id, wo_id, quantity, dispatched_qty, status, built_at, net_weight, gross_weight, dispatch_qc_batch_id
+          id, carton_id, wo_id, quantity, dispatched_qty, status, built_at, net_weight, gross_weight, dispatch_qc_batch_id, dispatch_qc_status
         `)
         .order("built_at", { ascending: false });
 
@@ -302,13 +302,12 @@ export function useLogisticsData(filters: LogisticsFilters) {
   const pipeline = useMemo<PipelineCount>(() => {
     const awaitingQC = filteredCartons.filter(c => 
       c.status === "packed" && 
-      (!c.dispatch_qc_batch || !["approved", "partially_consumed", "consumed"].includes(c.dispatch_qc_batch.status))
+      (c as any).dispatch_qc_status !== 'passed'
     ).length;
 
     const ready = filteredCartons.filter(c => 
       c.status === "packed" && 
-      c.dispatch_qc_batch && 
-      ["approved", "partially_consumed", "consumed"].includes(c.dispatch_qc_batch.status) &&
+      (c as any).dispatch_qc_status === 'passed' &&
       c.dispatched_qty < c.quantity
     ).length;
 
