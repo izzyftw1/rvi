@@ -1865,7 +1865,7 @@ const WorkOrders = () => {
         open={sendDialogOpen}
         onOpenChange={setSendDialogOpen}
         workOrder={selectedWO}
-        onSuccess={loadWorkOrders}
+        onSuccess={() => loadWorkOrders(0, currentPage * pageSize - 1, false)}
       />
       
       {selectedWO?.external_moves?.[0] && (
@@ -1873,7 +1873,7 @@ const WorkOrders = () => {
           open={receiptDialogOpen}
           onOpenChange={setReceiptDialogOpen}
           move={selectedWO.external_moves[0]}
-          onSuccess={loadWorkOrders}
+          onSuccess={() => loadWorkOrders(0, currentPage * pageSize - 1, false)}
         />
       )}
     </div>
