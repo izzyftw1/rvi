@@ -36,9 +36,32 @@ export default function FinanceSettings() {
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [lockMonth, setLockMonth] = useState(format(subMonths(new Date(), 1), 'yyyy-MM'));
 
+  const canEditFinance = hasAnyRole(['admin', 'super_admin', 'finance_admin', 'finance_user', 'accounts']);
+  const [fs, setFs] = useState({ company_state: 'Gujarat', default_gst_percent: 18, domestic_invoice_prefix: 'RV', export_invoice_prefix: 'EXPRV' });
+  const [savingFs, setSavingFs] = useState(false);
+
   useEffect(() => {
     loadPeriodLocks();
+    supabase.from('finance_settings').select('company_state, default_gst_percent, domestic_invoice_prefix, export_invoice_prefix').maybeSingle()
+      .then(({ data, error }) => {
+        if (error) toast.error("Could not load finance settings: " + error.message);
+        if (data) setFs({ ...data, default_gst_percent: Number(data.default_gst_percent) });
+      });
   }, []);
+
+  const saveFs = async () => {
+    if (!fs.company_state.trim() || !fs.domestic_invoice_prefix.trim() || !fs.export_invoice_prefix.trim()) {
+      toast.error("State and prefixes are required");
+      return;
+    }
+    setSavingFs(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from('finance_settings')
+      .update({ ...fs, company_state: fs.company_state.trim(), updated_at: new Date().toISOString(), updated_by: user?.id })
+      .eq('id', true);
+    setSavingFs(false);
+    if (error) toast.error(error.message); else toast.success("Finance settings saved");
+  };
 
   const loadPeriodLocks = async () => {
     try {
@@ -213,27 +236,19 @@ export default function FinanceSettings() {
             <Card>
               <CardHeader><CardTitle>Tax Configuration</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>IGST Rate (Inter-State)</Label>
-                    <Input type="number" value="18" readOnly className="bg-muted" />
-                    <p className="text-xs text-muted-foreground">Applied for inter-state domestic sales</p>
+                    <Label>Company state</Label>
+                    <Input value={fs.company_state} disabled={!canEditFinance} onChange={e => setFs({ ...fs, company_state: e.target.value })} />
+                    <p className="text-xs text-muted-foreground">Customer state = company state → CGST + SGST; otherwise IGST. Export → 0%.</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>CGST + SGST (Intra-State)</Label>
-                    <Input type="number" value="9 + 9" readOnly className="bg-muted" />
-                    <p className="text-xs text-muted-foreground">Applied when customer state = company state (Maharashtra)</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Export Tax Rate</Label>
-                    <Input type="number" value="0" readOnly className="bg-muted" />
-                    <p className="text-xs text-muted-foreground">Auto-applied when customer is_export_customer = true</p>
+                    <Label>Default GST %</Label>
+                    <Input type="number" value={fs.default_gst_percent} disabled={!canEditFinance} onChange={e => setFs({ ...fs, default_gst_percent: Number(e.target.value) })} />
+                    <p className="text-xs text-muted-foreground">Used when neither the SO line nor the SO sets a GST %.</p>
                   </div>
                 </div>
-                <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
-                  <AlertCircle className="h-4 w-4 inline mr-1" />
-                  GST split (CGST/SGST vs IGST) is auto-determined by comparing customer state with company state (Maharashtra). Export invoices are zero-rated.
-                </div>
+                {canEditFinance && <Button onClick={saveFs} disabled={savingFs}>Save</Button>}
               </CardContent>
             </Card>
           </TabsContent>
@@ -242,23 +257,22 @@ export default function FinanceSettings() {
             <Card>
               <CardHeader><CardTitle>Invoice Numbering</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Prefix</Label>
-                    <Input value="INV-" readOnly className="bg-muted" />
+                    <Label>Domestic prefix</Label>
+                    <Input value={fs.domestic_invoice_prefix} disabled={!canEditFinance} onChange={e => setFs({ ...fs, domestic_invoice_prefix: e.target.value })} />
+                    <p className="text-xs text-muted-foreground">Format: {fs.domestic_invoice_prefix}/26-27/0001</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Format</Label>
-                    <Input value="INV-NNN" readOnly className="bg-muted" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Auto-increment</Label>
-                    <Input value="Yes" readOnly className="bg-muted" />
+                    <Label>Export prefix</Label>
+                    <Input value={fs.export_invoice_prefix} disabled={!canEditFinance} onChange={e => setFs({ ...fs, export_invoice_prefix: e.target.value })} />
+                    <p className="text-xs text-muted-foreground">Format: {fs.export_invoice_prefix}001/26-27</p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Invoice numbers are auto-generated and guaranteed unique (DB constraint enforced).
+                  Numbers are assigned by the database per financial year (Apr–Mar), separately for domestic and export, and are never reused.
                 </p>
+                {canEditFinance && <Button onClick={saveFs} disabled={savingFs}>Save</Button>}
               </CardContent>
             </Card>
           </TabsContent>
