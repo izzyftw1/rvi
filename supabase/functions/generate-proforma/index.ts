@@ -577,10 +577,8 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    const authClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized: Invalid or expired token' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -675,7 +673,7 @@ const handler = async (req: Request): Promise<Response> => {
       if (itemCodes.length > 0) {
         const { data: itemMasterData } = await supabase
           .from('item_master')
-          .select('item_code, item_name, alloy, default_material_grade')
+          .select('item_code, item_name, alloy, default_material_grade, hs_code')
           .in('item_code', itemCodes);
         
         if (itemMasterData) {
@@ -703,7 +701,7 @@ const handler = async (req: Request): Promise<Response> => {
           unit: 'PCS',
           price_per_pc: item.price_per_pc ? Number(item.price_per_pc) : undefined,
           line_amount: item.line_amount ? Number(item.line_amount) : undefined,
-          hs_code: item.hs_code
+          hs_code: masterItem.hs_code || item.hs_code
         };
       });
     }
@@ -711,7 +709,8 @@ const handler = async (req: Request): Promise<Response> => {
     // Calculate totals
     const subtotal = lineItems.reduce((sum, item) => sum + (item.line_amount || 0), 0);
     const isExport = customer?.is_export_customer || customer?.gst_type === 'export';
-    const gstPercent = isExport ? 0 : 18;
+    const soGst = Number((order as any).gst_percent);
+    const gstPercent = isExport ? 0 : (Number.isFinite(soGst) && (order as any).gst_percent != null ? soGst : 18);
     const gstAmount = (subtotal * gstPercent) / 100;
     const totalAmount = subtotal + gstAmount;
     
@@ -835,7 +834,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(`Failed to save proforma record: ${dbError.message}`);
     }
     
-    console.log(`[SUCCESS] Proforma ${proformaNo} generated with logo status: ${logoResult.status}`);
+    console.log(`[SUCCESS] Proforma ${proformaNo} generated`);
     
     return new Response(JSON.stringify({
       success: true,
@@ -843,9 +842,6 @@ const handler = async (req: Request): Promise<Response> => {
       proformaNo,
       downloadUrl: signedUrlData.signedUrl,
       isExisting: false,
-      logoPath: 'company-assets/rv-logo.png',
-      logoBytesLoaded: logoResult.bytes,
-      logoRenderResult: logoResult.status
     }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }
