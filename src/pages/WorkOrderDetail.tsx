@@ -53,6 +53,7 @@ import { DispatchEligibilityCard } from "@/components/DispatchEligibilityCard";
 import { WOCompletionStatus } from "@/components/WOCompletionStatus";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
+import { WOMaterialPanel } from "@/components/materials/WOMaterialPanel";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -1193,48 +1194,11 @@ const WorkOrderDetail = () => {
               </TabsList>
 
               <TabsContent value="issues">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Material Issues</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {materialIssues.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Package className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="text-sm font-medium mb-1">No materials issued yet</p>
-                        <p className="text-sm text-muted-foreground">
-                          <span className="font-medium">How to populate:</span> Issue material from the Material Requirements page.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {materialIssues.map((issue: any) => (
-                          <div
-                            key={issue.id}
-                            className="flex items-center justify-between p-3 bg-secondary rounded-lg"
-                          >
-                            <div>
-                              <p className="font-medium">
-                                {issue.material_lots?.lot_id || "Unknown Lot"}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Heat: {issue.material_lots?.heat_no} • {issue.material_lots?.alloy}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-medium">
-                                {issue.quantity_kg} {issue.uom}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(issue.issued_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <WOMaterialPanel
+                  woId={id || ""}
+                  alloy={wo?.financial_snapshot?.line_item?.alloy || wo?.material_grade || null}
+                  sizeMm={wo?.material_size_mm || null}
+                />
               </TabsContent>
 
               <TabsContent value="design">
