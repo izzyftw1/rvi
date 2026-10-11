@@ -54,7 +54,7 @@ const blobToImage = (blob: Blob): Promise<LoadedImage> =>
   });
 
 const loadImage = async (file: string): Promise<LoadedImage | null> => {
-  const { data, error } = await supabase.storage.from(BRANDING_BUCKET).download(`${file}?t=${Date.now()}`.split('?')[0]);
+  const { data, error } = await supabase.storage.from(BRANDING_BUCKET).download(file);
   if (error || !data) return null;
   try { return await blobToImage(data); } catch { return null; }
 };
