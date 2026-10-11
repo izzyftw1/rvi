@@ -50,11 +50,7 @@ interface PackingBatch {
   production_batches?: {
     batch_number: number;
   } | null;
-  dispatch_qc_batches?: {
-    status: string;
-    qc_approved_quantity: number;
-    qc_date: string;
-  } | null;
+  dispatch_qc_status?: string | null;
 }
 
 // Grouped by customer for better UX
@@ -151,9 +147,10 @@ export default function Dispatch() {
         num_cartons, num_pallets, status, built_at,
         work_orders(display_id, item_code, customer),
         production_batches:production_batch_id(batch_number),
-        dispatch_qc_batches:dispatch_qc_batch_id(status, qc_approved_quantity, qc_date)
+        dispatch_qc_status
       `)
       .eq("status", "ready_for_dispatch")
+      .eq("dispatch_qc_status", "passed")
       .order("built_at", { ascending: true });
 
     const cartons = (cartonData || []) as any[];
@@ -269,8 +266,13 @@ export default function Dispatch() {
       delete newQtys[batchId];
       setDispatchQuantities(newQtys);
     } else {
-      newSelected.add(batchId);
       const batch = readyBatches.find(b => b.id === batchId);
+      const current = readyBatches.find(b => selectedBatchIds.has(b.id));
+      if (batch && current && (current.work_orders?.customer || "Unknown") !== (batch.work_orders?.customer || "Unknown")) {
+        toast({ variant: "destructive", title: "One customer per shipment", description: `Selected cartons are for ${current.work_orders?.customer}. Dispatch them first or clear the selection.` });
+        return;
+      }
+      newSelected.add(batchId);
       if (batch) {
         setDispatchQuantities({ ...dispatchQuantities, [batchId]: batch.available_qty });
       }
@@ -288,6 +290,14 @@ export default function Dispatch() {
     const newSelected = new Set(selectedBatchIds);
     const newQtys = { ...dispatchQuantities };
     
+    if (!allSelected) {
+      const other = readyBatches.find(b => selectedBatchIds.has(b.id) && (b.work_orders?.customer || "Unknown") !== customer);
+      if (other) {
+        toast({ variant: "destructive", title: "One customer per shipment", description: `Selected cartons are for ${other.work_orders?.customer}. Clear the selection first.` });
+        return;
+      }
+    }
+
     if (allSelected) {
       // Deselect all in group
       groupBatchIds.forEach(id => {
@@ -312,6 +322,11 @@ export default function Dispatch() {
       setSelectedBatchIds(new Set());
       setDispatchQuantities({});
     } else {
+      const customers = [...new Set(filteredBatches.map(b => b.work_orders?.customer || "Unknown"))];
+      if (customers.length > 1) {
+        toast({ variant: "destructive", title: "One customer per shipment", description: "Filter to one customer or use the customer group's select all." });
+        return;
+      }
       const allIds = new Set(filteredBatches.map(b => b.id));
       const allQtys: Record<string, number> = {};
       filteredBatches.forEach(b => { allQtys[b.id] = b.available_qty; });
@@ -345,40 +360,20 @@ export default function Dispatch() {
     setFilterItem("all");
   };
 
-  // QC Status badge from dispatch_qc_batches (SSOT)
+  // Dispatch QC (post-packing) status on the carton
   const getQCStatusBadge = (batch: PackingBatch) => {
-    const dqb = batch.dispatch_qc_batches;
-    
-    // If linked to dispatch_qc_batches, use that status
-    if (dqb) {
-      const status = dqb.status;
-      // approved, partially_consumed, consumed are all valid QC-passed states
-      if (status === 'approved' || status === 'partially_consumed' || status === 'consumed') {
-        return (
-          <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
-            <FileCheck className="h-3 w-3" />
-            Approved
-          </Badge>
-        );
-      }
-    }
-    
-    // If carton exists with ready_for_dispatch status, it has passed QC by definition
-    // (packing only creates cartons from approved dispatch_qc_batches)
-    if (batch.dispatch_qc_batch_id) {
+    if (batch.dispatch_qc_status === 'passed') {
       return (
         <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1">
           <FileCheck className="h-3 w-3" />
-          Approved
+          Dispatch QC passed
         </Badge>
       );
     }
-    
-    // P2 FIX: Legacy cartons without dispatch_qc_batch_id - flag as needing QC
     return (
       <Badge className="bg-red-500/10 text-red-600 border-red-500/20 gap-1">
         <AlertTriangle className="h-3 w-3" />
-        QC Required
+        Dispatch QC required
       </Badge>
     );
   };
@@ -406,118 +401,28 @@ export default function Dispatch() {
 
     const selectedBatches = readyBatches.filter(b => selectedBatchIds.has(b.id));
     
-    // P2 FIX: Block dispatch of legacy cartons without dispatch QC
-    const legacyCartons = selectedBatches.filter(b => !b.dispatch_qc_batch_id);
-    if (legacyCartons.length > 0) {
-      toast({ 
-        variant: "destructive", 
-        title: "Dispatch QC Required",
-        description: `${legacyCartons.length} carton(s) lack Dispatch QC approval. Complete QC inspection before dispatching.` 
-      });
+    if (summary.customers.length > 1) {
+      toast({ variant: "destructive", title: "One customer per shipment", description: "Selected cartons belong to more than one customer." });
+      return;
+    }
+    const notPassed = selectedBatches.filter(b => b.dispatch_qc_status !== 'passed');
+    if (notPassed.length > 0) {
+      toast({ variant: "destructive", title: "Dispatch QC Required", description: `${notPassed.length} carton(s) have not passed Dispatch QC.` });
       return;
     }
 
-    const generatedShipId = shipmentId.trim() || `SHIP-${Date.now().toString().slice(-8)}`;
-    const primaryCustomer = selectedBatches[0]?.work_orders?.customer || "Unknown";
-
     setLoading(true);
     try {
-      // 1. Create shipment
-      const { data: shipmentData, error: shipmentError } = await supabase
-        .from("shipments")
-        .insert({
-          ship_id: generatedShipId,
-          customer: primaryCustomer,
-          status: "dispatched",
-        })
-        .select()
-        .single();
+      // One transaction: shipment + dispatches + dispatch notes + carton status (DB numbering, SO/customer link, unit rate)
+      const { data: rpcData, error: rpcError } = await supabase.rpc("create_dispatch_shipment" as any, {
+        p_items: selectedBatches.map(b => ({ carton_id: b.id, quantity: getDispatchQty(b) })),
+        p_remarks: remarks || null,
+      } as any);
+      if (rpcError) throw rpcError;
+      const result = rpcData as any;
+      const generatedShipId: string = result?.ship_id;
 
-      if (shipmentError) throw shipmentError;
-
-      // 2. Get production batch for FK requirement
-      const woIds = [...new Set(selectedBatches.map(b => b.wo_id))];
-      const { data: prodBatches } = await supabase
-        .from("production_batches")
-        .select("id, wo_id")
-        .in("wo_id", woIds);
-      
-      const batchMap = new Map<string, string>();
-      (prodBatches || []).forEach(pb => batchMap.set(pb.wo_id, pb.id));
-
-      // 3. Create dispatch records
-      for (const batch of selectedBatches) {
-        const dispatchQty = getDispatchQty(batch);
-        const isPartial = dispatchQty < batch.available_qty;
-        const batchId = batch.production_batch_id || batchMap.get(batch.wo_id) || batch.wo_id;
-        
-        const { data: dispatchData, error: dispatchError } = await supabase
-          .from("dispatches")
-          .insert({
-            wo_id: batch.wo_id,
-            batch_id: batchId,
-            carton_id: batch.id,
-            quantity: dispatchQty,
-            shipment_id: shipmentData.id,
-            dispatched_by: user?.id,
-            remarks: isPartial 
-              ? `Partial dispatch: ${dispatchQty}/${batch.available_qty}${remarks ? ` | ${remarks}` : ""}`
-              : remarks || null,
-          })
-          .select()
-          .single();
-
-        if (dispatchError) throw dispatchError;
-
-        // Create dispatch note
-        const { data: woData } = await supabase
-          .from("work_orders_restricted")
-          .select("item_code, so_id, quantity, gross_weight_per_pc, net_weight_per_pc, financial_snapshot, customer")
-          .eq("id", batch.wo_id)
-          .single();
-
-        const financialSnapshot = woData?.financial_snapshot as any;
-        const unitRate = financialSnapshot?.line_item?.price_per_pc || 0;
-        const currency = financialSnapshot?.currency || "USD";
-
-        const { data: existingNotes } = await supabase
-          .from("dispatch_notes")
-          .select("dispatch_note_no")
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        let noteNo = "DN-0001";
-        if (existingNotes && existingNotes.length > 0) {
-          const lastNo = existingNotes[0].dispatch_note_no;
-          const numMatch = lastNo.match(/DN-(\d+)/);
-          if (numMatch) {
-            const lastNum = parseInt(numMatch[1]);
-            noteNo = `DN-${String(lastNum + 1).padStart(4, "0")}`;
-          }
-        }
-
-        await supabase.from("dispatch_notes").insert({
-          dispatch_note_no: noteNo,
-          work_order_id: batch.wo_id,
-          sales_order_id: woData?.so_id,
-          carton_id: batch.id,
-          shipment_id: shipmentData.id,
-          dispatch_id: dispatchData.id,
-          item_code: woData?.item_code || batch.work_orders?.item_code || "N/A",
-          item_description: `${woData?.item_code || batch.work_orders?.item_code} - ${batch.work_orders?.customer || woData?.customer}`,
-          packed_qty: batch.quantity,
-          dispatched_qty: dispatchQty,
-          rejected_qty: 0,
-          unit_rate: unitRate,
-          currency: currency,
-          gross_weight_kg: woData?.gross_weight_per_pc ? (dispatchQty * woData.gross_weight_per_pc / 1000) : null,
-          net_weight_kg: woData?.net_weight_per_pc ? (dispatchQty * woData.net_weight_per_pc / 1000) : null,
-          created_by: user?.id,
-          remarks: isPartial ? `Partial dispatch: ${dispatchQty}/${batch.available_qty}` : null,
-        });
-      }
-
-      // AUTO-CREATE GATE REGISTER ENTRIES (OUT) for each dispatched batch
+      // Gate register OUT entries (after the shipment is committed)
       for (const batch of selectedBatches) {
         const dispatchQty = getDispatchQty(batch);
         const { data: woWeight } = await supabase
@@ -526,30 +431,18 @@ export default function Dispatch() {
           .eq("id", batch.wo_id)
           .single();
 
-        const grossWeightKg = woWeight?.gross_weight_per_pc 
-          ? (dispatchQty * woWeight.gross_weight_per_pc / 1000) 
+        const grossWeightKg = woWeight?.gross_weight_per_pc
+          ? (dispatchQty * woWeight.gross_weight_per_pc / 1000)
           : 0;
 
-        // Resolve customer_id for gate entry filtering
-        let customerId: string | null = null;
-        if (woWeight?.customer) {
-          const { data: custData } = await supabase
-            .from("customer_master")
-            .select("id")
-            .eq("customer_name", woWeight.customer)
-            .limit(1)
-            .maybeSingle();
-          customerId = custData?.id || null;
-        }
-
-        await createGateEntry({
+        const gateResult: any = await createGateEntry({
           direction: 'OUT',
           material_type: 'finished_goods',
           gross_weight_kg: grossWeightKg,
           estimated_pcs: dispatchQty,
           item_name: woWeight?.item_code || batch.work_orders?.item_code || null,
           party_code: woWeight?.customer || batch.work_orders?.customer || null,
-          customer_id: customerId,
+          customer_id: result?.customer_id || null,
           work_order_id: batch.wo_id,
           challan_no: generatedShipId,
           dc_number: generatedShipId,
@@ -557,11 +450,22 @@ export default function Dispatch() {
           remarks: `Auto: Dispatch ${generatedShipId} - ${dispatchQty} pcs`,
           created_by: user?.id || null,
         });
+        if (!gateResult) {
+          toast({ variant: "destructive", title: "Gate register entry failed", description: `${generatedShipId}: OUT entry for ${batch.carton_id} was not created` });
+        }
+      }
+
+      const warnings: any[] = result?.warnings || [];
+      if (warnings.length > 0) {
+        toast({
+          title: "Over-shipment warning",
+          description: warnings.map(w => `${w.wo_number}: ${w.shipped}/${w.ordered} pcs (${w.over_pct}% over order)`).join("; "),
+        });
       }
 
       toast({
         title: "Dispatch Created",
-        description: `${generatedShipId} with ${selectedBatchIds.size} batch(es), ${summary.totalQty} pcs dispatched.`,
+        description: `${generatedShipId} with ${selectedBatchIds.size} carton(s), ${summary.totalQty} pcs dispatched. Notes: ${(result?.dispatch_notes || []).join(', ')}`,
       });
 
       // Reset form
@@ -1211,12 +1115,7 @@ export default function Dispatch() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Input
-                      placeholder="Shipment ID (auto)"
-                      value={shipmentId}
-                      onChange={(e) => setShipmentId(e.target.value)}
-                      className="w-40"
-                    />
+                    <span className="text-xs text-muted-foreground w-40">Shipment no. assigned on dispatch</span>
                     <Input
                       placeholder="Remarks"
                       value={remarks}

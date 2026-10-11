@@ -187,6 +187,8 @@ export type Database = {
           built_by: string | null
           carton_id: string
           dispatch_qc_batch_id: string | null
+          dispatch_qc_inspection_id: string | null
+          dispatch_qc_status: string
           dispatched_qty: number | null
           gross_weight: number
           heat_nos: string[]
@@ -207,6 +209,8 @@ export type Database = {
           built_by?: string | null
           carton_id: string
           dispatch_qc_batch_id?: string | null
+          dispatch_qc_inspection_id?: string | null
+          dispatch_qc_status?: string
           dispatched_qty?: number | null
           gross_weight: number
           heat_nos: string[]
@@ -227,6 +231,8 @@ export type Database = {
           built_by?: string | null
           carton_id?: string
           dispatch_qc_batch_id?: string | null
+          dispatch_qc_inspection_id?: string | null
+          dispatch_qc_status?: string
           dispatched_qty?: number | null
           gross_weight?: number
           heat_nos?: string[]
@@ -261,6 +267,13 @@ export type Database = {
             columns: ["dispatch_qc_batch_id"]
             isOneToOne: false
             referencedRelation: "dispatch_qc_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartons_dispatch_qc_inspection_fk"
+            columns: ["dispatch_qc_inspection_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_qc_inspections"
             referencedColumns: ["id"]
           },
           {
@@ -1481,6 +1494,51 @@ export type Database = {
           },
         ]
       }
+      dispatch_qc_inspections: {
+        Row: {
+          carton_ids: string[]
+          checklist: Json
+          created_at: string
+          customer_id: string | null
+          customer_name: string | null
+          id: string
+          inspection_no: string
+          inspector_id: string | null
+          remarks: string | null
+          result: string
+          system_backfill: boolean
+          total_qty: number
+        }
+        Insert: {
+          carton_ids: string[]
+          checklist?: Json
+          created_at?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          id?: string
+          inspection_no: string
+          inspector_id?: string | null
+          remarks?: string | null
+          result: string
+          system_backfill?: boolean
+          total_qty?: number
+        }
+        Update: {
+          carton_ids?: string[]
+          checklist?: Json
+          created_at?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          id?: string
+          inspection_no?: string
+          inspector_id?: string | null
+          remarks?: string | null
+          result?: string
+          system_backfill?: boolean
+          total_qty?: number
+        }
+        Relationships: []
+      }
       dispatches: {
         Row: {
           batch_id: string
@@ -1576,6 +1634,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      document_sequences: {
+        Row: {
+          doc_type: string
+          financial_year: string
+          last_no: number
+        }
+        Insert: {
+          doc_type: string
+          financial_year: string
+          last_no?: number
+        }
+        Update: {
+          doc_type?: string
+          financial_year?: string
+          last_no?: number
+        }
+        Relationships: []
       }
       environmental_metrics: {
         Row: {
@@ -8467,6 +8543,7 @@ export type Database = {
           coo_file: string | null
           created_at: string
           customer: string
+          customer_id: string | null
           delivered_date: string | null
           documents: Json | null
           gross_weight_kg: number | null
@@ -8492,6 +8569,7 @@ export type Database = {
           coo_file?: string | null
           created_at?: string
           customer: string
+          customer_id?: string | null
           delivered_date?: string | null
           documents?: Json | null
           gross_weight_kg?: number | null
@@ -8517,6 +8595,7 @@ export type Database = {
           coo_file?: string | null
           created_at?: string
           customer?: string
+          customer_id?: string | null
           delivered_date?: string | null
           documents?: Json | null
           gross_weight_kg?: number | null
@@ -8548,6 +8627,20 @@ export type Database = {
             columns: ["batch_id"]
             isOneToOne: false
             referencedRelation: "production_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_last_order"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "shipments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_master"
             referencedColumns: ["id"]
           },
           {
@@ -10992,6 +11085,10 @@ export type Database = {
           total_produced: number
         }[]
       }
+      create_dispatch_shipment: {
+        Args: { p_items: Json; p_remarks?: string }
+        Returns: Json
+      }
       create_sales_order: {
         Args: { p_header: Json; p_lines: Json }
         Returns: Json
@@ -11121,6 +11218,10 @@ export type Database = {
       mark_overdue_invoices: { Args: never; Returns: undefined }
       mark_overdue_qc_checks: { Args: never; Returns: undefined }
       mark_wo_complete: { Args: { p_wo_id: string }; Returns: boolean }
+      next_document_number: {
+        Args: { p_doc_type: string; p_prefix: string }
+        Returns: string
+      }
       notify_users: {
         Args: {
           _entity_id?: string
@@ -11133,6 +11234,15 @@ export type Database = {
         Returns: undefined
       }
       receive_raw_material: { Args: { p_entry: Json }; Returns: Json }
+      record_dispatch_qc: {
+        Args: {
+          p_carton_ids: string[]
+          p_checklist: Json
+          p_remarks: string
+          p_result: string
+        }
+        Returns: Json
+      }
       record_final_qc: {
         Args: {
           p_accepted_qty: number

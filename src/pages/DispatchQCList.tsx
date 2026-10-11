@@ -1,397 +1,299 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageContainer, PageHeader } from "@/components/ui/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { 
-  FileText, Search, ClipboardCheck, CheckCircle, Lock, Shield, 
-  AlertTriangle, Package, ArrowRight, Clock, Eye
-} from "lucide-react";
+import { ClipboardCheck, Search, Loader2, Package, CheckCircle2, XCircle } from "lucide-react";
 import { format } from "date-fns";
 
-interface WorkOrderWithQC {
+interface CartonRow {
   id: string;
-  wo_number: string | null;
-  display_id: string | null;
-  customer: string | null;
-  item_code: string | null;
-  quantity: number | null;
-  status: string;
-  current_stage: string | null;
-  qc_check_count: number;
-  quality_released: boolean;
-  final_qc_result: string | null;
+  carton_id: string;
+  wo_id: string;
+  quantity: number;
+  dispatched_qty: number;
+  built_at: string;
+  dispatch_qc_status: string;
+  batch_number: number | null;
+  wo_number: string;
+  item_code: string;
+  revision: string | null;
+  customer: string;
 }
 
-const FinalQCList = () => {
-  const navigate = useNavigate();
+const CHECKS: { key: string; label: string }[] = [
+  { key: "customer", label: "Correct customer" },
+  { key: "part_revision", label: "Correct part / revision" },
+  { key: "quantity", label: "Quantity matches" },
+  { key: "wo_batch", label: "WO and batch match" },
+  { key: "labels", label: "Labels correct" },
+  { key: "packaging", label: "Packaging OK" },
+  { key: "documents", label: "Documents complete" },
+  { key: "no_holds_ncrs", label: "No open holds / NCRs" },
+];
+
+const DispatchQCList = () => {
   const [loading, setLoading] = useState(true);
-  const [workOrders, setWorkOrders] = useState<WorkOrderWithQC[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [cartons, setCartons] = useState<CartonRow[]>([]);
+  const [recent, setRecent] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const load = async () => {
     setLoading(true);
-    try {
-      const { data: woData, error: woError } = await supabase
-        .from("work_orders_restricted")
-        .select(
-          "id, wo_number, display_id, customer, item_code, quantity, status, current_stage, quality_released, final_qc_result"
-        )
-        .in("current_stage", ["production", "qc", "packing", "dispatch"])
-        .order("updated_at", { ascending: false })
-        .limit(200);
-
-      if (woError) throw woError;
-
-      const woIds = (woData || []).map((wo) => wo.id);
-
-      const { data: qcCounts, error: qcError } = await supabase
-        .from("hourly_qc_checks")
-        .select("wo_id")
-        .in("wo_id", woIds.length > 0 ? woIds : ["00000000-0000-0000-0000-000000000000"]);
-
-      if (qcError) throw qcError;
-
-      const qcCountMap: Record<string, number> = {};
-      (qcCounts || []).forEach((qc: any) => {
-        qcCountMap[qc.wo_id] = (qcCountMap[qc.wo_id] || 0) + 1;
-      });
-
-      const pendingOkQtyMap: Record<string, number> = {};
-      const releasedQtyMap: Record<string, number> = {};
-
-      const { data: batchData, error: batchError } = await supabase
-        .from("production_batches")
-        .select(
-          "wo_id, production_complete, produced_qty, qc_rejected_qty, qc_approved_qty, qc_final_status"
-        )
-        .in("wo_id", woIds.length > 0 ? woIds : ["00000000-0000-0000-0000-000000000000"]);
-
-      if (batchError) throw batchError;
-
-      (batchData || []).forEach((b: any) => {
-        const woId = b.wo_id as string | null;
-        if (!woId) return;
-        if (!b.production_complete) return;
-
-        const produced = b.produced_qty || 0;
-        const rejected = b.qc_rejected_qty || 0;
-        const okQty = Math.max(0, produced - rejected);
-        const status = String(b.qc_final_status || "pending").toLowerCase();
-
-        if (["passed", "waived"].includes(status)) {
-          const approved = b.qc_approved_qty ?? okQty;
-          releasedQtyMap[woId] = (releasedQtyMap[woId] || 0) + Math.max(0, approved || 0);
-        } else {
-          pendingOkQtyMap[woId] = (pendingOkQtyMap[woId] || 0) + okQty;
-        }
-      });
-
-      const result: WorkOrderWithQC[] = (woData || [])
-        .map((wo: any) => {
-          const pendingQty = pendingOkQtyMap[wo.id] || 0;
-          const releasedQty = releasedQtyMap[wo.id] || 0;
-          const displayQty = wo.quality_released ? releasedQty : pendingQty;
-
-          return {
-            ...wo,
-            quantity: displayQty,
-            qc_check_count: qcCountMap[wo.id] || 0,
-          };
-        })
-        .filter((wo) => wo.quality_released || (wo.quantity || 0) > 0);
-
-      const stagePriority: Record<string, number> = {
-        qc: 1,
-        production: 2,
-        packing: 3,
-        dispatch: 4,
+    setError(null);
+    const { data, error: cErr } = await supabase
+      .from("cartons")
+      .select("id, carton_id, wo_id, quantity, dispatched_qty, built_at, dispatch_qc_status, production_batches:production_batch_id(batch_number)")
+      .eq("status", "ready_for_dispatch")
+      .neq("dispatch_qc_status", "passed")
+      .order("built_at", { ascending: true });
+    if (cErr) { setError(cErr.message); setLoading(false); return; }
+    const woIds = [...new Set((data || []).map(c => c.wo_id))];
+    const { data: wos, error: wErr } = woIds.length
+      ? await supabase.from("work_orders_restricted").select("id, wo_number, item_code, revision, customer").in("id", woIds)
+      : { data: [], error: null };
+    if (wErr) setError(wErr.message);
+    const woMap = new Map<string, any>((wos || []).map((w: any) => [w.id, w]));
+    setCartons((data || []).filter(c => woMap.has(c.wo_id)).map((c: any) => {
+      const wo = woMap.get(c.wo_id);
+      return {
+        id: c.id, carton_id: c.carton_id, wo_id: c.wo_id, quantity: c.quantity, dispatched_qty: c.dispatched_qty || 0,
+        built_at: c.built_at, dispatch_qc_status: c.dispatch_qc_status,
+        batch_number: c.production_batches?.batch_number ?? null,
+        wo_number: wo?.wo_number || "", item_code: wo?.item_code || "", revision: wo?.revision || null,
+        customer: wo?.customer || "Unknown",
       };
-
-      result.sort((a, b) => {
-        const priorityA = stagePriority[a.current_stage || ""] || 99;
-        const priorityB = stagePriority[b.current_stage || ""] || 99;
-        if (priorityA !== priorityB) return priorityA - priorityB;
-        return b.qc_check_count - a.qc_check_count;
-      });
-
-      setWorkOrders(result);
-    } catch (error: any) {
-      console.error("Error loading data:", error);
-      toast.error("Failed to load work orders");
-    } finally {
-      setLoading(false);
-    }
+    }));
+    const { data: insp } = await supabase
+      .from("dispatch_qc_inspections")
+      .select("id, inspection_no, customer_name, total_qty, result, remarks, created_at, carton_ids")
+      .eq("system_backfill", false)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setRecent(insp || []);
+    setSelected(new Set());
+    setLoading(false);
   };
 
-  const filteredWorkOrders = workOrders.filter((wo) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      (wo.display_id?.toLowerCase() || "").includes(search) ||
-      (wo.wo_number?.toLowerCase() || "").includes(search) ||
-      (wo.customer?.toLowerCase() || "").includes(search) ||
-      (wo.item_code?.toLowerCase() || "").includes(search)
-    );
-  });
+  useEffect(() => { load(); }, []);
 
-  // Separate released and pending
-  const releasedOrders = filteredWorkOrders.filter(wo => wo.quality_released);
-  const pendingOrders = filteredWorkOrders.filter(wo => !wo.quality_released);
+  const groups = useMemo(() => {
+    const q = search.toLowerCase();
+    const g: Record<string, CartonRow[]> = {};
+    cartons
+      .filter(c => !q || [c.carton_id, c.wo_number, c.item_code, c.customer].some(v => v.toLowerCase().includes(q)))
+      .forEach(c => { (g[c.customer] ||= []).push(c); });
+    return Object.entries(g).sort(([a], [b]) => a.localeCompare(b));
+  }, [cartons, search]);
 
-  const getStageConfig = (stage: string | null) => {
-    switch (stage) {
-      case "production": return { color: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20", label: "Production" };
-      case "qc": return { color: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20", label: "QC" };
-      case "packing": return { color: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20", label: "Packing" };
-      case "dispatch": return { color: "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20", label: "Dispatch" };
-      default: return { color: "bg-muted text-muted-foreground", label: stage || "Unknown" };
+  const selectedRows = cartons.filter(c => selected.has(c.id));
+  const selectedCustomer = selectedRows[0]?.customer;
+
+  const toggle = (c: CartonRow) => {
+    const next = new Set(selected);
+    if (next.has(c.id)) next.delete(c.id);
+    else {
+      if (selectedCustomer && selectedCustomer !== c.customer) {
+        toast.error(`Dispatch QC covers one customer at a time (selected: ${selectedCustomer})`);
+        return;
+      }
+      next.add(c.id);
     }
+    setSelected(next);
   };
 
-  const renderWorkOrderCard = (wo: WorkOrderWithQC, isReleased: boolean) => {
-    const stageConfig = getStageConfig(wo.current_stage);
-    
-    return (
-      <Card 
-        key={wo.id} 
-        className={`group hover:shadow-md transition-all cursor-pointer ${
-          isReleased 
-            ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900" 
-            : "hover:border-primary/40"
-        }`}
-        onClick={() => navigate(`/dispatch-qc/${wo.id}`)}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between gap-4">
-            {/* Left: WO Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-semibold text-lg">{wo.display_id || wo.wo_number}</span>
-                <Badge className={`${stageConfig.color} border`}>
-                  {stageConfig.label}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{wo.customer || "—"}</span>
-                <span className="text-muted-foreground/60">•</span>
-                <span>{wo.item_code || "—"}</span>
-              </div>
-            </div>
-
-            {/* Middle: Stats */}
-            <div className="flex items-center gap-6">
-              {/* Eligible Qty */}
-              <div className="text-center">
-                <div className="flex items-center gap-1.5">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xl font-bold">{wo.quantity?.toLocaleString() || "0"}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">Eligible</span>
-              </div>
-
-              {/* QC Checks */}
-              <div className="text-center">
-                <div className="flex items-center gap-1.5">
-                  <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xl font-bold">{wo.qc_check_count}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">QC Checks</span>
-              </div>
-
-              {/* Status */}
-              <div className="w-28">
-                {isReleased ? (
-                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 w-full justify-center py-1.5 gap-1.5">
-                    <Lock className="h-3.5 w-3.5" />
-                    Released
-                  </Badge>
-                ) : wo.final_qc_result === 'blocked' ? (
-                  <Badge className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 w-full justify-center py-1.5 gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    Blocked
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="w-full justify-center py-1.5 gap-1.5">
-                    <Clock className="h-3.5 w-3.5" />
-                    Pending
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Action */}
-            <Button 
-              size="sm" 
-              variant={isReleased ? "ghost" : "default"}
-              className="gap-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/dispatch-qc/${wo.id}`);
-              }}
-            >
-              {isReleased ? (
-                <>
-                  <Eye className="h-4 w-4" />
-                  View
-                </>
-              ) : (
-                <>
-                  <Shield className="h-4 w-4" />
-                  Inspect
-                  <ArrowRight className="h-4 w-4 opacity-50" />
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
+  const toggleGroup = (customer: string, rows: CartonRow[]) => {
+    if (selectedCustomer && selectedCustomer !== customer) {
+      toast.error(`Dispatch QC covers one customer at a time (selected: ${selectedCustomer})`);
+      return;
+    }
+    const all = rows.every(r => selected.has(r.id));
+    const next = new Set(selected);
+    rows.forEach(r => (all ? next.delete(r.id) : next.add(r.id)));
+    setSelected(next);
   };
 
   return (
     <PageContainer>
       <PageHeader
         title="Dispatch QC"
-        description="Quality release work orders for packing and dispatch"
+        description="Inspect packed cartons per customer before dispatch"
         icon={<ClipboardCheck className="h-6 w-6" />}
       />
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card className="bg-gradient-to-br from-background to-muted/30">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Package className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{filteredWorkOrders.length}</p>
-                <p className="text-xs text-muted-foreground">Total Work Orders</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-background to-amber-500/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/10">
-                <Clock className="h-5 w-5 text-amber-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{pendingOrders.length}</p>
-                <p className="text-xs text-muted-foreground">Pending Inspection</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-background to-green-500/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{releasedOrders.length}</p>
-                <p className="text-xs text-muted-foreground">Released</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-background to-purple-500/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/10">
-                <ClipboardCheck className="h-5 w-5 text-purple-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {filteredWorkOrders.reduce((sum, wo) => sum + wo.qc_check_count, 0)}
-                </p>
-                <p className="text-xs text-muted-foreground">Total QC Checks</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {error && <Alert variant="destructive" className="mb-4"><AlertDescription>Could not load cartons: {error}</AlertDescription></Alert>}
 
-      {/* Search */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="relative">
+      <Card className="mb-4">
+        <CardContent className="p-4 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by WO number, customer, or item code..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+            <Input placeholder="Search carton, WO, item or customer..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
           </div>
+          <span className="text-sm text-muted-foreground">
+            {selectedRows.length} carton(s) · {selectedRows.reduce((s, c) => s + c.quantity - c.dispatched_qty, 0).toLocaleString()} pcs
+            {selectedCustomer ? ` · ${selectedCustomer}` : ""}
+          </span>
+          <Button disabled={selectedRows.length === 0} onClick={() => setDialogOpen(true)}>
+            <ClipboardCheck className="h-4 w-4 mr-2" /> Inspect selected
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Work Orders List */}
       {loading ? (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-40 w-full" />
+      ) : groups.length === 0 ? (
+        <Card><CardContent className="py-12 text-center text-muted-foreground">
+          <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p className="font-medium">No packed cartons awaiting Dispatch QC</p>
+        </CardContent></Card>
+      ) : (
+        <div className="space-y-4">
+          {groups.map(([customer, rows]) => (
+            <Card key={customer}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-3">
+                  <Checkbox checked={rows.every(r => selected.has(r.id))} onCheckedChange={() => toggleGroup(customer, rows)} />
+                  <CardTitle className="text-base">{customer}</CardTitle>
+                  <Badge variant="secondary">{rows.length} cartons</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8" />
+                      <TableHead>Carton</TableHead>
+                      <TableHead>WO</TableHead>
+                      <TableHead>Item / Rev</TableHead>
+                      <TableHead>Batch</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead>Packed</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map(c => (
+                      <TableRow key={c.id} className="cursor-pointer" onClick={() => toggle(c)}>
+                        <TableCell onClick={e => e.stopPropagation()}><Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggle(c)} /></TableCell>
+                        <TableCell className="font-mono text-xs">{c.carton_id}</TableCell>
+                        <TableCell>{c.wo_number}</TableCell>
+                        <TableCell>{c.item_code}{c.revision ? ` / ${c.revision}` : ""}</TableCell>
+                        <TableCell>{c.batch_number ? `#${c.batch_number}` : "—"}</TableCell>
+                        <TableCell className="text-right">{(c.quantity - c.dispatched_qty).toLocaleString()}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{format(new Date(c.built_at), "dd MMM yyyy")}</TableCell>
+                        <TableCell>
+                          <Badge variant={c.dispatch_qc_status === "failed" ? "destructive" : "outline"}>
+                            {c.dispatch_qc_status === "failed" ? "Failed – re-inspect" : "Awaiting Dispatch QC"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           ))}
         </div>
-      ) : filteredWorkOrders.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <ClipboardCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="font-medium">No work orders ready for Dispatch QC</p>
-            <p className="text-sm mt-1">Work orders must have production data before dispatch inspection.</p>
+      )}
+
+      {recent.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader><CardTitle className="text-base">Recent Dispatch QC</CardTitle><CardDescription>Latest post-packing inspections</CardDescription></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>No.</TableHead><TableHead>Customer</TableHead><TableHead>Cartons</TableHead><TableHead className="text-right">Pcs</TableHead><TableHead>Result</TableHead><TableHead>Remarks</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {recent.map(r => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs">{r.inspection_no}</TableCell>
+                    <TableCell>{r.customer_name || "—"}</TableCell>
+                    <TableCell>{r.carton_ids?.length || 0}</TableCell>
+                    <TableCell className="text-right">{(r.total_qty || 0).toLocaleString()}</TableCell>
+                    <TableCell><Badge variant={r.result === "pass" ? "default" : "destructive"}>{r.result}</Badge></TableCell>
+                    <TableCell className="max-w-[240px] truncate">{r.remarks || "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{format(new Date(r.created_at), "dd MMM yyyy HH:mm")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-6">
-          {/* Pending Inspection Section */}
-          {pendingOrders.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Shield className="h-5 w-5 text-primary" />
-                <h2 className="font-semibold text-lg">Pending Inspection</h2>
-                <Badge variant="secondary">{pendingOrders.length}</Badge>
-              </div>
-              <div className="space-y-3">
-                {pendingOrders.map((wo) => renderWorkOrderCard(wo, false))}
-              </div>
-            </div>
-          )}
+      )}
 
-          {/* Released Section */}
-          {releasedOrders.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-                <h2 className="font-semibold text-lg">Released</h2>
-                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                  {releasedOrders.length}
-                </Badge>
-              </div>
-              <div className="space-y-3">
-                {releasedOrders.map((wo) => renderWorkOrderCard(wo, true))}
-              </div>
-            </div>
-          )}
-        </div>
+      {dialogOpen && (
+        <InspectDialog rows={selectedRows} onClose={() => setDialogOpen(false)} onSaved={() => { setDialogOpen(false); load(); }} />
       )}
     </PageContainer>
   );
 };
 
-export default FinalQCList;
+const InspectDialog = ({ rows, onClose, onSaved }: { rows: CartonRow[]; onClose: () => void; onSaved: () => void }) => {
+  const [checks, setChecks] = useState<Record<string, boolean>>({});
+  const [remarks, setRemarks] = useState("");
+  const [saving, setSaving] = useState<"pass" | "fail" | null>(null);
+  const allChecked = CHECKS.every(c => checks[c.key]);
+
+  const submit = async (result: "pass" | "fail") => {
+    setSaving(result);
+    const { data, error } = await supabase.rpc("record_dispatch_qc" as any, {
+      p_carton_ids: rows.map(r => r.id),
+      p_result: result,
+      p_checklist: checks,
+      p_remarks: remarks || null,
+    } as any);
+    setSaving(null);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`${(data as any)?.inspection_no}: Dispatch QC ${result.toUpperCase()} for ${rows.length} carton(s)`);
+    onSaved();
+  };
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Dispatch QC — {rows[0]?.customer}</DialogTitle>
+          <DialogDescription>
+            {rows.length} carton(s) · {rows.reduce((s, c) => s + c.quantity - c.dispatched_qty, 0).toLocaleString()} pcs ·{" "}
+            {[...new Set(rows.map(r => r.wo_number))].join(", ")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          {CHECKS.map(c => (
+            <label key={c.key} className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox checked={!!checks[c.key]} onCheckedChange={v => setChecks({ ...checks, [c.key]: !!v })} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <Label>Remarks {saving === "fail" || !allChecked ? "(required for fail)" : ""}</Label>
+          <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3} />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" disabled={!!saving || !remarks.trim()} onClick={() => submit("fail")}>
+            {saving === "fail" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2" />} Fail
+          </Button>
+          <Button disabled={!!saving || !allChecked} onClick={() => submit("pass")}>
+            {saving === "pass" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />} Pass
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default DispatchQCList;
