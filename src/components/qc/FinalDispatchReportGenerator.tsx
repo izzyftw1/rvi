@@ -1,3 +1,4 @@
+import { prepareLetterhead, contentTop, contentBottom, tableMargin, finalizeLetterhead } from "@/lib/pdfLetterhead";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -297,16 +298,11 @@ export const FinalDispatchReportGenerator = ({
     try {
       setGenerating(true);
       
-      const doc = new jsPDF();
-      let yPos = 20;
+      await prepareLetterhead();
+      const doc = new jsPDF({ format: "a4", unit: "mm" });
+      let yPos = contentTop() + 4;
 
-      // Branded Header with "FINAL INSPECTION RECORD" stamp
-      doc.setFontSize(22);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(28, 63, 148);
-      doc.text('R.V. Industries', 105, yPos, { align: 'center' });
-      yPos += 8;
-      
       doc.setFontSize(16);
       doc.setTextColor(0, 0, 0);
       doc.text('CONSOLIDATED FINAL INSPECTION RECORD', 105, yPos, { align: 'center' });
@@ -378,6 +374,7 @@ export const FinalDispatchReportGenerator = ({
 
       if (sampleData.length > 0) {
         autoTable(doc, {
+        margin: tableMargin(doc),
           startY: yPos,
           head: [['#', 'Date/Time', 'Op', 'Status', 'Out of Tolerance Dims']],
           body: sampleData,
@@ -404,9 +401,9 @@ export const FinalDispatchReportGenerator = ({
       }
 
       // SECTION 2: Aggregated In-Process QC Summary
-      if (yPos > 200) {
+      if (yPos > Math.min(200, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -428,9 +425,9 @@ export const FinalDispatchReportGenerator = ({
         const opData = reportData.hourlyQC.filter((h: any) => h.operation === op);
         if (opData.length === 0) return;
 
-        if (yPos > 240) {
+        if (yPos > Math.min(240, contentBottom(doc) - 25)) {
           doc.addPage();
-          yPos = 20;
+          yPos = contentTop();
         }
 
         doc.setFontSize(11);
@@ -479,6 +476,7 @@ export const FinalDispatchReportGenerator = ({
           });
 
           autoTable(doc, {
+        margin: tableMargin(doc),
             startY: yPos,
             head: [['Dim', 'Tolerance', 'Min', 'Max', 'Avg', 'N', 'Status']],
             body: dimData,
@@ -532,9 +530,9 @@ export const FinalDispatchReportGenerator = ({
       });
 
       // SECTION 3: Tolerance Compliance Summary
-      if (yPos > 230) {
+      if (yPos > Math.min(230, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -564,9 +562,9 @@ export const FinalDispatchReportGenerator = ({
       yPos += 35;
 
       // SECTION 4: Deviations and Waivers
-      if (yPos > 230) {
+      if (yPos > Math.min(230, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -586,6 +584,7 @@ export const FinalDispatchReportGenerator = ({
         ]);
 
         autoTable(doc, {
+        margin: tableMargin(doc),
           startY: yPos,
           head: [['Type', 'Reference', 'Description', 'Disposition/Status', 'Qty']],
           body: devData,
@@ -603,9 +602,9 @@ export const FinalDispatchReportGenerator = ({
       }
 
       // QC Gate Status Summary
-      if (yPos > 220) {
+      if (yPos > Math.min(220, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -626,6 +625,7 @@ export const FinalDispatchReportGenerator = ({
       ];
 
       autoTable(doc, {
+        margin: tableMargin(doc),
         startY: yPos,
         head: [['QC Gate', 'Status', 'Approved By']],
         body: gateData,
@@ -649,9 +649,9 @@ export const FinalDispatchReportGenerator = ({
       yPos = (doc as any).lastAutoTable.finalY + 15;
 
       // Final Sign-off Section
-      if (yPos > 220) {
+      if (yPos > Math.min(220, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setDrawColor(28, 63, 148);
@@ -687,6 +687,7 @@ export const FinalDispatchReportGenerator = ({
       doc.text(`Report ID: FIR-${woNumber}-${Date.now()}`, 105, yPos + 5, { align: 'center' });
 
       // Generate PDF blob
+      finalizeLetterhead(doc);
       const pdfBlob = doc.output('blob');
       const fileName = `Final_Inspection_Record_${woNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
       const filePath = `${woId}/${fileName}`;

@@ -1,3 +1,4 @@
+import { prepareLetterhead, contentTop, contentBottom, tableMargin, finalizeLetterhead } from "@/lib/pdfLetterhead";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -271,31 +272,11 @@ export const DispatchQCReportGenerator = ({
     try {
       setGenerating(true);
       
-      const doc = new jsPDF();
+      await prepareLetterhead();
+      const doc = new jsPDF({ format: "a4", unit: "mm" });
       let yPos = 15;
 
-      // ===== COMPANY HEADER WITH LOGO =====
-      try {
-        const logoImg = new Image();
-        logoImg.src = '/rv-logo.jpg';
-        doc.addImage(logoImg, 'JPEG', 15, 10, 30, 15);
-      } catch (e) {
-        // Logo not available, skip
-      }
-
-      doc.setFontSize(20);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(28, 63, 148);
-      doc.text('R.V. Industries', 105, yPos, { align: 'center' });
-      yPos += 7;
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100, 100, 100);
-      doc.text('Precision Engineering & Manufacturing', 105, yPos, { align: 'center' });
-      yPos += 5;
-      doc.text('Quality Excellence Since 1985', 105, yPos, { align: 'center' });
-      yPos += 10;
+      yPos = contentTop() + 4;
 
       // Document Title
       doc.setFontSize(16);
@@ -366,6 +347,7 @@ export const DispatchQCReportGenerator = ({
         ]);
 
         autoTable(doc, {
+        margin: tableMargin(doc),
           startY: yPos,
           head: [['#', 'Dimension', 'Tolerance Range', 'Measured', 'Unit', 'Status']],
           body: measurementData,
@@ -388,9 +370,9 @@ export const DispatchQCReportGenerator = ({
       }
 
       // ===== SECTION 2: HOURLY QC AVERAGES =====
-      if (yPos > 200) {
+      if (yPos > Math.min(200, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -411,9 +393,9 @@ export const DispatchQCReportGenerator = ({
         const opAverages = reportData.hourlyQCAverages.filter(a => a.operation === op);
         if (opAverages.length === 0) continue;
 
-        if (yPos > 240) {
+        if (yPos > Math.min(240, contentBottom(doc) - 25)) {
           doc.addPage();
-          yPos = 20;
+          yPos = contentTop();
         }
 
         doc.setFontSize(11);
@@ -432,6 +414,7 @@ export const DispatchQCReportGenerator = ({
         ]);
 
         autoTable(doc, {
+        margin: tableMargin(doc),
           startY: yPos,
           head: [['Dimension', 'Tolerance', 'Min', 'Max', 'Average', 'Samples', 'Status']],
           body: opData,
@@ -457,9 +440,9 @@ export const DispatchQCReportGenerator = ({
       }
 
       // ===== SECTION 3: COMPLIANCE SUMMARY & CONCLUSION =====
-      if (yPos > 220) {
+      if (yPos > Math.min(220, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -498,9 +481,9 @@ export const DispatchQCReportGenerator = ({
       yPos += 30;
 
       // ===== SECTION 4: INSPECTOR DETAILS & REMARKS =====
-      if (yPos > 240) {
+      if (yPos > Math.min(240, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(13);
@@ -541,11 +524,11 @@ export const DispatchQCReportGenerator = ({
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
-        doc.text(`Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
-        doc.text(`Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')} | Document ID: DQC-${woNumber}`, 105, 290, { align: 'center' });
+        doc.text(`Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')} | Document ID: DQC-${woNumber}`, 15, contentBottom(doc) + 1);
       }
 
       // Generate PDF blob
+      finalizeLetterhead(doc);
       const pdfBlob = doc.output('blob');
       const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
       const fileName = `Dispatch_QC_Report_${woNumber}_v${existingReports.length + 1}_${timestamp}.pdf`;
