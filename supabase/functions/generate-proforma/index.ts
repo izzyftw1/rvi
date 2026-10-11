@@ -64,77 +64,53 @@ const BRAND_COLORS = {
   tableBorder: '#1E4A8D',
 };
 
+
+interface LetterheadImg { data: string; w: number; h: number }
+interface Letterhead {
+  header: LetterheadImg | null;
+  footer: LetterheadImg | null;
+  company: { name: string; address: string; phones: string; email: string; website: string; gstin: string; iec: string; udyam: string };
+}
+
+function toBase64(u8: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < u8.length; i += chunk) binary += String.fromCharCode(...u8.subarray(i, i + chunk));
+  return btoa(binary);
+}
+
 // deno-lint-ignore no-explicit-any
-async function fetchLogoFromStorage(supabaseClient: any): Promise<{ base64: string | null; bytes: number; status: string }> {
-  const LOGO_PATH = 'rv-logo.png';
-  const BUCKET = 'company-assets';
-  
-  console.log(`[LOGO] Fetching logo from bucket: ${BUCKET}, path: ${LOGO_PATH}`);
-  
+async function fetchPng(client: any, path: string): Promise<LetterheadImg | null> {
   try {
-    // Use service role client to download the file
-    const { data, error } = await supabaseClient.storage
-      .from(BUCKET)
-      .download(LOGO_PATH);
-    
-    if (error) {
-      console.log(`[LOGO] Storage error: ${error.message}`);
-      return { base64: null, bytes: 0, status: `storage_error: ${error.message}` };
-    }
-    
-    if (!data) {
-      console.log('[LOGO] No data returned from storage');
-      return { base64: null, bytes: 0, status: 'no_data_returned' };
-    }
-    
-    // Convert blob to ArrayBuffer
-    const arrayBuffer = await data.arrayBuffer();
-    const bytes = arrayBuffer.byteLength;
-    
-    console.log(`[LOGO] Downloaded ${bytes} bytes, type: ${data.type}`);
-    
-    if (bytes === 0) {
-      console.log('[LOGO] File is empty (0 bytes)');
-      return { base64: null, bytes: 0, status: 'empty_file' };
-    }
-    
-    // Validate it's a PNG by checking magic bytes
-    const uint8 = new Uint8Array(arrayBuffer);
-    const isPng = uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47;
-    const isJpeg = uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF;
-    
-    if (!isPng && !isJpeg) {
-      console.log(`[LOGO] Invalid image format. First 4 bytes: ${uint8[0]}, ${uint8[1]}, ${uint8[2]}, ${uint8[3]}`);
-      return { base64: null, bytes, status: 'invalid_format' };
-    }
-    
-    const imageType = isPng ? 'PNG' : 'JPEG';
-    console.log(`[LOGO] Valid ${imageType} image detected`);
-    
-    // Convert to base64
-    let binary = '';
-    for (let i = 0; i < uint8.length; i++) {
-      binary += String.fromCharCode(uint8[i]);
-    }
-    const base64 = btoa(binary);
-    const mimeType = isPng ? 'image/png' : 'image/jpeg';
-    
-    console.log(`[LOGO] Successfully converted to base64, length: ${base64.length} chars`);
-    
-    return { 
-      base64: `data:${mimeType};base64,${base64}`, 
-      bytes, 
-      status: `success_${imageType.toLowerCase()}` 
-    };
-    
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[LOGO] Exception during fetch: ${errMsg}`);
-    return { base64: null, bytes: 0, status: `exception: ${errMsg}` };
+    const { data, error } = await client.storage.from('branding').download(path);
+    if (error || !data) return null;
+    const u8 = new Uint8Array(await data.arrayBuffer());
+    if (!(u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47)) return null;
+    const dv = new DataView(u8.buffer);
+    return { data: `data:image/png;base64,${toBase64(u8)}`, w: dv.getUint32(16), h: dv.getUint32(20) };
+  } catch {
+    return null;
   }
 }
 
-async function generateProfessionalPdf(data: ProformaData, logoBase64: string | null): Promise<Uint8Array> {
+// deno-lint-ignore no-explicit-any
+async function loadLetterhead(client: any): Promise<Letterhead> {
+  const [{ data: s }, header, footer] = await Promise.all([
+    client.from('finance_settings').select('*').maybeSingle(),
+    fetchPng(client, 'letterhead_header.png'),
+    fetchPng(client, 'letterhead_footer.png'),
+  ]);
+  return {
+    header, footer,
+    company: {
+      name: s?.company_name ?? '', address: s?.company_address ?? '', phones: s?.company_phones ?? '',
+      email: s?.company_email ?? '', website: s?.company_website ?? '', gstin: s?.company_gstin ?? '',
+      iec: s?.company_iec ?? '', udyam: s?.company_udyam ?? '',
+    },
+  };
+}
+
+async function generateProfessionalPdf(data: ProformaData, lh: Letterhead): Promise<Uint8Array> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -148,71 +124,27 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   const contentWidth = rightMargin - leftMargin;
   let yPos = 12;
 
-  // ============= HEADER SECTION =============
-  const logoWidth = 45;
-  const logoHeight = 18;
-  let textStartX = leftMargin;
-  
-  // Add actual logo image if available
-  if (logoBase64 && logoBase64.startsWith('data:image')) {
-    try {
-      // Determine format from data URI
-      const format = logoBase64.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(logoBase64, format, leftMargin, yPos, logoWidth, logoHeight);
-      textStartX = leftMargin + logoWidth + 5;
-      console.log(`[PDF] Logo added successfully as ${format}`);
-    } catch (e) {
-      console.error('[PDF] Error adding logo image:', e);
-      // Fallback: show company name prominently
-      console.log('[PDF] Using text fallback for logo');
-      textStartX = leftMargin;
-    }
+  // ============= HEADER (shared letterhead) =============
+  const co = lh.company;
+  if (lh.header) {
+    const hh = (pageWidth * lh.header.h) / lh.header.w;
+    doc.addImage(lh.header.data, 'PNG', 0, 0, pageWidth, hh);
+    yPos = hh + 2;
   } else {
-    // No logo available - use text header as fallback
-    console.log('[PDF] No valid logo, using text-only header');
-    textStartX = leftMargin;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(30, 74, 141);
+    doc.text(co.name.toUpperCase(), pageWidth / 2, yPos + 4, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(33, 33, 33);
+    doc.text(co.address, pageWidth / 2, yPos + 10, { align: 'center', maxWidth: contentWidth });
+    doc.text([co.phones && `Ph: ${co.phones}`, co.email, co.website].filter(Boolean).join(' | '), pageWidth / 2, yPos + 18, { align: 'center' });
+    yPos += 22;
+    doc.setDrawColor(30, 74, 141);
+    doc.setLineWidth(0.6);
+    doc.line(leftMargin, yPos, rightMargin, yPos);
   }
-  
-  // Company Name
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(30, 74, 141);
-  doc.text('R.V. INDUSTRIES', textStartX, yPos + 8);
-  
-  // Tagline
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(33, 33, 33);
-  doc.text('Precision Brass Components', textStartX, yPos + 14);
-  
-  // Address - on its own line
-  doc.setFontSize(8);
-  doc.text('Plot No 11 & 12, Sadguru Industrial Area, Jamnagar, 361006 (Gujarat) India', textStartX, yPos + 20);
-  
-  // Certifications on the far right - stacked properly
-  const certX = rightMargin - 2;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  
-  doc.setTextColor(30, 74, 141);
-  doc.text('ISO 9001:2015', certX, yPos + 4, { align: 'right' });
-  
-  doc.setTextColor(211, 47, 47);
-  doc.text('TÜV SÜD CERTIFIED', certX, yPos + 9, { align: 'right' });
-  
-  doc.setTextColor(30, 74, 141);
-  doc.text('RoHS COMPLIANT', certX, yPos + 14, { align: 'right' });
-  
-  doc.setTextColor(211, 47, 47);
-  doc.text('CE MARKED', certX, yPos + 19, { align: 'right' });
-  
-  // Header divider line (two-color)
-  yPos += 26;
-  doc.setDrawColor(30, 74, 141);
-  doc.setLineWidth(0.8);
-  doc.line(leftMargin, yPos, leftMargin + contentWidth / 2, yPos);
-  doc.setDrawColor(211, 47, 47);
-  doc.line(leftMargin + contentWidth / 2, yPos, rightMargin, yPos);
   
   // ============= PROFORMA INVOICE TITLE =============
   yPos += 8;
@@ -583,7 +515,7 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
   
   // Bank details with bold labels and proper spacing
   const bankDetails = [
-    { label: 'Account Name: ', value: 'R.V. INDUSTRIES' },
+    { label: 'Account Name: ', value: lh.company.name.toUpperCase() },
     { label: 'Bank Name: ', value: 'BANK OF BARODA' },
     { label: 'Account No: ', value: '25970500001613' },
     { label: 'Branch: ', value: 'S.S.I. Jamnagar' },
@@ -601,27 +533,26 @@ async function generateProfessionalPdf(data: ProformaData, logoBase64: string | 
     yPos += 4;
   }
   
-  // ============= FOOTER =============
-  const footerY = pageHeight - 20;
-  
-  // Footer divider line (two-color)
-  doc.setDrawColor(30, 74, 141);
-  doc.setLineWidth(0.8);
-  doc.line(leftMargin, footerY, leftMargin + contentWidth / 2, footerY);
-  doc.setDrawColor(211, 47, 47);
-  doc.line(leftMargin + contentWidth / 2, footerY, rightMargin, footerY);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(33, 33, 33);
-  doc.text('Email: sales@brasspartsindia.net', pageWidth / 2, footerY + 5, { align: 'center' });
-  doc.text('Web: www.brasspartsindia.net | Ph: +91 94274 20088', pageWidth / 2, footerY + 10, { align: 'center' });
-  
+  // ============= FOOTER (shared letterhead) =============
+  const footerH = lh.footer ? (pageWidth * lh.footer.h) / lh.footer.w : 14;
+  const footerTop = pageHeight - footerH;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(100, 100, 100);
-  doc.text('This is a computer-generated Proforma Invoice and is valid without signature.', pageWidth / 2, footerY + 15, { align: 'center' });
-  
+  doc.text('This is a computer-generated Proforma Invoice and is valid without signature.', pageWidth / 2, footerTop - 3, { align: 'center' });
+  if (lh.footer) {
+    doc.addImage(lh.footer.data, 'PNG', 0, footerTop, pageWidth, footerH);
+  } else {
+    doc.setDrawColor(30, 74, 141);
+    doc.setLineWidth(0.4);
+    doc.line(leftMargin, footerTop + 1, rightMargin, footerTop + 1);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(60, 60, 60);
+    doc.text(co.address, pageWidth / 2, footerTop + 5, { align: 'center', maxWidth: contentWidth });
+    doc.text([co.phones && `Ph: ${co.phones}`, co.email, co.gstin && `GSTIN: ${co.gstin}`, co.iec && `IEC: ${co.iec}`, co.udyam].filter(Boolean).join(' | '), pageWidth / 2, footerTop + 11, { align: 'center', maxWidth: contentWidth });
+  }
+
   // Return as bytes
   return doc.output('arraybuffer') as unknown as Uint8Array;
 }
@@ -802,9 +733,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     // Fetch the company logo using service role client
     console.log('[LOGO] Starting logo fetch...');
-    const logoResult = await fetchLogoFromStorage(supabase);
-    console.log(`[LOGO] Fetch result - Status: ${logoResult.status}, Bytes: ${logoResult.bytes}, Has base64: ${!!logoResult.base64}`);
-    const logoBase64 = logoResult.base64;
+    const letterhead = await loadLetterhead(supabase);
     
     // Generate professional PDF using jsPDF with autoTable
     console.log('Generating professional PDF with jsPDF and autoTable...');
@@ -837,7 +766,7 @@ const handler = async (req: Request): Promise<Response> => {
       incoterm: order.incoterm,
       countryOfOrigin: 'India',
       validityDays: 30
-    }, logoBase64);
+    }, letterhead);
     
     // Upload to storage using service role (bypasses RLS)
     const fileName = `${proformaNo}.pdf`;

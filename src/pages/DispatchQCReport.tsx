@@ -1,3 +1,4 @@
+import { prepareLetterhead, contentTop, contentBottom, tableMargin, finalizeLetterhead } from "@/lib/pdfLetterhead";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -140,22 +141,23 @@ const DispatchQCReport = () => {
     }
   };
 
-  const exportToPDF = () => {
-    const doc = new jsPDF();
+  const exportToPDF = async () => {
+    await prepareLetterhead();
+      const doc = new jsPDF({ format: "a4", unit: "mm" });
     
     // Header
     doc.setFontSize(18);
-    doc.text("Final Dispatch QC Report", 14, 20);
+    doc.text("Final Dispatch QC Report", 14, contentTop() + 6);
     
     doc.setFontSize(10);
-    doc.text(`Customer: ${workOrder.customer}`, 14, 30);
-    doc.text(`Work Order: ${workOrder.wo_id}`, 14, 36);
-    doc.text(`Part Number: ${workOrder.item_code}`, 14, 42);
-    doc.text(`Quantity: ${workOrder.quantity} pcs`, 14, 48);
-    doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 14, 54);
-    doc.text(`Total Checks: ${qcData.totalChecks} | Passed: ${qcData.passedChecks} | Failed: ${qcData.failedChecks}`, 14, 60);
+    doc.text(`Customer: ${workOrder.customer}`, 14, contentTop() + 16);
+    doc.text(`Work Order: ${workOrder.wo_id}`, 14, contentTop() + 22);
+    doc.text(`Part Number: ${workOrder.item_code}`, 14, contentTop() + 28);
+    doc.text(`Quantity: ${workOrder.quantity} pcs`, 14, contentTop() + 34);
+    doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 14, contentTop() + 40);
+    doc.text(`Total Checks: ${qcData.totalChecks} | Passed: ${qcData.passedChecks} | Failed: ${qcData.failedChecks}`, 14, contentTop() + 46);
 
-    let yPos = 70;
+    let yPos = contentTop() + 56;
 
     // Helper function to check if value is within tolerance
     const checkTolerance = (op: string, dim: string, value: number): boolean => {
@@ -167,9 +169,9 @@ const DispatchQCReport = () => {
     // For each operation
     Object.entries(qcData.operationStats).forEach(([op, opStats]: [string, any]) => {
       // Check if we need a new page
-      if (yPos > 250) {
+      if (yPos > Math.min(250, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(12);
@@ -186,6 +188,7 @@ const DispatchQCReport = () => {
       ]);
 
       autoTable(doc, {
+        margin: tableMargin(doc),
         startY: yPos,
         head: [['Dimension', 'Min', 'Max', 'Average', 'Samples']],
         body: tableData,
@@ -214,9 +217,9 @@ const DispatchQCReport = () => {
       yPos = (doc as any).lastAutoTable.finalY + 10;
 
       // Add binary QC summary table
-      if (yPos > 220) {
+      if (yPos > Math.min(220, contentBottom(doc) - 25)) {
         doc.addPage();
-        yPos = 20;
+        yPos = contentTop();
       }
 
       doc.setFontSize(10);
@@ -231,6 +234,7 @@ const DispatchQCReport = () => {
       ];
 
       autoTable(doc, {
+        margin: tableMargin(doc),
         startY: yPos,
         head: [['Check Type', '% OK', 'OK Count', 'Not OK Count']],
         body: binaryData,
@@ -243,9 +247,9 @@ const DispatchQCReport = () => {
     });
 
     // Signature section
-    if (yPos > 240) {
+    if (yPos > Math.min(240, contentBottom(doc) - 25)) {
       doc.addPage();
-      yPos = 20;
+      yPos = contentTop();
     }
     
     doc.setFontSize(12);
@@ -256,6 +260,7 @@ const DispatchQCReport = () => {
     doc.text("Name: _______________________", 14, yPos + 10);
     doc.text("Date: _______________________", 14, yPos + 20);
 
+    finalizeLetterhead(doc);
     doc.save(`Dispatch_QC_Report_${workOrder.wo_id}_${new Date().toISOString().split('T')[0]}.pdf`);
     toast.success("PDF report generated successfully");
   };

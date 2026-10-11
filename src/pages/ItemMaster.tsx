@@ -65,7 +65,9 @@ export default function ItemMaster() {
     default_material_grade: "",
     estimated_net_weight_g: "",
     estimated_gross_weight_g: "",
-    estimated_cycle_time_s: ""
+    estimated_cycle_time_s: "",
+    hs_code: "",
+    goods_heading: ""
   });
 
   // Check if selected shape needs inner diameter
@@ -120,7 +122,9 @@ export default function ItemMaster() {
       default_material_grade: "",
       estimated_net_weight_g: "",
       estimated_gross_weight_g: "",
-      estimated_cycle_time_s: ""
+      estimated_cycle_time_s: "",
+      hs_code: "",
+      goods_heading: ""
     });
     setIsDialogOpen(true);
   };
@@ -130,6 +134,8 @@ export default function ItemMaster() {
     setFormData({
       item_code: item.item_code,
       item_name: item.item_name || "",
+      hs_code: item.hs_code || "",
+      goods_heading: item.goods_heading || "",
       customer_id: item.customer_id || "",
       default_process_route_id: item.default_process_route_id || "",
       default_material_form: item.default_material_form || "",
@@ -155,6 +161,8 @@ export default function ItemMaster() {
       const dataToSave = {
         item_code: formData.item_code,
         item_name: formData.item_name || null,
+        hs_code: formData.hs_code || null,
+        goods_heading: formData.goods_heading || null,
         customer_id: formData.customer_id || null,
         default_process_route_id: formData.default_process_route_id || null,
         default_material_form: formData.default_material_form || null,
@@ -417,6 +425,16 @@ export default function ItemMaster() {
                     onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
                     placeholder="Descriptive name"
                   />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>HS Code</Label>
+                  <Input value={formData.hs_code} onChange={(e) => setFormData({ ...formData, hs_code: e.target.value })} placeholder="e.g., 74122012" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Goods Heading</Label>
+                  <Input value={formData.goods_heading} onChange={(e) => setFormData({ ...formData, goods_heading: e.target.value })} placeholder="e.g., HOSE CONNECTORS" />
                 </div>
               </div>
               <div className="space-y-2">

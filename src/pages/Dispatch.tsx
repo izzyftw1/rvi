@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "react-router-dom";
 import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
+import { prepareLetterhead } from "@/lib/pdfLetterhead";
+import { loadItemMeta, loadPackaging } from "@/lib/exportDocData";
 import { downloadPackingList, PackingListData, PackingListLineItem } from "@/lib/packingListGenerator";
 import { ExportDocumentDialog, ExportDocumentFields } from "@/components/dispatch/ExportDocumentDialog";
 import { createGateEntry } from "@/lib/gateRegisterUtils";
@@ -505,7 +507,7 @@ export default function Dispatch() {
         .from("dispatch_notes")
         .select(`*, 
           work_orders:work_order_id!dispatch_notes_work_order_id_fkey(so_id, financial_snapshot, customer, customer_po),
-          sales_orders:sales_order_id!dispatch_notes_sales_order_id_fkey(customer_id, po_number, po_date, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number))
+          sales_orders:sales_order_id!dispatch_notes_sales_order_id_fkey(customer_id, po_number, po_date, incoterm, customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number, eori_number, default_marks_numbers))
         `)
         .eq("shipment_id", shipment.id);
 
@@ -534,7 +536,7 @@ export default function Dispatch() {
         if (soId) {
           const { data: soData } = await supabase
             .from("sales_orders")
-            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number)")
+            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number, eori_number, default_marks_numbers)")
             .eq("id", soId)
             .single();
           customer = (soData as any)?.customer_master;
@@ -654,7 +656,7 @@ export default function Dispatch() {
         if (soId) {
           const { data: soData } = await supabase
             .from("sales_orders")
-            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number)")
+            .select("customer_master(customer_name, address_line_1, city, state, pincode, country, primary_contact_name, primary_contact_email, gst_number, eori_number, default_marks_numbers)")
             .eq("id", soId)
             .single();
           customer = (soData as any)?.customer_master;
@@ -730,10 +732,12 @@ export default function Dispatch() {
   };
 
   // Handle export dialog confirm - generate PDF with user-provided fields
-  const handleExportDialogConfirm = (fields: ExportDocumentFields) => {
+  const handleExportDialogConfirm = async (fields: ExportDocumentFields) => {
     if (!pendingShipment || !pendingExportData) return;
 
-    const { dispatchNotes, customer, currency, totalCartons, totalGrossWeight, totalNetWeight } = pendingExportData;
+    const { dispatchNotes, customer, totalCartons, totalGrossWeight, totalNetWeight } = pendingExportData;
+    const currency = (dispatchNotes[0] as any)?.currency || pendingExportData.currency;
+    await prepareLetterhead();
 
     if (exportDocType === 'invoice') {
       const financialSnapshot = (dispatchNotes[0].work_orders as any)?.financial_snapshot;
@@ -742,11 +746,14 @@ export default function Dispatch() {
       const poNumber = salesOrder?.po_number || (dispatchNotes[0].work_orders as any)?.customer_po;
       const poDate = salesOrder?.po_date;
       
+      const meta = await loadItemMeta(dispatchNotes.map(dn => dn.item_code));
+      const pkg = await loadPackaging(dispatchNotes.map(dn => dn.carton_id as string));
       const lineItems = dispatchNotes.map((dn, idx) => ({
         srNo: idx + 1,
         itemCode: dn.item_code,
         description: dn.item_description || dn.item_code,
-        hsCode: '',
+        hsCode: meta[dn.item_code]?.hs_code || '',
+        goodsHeading: meta[dn.item_code]?.goods_heading || undefined,
         quantity: dn.dispatched_qty,
         unit: 'Pcs',
         rate: dn.unit_rate || 0,
@@ -769,8 +776,12 @@ export default function Dispatch() {
           contact: customer?.primary_contact_name || '',
           email: customer?.primary_contact_email || '',
           gst: customer?.gst_number || '',
+          eori: customer?.eori_number || undefined,
         },
         notifyPartySameAsConsignee: true,
+        incoterm: salesOrder?.incoterm || undefined,
+        marksAndNumbers: customer?.default_marks_numbers || undefined,
+        numberOfPallets: pkg.pallets || undefined,
         preCarriageBy: fields.preCarriageBy || 'N.A.',
         placeOfReceipt: fields.placeOfReceipt || 'N.A.',
         countryOfOrigin: 'INDIA',
@@ -782,9 +793,9 @@ export default function Dispatch() {
         blNumber: fields.blNumber || undefined,
         blDate: fields.blDate ? new Date(fields.blDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
         kindOfPackages: fields.kindOfPackages,
-        numberOfPackages: totalCartons || fields.numberOfPackages,
-        grossWeightKg: totalGrossWeight || dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0),
-        netWeightKg: totalNetWeight || dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0),
+        numberOfPackages: pkg.boxes || totalCartons || fields.numberOfPackages,
+        grossWeightKg: pkg.grossKg || totalGrossWeight || dispatchNotes.reduce((sum, dn) => sum + (dn.gross_weight_kg || 0), 0),
+        netWeightKg: pkg.netKg || totalNetWeight || dispatchNotes.reduce((sum, dn) => sum + (dn.net_weight_kg || 0), 0),
         lineItems,
         currency,
         totalQuantity: lineItems.reduce((sum, item) => sum + item.quantity, 0),

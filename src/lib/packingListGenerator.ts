@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import rvLogoHighRes from '@/assets/rv-logo-high-res.png';
+import { contentTop, tableMargin, finalizeLetterhead, getCompany } from '@/lib/pdfLetterhead';
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -87,81 +87,12 @@ export interface PackingListData {
   signatoryDesignation?: string;
 }
 
-const addLetterhead = (doc: jsPDF): number => {
-  // Add high-res logo
-  try {
-    doc.addImage(rvLogoHighRes, 'PNG', 15, 8, 32, 16);
-  } catch {
-    // Fallback if logo fails
-    doc.setFillColor(...BRAND_COLORS.primary);
-    doc.rect(15, 8, 30, 16, 'F');
-    doc.setTextColor(...BRAND_COLORS.white);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('RV', 30, 18, { align: 'center' });
-  }
-  
-  // Company name and title with brand colors
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...BRAND_COLORS.primary);
-  doc.text('R.V. INDUSTRIES', 105, 14, { align: 'center' });
-  
-  // ISO certification badge area
-  doc.setFontSize(8);
-  doc.setTextColor(...BRAND_COLORS.dark);
-  doc.text('An ISO 9001:2015 Company', 175, 10, { align: 'right' });
-  
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...BRAND_COLORS.dark);
-  doc.text('Manufacturer of HIGH Precision Brass Components', 105, 19, { align: 'center' });
-  
-  // Certifications with alternating brand colors
-  doc.setFontSize(7);
-  doc.setTextColor(...BRAND_COLORS.primary);
-  doc.text('ISO 9001:2015', 70, 24, { align: 'center' });
-  doc.setTextColor(...BRAND_COLORS.accent);
-  doc.text('|', 85, 24, { align: 'center' });
-  doc.setTextColor(...BRAND_COLORS.primary);
-  doc.text('CE', 95, 24, { align: 'center' });
-  doc.setTextColor(...BRAND_COLORS.accent);
-  doc.text('|', 102, 24, { align: 'center' });
-  doc.setTextColor(...BRAND_COLORS.primary);
-  doc.text('RoHS', 112, 24, { align: 'center' });
-  doc.setTextColor(...BRAND_COLORS.accent);
-  doc.text('|', 122, 24, { align: 'center' });
-  doc.setTextColor(...BRAND_COLORS.primary);
-  doc.text('TÜV Certified', 138, 24, { align: 'center' });
-  
-  // Contact details
-  doc.setFontSize(7);
-  doc.setTextColor(...BRAND_COLORS.dark);
-  doc.text('Plot No 11 & 12, Sadguru Industrial Area, Jamnagar, 361006 (Gujarat) India', 105, 29, { align: 'center' });
-  doc.text('www.brasspartsindia.net | sales@brasspartsindia.net | +91 288 2564431', 105, 33, { align: 'center' });
-  
-  // Line separator with dual brand colors
-  doc.setDrawColor(...BRAND_COLORS.primary);
-  doc.setLineWidth(1);
-  doc.line(15, 37, 105, 37);
-  doc.setDrawColor(...BRAND_COLORS.accent);
-  doc.line(105, 37, 195, 37);
-  
-  return 42;
-};
-
-const addFooter = (doc: jsPDF, pageNumber: number, totalPages: number): void => {
-  const pageHeight = doc.internal.pageSize.height;
-  doc.setFontSize(7);
-  doc.setTextColor(128, 128, 128);
-  doc.text(`Page ${pageNumber} of ${totalPages}`, 105, pageHeight - 10, { align: 'center' });
-  doc.setTextColor(0, 0, 0);
-};
+const addLetterhead = (_doc: jsPDF): number => contentTop();
 
 export const generatePackingListPDF = (data: PackingListData): jsPDF => {
-  const doc = new jsPDF();
+  const doc = new jsPDF({ format: "a4", unit: "mm" });
   let yPos = addLetterhead(doc);
-  
+
   // Document title
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
@@ -244,7 +175,7 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
     theme: 'grid',
     headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
     bodyStyles: { fontSize: 7 },
-    margin: { left: 15, right: 15 },
+    margin: tableMargin(doc),
   });
   
   yPos = doc.lastAutoTable.finalY;
@@ -260,7 +191,7 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
     theme: 'grid',
     headStyles: { fillColor: BRAND_COLORS.light, textColor: BRAND_COLORS.dark, fontSize: 7, fontStyle: 'bold' },
     bodyStyles: { fontSize: 7 },
-    margin: { left: 15, right: 15 },
+    margin: tableMargin(doc),
   });
   
   yPos = doc.lastAutoTable.finalY + 5;
@@ -313,7 +244,7 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
       5: { cellWidth: 22, halign: 'right' },
       6: { cellWidth: 28, halign: 'right' }
     },
-    margin: { left: 15, right: 15 },
+    margin: tableMargin(doc),
   });
   
   yPos = doc.lastAutoTable.finalY + 3;
@@ -333,7 +264,7 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
   doc.text('SIGNATURE & DATE:', 15, yPos);
   yPos += 10;
   
-  doc.text('For, R V INDUSTRIES', 15, yPos);
+  doc.text(`For ${getCompany().name}`, 15, yPos);
   yPos += 12;
   
   doc.setFont('helvetica', 'normal');
@@ -342,7 +273,7 @@ export const generatePackingListPDF = (data: PackingListData): jsPDF => {
   doc.setFont('helvetica', 'bold');
   doc.text(data.signatoryDesignation || 'PROPRIETOR', 60, yPos);
   
-  addFooter(doc, 1, 1);
+  finalizeLetterhead(doc);
   
   return doc;
 };

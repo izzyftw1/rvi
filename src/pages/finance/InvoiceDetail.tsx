@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import { QuantityLayersDisplay } from "@/components/finance/QuantityLayersDisplay";
 import { CloseAdjustedDialog } from "@/components/finance/CloseAdjustedDialog";
 import { useUserRole } from "@/hooks/useUserRole";
-import { downloadCommercialInvoice, CommercialInvoiceData } from "@/lib/commercialInvoiceGenerator";
+import { downloadInvoicePdf } from "@/lib/exportDocData";
 import { toast } from "sonner";
 
 interface InvoiceItem {
@@ -250,47 +250,14 @@ export default function InvoiceDetail() {
           <div className="flex gap-2">
             <Button 
               variant="default" 
-              onClick={() => {
+              onClick={async () => {
                 if (!invoice || !invoiceItems.length) return;
-                
-                const customer = invoice.customer_master;
-                const pdfData: CommercialInvoiceData = {
-                  invoiceNo: invoice.invoice_no,
-                  invoiceDate: format(new Date(invoice.invoice_date), 'dd-MMM-yyyy'),
-                  poNumber: invoice.po_number,
-                  poDate: invoice.po_date ? format(new Date(invoice.po_date), 'dd-MMM-yyyy') : undefined,
-                  consignee: {
-                    name: customer?.customer_name || '',
-                    addressLine1: customer?.address_line_1 || '',
-                    city: customer?.city || '',
-                    state: customer?.state || '',
-                    postalCode: customer?.pincode || '',
-                    country: customer?.country || 'India',
-                    contact: customer?.primary_contact_name || '',
-                    email: customer?.primary_contact_email || '',
-                    gst: customer?.gst_number || '',
-                  },
-                  notifyPartySameAsConsignee: true,
-                  countryOfOrigin: 'INDIA',
-                  finalDestination: customer?.country || 'USA',
-                  grossWeightKg: invoice.total_gross_weight || 0,
-                  netWeightKg: invoice.total_net_weight || 0,
-                  lineItems: invoiceItems.map((item, idx) => ({
-                    srNo: idx + 1,
-                    itemCode: item.item_code,
-                    description: item.description,
-                    quantity: item.quantity,
-                    unit: 'Pcs',
-                    rate: item.rate,
-                    rateBasis: 'Per PCS',
-                    total: item.amount,
-                  })),
-                  currency: invoice.currency || 'USD',
-                  totalQuantity: invoiceItems.reduce((sum, item) => sum + item.quantity, 0),
-                  totalAmount: invoice.total_amount,
-                };
-                downloadCommercialInvoice(pdfData);
-                toast.success('Invoice PDF downloaded');
+                try {
+                  await downloadInvoicePdf(invoice, invoiceItems);
+                  toast.success('Invoice PDF downloaded');
+                } catch (e: any) {
+                  toast.error(e.message || 'Could not create the PDF');
+                }
               }}
             >
               <Download className="h-4 w-4 mr-2" />
