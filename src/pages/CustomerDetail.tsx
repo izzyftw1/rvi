@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, Phone, Mail, MapPin, DollarSign, FileText, Plus, User, Clock, Briefcase, Download, Calendar, ArrowLeft, Edit } from "lucide-react";
 import { format } from "date-fns";
-import { convertToINR, formatINR } from "@/lib/currencyConverter";
+import { addToTotals, formatTotals, formatMoney, CurrencyTotals } from "@/lib/currencyTotals";
+import { SOAdvanceSummary } from "@/components/finance/SOAdvancePanel";
 import { downloadCSV, downloadExcel } from "@/lib/exportHelpers";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -89,23 +90,20 @@ export default function CustomerDetail() {
       const filteredInv = (invData || []).filter((inv: any) => ["issued", "part_paid", "overdue"].includes(inv.status));
       
       // Calculate AR - convert to INR for domestic customers
-      let totalAR = 0;
-      let overdueAR = 0;
-      
+      const totalAR: CurrencyTotals = {};
+      const overdueAR: CurrencyTotals = {};
       filteredInv.forEach((inv: any) => {
         const amount = Number(inv.balance_amount || 0);
-        const inrAmount = isDomestic ? convertToINR(amount, inv.currency || "INR") : amount;
-        totalAR += inrAmount;
-        if (inv.status === "overdue") {
-          overdueAR += inrAmount;
-        }
+        addToTotals(totalAR, inv.currency, amount);
+        if (inv.status === "overdue") addToTotals(overdueAR, inv.currency, amount);
       });
+      setArTotals({ total: totalAR, overdue: overdueAR });
 
       const { data: soData } = await (supabase.from("sales_orders") as any).select("id").eq("customer_id", id).in("status", ["draft", "pending", "approved"]);
       const { data: woData } = await (supabase.from("work_orders") as any).select("id").eq("customer_id", id).neq("status", "completed");
       const { data: shipData } = await (supabase.from("shipments") as any).select("id").eq("customer_id", id).is("delivered_date", null);
 
-      setStats({ totalAR, overdueAR, avgDaysToPay: 0, openSOs: soData?.length || 0, openWOs: woData?.length || 0, activeShipments: shipData?.length || 0 });
+      setStats({ totalAR: 0, overdueAR: 0, avgDaysToPay: 0, openSOs: soData?.length || 0, openWOs: woData?.length || 0, activeShipments: shipData?.length || 0 });
     } catch (error: any) {
       console.error("Error loading stats:", error);
     }
@@ -259,10 +257,7 @@ export default function CustomerDetail() {
   };
 
   const formatAmount = (amount: number, currency: string = 'USD') => {
-    if (isDomestic) {
-      return formatINR(convertToINR(amount, currency));
-    }
-    return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return formatMoney(amount, currency);
   };
 
   if (loading) return <div className="p-6"><p className="text-muted-foreground">Loading...</p></div>;
@@ -289,11 +284,11 @@ export default function CustomerDetail() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total AR</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold">{isDomestic ? formatINR(stats.totalAR) : `$${stats.totalAR.toFixed(0)}`}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold">{formatTotals(arTotals.total)}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Overdue</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-destructive">{isDomestic ? formatINR(stats.overdueAR) : `$${stats.overdueAR.toFixed(0)}`}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold text-destructive">{formatTotals(arTotals.overdue)}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Open SOs</CardTitle></CardHeader>
