@@ -225,7 +225,7 @@ export async function fetchBatchQuantitiesMultiple(woIds: string[]): Promise<Map
   };
 
   // Keep chunk small to avoid PostgREST URL length limits (400 errors) when using .in(...)
-  const CHUNK_SIZE = 10;
+  const CHUNK_SIZE = 100;
   const chunks = chunkArray(woIds, CHUNK_SIZE);
 
   try {

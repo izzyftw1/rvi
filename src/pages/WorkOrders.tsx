@@ -826,20 +826,19 @@ const WorkOrders = () => {
   const [selectedWO, setSelectedWO] = useState<any>(null);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [lastUpdate, setLastUpdate] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   
   // Helper to get batch breakdown for a WO
   const getBatchBreakdown = useCallback((woId: string): WOBatchStageBreakdown => {
     return stagesByWO[woId] || getEmptyBreakdown();
   }, [stagesByWO]);
   
-  const loadWorkOrders = useCallback(async () => {
+  // Loads rows [from, to] (inclusive). append=true adds to the list (Load More); otherwise replaces it.
+  const loadWorkOrders = useCallback(async (from: number, to: number, append: boolean) => {
     try {
-      setLoading(true);
+      if (append) setLoadingMore(true); else setLoading(true);
       setError(null);
-
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize;
 
       const { data: workOrders, error: queryError } = await supabase
         .from("work_orders_restricted")
@@ -849,7 +848,7 @@ const WorkOrders = () => {
         .range(from, to);
 
       if (queryError) throw queryError;
-      setHasMore((workOrders || []).length === pageSize);
+      setHasMore((workOrders || []).length === to - from + 1);
 
       const woIds = (workOrders || []).map((wo: any) => wo.id);
       let movesMap: Record<string, any[]> = {};
@@ -864,7 +863,7 @@ const WorkOrders = () => {
           for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
           return chunks;
         };
-        const CHUNK_SIZE = 10;
+        const CHUNK_SIZE = 100;
         const chunks = chunkArr(woIds, CHUNK_SIZE);
 
         const movesResults = await Promise.all(
@@ -908,7 +907,6 @@ const WorkOrders = () => {
               .in("status", ['pending_approval', 'approved', 'part_received'] as const)
           )
         );
-        const pendingRpoWoIds = new Set<string>();
         rpoResults.forEach((r) => {
           (r.data || []).forEach((rpo: any) => {
             if (rpo.wo_id) pendingRpoWoIds.add(rpo.wo_id);
@@ -942,18 +940,24 @@ const WorkOrders = () => {
         };
       });
 
-      setWorkOrders(data);
+      setWorkOrders(prev => {
+        if (!append) return data;
+        const seen = new Set(prev.map((w: any) => w.id));
+        return [...prev, ...data.filter((w: any) => !seen.has(w.id))];
+      });
     } catch (err: any) {
       console.error("Error loading work orders:", err);
       setError(err.message || "Failed to load work orders");
-      setWorkOrders([]);
+      if (!append) setWorkOrders([]);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [currentPage, pageSize]);
+  }, []);
 
+  // Initial load + realtime subscription (once)
   useEffect(() => {
-    loadWorkOrders();
+    loadWorkOrders(0, pageSize - 1, false);
 
     let timeout: NodeJS.Timeout;
     const channel = supabase
@@ -981,11 +985,20 @@ const WorkOrders = () => {
       clearTimeout(timeout);
       supabase.removeChannel(channel);
     };
-  }, [currentPage, loadWorkOrders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadWorkOrders]);
 
+  // Realtime refresh: reload everything loaded so far (all pages), replacing the list
   useEffect(() => {
-    if (lastUpdate > 0) loadWorkOrders();
-  }, [lastUpdate, loadWorkOrders]);
+    if (lastUpdate > 0) loadWorkOrders(0, currentPage * pageSize - 1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastUpdate]);
+
+  const loadMore = () => {
+    const from = currentPage * pageSize;
+    setCurrentPage(p => p + 1);
+    loadWorkOrders(from, from + pageSize - 1, true);
+  };
 
   // Load completed work orders on demand
   const loadCompletedWorkOrders = useCallback(async () => {
@@ -1237,7 +1250,9 @@ const WorkOrders = () => {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Production Workload</h1>
             <p className="text-sm text-muted-foreground">
-              {kpis.total} active jobs · {kpis.delayed > 0 ? `${kpis.delayed} need attention` : "On track"}
+              {loading && workOrders.length === 0
+                ? <span className="inline-block h-4 w-40 align-middle rounded bg-muted animate-pulse" />
+                : <>{kpis.total} active jobs · {kpis.delayed > 0 ? `${kpis.delayed} need attention` : "On track"}</>}
             </p>
           </div>
           <Button onClick={() => navigate("/work-orders/new")} size="sm">
@@ -1777,8 +1792,8 @@ const WorkOrders = () => {
 
             {hasMore && (
               <div className="flex justify-center pt-4">
-                <Button variant="outline" onClick={() => setCurrentPage(p => p + 1)} disabled={loading}>
-                  Load More
+                <Button variant="outline" onClick={loadMore} disabled={loading || loadingMore}>
+                  {loadingMore ? "Loading…" : "Load More"}
                 </Button>
               </div>
             )}
