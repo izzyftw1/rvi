@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 
 interface ExecutiveKPIHeroProps {
   activeOrders: number;
-  onTimeRate: number;
-  rejectionRate: number;
+  onTimeRate: number | null;
+  rejectionRate: number | null;
   externalOverdue: number;
   externalTotal: number;
   blockedOrders: number;
@@ -19,8 +19,8 @@ export const ExecutiveKPIHero = ({
   activeOrders, onTimeRate, rejectionRate, externalOverdue, externalTotal, blockedOrders, failedMetrics = [],
 }: ExecutiveKPIHeroProps) => {
   const navigate = useNavigate();
-  const qualityYield = Math.max(0, 100 - rejectionRate);
-  const externalSlaRate = externalTotal > 0 ? Math.round(((externalTotal - externalOverdue) / externalTotal) * 100) : 100;
+  const qualityYield = rejectionRate == null ? null : Math.max(0, 100 - rejectionRate);
+  const externalSlaRate = externalTotal > 0 ? Math.round(((externalTotal - externalOverdue) / externalTotal) * 100) : null;
 
   const kpis = [
     {
@@ -29,20 +29,20 @@ export const ExecutiveKPIHero = ({
       onClick: () => navigate("/work-orders"),
     },
     {
-      label: "On-Time Delivery", value: `${onTimeRate}%`, icon: Clock,
-      status: onTimeRate >= 90 ? "good" as const : onTimeRate >= 75 ? "warning" as const : "critical" as const,
+      label: "On-Time Delivery", value: onTimeRate == null ? "No data" : `${onTimeRate}%`, icon: Clock,
+      status: onTimeRate == null ? "neutral" as const : onTimeRate >= 90 ? "good" as const : onTimeRate >= 75 ? "warning" as const : "critical" as const,
       onClick: () => navigate("/reports"),
     },
     {
-      label: "Quality Yield", value: `${qualityYield.toFixed(1)}%`, icon: Shield,
-      status: qualityYield >= 97 ? "good" as const : qualityYield >= 95 ? "warning" as const : "critical" as const,
+      label: "Quality Yield", value: qualityYield == null ? "No data" : `${qualityYield.toFixed(1)}%`, icon: Shield,
+      status: qualityYield == null ? "neutral" as const : qualityYield >= 97 ? "good" as const : qualityYield >= 95 ? "warning" as const : "critical" as const,
       onClick: () => navigate("/quality/analytics"),
     },
     {
-      label: "External SLA", value: `${externalSlaRate}%`,
+      label: "External SLA", value: externalSlaRate == null ? "No data" : `${externalSlaRate}%`,
       subtext: externalOverdue > 0 ? `${externalOverdue} overdue` : undefined,
       icon: Truck,
-      status: externalOverdue === 0 ? "good" as const : externalOverdue <= 3 ? "warning" as const : "critical" as const,
+      status: externalSlaRate == null ? "neutral" as const : externalOverdue === 0 ? "good" as const : externalOverdue <= 3 ? "warning" as const : "critical" as const,
       onClick: () => navigate("/partners"),
     },
     {

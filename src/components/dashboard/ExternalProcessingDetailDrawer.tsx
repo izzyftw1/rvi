@@ -323,13 +323,13 @@ export const ExternalProcessingDetailDrawer = ({
                     <TableCell>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Calendar className="h-3 w-3" />
-                        {job.dispatch_date ? new Date(job.dispatch_date).toLocaleDateString() : 'N/A'}
+                        {job.dispatch_date ? new Date(job.dispatch_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Calendar className="h-3 w-3" />
-                        {job.expected_return_date ? new Date(job.expected_return_date).toLocaleDateString() : 'N/A'}
+                        {job.expected_return_date ? new Date(job.expected_return_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-semibold">{job.quantity_sent}</TableCell>

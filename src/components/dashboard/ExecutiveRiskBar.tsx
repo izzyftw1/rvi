@@ -42,7 +42,7 @@ export const ExecutiveRiskBar = () => {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       const [workOrders, qcRecords, ncrs, materialLots, externalMoves] = await Promise.all([
-        supabase.from('work_orders').select('id, status, due_date').neq('status', 'completed').neq('status', 'shipped'),
+        supabase.from('work_orders').select('id, status, due_date').not('status', 'in', '("completed","shipped","cancelled")').eq('is_archived', false),
         supabase.from('qc_records').select('id, qc_type, result'),
         supabase.from('ncrs').select('id, status, created_at'),
         supabase.from('material_lots').select('id, qc_status'),

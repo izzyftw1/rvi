@@ -54,6 +54,7 @@ import { WOCompletionStatus } from "@/components/WOCompletionStatus";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { WOMaterialPanel } from "@/components/materials/WOMaterialPanel";
+import { getProfileNames, getMachines } from "@/lib/lookupCache";
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -104,35 +105,26 @@ const WorkOrderDetail = () => {
   useEffect(() => {
     loadWorkOrderData();
 
+    // Debounce bursts of realtime events into one reload
+    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(() => loadWorkOrderData(), 500); };
+
     // Setup real-time subscriptions
     const channel = supabase
       .channel(`work_order_details_${id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cutting_records', filter: `work_order_id=eq.${id}` }, () => {
-        loadWorkOrderData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'forging_records', filter: `work_order_id=eq.${id}` }, () => {
-        loadWorkOrderData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves', filter: `work_order_id=eq.${id}` }, () => {
-        loadWorkOrderData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs', filter: `wo_id=eq.${id}` }, () => {
-        // Reload progress when production logs change
-        loadWorkOrderData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gate_register', filter: `work_order_id=eq.${id}` }, () => {
-        // Reload when gate register entries change for this WO
-        loadWorkOrderData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${id}` }, () => {
-        // Reload when production batches change
-        loadWorkOrderData();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cutting_records', filter: `work_order_id=eq.${id}` }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forging_records', filter: `work_order_id=eq.${id}` }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_external_moves', filter: `work_order_id=eq.${id}` }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_production_logs', filter: `wo_id=eq.${id}` }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gate_register', filter: `work_order_id=eq.${id}` }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_batches', filter: `wo_id=eq.${id}` }, scheduleReload)
       .subscribe();
 
     return () => {
+      clearTimeout(reloadTimer);
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -157,267 +149,108 @@ const WorkOrderDetail = () => {
 
   const loadWorkOrderData = async () => {
     try {
-      // Load WO
-      const { data: woData, error: woDataError } = await supabase
-        .from("work_orders_restricted")
-        .select("*")
-        .eq("id", id)
-        .single();
-      reportLoadError("work orders restricted", woDataError);
+      // Load everything in parallel (one round-trip), then resolve names from the session cache
+      const [
+        woRes, stepsRes, issuesRes, qcRes, hourlyRes, historyRes, designRes, genealogyRes,
+        assignmentsRes, cuttingRes, forgingRes, movesRes,
+      ] = await Promise.all([
+        supabase.from("work_orders_restricted").select("*").eq("id", id).single(),
+        supabase.from("routing_steps").select("*, departments(name)").eq("wo_id", id).order("step_number"),
+        supabase.from("wo_material_issues").select("*, material_lots(lot_id, heat_no, alloy)").eq("wo_id", id),
+        supabase.from("qc_records").select("*").eq("wo_id", id).order("created_at", { ascending: false }),
+        supabase.from("hourly_qc_checks").select("*").eq("wo_id", id).order("check_datetime", { ascending: false }),
+        supabase.from("wo_stage_history").select("*").eq("wo_id", id).order("changed_at", { ascending: false }),
+        supabase.from("design_files").select("*").eq("wo_id", id).order("uploaded_at", { ascending: false }),
+        supabase.from("wo_actions_log").select("*").eq("wo_id", id).order("created_at", { ascending: true }),
+        supabase.from("wo_machine_assignments").select(`*, machine:machines(machine_id, name)`).eq("wo_id", id).order("scheduled_start", { ascending: true }),
+        supabase.from("cutting_records").select("*").eq("work_order_id", id).order("created_at", { ascending: false }),
+        supabase.from("forging_records").select("*").eq("work_order_id", id).order("created_at", { ascending: false }),
+        supabase.from("wo_external_moves" as any).select("id, work_order_id, process, quantity_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks").eq("work_order_id", id).order("dispatch_date", { ascending: false }),
+      ]);
+      reportLoadError("work orders restricted", woRes.error);
+      reportLoadError("routing steps", stepsRes.error);
+      reportLoadError("wo material issues", issuesRes.error);
+      reportLoadError("qc records", qcRes.error);
+      reportLoadError("Hourly QC", hourlyRes.error);
+      reportLoadError("wo stage history", historyRes.error);
+      reportLoadError("design files", designRes.error);
+      reportLoadError("wo actions log", genealogyRes.error);
+      reportLoadError("wo machine assignments", assignmentsRes.error);
+      reportLoadError("cutting records", cuttingRes.error);
+      reportLoadError("forging records", forgingRes.error);
+      reportLoadError("wo external moves", movesRes.error);
 
+      const woData: any = woRes.data;
       setWo(woData);
 
-      // Load sales order if linked
-      if (woData?.sales_order) {
-        const { data: soData, error: soDataError } = await supabase
-          .from("sales_orders")
-          .select("*")
-          .eq("so_id", woData.sales_order)
-          .maybeSingle();
-      reportLoadError("sales orders", soDataError);
-        setSalesOrder(soData || null);
-      }
+      // Second wave: rows that depend on the WO (SO, scan events) + cached machines
+      const [soRes, eventsRes, allMachines] = await Promise.all([
+        woData?.sales_order
+          ? supabase.from("sales_orders").select("*").eq("so_id", woData.sales_order).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        woData?.wo_id
+          ? supabase.from("scan_events").select("*").eq("entity_id", woData.wo_id).order("scan_date_time", { ascending: false })
+          : Promise.resolve({ data: [] as any[], error: null }),
+        getMachines(),
+      ]);
+      reportLoadError("sales orders", soRes.error as any);
+      reportLoadError("scan events", eventsRes.error as any);
+      if (woData?.sales_order) setSalesOrder(soRes.data || null);
 
-      // Load routing steps
-      const { data: stepsData, error: stepsDataError } = await supabase
-        .from("routing_steps")
-        .select("*, departments(name)")
-        .eq("wo_id", id)
-        .order("step_number");
-      reportLoadError("routing steps", stepsDataError);
+      const hourlyChecks = hourlyRes.data || [];
+      const eventsData = (eventsRes.data || []) as any[];
+      const historyData = historyRes.data || [];
+      const genealogyData = genealogyRes.data || [];
 
-      setRoutingSteps(stepsData || []);
+      // One profile lookup for every name on the page (cached across reloads)
+      const names = await getProfileNames([
+        ...hourlyChecks.map((c: any) => c.operator_id),
+        ...eventsData.map((e: any) => e.owner_id),
+        ...historyData.map((h: any) => h.changed_by),
+        ...genealogyData.map((g: any) => g.performed_by),
+        woData?.qc_raw_material_approved_by, woData?.qc_first_piece_approved_by, woData?.qc_final_approved_by,
+        woData?.production_released_by, woData?.production_completed_by,
+      ]);
+      const nameObj = (uid?: string | null) => (uid && names[uid] ? { full_name: names[uid] } : undefined);
 
-      // Load material issues
-      const { data: issuesData, error: issuesDataError } = await supabase
-        .from("wo_material_issues")
-        .select("*, material_lots(lot_id, heat_no, alloy)")
-        .eq("wo_id", id);
-      reportLoadError("wo material issues", issuesDataError);
+      setRoutingSteps(stepsRes.data || []);
+      setMaterialIssues(issuesRes.data || []);
+      setQcRecords(qcRes.data || []);
 
-      setMaterialIssues(issuesData || []);
-
-      // Load QC records
-      const { data: qcData, error: qcDataError } = await supabase
-        .from("qc_records")
-        .select("*")
-        .eq("wo_id", id)
-        .order("created_at", { ascending: false });
-      reportLoadError("qc records", qcDataError);
-
-      setQcRecords(qcData || []);
-
-      // Load hourly QC records (fetch base rows first)
-      const { data: hourlyChecks, error: hourlyErr } = await supabase
-        .from("hourly_qc_checks")
-        .select("*")
-        .eq("wo_id", id)
-        .order("check_datetime", { ascending: false });
-
-      reportLoadError("Hourly QC", hourlyErr);
-      if (hourlyErr || !hourlyChecks) {
-        setHourlyQcRecords([]);
-      } else {
-        // Enrich with machine and operator names without relying on FKs
-        const { data: allMachines, error: allMachinesError } = await supabase
-          .from("machines")
-          .select("id, machine_id, name");
-      reportLoadError("machines", allMachinesError);
-        const machinesMap: Record<string, { machine_id: string; name: string }> = {};
-        (allMachines || []).forEach((m: any) => {
-          machinesMap[m.id] = { machine_id: m.machine_id, name: m.name };
-        });
-
-        const operatorIds = Array.from(
-          new Set((hourlyChecks || []).map((c: any) => c.operator_id).filter(Boolean))
-        );
-        let profilesMap: Record<string, { full_name: string }> = {};
-        if (operatorIds.length > 0) {
-          const { data: profileRows, error: profileRowsError } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", operatorIds as string[]);
-      reportLoadError("profiles", profileRowsError);
-          (profileRows || []).forEach((p: any) => {
-            profilesMap[p.id] = { full_name: p.full_name };
-          });
-        }
-
-        const enriched = (hourlyChecks || []).map((c: any) => ({
-          ...c,
-          machines: c.machine_id ? machinesMap[c.machine_id] : undefined,
-          profiles: c.operator_id ? profilesMap[c.operator_id] : undefined,
-        }));
-
-        setHourlyQcRecords(enriched);
-      }
-
-      // Load scan events
-      const { data: eventsData, error: eventsDataError } = await supabase
-        .from("scan_events")
-        .select("*")
-        .eq("entity_id", woData?.wo_id)
-        .order("scan_date_time", { ascending: false });
-      reportLoadError("scan events", eventsDataError);
-
-      // Load stage history
-      const { data: historyData, error: historyDataError } = await supabase
-        .from("wo_stage_history")
-        .select("*")
-        .eq("wo_id", id)
-        .order("changed_at", { ascending: false });
-      reportLoadError("wo stage history", historyDataError);
-
-      const historyUserIds = Array.from(new Set([
-        ...(eventsData || []).map(event => event.owner_id),
-        ...(historyData || []).map(event => event.changed_by),
-      ].filter((userId): userId is string => Boolean(userId))));
-      const historyNames: Record<string, { full_name: string }> = {};
-      if (historyUserIds.length > 0) {
-        const { data: historyProfiles, error: historyProfilesError } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", historyUserIds);
-      reportLoadError("profiles", historyProfilesError);
-        (historyProfiles || []).forEach(profile => {
-          historyNames[profile.id] = { full_name: profile.full_name };
-        });
-      }
-      setScanEvents((eventsData || []).map(event => ({
-        ...event, profiles: event.owner_id ? historyNames[event.owner_id] : undefined,
-      })));
-      setStageHistory((historyData || []).map(event => ({
-        ...event, profiles: event.changed_by ? historyNames[event.changed_by] : undefined,
+      const machinesMap: Record<string, { machine_id: string; name: string }> = {};
+      allMachines.forEach(m => { machinesMap[m.id] = { machine_id: m.machine_id, name: m.name }; });
+      setHourlyQcRecords(hourlyRes.error ? [] : hourlyChecks.map((c: any) => ({
+        ...c,
+        machines: c.machine_id ? machinesMap[c.machine_id] : undefined,
+        profiles: nameObj(c.operator_id),
       })));
 
-      // Load design files
-      const { data: designData, error: designDataError } = await supabase
-        .from("design_files")
-        .select("*")
-        .eq("wo_id", id)
-        .order("uploaded_at", { ascending: false });
-      reportLoadError("design files", designDataError);
-
-      setDesignFiles(designData || []);
-
-      // Load genealogy log (comprehensive action log)
-      const { data: genealogyData, error: genealogyDataError } = await supabase
-        .from("wo_actions_log")
-        .select("*")
-        .eq("wo_id", id)
-        .order("created_at", { ascending: true });
-      reportLoadError("wo actions log", genealogyDataError);
-
-      // Enrich with user names
-      const userIds = Array.from(
-        new Set(genealogyData?.map(log => log.performed_by).filter(Boolean) || [])
-      );
-      
-      let usersMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", userIds as string[]);
-      reportLoadError("profiles", profilesError);
-        
-        profiles?.forEach(p => {
-          usersMap[p.id] = p.full_name;
-        });
-      }
-
-      const enrichedGenealogy = (genealogyData || []).map(log => ({
+      setScanEvents(eventsData.map(event => ({ ...event, profiles: nameObj(event.owner_id) })));
+      setStageHistory(historyData.map((event: any) => ({ ...event, profiles: nameObj(event.changed_by) })));
+      setDesignFiles(designRes.data || []);
+      setGenealogyLog(genealogyData.map((log: any) => ({
         ...log,
-        performer_name: log.performed_by ? usersMap[log.performed_by] : "System"
-      }));
+        performer_name: log.performed_by ? names[log.performed_by] : "System",
+      })));
 
-      setGenealogyLog(enrichedGenealogy);
+      const assignmentsData = assignmentsRes.data || [];
+      setMachineAssignments(assignmentsData);
+      setCuttingRecords(cuttingRes.data || []);
+      setForgingRecords(forgingRes.data || []);
+      setExternalMoves((movesRes.data as any[]) || []);
 
-      // Load machine assignments
-      const { data: assignmentsData, error: assignmentsDataError } = await supabase
-        .from("wo_machine_assignments")
-        .select(`
-          *,
-          machine:machines(machine_id, name)
-        `)
-        .eq("wo_id", id)
-        .order("scheduled_start", { ascending: true });
-      reportLoadError("wo machine assignments", assignmentsDataError);
-
-      setMachineAssignments(assignmentsData || []);
-
-      // Progress is now handled by WOProgressCard reading cached work_orders fields
-      // (qty_completed, qty_rejected, qty_remaining, completion_pct)
-
-      // Load OEE for assigned machines
-      if (assignmentsData && assignmentsData.length > 0) {
-        await loadWOOEE(assignmentsData);
-      }
-
-      // Load cutting records
-      const { data: cuttingData, error: cuttingDataError } = await supabase
-        .from("cutting_records")
-        .select("*")
-        .eq("work_order_id", id)
-        .order("created_at", { ascending: false });
-      reportLoadError("cutting records", cuttingDataError);
-      
-      setCuttingRecords(cuttingData || []);
-
-      // Load forging records
-      const { data: forgingData, error: forgingDataError } = await supabase
-        .from("forging_records")
-        .select("*")
-        .eq("work_order_id", id)
-        .order("created_at", { ascending: false });
-      reportLoadError("forging records", forgingDataError);
-      
-      setForgingRecords(forgingData || []);
-
-      // Load external moves
-      const { data: movesData, error: movesDataError } = await supabase
-        .from("wo_external_moves" as any)
-        .select("id, work_order_id, process, quantity_sent, status, partner_id, expected_return_date, dispatch_date, challan_no, remarks")
-        .eq("work_order_id", id)
-        .order("dispatch_date", { ascending: false });
-      reportLoadError("wo external moves", movesDataError);
-      
-      setExternalMoves(movesData || []);
-
-      // Load QC approver names, production release user, and production completed by
       if (woData) {
-        const approverIds = [
-          woData.qc_raw_material_approved_by,
-          woData.qc_first_piece_approved_by,
-          woData.qc_final_approved_by,
-          woData.production_released_by,
-          woData.production_completed_by
-        ].filter(Boolean);
-
-        if (approverIds.length > 0) {
-          const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', approverIds);
-      reportLoadError("profiles", profilesError);
-
-          const approversMap: Record<string, string> = {};
-          profiles?.forEach(p => {
-            approversMap[p.id] = p.full_name;
-          });
-          setQcApprovers(approversMap);
-          
-          // Set released by name
-          if (woData.production_released_by && approversMap[woData.production_released_by]) {
-            setReleasedByName(approversMap[woData.production_released_by]);
-          }
-          
-          // Set production completed by name
-          if (woData.production_completed_by && approversMap[woData.production_completed_by]) {
-            setProductionCompletedByName(approversMap[woData.production_completed_by]);
-          }
-        }
+        const approversMap: Record<string, string> = {};
+        [woData.qc_raw_material_approved_by, woData.qc_first_piece_approved_by, woData.qc_final_approved_by,
+          woData.production_released_by, woData.production_completed_by].forEach((uid: string | null) => {
+          if (uid && names[uid]) approversMap[uid] = names[uid];
+        });
+        setQcApprovers(approversMap);
+        if (woData.production_released_by && approversMap[woData.production_released_by]) setReleasedByName(approversMap[woData.production_released_by]);
+        if (woData.production_completed_by && approversMap[woData.production_completed_by]) setProductionCompletedByName(approversMap[woData.production_completed_by]);
       }
+
+      if (assignmentsData.length > 0) await loadWOOEE(assignmentsData);
     } catch (error) {
       console.error("Error loading WO data:", error);
       toast({ title: "Work order load failed", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
@@ -442,26 +275,17 @@ const WorkOrderDetail = () => {
       const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
 
-      // Fetch production logs for this WO - single source of truth
-      const { data: todayLogs } = await supabase
+      // One query for the month; today/week are filtered client-side
+      const { data: monthLogsRaw } = await supabase
         .from('daily_production_logs')
-        .select('actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
+        .select('log_date, actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
         .eq('wo_id', id)
-        .eq('log_date', today);
-
-      const { data: weekLogs } = await supabase
-        .from('daily_production_logs')
-        .select('actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
-        .eq('wo_id', id)
-        .gte('log_date', weekStart)
-        .lte('log_date', weekEnd);
-
-      const { data: monthLogs } = await supabase
-        .from('daily_production_logs')
-        .select('actual_runtime_minutes, total_downtime_minutes, ok_quantity, total_rejection_quantity, target_quantity')
-        .eq('wo_id', id)
-        .gte('log_date', monthStart)
-        .lte('log_date', monthEnd);
+        .gte('log_date', weekStart < monthStart ? weekStart : monthStart)
+        .lte('log_date', weekEnd > monthEnd ? weekEnd : monthEnd);
+      const allLogs = monthLogsRaw || [];
+      const todayLogs = allLogs.filter(l => l.log_date === today);
+      const weekLogs = allLogs.filter(l => l.log_date >= weekStart && l.log_date <= weekEnd);
+      const monthLogs = allLogs.filter(l => l.log_date >= monthStart && l.log_date <= monthEnd);
 
       // Calculate OEE from production logs
       // OEE = Availability × Performance × Quality

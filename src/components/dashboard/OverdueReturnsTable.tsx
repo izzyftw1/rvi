@@ -240,10 +240,10 @@ export const OverdueReturnsTable = ({ selectedProcess }: OverdueReturnsTableProp
                         </Tooltip>
                       </TableCell>
                       <TableCell className="py-2 text-xs text-muted-foreground">
-                        {item.sentDate ? format(parseISO(item.sentDate), 'dd MMM') : '-'}
+                        {item.sentDate ? format(parseISO(item.sentDate), 'dd MMM yyyy') : '-'}
                       </TableCell>
                       <TableCell className="py-2 text-xs text-muted-foreground">
-                        {item.expectedReturn ? format(parseISO(item.expectedReturn), 'dd MMM') : '-'}
+                        {item.expectedReturn ? format(parseISO(item.expectedReturn), 'dd MMM yyyy') : '-'}
                       </TableCell>
                       <TableCell className="py-2 text-right">
                         <span className="font-semibold text-sm">
