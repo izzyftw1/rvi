@@ -11197,6 +11197,9 @@ export type Database = {
         | "material_wait"
         | "maintenance"
         | "setup"
+        | "breakdown"
+        | "idle"
+        | "qc_hold"
       sales_order_status:
         | "draft"
         | "pending_approval"
@@ -11518,6 +11521,9 @@ export const Constants = {
         "material_wait",
         "maintenance",
         "setup",
+        "breakdown",
+        "idle",
+        "qc_hold",
       ],
       sales_order_status: [
         "draft",

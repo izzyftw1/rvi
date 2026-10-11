@@ -5,6 +5,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { CalendarIcon, Plus, Search, FileSpreadsheet, Trash2, Clock, AlertTriangle, Target, TrendingUp, XCircle, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -143,6 +144,8 @@ interface WorkOrder {
   quantity: number | null;
   cycle_time_seconds: number | null;
   qty_completed: number | null;
+  financial_snapshot: Json | null;
+  qc_first_piece_status: string | null;
 }
 
 interface Person {
@@ -393,7 +396,7 @@ export default function DailyProductionLog() {
       // Load active work orders
       const { data: woData } = await supabase
         .from("work_orders")
-        .select("id, wo_number, customer, item_code, revision, material_size_mm, quantity, cycle_time_seconds, qty_completed")
+        .select("id, wo_number, customer, item_code, revision, material_size_mm, financial_snapshot, qc_first_piece_status, quantity, cycle_time_seconds, qty_completed")
         .in("status", ["pending", "in_progress", "qc", "packing"])
         .order("wo_number", { ascending: false })
         .limit(100);
@@ -521,10 +524,10 @@ export default function DailyProductionLog() {
         });
         return;
       }
-      if (woQC?.qc_first_piece_status === 'failed') {
+      if (woQC?.qc_first_piece_status !== 'passed') {
         toast({
           title: "QC Gate Blocked",
-          description: "First Piece QC has FAILED for this work order. Resolve QC before logging production.",
+          description: "First-piece QC not approved for this work order. Approve first-piece QC before logging production.",
           variant: "destructive",
         });
         return;
@@ -595,9 +598,19 @@ export default function DailyProductionLog() {
         insertData.party_code = selectedWO.customer;
         insertData.product_description = selectedWO.item_code;
         insertData.drawing_number = selectedWO.revision;
-        insertData.raw_material_grade = selectedWO.material_size_mm;
+        const snapshot = selectedWO.financial_snapshot;
+        const lineItem = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+          ? snapshot.line_item : null;
+        const alloy = lineItem && typeof lineItem === 'object' && !Array.isArray(lineItem)
+          ? lineItem.alloy : null;
+        const materialGrade = lineItem && typeof lineItem === 'object' && !Array.isArray(lineItem)
+          ? lineItem.material_grade : null;
+        insertData.raw_material_grade = typeof alloy === 'string' && alloy.trim()
+          ? alloy : typeof materialGrade === 'string' ? materialGrade : null;
         insertData.ordered_quantity = selectedWO.quantity;
-        insertData.cycle_time_seconds = selectedWO.cycle_time_seconds;
+        if (insertData.cycle_time_seconds == null) {
+          insertData.cycle_time_seconds = selectedWO.cycle_time_seconds;
+        }
       }
 
       const { data: logData, error } = await supabase
@@ -676,7 +689,7 @@ export default function DailyProductionLog() {
     } catch (error: any) {
       console.error("Error creating log:", error);
       toast({
-        title: "Error",
+        title: error.message?.includes("First-piece QC not approved") ? "First-piece QC required" : "Error",
         description: error.message || "Failed to create log entry",
         variant: "destructive",
       });
@@ -965,6 +978,8 @@ export default function DailyProductionLog() {
                                     item_code: wo.item_code,
                                     customer: wo.customer,
                                     quantity: wo.quantity,
+                                    disabled: wo.qc_first_piece_status !== 'passed',
+                                    disabledReason: wo.qc_first_piece_status === 'failed' ? 'First piece failed' : 'First piece pending',
                                   }))}
                                   placeholder="Select work order..."
                                   includeNone={actualQuantity === 0}

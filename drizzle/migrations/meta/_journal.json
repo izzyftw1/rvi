@@ -29,6 +29,13 @@
       "when": 1791617041226,
       "tag": "0003_atomic_material_goods_in_and_purchase_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791701401936,
+      "tag": "0004_enforce_first_piece_production_gate_and_machine_states",
+      "breakpoints": true
     }
   ]
 }

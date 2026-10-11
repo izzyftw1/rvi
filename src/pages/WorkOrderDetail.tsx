@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -505,23 +506,42 @@ const WorkOrderDetail = () => {
   };
 
   // P1 FIX #13: State machine validation for stage transitions
-  const VALID_TRANSITIONS: Record<string, string[]> = {
-    pending: ['cutting', 'forging', 'production', 'external'],
-    cutting: ['forging', 'production', 'external'],
-    forging: ['production', 'external', 'cutting'],
-    production: ['qc', 'external', 'packing'],
-    external: ['production', 'qc'],
-    qc: ['production', 'packing', 'external'],
-    packing: ['dispatched', 'qc'],
-    dispatched: ['completed'],
+  type WOStage = Database['public']['Enums']['wo_stage'];
+  const externalStages: WOStage[] = ['buffing', 'plating', 'blasting'];
+  const VALID_TRANSITIONS: Record<WOStage, WOStage[]> = {
+    proforma_sent: ['raw_material_check'],
+    raw_material_check: ['proforma_sent', 'raw_material_order', 'raw_material_inwards', 'goods_in'],
+    raw_material_order: ['raw_material_check', 'raw_material_inwards'],
+    raw_material_inwards: ['raw_material_order', 'raw_material_check', 'raw_material_qc', 'goods_in'],
+    raw_material_qc: ['raw_material_inwards', 'goods_in'],
+    goods_in: ['raw_material_check', 'raw_material_inwards', 'raw_material_qc', 'production_planning', 'cutting', 'cutting_queue', 'forging', 'forging_queue', 'production'],
+    production_planning: ['goods_in', 'cutting', 'cutting_queue', 'forging', 'forging_queue', 'production'],
+    cutting_queue: ['goods_in', 'production_planning', 'cutting_in_progress', 'cutting'],
+    cutting_in_progress: ['cutting_queue', 'cutting_complete', 'cutting'],
+    cutting_complete: ['cutting_in_progress', 'forging', 'forging_queue', 'production'],
+    cutting: ['goods_in', 'production_planning', 'cutting_queue', 'cutting_in_progress', 'forging', 'forging_queue', 'production', ...externalStages],
+    forging_queue: ['goods_in', 'production_planning', 'cutting', 'cutting_complete', 'forging_in_progress', 'forging'],
+    forging_in_progress: ['forging_queue', 'forging_complete', 'forging'],
+    forging_complete: ['forging_in_progress', 'production'],
+    forging: ['goods_in', 'production_planning', 'cutting', 'forging_queue', 'forging_in_progress', 'production', ...externalStages],
+    production: ['goods_in', 'production_planning', 'cutting', 'cutting_complete', 'forging', 'forging_complete', 'cnc_production', 'first_piece_qc', 'qc', ...externalStages],
+    cnc_production: ['production', 'first_piece_qc', ...externalStages],
+    first_piece_qc: ['production', 'cnc_production', 'mass_production'],
+    mass_production: ['first_piece_qc', 'qc', ...externalStages],
+    buffing: ['cutting', 'forging', 'production', 'cnc_production', 'mass_production', 'plating', 'blasting', 'qc'],
+    plating: ['cutting', 'forging', 'production', 'cnc_production', 'mass_production', 'buffing', 'blasting', 'qc'],
+    blasting: ['cutting', 'forging', 'production', 'cnc_production', 'mass_production', 'buffing', 'plating', 'qc'],
+    qc: ['production', 'mass_production', ...externalStages, 'packing'],
+    packing: ['qc', 'dispatch'],
+    dispatch: ['packing'],
   };
 
   const handleStageUpdate = async (newStage: string) => {
-    const currentStage = wo?.current_stage || 'pending';
-    const allowedStages = VALID_TRANSITIONS[currentStage] || [];
+    const currentStage: WOStage = wo?.current_stage || 'goods_in';
+    const allowedStages = VALID_TRANSITIONS[currentStage];
 
     // Enforce state machine unless admin override
-    if (!allowedStages.includes(newStage) && !hasAnyRole(['admin'])) {
+    if (!allowedStages.some(stage => stage === newStage) && !hasAnyRole(['admin'])) {
       toast({
         variant: "destructive",
         title: "Invalid Stage Transition",
@@ -1287,22 +1307,13 @@ const WorkOrderDetail = () => {
                   <SelectValue placeholder="Select stage" />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
-                  <SelectItem value="production_planning">Production Planning</SelectItem>
-                  <SelectItem value="proforma_sent">Proforma Sent</SelectItem>
-                  <SelectItem value="raw_material_check">Raw Material Check</SelectItem>
-                  <SelectItem value="raw_material_order">Raw Material Order</SelectItem>
-                  <SelectItem value="raw_material_inwards">Raw Material Inwards (Goods In)</SelectItem>
-                  <SelectItem value="raw_material_qc">Raw Material QC</SelectItem>
-                  <SelectItem value="cutting">Cutting</SelectItem>
-                  <SelectItem value="forging">Forging</SelectItem>
-                  <SelectItem value="cnc_production">CNC / Production</SelectItem>
-                  <SelectItem value="first_piece_qc">First Piece QC</SelectItem>
-                  <SelectItem value="mass_production">Mass Production</SelectItem>
-                  <SelectItem value="buffing">Buffing</SelectItem>
-                  <SelectItem value="plating">Plating</SelectItem>
-                  <SelectItem value="blasting">Blasting</SelectItem>
-                  <SelectItem value="packing">Packing</SelectItem>
-                  <SelectItem value="dispatch">Dispatch</SelectItem>
+                  {(Object.keys(VALID_TRANSITIONS) as WOStage[])
+                    .filter(stage => stage === wo?.current_stage || hasAnyRole(['admin']) || VALID_TRANSITIONS[(wo?.current_stage || 'goods_in') as WOStage].includes(stage))
+                    .map(stage => (
+                      <SelectItem key={stage} value={stage}>
+                        {stage.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

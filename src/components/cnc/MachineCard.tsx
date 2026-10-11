@@ -50,9 +50,21 @@ export const MachineCard = ({ machine, onViewHistory, onAddMaintenance }: Machin
       },
       idle: {
         label: 'Idle',
-        color: 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200',
+        color: 'bg-muted text-muted-foreground border-border',
         icon: Circle,
-        iconColor: 'text-blue-600'
+        iconColor: 'text-muted-foreground'
+      },
+      breakdown: {
+        label: 'Breakdown',
+        color: 'bg-destructive/10 text-destructive border-destructive/30',
+        icon: AlertTriangle,
+        iconColor: 'text-destructive'
+      },
+      qc_hold: {
+        label: 'QC Hold',
+        color: 'bg-warning/10 text-warning border-warning/30',
+        icon: Clock,
+        iconColor: 'text-warning'
       },
       maintenance: {
         label: 'Maintenance',
@@ -104,7 +116,7 @@ export const MachineCard = ({ machine, onViewHistory, onAddMaintenance }: Machin
           </div>
         )}
 
-        {(machine.current_state === 'maintenance' || machine.current_state === 'down') && (
+        {['maintenance', 'down', 'breakdown', 'qc_hold'].includes(machine.current_state) && (
           <div className="bg-orange-50 dark:bg-orange-950/20 rounded p-2 text-sm">
             <div className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400">
               <Clock className="h-3 w-3" />
