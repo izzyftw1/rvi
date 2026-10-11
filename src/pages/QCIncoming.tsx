@@ -11,7 +11,8 @@ import { QCSummaryStats, QCInfoAlert, QCActionRequired, QCHistory } from "@/comp
 import { MaterialTraceabilityBadge } from "@/components/qc/MaterialTraceabilityBadge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Package, Clock, ArrowRight, Inbox, Beaker } from "lucide-react";
+import { CheckCircle2, Package, Clock, ArrowRight, Inbox, Beaker, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface WorkOrderQCStatus {
   id: string;
@@ -35,6 +36,29 @@ export default function QCIncoming() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [workOrders, setWorkOrders] = useState<WorkOrderQCStatus[]>([]);
+  const [pendingLots, setPendingLots] = useState<any[]>([]);
+  const [lotSaving, setLotSaving] = useState<string | null>(null);
+
+  const loadPendingLots = async () => {
+    const { data } = await supabase
+      .from("material_lots")
+      .select("id, lot_id, heat_no, alloy, material_size_mm, supplier, net_weight, created_at")
+      .eq("qc_status", "pending")
+      .eq("is_archived", false)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    setPendingLots(data || []);
+  };
+
+  // Material QC per lot: gate entry QC follows automatically
+  const setLotQC = async (lotId: string, status: "pass" | "fail") => {
+    setLotSaving(lotId);
+    const { error } = await supabase.from("material_lots").update({ qc_status: status }).eq("id", lotId);
+    setLotSaving(null);
+    if (error) { toast({ variant: "destructive", description: `Material QC failed: ${error.message}` }); return; }
+    toast({ description: `Lot marked ${status === "pass" ? "QC passed" : "QC failed"}` });
+    loadPendingLots();
+  };
   
   // Read filter from URL params
   const urlFilter = searchParams.get('filter');
@@ -45,12 +69,13 @@ export default function QCIncoming() {
 
   useEffect(() => {
     loadWorkOrdersQCStatus();
+    loadPendingLots();
 
     const channel = supabase
       .channel('incoming-qc-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, loadWorkOrdersQCStatus)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wo_material_issues' }, loadWorkOrdersQCStatus)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, loadWorkOrdersQCStatus)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'material_lots' }, () => { loadWorkOrdersQCStatus(); loadPendingLots(); })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -256,6 +281,47 @@ export default function QCIncoming() {
               { label: 'Awaiting Material', value: awaitingMaterial.length, type: 'neutral' },
             ]}
           />
+
+          {/* Pending raw-material lots: approve directly */}
+          {pendingLots.length > 0 && (
+            <QCActionRequired
+              title="Raw Material Lots Pending QC"
+              description="Pass or fail a received lot so it can be issued to work orders"
+              count={pendingLots.length}
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Lot</TableHead>
+                    <TableHead>Heat No</TableHead>
+                    <TableHead>Material</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead className="text-right">Net kg</TableHead>
+                    <TableHead className="text-right">Material QC</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingLots.map(l => (
+                    <TableRow key={l.id}>
+                      <TableCell className="font-medium">{l.lot_id}</TableCell>
+                      <TableCell>{l.heat_no || "-"}</TableCell>
+                      <TableCell>{[l.material_size_mm, l.alloy].filter(Boolean).join(" ") || "-"}</TableCell>
+                      <TableCell>{l.supplier || "-"}</TableCell>
+                      <TableCell className="text-right">{Number(l.net_weight || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right space-x-2 whitespace-nowrap">
+                        <Button size="sm" disabled={lotSaving === l.id} onClick={() => setLotQC(l.id, "pass")}>
+                          <CheckCircle2 className="h-4 w-4 mr-1" />Pass
+                        </Button>
+                        <Button size="sm" variant="destructive" disabled={lotSaving === l.id} onClick={() => setLotQC(l.id, "fail")}>
+                          <XCircle className="h-4 w-4 mr-1" />Fail
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </QCActionRequired>
+          )}
 
           {/* Action Required - Pending items */}
           {pendingQC.length > 0 && (
