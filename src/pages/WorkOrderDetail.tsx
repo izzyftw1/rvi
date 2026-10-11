@@ -541,7 +541,7 @@ const WorkOrderDetail = () => {
     const allowedStages = VALID_TRANSITIONS[currentStage];
 
     // Enforce state machine unless admin override
-    if (!allowedStages.includes(newStage) && !hasAnyRole(['admin'])) {
+    if (!allowedStages.some(stage => stage === newStage) && !hasAnyRole(['admin'])) {
       toast({
         variant: "destructive",
         title: "Invalid Stage Transition",
@@ -1311,7 +1311,7 @@ const WorkOrderDetail = () => {
                     .filter(stage => stage === wo?.current_stage || hasAnyRole(['admin']) || VALID_TRANSITIONS[(wo?.current_stage || 'goods_in') as WOStage].includes(stage))
                     .map(stage => (
                       <SelectItem key={stage} value={stage}>
-                        {stage.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())}
+                        {stage.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}
                       </SelectItem>
                     ))}
                 </SelectContent>

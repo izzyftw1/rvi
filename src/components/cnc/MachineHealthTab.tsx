@@ -69,7 +69,8 @@ export const MachineHealthTab = () => {
           machine_id: m.machine_id ?? '',
           machine_code: m.machine_code ?? '',
           machine_name: m.machine_name ?? '',
-          current_state: m.current_state ?? 'idle',
+          current_state: ['breakdown', 'idle', 'qc_hold'].includes(m.base_status ?? '')
+            ? m.base_status ?? 'idle' : m.current_state ?? 'idle',
           running_wo: m.running_wo,
           running_wo_display: m.running_wo_display,
           downtime_hours: m.downtime_hours ?? 0,
@@ -168,7 +169,7 @@ export const MachineHealthTab = () => {
   return (
     <div className="space-y-6">
       {/* Summary Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">

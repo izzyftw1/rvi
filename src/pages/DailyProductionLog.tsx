@@ -144,7 +144,6 @@ interface WorkOrder {
   quantity: number | null;
   cycle_time_seconds: number | null;
   qty_completed: number | null;
-  material_grade: string | null;
   financial_snapshot: Json | null;
   qc_first_piece_status: string | null;
 }
@@ -397,7 +396,7 @@ export default function DailyProductionLog() {
       // Load active work orders
       const { data: woData } = await supabase
         .from("work_orders")
-        .select("id, wo_number, customer, item_code, revision, material_size_mm, material_grade, financial_snapshot, qc_first_piece_status, quantity, cycle_time_seconds, qty_completed")
+        .select("id, wo_number, customer, item_code, revision, material_size_mm, financial_snapshot, qc_first_piece_status, quantity, cycle_time_seconds, qty_completed")
         .in("status", ["pending", "in_progress", "qc", "packing"])
         .order("wo_number", { ascending: false })
         .limit(100);
@@ -604,8 +603,10 @@ export default function DailyProductionLog() {
           ? snapshot.line_item : null;
         const alloy = lineItem && typeof lineItem === 'object' && !Array.isArray(lineItem)
           ? lineItem.alloy : null;
+        const materialGrade = lineItem && typeof lineItem === 'object' && !Array.isArray(lineItem)
+          ? lineItem.material_grade : null;
         insertData.raw_material_grade = typeof alloy === 'string' && alloy.trim()
-          ? alloy : selectedWO.material_grade;
+          ? alloy : typeof materialGrade === 'string' ? materialGrade : null;
         insertData.ordered_quantity = selectedWO.quantity;
         if (insertData.cycle_time_seconds == null) {
           insertData.cycle_time_seconds = selectedWO.cycle_time_seconds;
