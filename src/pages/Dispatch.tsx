@@ -450,8 +450,8 @@ export default function Dispatch() {
           remarks: `Auto: Dispatch ${generatedShipId} - ${dispatchQty} pcs`,
           created_by: user?.id || null,
         });
-        if (gateResult?.error) {
-          toast({ variant: "destructive", title: "Gate register entry failed", description: `${generatedShipId}: ${gateResult.error.message || gateResult.error}` });
+        if (!gateResult) {
+          toast({ variant: "destructive", title: "Gate register entry failed", description: `${generatedShipId}: OUT entry for ${batch.carton_id} was not created` });
         }
       }
 
