@@ -40,6 +40,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { ProductionReleaseSection } from "@/components/ProductionReleaseSection";
 import { OEEWidget } from "@/components/OEEWidget";
 import { QCStageCard } from "@/components/qc/QCStageCard";
+import { FinalQCBatchPanel } from "@/components/qc/FinalQCBatchPanel";
 import { DispatchQCStatusCard } from "@/components/qc/DispatchQCStatusCard";
 import { OperationRouteManager } from "@/components/OperationRouteManager";
 import { OperationRouteStatus } from "@/components/OperationRouteStatus";
@@ -1124,6 +1125,7 @@ const WorkOrderDetail = () => {
           <TabsContent value="qc" className="space-y-4">
             {activeTab === 'qc' && (
               <div className="space-y-6">
+                <FinalQCBatchPanel woId={id!} />
                 {/* QC Stages */}
                 <div className="grid gap-4">
                   <QCStageCard

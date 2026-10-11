@@ -585,6 +585,9 @@ const Quality = () => {
             />
           </div>
 
+          <FinalQCBatchPanel />
+
+
           {/* ═══ SEGMENT TOGGLE ═══ */}
           <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg overflow-x-auto">
             {SEGMENTS.map((seg) => {
